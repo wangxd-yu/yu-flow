@@ -1,0 +1,2 @@
+org.yu.flow.config.FlowAutoConfiguration
+org.yu.flow.config.FlowUiAutoConfiguration
