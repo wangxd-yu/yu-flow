@@ -1,0 +1,111 @@
+# ==========================================
+# 🌐 前端部分 (Umi, React, Node.js)
+# ==========================================
+# 依赖包
+node_modules/
+.pnp
+.pnp.js
+
+# Umi 框架生成的临时文件和缓存
+.umi/
+.umi-production/
+
+# 打包产物
+dist/
+build/
+
+# 日志文件
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 本地环境变量配置（包含敏感信息，绝不提交）
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# linter 缓存
+.eslintcache
+.stylelintcache
+
+# ==========================================
+# ☕ 后端部分 (Java, Spring Boot, Maven/Gradle)
+# ==========================================
+# 编译后的类文件
+*.class
+
+# Maven 打包产物
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle 打包产物 (如果你用的是 Gradle)
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+out/
+
+# 日志文件
+*.log
+
+# 打包文件 (如果需要把特定的 jar 提交，可以在前面加 ! 排除)
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ==========================================
+# 💻 IDE 与编辑器配置
+# ==========================================
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# ==========================================
+# 🖥️ 操作系统生成的文件
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.cab
+*.lnk
+
+# ==========================================
+# 📝 文档部分 (VitePress)
+# ==========================================
+docs/.vitepress/cache/
+docs/.vitepress/dist/
