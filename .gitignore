@@ -37,6 +37,7 @@ pnpm-debug.log*
 *.class
 
 # Maven 打包产物
+resources/flow-ui/
 target/
 pom.xml.tag
 pom.xml.releaseBackup
