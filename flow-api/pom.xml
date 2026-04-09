@@ -256,6 +256,15 @@
                     </excludes>
                 </configuration>
             </plugin>
+
+            <!-- Spring Boot 打包插件，配置 classifier=exec 使得原 jar 作为普通依赖，新增 -exec.jar 为可执行包 -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <classifier>exec</classifier>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
