@@ -30,6 +30,7 @@ const BODY_TYPE_OPTIONS: { label: string; value: BodyType }[] = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface ReqSchemaPanelProps {
+  method?: string;
   queryParams: SchemaNode[];
   onQueryParamsChange: (v: SchemaNode[]) => void;
   headers: SchemaNode[];
@@ -47,6 +48,7 @@ export interface ReqSchemaPanelProps {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
+  method = '',
   queryParams, onQueryParamsChange,
   headers, onHeadersChange,
   bodyNodes, onBodyNodesChange,
@@ -100,34 +102,38 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
             label: 'Params',
             children: <SchemaTreeTable flat value={queryParams} onChange={onQueryParamsChange} />,
           },
-          {
-            key: 'body',
-            label: 'Body',
-            children: (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <Radio.Group
-                    value={bodyType}
-                    onChange={(e) => onBodyTypeChange(e.target.value)}
-                    optionType="button"
-                    buttonStyle="solid"
-                    size="small"
-                  >
-                    {BODY_TYPE_OPTIONS.map((opt) => (
-                      <Radio.Button key={opt.value} value={opt.value}>{opt.label}</Radio.Button>
-                    ))}
-                  </Radio.Group>
-                  {bodyType === 'json' && (
-                    <Space size={4}>
-                      <Button size="small" type="text" icon={<EyeOutlined />}>预览 Schema</Button>
-                      <Button size="small" type="text" icon={<ImportOutlined />}>导入 Schema</Button>
-                    </Space>
-                  )}
-                </div>
-                {renderBodyContent()}
-              </div>
-            ),
-          },
+          ...(['GET', 'DELETE'].includes(method.toUpperCase())
+            ? []
+            : [
+                {
+                  key: 'body',
+                  label: 'Body',
+                  children: (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <Radio.Group
+                          value={bodyType}
+                          onChange={(e) => onBodyTypeChange(e.target.value)}
+                          optionType="button"
+                          buttonStyle="solid"
+                          size="small"
+                        >
+                          {BODY_TYPE_OPTIONS.map((opt) => (
+                            <Radio.Button key={opt.value} value={opt.value}>{opt.label}</Radio.Button>
+                          ))}
+                        </Radio.Group>
+                        {bodyType === 'json' && (
+                          <Space size={4}>
+                            <Button size="small" type="text" icon={<EyeOutlined />}>预览 Schema</Button>
+                            <Button size="small" type="text" icon={<ImportOutlined />}>导入 Schema</Button>
+                          </Space>
+                        )}
+                      </div>
+                      {renderBodyContent()}
+                    </div>
+                  ),
+                },
+              ]),
           {
             key: 'headers',
             label: 'Headers',

@@ -371,6 +371,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       case 'req-schema':
         return (
           <ReqSchemaPanel
+            method={method}
             queryParams={queryParams}
             onQueryParamsChange={setQueryParams}
             headers={headers}
