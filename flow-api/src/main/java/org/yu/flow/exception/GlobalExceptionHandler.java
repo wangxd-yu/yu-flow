@@ -50,6 +50,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    @ExceptionHandler(SchemaValidationException.class)
+    public ResponseEntity<ErrorResponse> handleSchemaValidationException(SchemaValidationException ex, WebRequest request) {
+        log.warn("[GlobalExceptionHandler] 入参 Schema 校验失败: path={}, errors={}",
+                getRequestPath(request), ex.getErrors());
+        ErrorResponse response = ErrorResponse.builder()
+                .code("SCHEMA_VALIDATION_ERROR")
+                .message(ex.getMessage())
+                .severity("WARNING")
+                .timestamp(Instant.now())
+                .path(getRequestPath(request))
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
     @ExceptionHandler(ExecutionException.class)
     public ResponseEntity<ErrorResponse> handleExecutionException(ExecutionException ex, WebRequest request) {
         ErrorResponse response = ErrorResponse.builder()

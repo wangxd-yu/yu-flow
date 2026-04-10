@@ -11,6 +11,7 @@ import org.yu.flow.auto.service.FlowApiExecutionService;
 import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.dto.R;
 import org.yu.flow.dto.ResultCode;
+import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.util.FlowObjectMapperUtil;
 import org.yu.flow.util.JsonDeserializerUtil;
 import org.yu.flow.util.ThrowableUtil;
@@ -70,6 +71,9 @@ public class FlowApiInterceptor implements HandlerInterceptor {
 
     @Resource
     private FlowApiCacheManager flowApiCacheManager;
+
+    @Resource
+    private SchemaValidatorService schemaValidatorService;
 
     /** 全局复用的 ObjectMapper（线程安全），杜绝方法内重复 new */
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
@@ -186,6 +190,21 @@ public class FlowApiInterceptor implements HandlerInterceptor {
 
         // 3. 提取分页对象
         Pageable pageable = extractPageable(request);
+
+        // 3.5 JSON Schema 入参前置校验
+        String schemaRule = flowApiDO.getRule();
+        if (StrUtil.isNotBlank(schemaRule) && bodyParams != null && !bodyParams.isEmpty()) {
+            try {
+                schemaValidatorService.validate(schemaRule, bodyParams);
+            } catch (SchemaValidationException e) {
+                Map<String, Object> errorMap = new HashMap<>();
+                errorMap.put("code", "SCHEMA_VALIDATION_ERROR");
+                errorMap.put("message", e.getMessage());
+                errorMap.put("errors", e.getErrors());
+                writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(), errorMap);
+                return false;
+            }
+        }
 
         // 4. 执行 API
         Object result = flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response);
