@@ -91,8 +91,9 @@ public class FlowApiDO implements Serializable {
      */
     private String tags;
 
-    //校验规则
-    private String rule;
+    // API 契约，包含 request/responses 的 JSON Schema 等信息
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String contract;
 
     /**
      * 是否已删除 0：未删除；1：已删除

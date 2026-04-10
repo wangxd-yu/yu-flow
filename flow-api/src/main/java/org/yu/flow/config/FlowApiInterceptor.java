@@ -191,11 +191,11 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         // 3. 提取分页对象
         Pageable pageable = extractPageable(request);
 
-        // 3.5 JSON Schema 入参前置校验
-        String schemaRule = flowApiDO.getRule();
-        if (StrUtil.isNotBlank(schemaRule) && bodyParams != null && !bodyParams.isEmpty()) {
+        // 3.5 JSON Schema 入参前置校验（同时校验 Body 和 Query Params）
+        String contractRule = flowApiDO.getContract();
+        if (StrUtil.isNotBlank(contractRule)) {
             try {
-                schemaValidatorService.validate(schemaRule, bodyParams);
+                schemaValidatorService.validateFromContract(contractRule, bodyParams, queryParams);
             } catch (SchemaValidationException e) {
                 Map<String, Object> errorMap = new HashMap<>();
                 errorMap.put("code", "SCHEMA_VALIDATION_ERROR");

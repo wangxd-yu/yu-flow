@@ -154,8 +154,13 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       setWrapError(processedValues.wrapError || '');
       setActiveTab('implementation');
 
-      // 还原契约数据
-      const contract = processedValues._contract;
+      // 还原契约数据：从 contract 字段解析（持久化）
+      let contract = null;
+      if (processedValues.contract) {
+        try {
+          contract = JSON.parse(processedValues.contract);
+        } catch { /* contract 解析失败则忽略 */ }
+      }
       if (contract) {
         setQueryParams(contract.request?.query ?? []);
         setHeaders(contract.request?.headers ?? []);
@@ -241,7 +246,8 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         wrapSuccess,
         wrapError,
         tags: formValues.tags && Array.isArray(formValues.tags) ? formValues.tags.join(',') : formValues.tags,
-        _contract: contractSnapshot,
+        // 将契约数据序列化为 JSON 字符串存入 contract 字段，后端用于入参校验
+        contract: JSON.stringify(contractSnapshot),
       };
 
       hide = message.loading(isEdit ? '正在更新...' : '正在添加...');

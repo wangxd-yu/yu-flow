@@ -29,7 +29,7 @@ public class FlowApiDTO {
     private String serviceType;
     private Integer publishStatus;
     private Integer level;
-    private String rule;
+    private String contract;
     private String tags;
     private Integer deleted = 0;
 
@@ -59,7 +59,7 @@ public class FlowApiDTO {
         dto.setServiceType(configDO.getServiceType());
         dto.setPublishStatus(configDO.getPublishStatus());
         dto.setLevel(configDO.getLevel());
-        dto.setRule(configDO.getRule());
+        dto.setContract(configDO.getContract());
         dto.setTags(configDO.getTags());
         dto.setDeleted(configDO.getDeleted());
         dto.setCreateTime(configDO.getCreateTime());
@@ -85,7 +85,7 @@ public class FlowApiDTO {
         configDO.setServiceType(this.getServiceType());
         configDO.setPublishStatus(this.getPublishStatus());
         configDO.setLevel(this.getLevel());
-        configDO.setRule(this.getRule());
+        configDO.setContract(this.getContract());
         configDO.setTags(this.getTags());
         configDO.setDeleted(this.getDeleted());
         configDO.setCreateTime(this.getCreateTime());

@@ -136,9 +136,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                              Map<String, Object> mergeParamsMap, Pageable pageable,
                              HttpServletResponse response, FlowApiDO flowApiDO) throws Exception {
         // 参数校验
-        if (StrUtil.isNotBlank(flowApiDO.getRule())) {
+        if (StrUtil.isNotBlank(flowApiDO.getContract())) {
             Map<String, List<ValidationRule>> validationRules = OBJECT_MAPPER.readValue(
-                    flowApiDO.getRule(),
+                    flowApiDO.getContract(),
                     new TypeReference<Map<String, List<ValidationRule>>>() {}
             );
             validateParams(queryParams, bodyParams, mergeParamsMap, validationRules);
