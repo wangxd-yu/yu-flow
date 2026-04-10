@@ -135,13 +135,12 @@ const FORMAT_OPTIONS = [
 
 const AdvancedSettingsPanel: React.FC<{ record: SchemaNode; onPatch: (p: Partial<SchemaNode>) => void }> = ({ record, onPatch }) => {
   const isStr = record.type === 'string';
+  const isNum = record.type === 'number';
+  const isArr = record.type === 'array';
   return (
-    <div style={{ width: 300 }}>
+    <div style={{ width: 320 }}>
       <Form layout="vertical" size="small">
-        <Form.Item label="必填" style={{ marginBottom: 8 }}>
-          <Switch size="small" checked={record.required} onChange={(v) => onPatch({ required: v })} />
-        </Form.Item>
-        <Divider style={{ margin: '6px 0' }} />
+        {/* ── 通用字段 ── */}
         <Form.Item label="Mock" style={{ marginBottom: 8 }}>
           <Input placeholder="@name, @email" value={record.mock ?? ''} onChange={(e) => onPatch({ mock: e.target.value || undefined })} />
         </Form.Item>
@@ -151,23 +150,69 @@ const AdvancedSettingsPanel: React.FC<{ record: SchemaNode; onPatch: (p: Partial
         <Form.Item label="枚举值" style={{ marginBottom: 8 }} tooltip="逗号分隔">
           <Select mode="tags" placeholder="回车添加" value={record.enum ?? []} onChange={(v) => onPatch({ enum: v.length ? v : undefined })} tokenSeparators={[',']} style={{ width: '100%' }} />
         </Form.Item>
+
+        {/* ── string 校验 ── */}
         {isStr && (
           <>
             <Divider style={{ margin: '6px 0' }} />
             <Form.Item label="Format" style={{ marginBottom: 8 }}>
               <Select value={record.format ?? ''} options={FORMAT_OPTIONS} onChange={(v) => onPatch({ format: v || undefined })} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="正则" style={{ marginBottom: 8 }}>
+            <Form.Item label="正则 (pattern)" style={{ marginBottom: 8 }}>
               <Input placeholder="^[a-zA-Z]+$" value={record.pattern ?? ''} onChange={(e) => onPatch({ pattern: e.target.value || undefined })} />
             </Form.Item>
             <Space>
               <Form.Item label="最小长度" style={{ marginBottom: 0 }}>
-                <InputNumber min={0} value={record.minLength} onChange={(v) => onPatch({ minLength: v ?? undefined })} style={{ width: 90 }} />
+                <InputNumber min={0} value={record.minLength} onChange={(v) => onPatch({ minLength: v ?? undefined })} style={{ width: 100 }} />
               </Form.Item>
               <Form.Item label="最大长度" style={{ marginBottom: 0 }}>
-                <InputNumber min={0} value={record.maxLength} onChange={(v) => onPatch({ maxLength: v ?? undefined })} style={{ width: 90 }} />
+                <InputNumber min={0} value={record.maxLength} onChange={(v) => onPatch({ maxLength: v ?? undefined })} style={{ width: 100 }} />
               </Form.Item>
             </Space>
+          </>
+        )}
+
+        {/* ── number 校验 ── */}
+        {isNum && (
+          <>
+            <Divider style={{ margin: '6px 0' }} />
+            <Space>
+              <Form.Item label="最小值" style={{ marginBottom: 8 }}>
+                <InputNumber value={record.minimum} onChange={(v) => onPatch({ minimum: v ?? undefined })} style={{ width: 100 }} />
+              </Form.Item>
+              <Form.Item label="排他" style={{ marginBottom: 8 }}>
+                <Switch size="small" checked={record.exclusiveMinimum ?? false} onChange={(v) => onPatch({ exclusiveMinimum: v || undefined })} />
+              </Form.Item>
+            </Space>
+            <Space>
+              <Form.Item label="最大值" style={{ marginBottom: 8 }}>
+                <InputNumber value={record.maximum} onChange={(v) => onPatch({ maximum: v ?? undefined })} style={{ width: 100 }} />
+              </Form.Item>
+              <Form.Item label="排他" style={{ marginBottom: 8 }}>
+                <Switch size="small" checked={record.exclusiveMaximum ?? false} onChange={(v) => onPatch({ exclusiveMaximum: v || undefined })} />
+              </Form.Item>
+            </Space>
+            <Form.Item label="倍数 (multipleOf)" style={{ marginBottom: 0 }}>
+              <InputNumber min={0} value={record.multipleOf} onChange={(v) => onPatch({ multipleOf: v ?? undefined })} style={{ width: '100%' }} placeholder="如 0.01" />
+            </Form.Item>
+          </>
+        )}
+
+        {/* ── array 校验 ── */}
+        {isArr && (
+          <>
+            <Divider style={{ margin: '6px 0' }} />
+            <Space>
+              <Form.Item label="最少元素" style={{ marginBottom: 8 }}>
+                <InputNumber min={0} value={record.minItems} onChange={(v) => onPatch({ minItems: v ?? undefined })} style={{ width: 100 }} />
+              </Form.Item>
+              <Form.Item label="最多元素" style={{ marginBottom: 8 }}>
+                <InputNumber min={0} value={record.maxItems} onChange={(v) => onPatch({ maxItems: v ?? undefined })} style={{ width: 100 }} />
+              </Form.Item>
+            </Space>
+            <Form.Item label="元素唯一 (uniqueItems)" style={{ marginBottom: 0 }}>
+              <Switch size="small" checked={record.uniqueItems ?? false} onChange={(v) => onPatch({ uniqueItems: v || undefined })} />
+            </Form.Item>
           </>
         )}
       </Form>
@@ -177,11 +222,14 @@ const AdvancedSettingsPanel: React.FC<{ record: SchemaNode; onPatch: (p: Partial
 
 const getAdvancedTags = (r: SchemaNode): string[] => {
   const t: string[] = [];
-  if (r.required) t.push('必填');
   if (r.format) t.push(r.format);
   if (r.enum?.length) t.push(`枚举(${r.enum.length})`);
   if (r.pattern) t.push('正则');
   if (r.minLength !== undefined || r.maxLength !== undefined) t.push('长度');
+  if (r.minimum !== undefined || r.maximum !== undefined) t.push('范围');
+  if (r.multipleOf !== undefined) t.push('倍数');
+  if (r.minItems !== undefined || r.maxItems !== undefined) t.push('数量');
+  if (r.uniqueItems) t.push('唯一');
   if (r.mock) t.push('Mock');
   return t;
 };
@@ -580,6 +628,23 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
           </Space>
         );
       },
+    },
+
+    // ── 必填 ────────────────────────────────────────────────
+    {
+      title: '必填',
+      dataIndex: 'required',
+      key: 'required',
+      width: 60,
+      align: 'center' as const,
+      render: (_: any, record: SchemaNode) =>
+        isRoot(record) ? null : (
+          <Switch
+            size="small"
+            checked={record.required}
+            onChange={(v) => handleFieldChange(record.id, 'required', v)}
+          />
+        ),
     },
 
     // ── Mock ────────────────────────────────────────────────

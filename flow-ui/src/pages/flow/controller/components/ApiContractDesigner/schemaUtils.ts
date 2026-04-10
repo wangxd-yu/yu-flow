@@ -25,6 +25,16 @@ interface JsonSchema {
   minLength?: number;
   maxLength?: number;
   enum?: string[];
+  // number
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: boolean;
+  exclusiveMaximum?: boolean;
+  multipleOf?: number;
+  // array
+  minItems?: number;
+  maxItems?: number;
+  uniqueItems?: boolean;
   [k: string]: any;
 }
 
@@ -41,6 +51,18 @@ const nodeToSchema = (node: SchemaNode): JsonSchema => {
   if (node.maxLength !== undefined) schema.maxLength = node.maxLength;
   if (node.enum?.length) schema.enum = node.enum;
   if (node.mock) schema['x-mock'] = node.mock;
+
+  // number 类型校验字段
+  if (node.minimum !== undefined) schema.minimum = node.minimum;
+  if (node.maximum !== undefined) schema.maximum = node.maximum;
+  if (node.exclusiveMinimum) schema.exclusiveMinimum = node.exclusiveMinimum;
+  if (node.exclusiveMaximum) schema.exclusiveMaximum = node.exclusiveMaximum;
+  if (node.multipleOf !== undefined) schema.multipleOf = node.multipleOf;
+
+  // array 类型校验字段
+  if (node.minItems !== undefined) schema.minItems = node.minItems;
+  if (node.maxItems !== undefined) schema.maxItems = node.maxItems;
+  if (node.uniqueItems) schema.uniqueItems = node.uniqueItems;
 
   if (node.type === 'object' && node.children?.length) {
     schema.properties = {};
@@ -117,6 +139,16 @@ const schemaPropertyToNode = (
     minLength: schema.minLength,
     maxLength: schema.maxLength,
     enum: schema.enum,
+    // number
+    minimum: schema.minimum,
+    maximum: schema.maximum,
+    exclusiveMinimum: schema.exclusiveMinimum,
+    exclusiveMaximum: schema.exclusiveMaximum,
+    multipleOf: schema.multipleOf,
+    // array
+    minItems: schema.minItems,
+    maxItems: schema.maxItems,
+    uniqueItems: schema.uniqueItems,
   };
 
   if (type === 'object' && schema.properties) {

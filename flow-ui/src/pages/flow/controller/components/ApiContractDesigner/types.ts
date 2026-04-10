@@ -50,6 +50,26 @@ export interface SchemaNode {
   pattern?: string;
   /** 枚举值列表 */
   enum?: string[];
+
+  // ─── number 类型校验字段 ──────────────────────────────────
+  /** 最小值 (数值类型) */
+  minimum?: number;
+  /** 最大值 (数值类型) */
+  maximum?: number;
+  /** 是否排他最小值 */
+  exclusiveMinimum?: boolean;
+  /** 是否排他最大值 */
+  exclusiveMaximum?: boolean;
+  /** 倍数约束 (数值类型) */
+  multipleOf?: number;
+
+  // ─── array 类型校验字段 ──────────────────────────────────
+  /** 最少元素数 (数组类型) */
+  minItems?: number;
+  /** 最多元素数 (数组类型) */
+  maxItems?: number;
+  /** 元素是否唯一 (数组类型) */
+  uniqueItems?: boolean;
 }
 
 // ─── 基础信息 ────────────────────────────────────────────────
