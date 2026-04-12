@@ -4,7 +4,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.yu.flow.ui.FlowUiController;
+import org.yu.flow.system.FlowUiController;
 
 /**
  * Flow 前端 UI 静态资源自动配置

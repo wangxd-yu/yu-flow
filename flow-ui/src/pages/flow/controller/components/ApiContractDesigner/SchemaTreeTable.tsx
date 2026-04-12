@@ -1,16 +1,16 @@
 import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import {
   Table, Input, Select, Switch, Button, Space, Tooltip, Popover,
-  Form, InputNumber, Divider, Tag, Modal, message,
+  Form, InputNumber, Divider, Tag,
 } from 'antd';
 import {
   PlusOutlined, SubnodeOutlined, DeleteOutlined, SettingOutlined,
-  EyeOutlined, ImportOutlined, HolderOutlined,
+  HolderOutlined,
   CaretDownOutlined, CaretRightOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SchemaNode, SchemaType } from './types';
-import { treeToSchema, schemaToTree } from './schemaUtils';
+import useSchemaDrawer from './useSchemaDrawer';
 
 // ── dnd-kit ─────────────────────────────────────────────────
 import {
@@ -399,8 +399,6 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
   value, onChange, flat = false, hideToolbar = false,
 }) => {
   const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
-  const [schemaModalType, setSchemaModalType] = useState<'preview' | 'import' | null>(null);
-  const [importText, setImportText] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
 
   // ── dnd-kit 传感器（distance:8 防止误触） ────────────────
@@ -487,22 +485,11 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
     }
   };
 
-  // ── JSON Schema 互转 ─────────────────────────────────────
-
-  const previewSchema = useMemo(() => {
-    try { return JSON.stringify(treeToSchema(dataSource), null, 2); } catch { return '{}'; }
-  }, [dataSource]);
-
-  const handleImportSchema = useCallback(() => {
-    try {
-      emitChange(schemaToTree(importText));
-      setSchemaModalType(null);
-      setImportText('');
-      message.success('导入成功');
-    } catch (e: any) {
-      message.error('JSON Schema 解析失败: ' + (e.message || '格式错误'));
-    }
-  }, [importText, emitChange]);
+  // ── Schema 预览 / 导入（复用 Hook） ────────────────────────
+  const { previewBtn, importBtn, drawers: schemaDrawers } = useSchemaDrawer({
+    nodes: dataSource,
+    onNodesChange: emitChange,
+  });
 
   // ═══════════════════════════════════════════════════════════
   // 自定义展开图标：▶ / ▼ 三角
@@ -732,12 +719,8 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
       {/* 工具栏（仅非 flat 且未隐藏时显示） */}
       {!flat && !hideToolbar && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6, gap: 6 }}>
-          <Button size="small" type="text" icon={<EyeOutlined />} onClick={() => setSchemaModalType('preview')}>
-            预览 Schema
-          </Button>
-          <Button size="small" type="text" icon={<ImportOutlined />} onClick={() => { setImportText(''); setSchemaModalType('import'); }}>
-            导入 Schema
-          </Button>
+          {previewBtn}
+          {importBtn}
         </div>
       )}
 
@@ -794,19 +777,8 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
         </Button>
       )}
 
-      {/* 预览 Modal */}
-      <Modal title="JSON Schema 预览" open={schemaModalType === 'preview'} onCancel={() => setSchemaModalType(null)}
-        footer={<Button onClick={() => { navigator.clipboard.writeText(previewSchema); message.success('已复制'); }}>复制</Button>} width={640}>
-        <Input.TextArea value={previewSchema} readOnly autoSize={{ minRows: 10, maxRows: 24 }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-      </Modal>
-
-      {/* 导入 Modal */}
-      <Modal title="导入 JSON Schema" open={schemaModalType === 'import'} onCancel={() => setSchemaModalType(null)}
-        onOk={handleImportSchema} okText="导入" width={640}>
-        <Input.TextArea value={importText} onChange={(e) => setImportText(e.target.value)}
-          placeholder={'粘贴标准 JSON Schema...\n{\n  "type": "object",\n  "properties": { ... }\n}'}
-          autoSize={{ minRows: 10, maxRows: 24 }} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-      </Modal>
+      {/* Schema 预览 / 导入 Drawers */}
+      {schemaDrawers}
     </div>
   );
 };

@@ -6,10 +6,11 @@
  * 职责：管理 Query Params / Body / Headers 三类请求参数的 Schema 定义
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import React from 'react';
-import { Alert, Button, Empty, Input, Radio, Space, Tabs } from 'antd';
-import { InfoCircleOutlined, EyeOutlined, ImportOutlined } from '@ant-design/icons';
+import React, { useMemo } from 'react';
+import { Alert, Empty, Input, Radio, Space, Tabs } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import SchemaTreeTable from '../ApiContractDesigner/SchemaTreeTable';
+import useSchemaDrawer from '../ApiContractDesigner/useSchemaDrawer';
 import type { SchemaNode, BodyType } from '../ApiContractDesigner/types';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -47,6 +48,8 @@ export interface ReqSchemaPanelProps {
 //  组件实现
 // ═══════════════════════════════════════════════════════════════════════════
 
+const ROOT_ID = 'root';
+
 const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
   method = '',
   queryParams, onQueryParamsChange,
@@ -55,6 +58,26 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
   bodyType, onBodyTypeChange,
   rawBody, onRawBodyChange,
 }) => {
+  // ── 为 Body JSON 模式的 SchemaNode[] 构建带根节点的数据
+  //    与 SchemaTreeTable 内部 dataSource 逻辑保持一致 ──────────
+  const bodyDataSource = useMemo<SchemaNode[]>(() => {
+    if (bodyNodes.length === 1 && bodyNodes[0].id === ROOT_ID) return bodyNodes;
+    return [{
+      id: ROOT_ID,
+      name: '根节点',
+      type: 'object' as const,
+      required: false,
+      description: '',
+      children: bodyNodes.length > 0 ? bodyNodes : [],
+    }];
+  }, [bodyNodes]);
+
+  // ── 复用 Schema 预览 / 导入 Hook ──────────────────────────
+  const { previewBtn, importBtn, drawers: schemaDrawers } = useSchemaDrawer({
+    nodes: bodyDataSource,
+    onNodesChange: onBodyNodesChange,
+  });
+
   /** Body 内容渲染 — 根据 bodyType 切换不同编辑器 */
   const renderBodyContent = () => {
     switch (bodyType) {
@@ -124,8 +147,8 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
                       </Radio.Group>
                       {bodyType === 'json' && (
                         <Space size={4}>
-                          <Button size="small" type="text" icon={<EyeOutlined />}>预览 Schema</Button>
-                          <Button size="small" type="text" icon={<ImportOutlined />}>导入 Schema</Button>
+                          {previewBtn}
+                          {importBtn}
                         </Space>
                       )}
                     </div>
@@ -141,6 +164,9 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
           },
         ]}
       />
+
+      {/* Schema 预览 / 导入 Drawers */}
+      {schemaDrawers}
     </div>
   );
 };
