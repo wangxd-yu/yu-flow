@@ -143,11 +143,9 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         // ─── 请求方法校验 ───
         String configMethod = flowApiDO.getMethod();
         if (!requestMethod.equalsIgnoreCase(configMethod)) {
-            Map<String, Object> errorMap = new HashMap<>();
-            errorMap.put("error", "Method not allowed");
-            errorMap.put("required", String.format("此接口不支持 %s 请求。请改用 %s 请求。", requestMethod, configMethod));
-            errorMap.put("status", HttpStatus.METHOD_NOT_ALLOWED.value());
-            writeJsonResponse(response, HttpStatus.METHOD_NOT_ALLOWED.value(), errorMap);
+            writeJsonResponse(response, HttpStatus.METHOD_NOT_ALLOWED.value(),
+                    R.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
+                            String.format("此接口不支持 %s 请求。请改用 %s 请求。", requestMethod, configMethod)));
             return false;
         }
 
@@ -156,9 +154,8 @@ public class FlowApiInterceptor implements HandlerInterceptor {
             return executeAndWriteResponse(request, response, flowApiDO);
         } catch (Exception e) {
             log.error(ThrowableUtil.getStackTrace(e));
-            Map<String, Object> errorMap = new HashMap<>();
-            errorMap.put("error", "Failed to process request");
-            writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(), errorMap);
+            writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                    R.fail(500, "系统内部错误，请联系管理员"));
             return false;
         }
     }
@@ -197,11 +194,8 @@ public class FlowApiInterceptor implements HandlerInterceptor {
             try {
                 schemaValidatorService.validateFromContract(contractRule, bodyParams, queryParams);
             } catch (SchemaValidationException e) {
-                Map<String, Object> errorMap = new HashMap<>();
-                errorMap.put("code", "SCHEMA_VALIDATION_ERROR");
-                errorMap.put("message", e.getMessage());
-                errorMap.put("errors", e.getErrors());
-                writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(), errorMap);
+                writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(),
+                        R.fail(400, e.getMessage()));
                 return false;
             }
         }

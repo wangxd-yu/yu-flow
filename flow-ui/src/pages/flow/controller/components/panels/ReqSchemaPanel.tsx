@@ -84,8 +84,8 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
   return (
     <div>
       <Alert
-        message="文档定义说明"
-        description="此处参数仅用于生成 Swagger/API 文档及 Mock 数据，底层真实运行逻辑请在「服务实现」节点中配置。"
+        message="网关前置定义说明"
+        description="此处定义的参数不仅用于生成 API 文档及 Mock 数据，还将作为 API 网关的前置校验规则。不符合规则的请求将被网关直接拦截屏蔽，不会进入「服务实现」的底层画布中。"
         type="info"
         showIcon
         icon={<InfoCircleOutlined />}
@@ -105,35 +105,35 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
           ...(['GET', 'DELETE'].includes(method.toUpperCase())
             ? []
             : [
-                {
-                  key: 'body',
-                  label: 'Body',
-                  children: (
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                        <Radio.Group
-                          value={bodyType}
-                          onChange={(e) => onBodyTypeChange(e.target.value)}
-                          optionType="button"
-                          buttonStyle="solid"
-                          size="small"
-                        >
-                          {BODY_TYPE_OPTIONS.map((opt) => (
-                            <Radio.Button key={opt.value} value={opt.value}>{opt.label}</Radio.Button>
-                          ))}
-                        </Radio.Group>
-                        {bodyType === 'json' && (
-                          <Space size={4}>
-                            <Button size="small" type="text" icon={<EyeOutlined />}>预览 Schema</Button>
-                            <Button size="small" type="text" icon={<ImportOutlined />}>导入 Schema</Button>
-                          </Space>
-                        )}
-                      </div>
-                      {renderBodyContent()}
+              {
+                key: 'body',
+                label: 'Body',
+                children: (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <Radio.Group
+                        value={bodyType}
+                        onChange={(e) => onBodyTypeChange(e.target.value)}
+                        optionType="button"
+                        buttonStyle="solid"
+                        size="small"
+                      >
+                        {BODY_TYPE_OPTIONS.map((opt) => (
+                          <Radio.Button key={opt.value} value={opt.value}>{opt.label}</Radio.Button>
+                        ))}
+                      </Radio.Group>
+                      {bodyType === 'json' && (
+                        <Space size={4}>
+                          <Button size="small" type="text" icon={<EyeOutlined />}>预览 Schema</Button>
+                          <Button size="small" type="text" icon={<ImportOutlined />}>导入 Schema</Button>
+                        </Space>
+                      )}
                     </div>
-                  ),
-                },
-              ]),
+                    {renderBodyContent()}
+                  </div>
+                ),
+              },
+            ]),
           {
             key: 'headers',
             label: 'Headers',

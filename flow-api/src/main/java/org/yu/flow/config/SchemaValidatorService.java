@@ -12,6 +12,7 @@ import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.util.FlowObjectMapperUtil;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +51,65 @@ public class SchemaValidatorService {
     private final JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
 
     /**
+     * 契约编译产物包装类
+     */
+    private static class CompiledContract {
+        final JsonSchema bodySchema;
+        final JsonSchema querySchema;
+
+        CompiledContract(JsonSchema bodySchema, JsonSchema querySchema) {
+            this.bodySchema = bodySchema;
+            this.querySchema = querySchema;
+        }
+    }
+
+    /**
+     * 本地缓存：将 contract 内容作为 Key，避免每次请求都重新解析并编译 Schema
+     * 设最大容量为 1000 以防止极端修改操作导致的内存泄露
+     */
+    private final Map<String, CompiledContract> schemaCache = new ConcurrentHashMap<>();
+
+    private CompiledContract getOrCompileSchemaSafely(String contractJson) {
+        if (schemaCache.size() > 1000) {
+            schemaCache.clear();
+        }
+        return schemaCache.computeIfAbsent(contractJson, key -> {
+            try {
+                JsonNode contract = objectMapper.readTree(key);
+                JsonNode requestNode = contract.path("request");
+                if (requestNode.isMissingNode()) {
+                    return new CompiledContract(null, null);
+                }
+
+                JsonNode bodyNodesArray = requestNode.path("body");
+                String bodyType = requestNode.path("bodyType").asText("none");
+                JsonSchema bodySchema = null;
+                if ("json".equals(bodyType) && bodyNodesArray.isArray() && bodyNodesArray.size() > 0) {
+                    JsonNode nodeSchema = schemaNodesTreeToJsonSchema(bodyNodesArray);
+                    if (nodeSchema != null) {
+                        bodySchema = schemaFactory.getSchema(nodeSchema);
+                    }
+                }
+
+                JsonNode queryNodesArray = requestNode.path("query");
+                JsonSchema querySchema = null;
+                if (queryNodesArray.isArray() && queryNodesArray.size() > 0) {
+                    JsonNode nodeSchema = schemaNodesFlatToJsonSchema(queryNodesArray);
+                    if (nodeSchema != null) {
+                        querySchema = schemaFactory.getSchema(nodeSchema);
+                    }
+                }
+
+                return new CompiledContract(bodySchema, querySchema);
+            } catch (Exception e) {
+                log.error("[SchemaValidator] 异步/缓存节点编译异常", e);
+                // 抛出运行时异常，打破计算，让外层捕获
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
      * 从完整契约 JSON 中提取 body 和 query 的校验规则，分别进行校验。
      *
      * @param contractJson 前端存储到 rule 字段的完整契约 JSON 字符串
@@ -65,39 +125,22 @@ public class SchemaValidatorService {
         }
 
         try {
-            JsonNode contract = objectMapper.readTree(contractJson);
-            JsonNode requestNode = contract.path("request");
-            if (requestNode.isMissingNode()) {
-                return;
-            }
-
+            CompiledContract compiled = getOrCompileSchemaSafely(contractJson);
             List<String> allErrors = new ArrayList<>();
 
-            // ─── Body 校验 ───
-            JsonNode bodyNodesArray = requestNode.path("body");
-            String bodyType = requestNode.path("bodyType").asText("none");
-            if ("json".equals(bodyType) && bodyNodesArray.isArray() && bodyNodesArray.size() > 0
-                    && bodyParams != null && !bodyParams.isEmpty()) {
-                JsonNode bodySchema = schemaNodesTreeToJsonSchema(bodyNodesArray);
-                if (bodySchema != null) {
-                    List<String> bodyErrors = doValidate(bodySchema, objectMapper.valueToTree(bodyParams));
-                    allErrors.addAll(bodyErrors);
-                }
+            // ─── 顺序同步校验 Body ───
+            if (compiled.bodySchema != null) {
+                JsonNode bodyData = bodyParams != null ? objectMapper.valueToTree(bodyParams) : objectMapper.createObjectNode();
+                allErrors.addAll(doValidate(compiled.bodySchema, bodyData));
             }
 
-            // ─── Query Params 校验 ───
-            JsonNode queryNodesArray = requestNode.path("query");
-            if (queryNodesArray.isArray() && queryNodesArray.size() > 0
-                    && queryParams != null && !queryParams.isEmpty()) {
-                JsonNode querySchema = schemaNodesFlatToJsonSchema(queryNodesArray);
-                if (querySchema != null) {
-                    // Query params 都是 string，直接转为 JsonNode
-                    JsonNode queryData = objectMapper.valueToTree(queryParams);
-                    List<String> queryErrors = doValidate(querySchema, queryData);
-                    allErrors.addAll(queryErrors);
-                }
+            // ─── 顺序同步校验 Query ───
+            if (compiled.querySchema != null) {
+                JsonNode queryData = queryParams != null ? objectMapper.valueToTree(queryParams) : objectMapper.createObjectNode();
+                allErrors.addAll(doValidate(compiled.querySchema, queryData));
             }
 
+            // 抛出统一切面异常
             if (!allErrors.isEmpty()) {
                 String combined = String.join("；", allErrors);
                 log.warn("[SchemaValidator] 入参校验失败: {}", combined);
@@ -108,17 +151,19 @@ public class SchemaValidatorService {
             throw e;
         } catch (Exception e) {
             log.error("[SchemaValidator] 契约解析或校验过程异常", e);
-            throw new SchemaValidationException("请求参数格式不正确: " + e.getMessage());
+            // 这里兼容处理抛出的 IllegalArgumentException 或包装的 RuntimeException
+            String msg = e.getMessage() != null ? e.getMessage() : e.toString();
+            if (e.getCause() != null) {
+                msg = e.getCause().getMessage();
+            }
+            throw new SchemaValidationException("请求参数格式不正确: " + msg);
         }
     }
-
-    // ============================= 内部校验方法 =============================
 
     /**
      * 执行 JSON Schema 校验并返回中文错误消息列表
      */
-    private List<String> doValidate(JsonNode schemaNode, JsonNode dataNode) {
-        JsonSchema schema = schemaFactory.getSchema(schemaNode);
+    private List<String> doValidate(JsonSchema schema, JsonNode dataNode) {
         Set<ValidationMessage> errors = schema.validate(dataNode);
         if (errors == null || errors.isEmpty()) {
             return Collections.emptyList();
@@ -135,7 +180,7 @@ public class SchemaValidatorService {
      * 用于 Body（json 类型），SchemaNode 可以有嵌套 children。
      *
      * <p>前端 SchemaNode 结构:
-     * { key, fieldName, displayName, type, required, children?, pattern, minLength, maxLength, ... }</p>
+     * { id, name, description, type, required, children?, pattern, minLength, maxLength, ... }</p>
      */
     private JsonNode schemaNodesTreeToJsonSchema(JsonNode nodesArray) {
         ObjectNode schema = objectMapper.createObjectNode();
@@ -145,7 +190,7 @@ public class SchemaValidatorService {
         ArrayNode requiredArr = objectMapper.createArrayNode();
 
         for (JsonNode node : nodesArray) {
-            String fieldName = node.path("fieldName").asText("");
+            String fieldName = node.path("name").asText("");
             if (fieldName.isEmpty()) continue;
 
             ObjectNode prop = buildPropertyFromNode(node);
@@ -175,7 +220,7 @@ public class SchemaValidatorService {
         ArrayNode requiredArr = objectMapper.createArrayNode();
 
         for (JsonNode node : nodesArray) {
-            String fieldName = node.path("fieldName").asText("");
+            String fieldName = node.path("name").asText("");
             if (fieldName.isEmpty()) continue;
 
             ObjectNode prop = objectMapper.createObjectNode();
@@ -187,7 +232,7 @@ public class SchemaValidatorService {
             copyNumberIfPresent(node, prop, "minLength");
             copyNumberIfPresent(node, prop, "maxLength");
 
-            String displayName = node.path("displayName").asText("");
+            String displayName = node.path("description").asText("");
             if (!displayName.isEmpty()) {
                 prop.put("description", displayName);
             }
@@ -214,79 +259,82 @@ public class SchemaValidatorService {
         String type = node.path("type").asText("string");
         prop.put("type", type);
 
-        String displayName = node.path("displayName").asText("");
+        String displayName = node.path("description").asText("");
         if (!displayName.isEmpty()) {
             prop.put("description", displayName);
         }
 
-        // string 校验规则
-        if ("string".equals(type)) {
-            copyIfPresent(node, prop, "pattern");
-            copyIfPresent(node, prop, "format");
-            copyNumberIfPresent(node, prop, "minLength");
-            copyNumberIfPresent(node, prop, "maxLength");
-        }
+        switch (type) {
+            case "string":
+                copyIfPresent(node, prop, "pattern");
+                copyIfPresent(node, prop, "format");
+                copyNumberIfPresent(node, prop, "minLength");
+                copyNumberIfPresent(node, prop, "maxLength");
+                break;
 
-        // number / integer 校验规则
-        if ("number".equals(type) || "integer".equals(type)) {
-            copyNumberIfPresent(node, prop, "minimum");
-            copyNumberIfPresent(node, prop, "maximum");
-            copyBoolIfPresent(node, prop, "exclusiveMinimum");
-            copyBoolIfPresent(node, prop, "exclusiveMaximum");
-            copyNumberIfPresent(node, prop, "multipleOf");
-        }
+            case "number":
+            case "integer":
+                copyNumberIfPresent(node, prop, "minimum");
+                copyNumberIfPresent(node, prop, "maximum");
+                copyBoolIfPresent(node, prop, "exclusiveMinimum");
+                copyBoolIfPresent(node, prop, "exclusiveMaximum");
+                copyNumberIfPresent(node, prop, "multipleOf");
+                break;
 
-        // array 校验规则
-        if ("array".equals(type)) {
-            copyNumberIfPresent(node, prop, "minItems");
-            copyNumberIfPresent(node, prop, "maxItems");
-            copyBoolIfPresent(node, prop, "uniqueItems");
+            case "array":
+                copyNumberIfPresent(node, prop, "minItems");
+                copyNumberIfPresent(node, prop, "maxItems");
+                copyBoolIfPresent(node, prop, "uniqueItems");
+                // items：将 children 构建为 object schema 后设置为 items
+                ObjectNode itemsSchema = buildChildSchema(node.path("children"));
+                if (itemsSchema != null) {
+                    prop.set("items", itemsSchema);
+                }
+                break;
 
-            // items：递归嵌套
-            JsonNode children = node.path("children");
-            if (children.isArray() && children.size() > 0) {
-                ObjectNode items = objectMapper.createObjectNode();
-                items.put("type", "object");
-                ObjectNode childProps = objectMapper.createObjectNode();
-                ArrayNode childRequired = objectMapper.createArrayNode();
-                for (JsonNode child : children) {
-                    String childField = child.path("fieldName").asText("");
-                    if (childField.isEmpty()) continue;
-                    childProps.set(childField, buildPropertyFromNode(child));
-                    if (child.path("required").asBoolean(false)) {
-                        childRequired.add(childField);
-                    }
+            case "object":
+                // 将 children 直接展开为 properties
+                ObjectNode objectSchema = buildChildSchema(node.path("children"));
+                if (objectSchema != null) {
+                    prop.setAll(objectSchema);
                 }
-                items.set("properties", childProps);
-                if (childRequired.size() > 0) {
-                    items.set("required", childRequired);
-                }
-                prop.set("items", items);
-            }
-        }
+                break;
 
-        // object：递归嵌套
-        if ("object".equals(type)) {
-            JsonNode children = node.path("children");
-            if (children.isArray() && children.size() > 0) {
-                ObjectNode childProps = objectMapper.createObjectNode();
-                ArrayNode childRequired = objectMapper.createArrayNode();
-                for (JsonNode child : children) {
-                    String childField = child.path("fieldName").asText("");
-                    if (childField.isEmpty()) continue;
-                    childProps.set(childField, buildPropertyFromNode(child));
-                    if (child.path("required").asBoolean(false)) {
-                        childRequired.add(childField);
-                    }
-                }
-                prop.set("properties", childProps);
-                if (childRequired.size() > 0) {
-                    prop.set("required", childRequired);
-                }
-            }
+            default:
+                break;
         }
 
         return prop;
+    }
+
+    /**
+     * 将 children 节点数组构建为包含 properties/required 的 object schema。
+     * array 类型用作 items，object 类型直接 setAll 合并到父节点。
+     *
+     * @param children SchemaNode 子节点数组
+     * @return 包含 type/properties/required 的 ObjectNode，或 null
+     */
+    private ObjectNode buildChildSchema(JsonNode children) {
+        if (!children.isArray() || children.size() == 0) {
+            return null;
+        }
+        ObjectNode schema = objectMapper.createObjectNode();
+        schema.put("type", "object");
+        ObjectNode childProps = objectMapper.createObjectNode();
+        ArrayNode childRequired = objectMapper.createArrayNode();
+        for (JsonNode child : children) {
+            String childField = child.path("name").asText("");
+            if (childField.isEmpty()) continue;
+            childProps.set(childField, buildPropertyFromNode(child));
+            if (child.path("required").asBoolean(false)) {
+                childRequired.add(childField);
+            }
+        }
+        schema.set("properties", childProps);
+        if (childRequired.size() > 0) {
+            schema.set("required", childRequired);
+        }
+        return schema;
     }
 
     // ============================= 工具方法 =============================
@@ -343,7 +391,8 @@ public class SchemaValidatorService {
 
         switch (type) {
             case "required":
-                String missingField = extractMissingField(vm.getMessage());
+                Object[] args = vm.getArguments();
+                String missingField = (args != null && args.length > 0) ? args[0].toString() : null;
                 return missingField != null
                         ? "「" + missingField + "」字段不能为空"
                         : "「" + field + "」缺少必填字段";
@@ -380,16 +429,4 @@ public class SchemaValidatorService {
         }
     }
 
-    /**
-     * 从 required 类型的原始消息中提取缺失字段名。
-     */
-    private String extractMissingField(String message) {
-        if (message == null) return null;
-        int start = message.indexOf('\'');
-        int end = message.lastIndexOf('\'');
-        if (start >= 0 && end > start) {
-            return message.substring(start + 1, end);
-        }
-        return null;
-    }
 }
