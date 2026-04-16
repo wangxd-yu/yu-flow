@@ -94,6 +94,8 @@ export interface RequestConfig {
   headers: SchemaNode[];
   /** 查询参数 */
   query: SchemaNode[];
+  /** 路径参数（从 URL 中 {param} 占位符提取） */
+  pathParams?: SchemaNode[];
   /** 请求体参数 */
   body: SchemaNode[];
   /** Body 内容类型 */

@@ -78,6 +78,18 @@ export default defineConfig({
       component: './SysMacroManage',
     },
     {
+      name: '系统配置',
+      path: '/sys-config/manage',
+      icon: 'ControlOutlined',
+      component: './SysConfig',
+    },
+    {
+      name: '响应模板',
+      path: '/response-template/manage',
+      icon: 'FileTextOutlined',
+      component: './ResponseTemplate',
+    },
+    {
       path: '/page-manage/designer/:id',
       component: './PageManage/Designer',
       layout: false,

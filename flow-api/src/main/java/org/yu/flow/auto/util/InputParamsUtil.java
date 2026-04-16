@@ -20,11 +20,11 @@ public class InputParamsUtil {
      * 参数来源
      * 前缀：# 系统参数
      * 前缀：@ , 上下文传参，包括： "FP"：functionParams(方法传参), "BP":bodyParams(body请求传参), "QP":queryParams(query请求传参)
-     * 前缀：无,按上下文传参优先级查找对象，FP -> BP -> QP。主要用于 单节点flow时，直接从 BP、QP查找变量
+     * 前缀：无,按上下文传参优先级查找对象，FP -> PP -> BP -> QP。主要用于 单节点flow时，直接从 PP、BP、QP查找变量
      */
 
     private static final ExpressionParser parser = new SpelExpressionParser();
-    private static final String[] SEARCH_ORDER = {"@FP", "@BP", "@QP"};
+    private static final String[] SEARCH_ORDER = {"@FP", "@PP", "@BP", "@QP"};
 
     public static boolean hasParam(Map<String, ?> params, String keyExpression) {
         return InputParamsUtil.resolveParam(params, keyExpression) != null;

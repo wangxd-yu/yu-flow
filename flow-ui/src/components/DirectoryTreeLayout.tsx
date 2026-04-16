@@ -307,28 +307,28 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
           />
 
           <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-          <Tree
-            className="directory-tree"
-            treeData={filteredTreeData}
-            selectedKeys={selectedDirKey ? [selectedDirKey] : []}
-            expandedKeys={expandedKeys}
-            onExpand={(keys) => setExpandedKeys(keys)}
-            onSelect={handleTreeSelect}
-            blockNode
-            showIcon
-            icon={(props: any) => {
-              if (props.data?.isLeaf) return <FileOutlined />;
-              return props.expanded ? <FolderOpenOutlined /> : <FolderOutlined />;
-            }}
-            titleRender={(nodeData) => (
-              <TreeNodeTitle
-                nodeData={nodeData}
-                onAdd={handleAddDir}
-                onRename={handleRenameDir}
-                onDelete={handleDeleteDir}
-              />
-            )}
-          />
+            <Tree
+              className="directory-tree"
+              treeData={filteredTreeData}
+              selectedKeys={selectedDirKey ? [selectedDirKey] : []}
+              expandedKeys={expandedKeys}
+              onExpand={(keys) => setExpandedKeys(keys)}
+              onSelect={handleTreeSelect}
+              blockNode
+              showIcon
+              icon={(props: any) => {
+                if (props.data?.isLeaf) return <FileOutlined />;
+                return props.expanded ? <FolderOpenOutlined /> : <FolderOutlined />;
+              }}
+              titleRender={(nodeData) => (
+                <TreeNodeTitle
+                  nodeData={nodeData}
+                  onAdd={handleAddDir}
+                  onRename={handleRenameDir}
+                  onDelete={handleDeleteDir}
+                />
+              )}
+            />
           </div>
         </ProCard>
 

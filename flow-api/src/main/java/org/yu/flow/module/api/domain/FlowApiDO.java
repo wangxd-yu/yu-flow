@@ -72,14 +72,28 @@ public class FlowApiDO implements Serializable {
     private Integer level;
 
     /**
-     * 成功返回包装
+     * 基座模板ID
      */
-    private String wrapSuccess;
+    @Column(length = 32)
+    private String templateId;
 
     /**
-     * 失败返回包装
+     * 自定义成功返回包装
      */
-    private String wrapError;
+    @Column(columnDefinition = "TEXT")
+    private String customSuccessWrapper;
+
+    /**
+     * 自定义分页返回包装
+     */
+    @Column(columnDefinition = "TEXT")
+    private String customPageWrapper;
+
+    /**
+     * 自定义失败返回包装
+     */
+    @Column(columnDefinition = "TEXT")
+    private String customFailWrapper;
 
     /**
      * 描述

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.config.response.ResponseWrapperContext;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.auto.service.FlowApiExecutionService;
 import org.yu.flow.auto.util.JwtTokenUtil;
@@ -74,6 +75,12 @@ public class FlowApiInterceptor implements HandlerInterceptor {
 
     @Resource
     private SchemaValidatorService schemaValidatorService;
+
+    @Resource
+    private org.yu.flow.config.response.ResponseStrategyResolver responseStrategyResolver;
+
+    @Resource
+    private org.yu.flow.config.response.ResponseTransformer responseTransformer;
 
     /** 全局复用的 ObjectMapper（线程安全），杜绝方法内重复 new */
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
@@ -154,10 +161,16 @@ public class FlowApiInterceptor implements HandlerInterceptor {
             return executeAndWriteResponse(request, response, flowApiDO);
         } catch (Exception e) {
             log.error(ThrowableUtil.getStackTrace(e));
-            writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                    R.fail(500, "系统内部错误，请联系管理员"));
+            handleExceptionResponse(response, flowApiDO, e);
             return false;
         }
+    }
+
+    private void handleExceptionResponse(HttpServletResponse response, FlowApiDO flowApiDO, Exception e) throws IOException {
+        R<Object> r = R.fail(500, e.getMessage() != null ? e.getMessage() : "系统内部错误，请联系管理员");
+        org.yu.flow.config.response.ResponseWrapperContext context = responseStrategyResolver.resolve(flowApiDO);
+        Object finalResult = responseTransformer.transform(r, context.getFailWrapper());
+        writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(), finalResult);
     }
 
     // ============================= 业务执行与响应写出 =============================
@@ -177,6 +190,7 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         Map<String, Object> inputParamsMap = new HashMap<>(8);
         inputParamsMap.put("@QP", queryParams);
         inputParamsMap.put("@BP", bodyParams);
+        inputParamsMap.put("@PP", request.getAttribute("flowPathVariables"));
         // 兼容 Request 节点
         inputParamsMap.put("headers", headers);
         inputParamsMap.put("params", queryParams);
@@ -203,7 +217,10 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         // 4. 执行 API
         Object result = flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response);
 
-        // 5. 写出响应
+        // 5. 获取包装上下文
+        ResponseWrapperContext context = responseStrategyResolver.resolve(flowApiDO);
+
+        // 6. 写出响应
         response.setContentType(JSON_CONTENT_TYPE);
         response.setCharacterEncoding("UTF-8");
         response.setStatus(HttpStatus.OK.value());
@@ -211,13 +228,36 @@ public class FlowApiInterceptor implements HandlerInterceptor {
 
         if (result instanceof ResponseEntity) {
             writeResponseEntity(response, (ResponseEntity<?>) result);
-        } else if (StrUtil.isNotBlank(flowApiDO.getWrapSuccess())) {
-            JsonNode jsonNode = wrapResponseToJsonNode(result, flowApiDO.getWrapSuccess(), response);
-            objectMapper.writeValue(response.getWriter(), jsonNode);
         } else {
-            objectMapper.writeValue(response.getWriter(), result);
+            String templateToUse;
+            if (result instanceof R && !((R) result).getOk()) {
+                templateToUse = context.getFailWrapper();
+            } else if (isPageResponse(result) || "PAGE".equalsIgnoreCase(flowApiDO.getResponseType())) {
+                templateToUse = context.getPageWrapper();
+            } else {
+                templateToUse = context.getSuccessWrapper();
+            }
+            // 兜底：如果执行结果本身没有外层 R 处理，但模板可能需要 code / message 等结构
+            // 如果觉得在这里统一包一层 Map 再 transform 更安全，也可以。
+            // 这里我们直接将原结果传入 transformer（如果是 R/Page，内部有相应字段）
+            Object finalResult = responseTransformer.transform(result, templateToUse);
+            objectMapper.writeValue(response.getWriter(), finalResult);
         }
 
+        return false;
+    }
+
+    private boolean isPageResponse(Object result) {
+        if (result == null) {
+            return false;
+        }
+        if (result instanceof org.springframework.data.domain.Page) {
+            return true;
+        }
+        if (result instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) result;
+            return map.containsKey("items") && map.containsKey("total") && map.containsKey("current");
+        }
         return false;
     }
 
@@ -376,18 +416,7 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return mergedParams;
     }
 
-    // ============================= 响应包装 =============================
 
-    /**
-     * 将业务结果按模板包装为 JsonNode（用于自定义成功包装格式）。
-     */
-    private JsonNode wrapResponseToJsonNode(Object data, String template, HttpServletResponse response) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("data", data);
-        map.put("code", response.getStatus());
-        map.put("timestamp", LocalDateTime.now());
-        return JsonDeserializerUtil.deserializeToJsonNode(template, map);
-    }
 
     // ============================= 分页提取 =============================
 

@@ -7,11 +7,13 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React from 'react';
-import { Collapse, Flex, Input } from 'antd';
+import { Row, Col } from 'antd';
 import type { FormInstance } from 'antd';
 import {
   ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea,
 } from '@ant-design/pro-components';
+import { GiftOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import ResponseWrapperSection from './ResponseWrapperSection';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Props
@@ -19,90 +21,119 @@ import {
 
 export interface BasicInfoPanelProps {
   form: FormInstance;
-  wrapSuccess: string;
-  onWrapSuccessChange: (v: string) => void;
-  wrapError: string;
-  onWrapErrorChange: (v: string) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  组件实现
 // ═══════════════════════════════════════════════════════════════════════════
 
-const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
-  form, wrapSuccess, onWrapSuccessChange, wrapError, onWrapErrorChange,
-}) => {
+const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form }) => {
   return (
-    <ProForm
-      form={form}
-      submitter={false}
-      layout="horizontal"
-      labelCol={{ span: 4 }}
-      wrapperCol={{ span: 18 }}
-      style={{ maxWidth: 800, margin: '0 auto', paddingTop: 8 }}
-    >
-      {/* ── 高级设置：自动包装统一返回体 ── */}
-      <Collapse ghost size="small" style={{ marginBottom: 24 }}>
-        <Collapse.Panel header="高级设置：自动包装统一返回体" key="1">
-          <Flex gap={16}>
-            <div style={{ flex: 1 }}>
-              <div style={{ marginBottom: 8, color: '#666' }}>成功返回包装</div>
-              <Input.TextArea
-                rows={3}
-                value={wrapSuccess}
-                onChange={(e) => onWrapSuccessChange(e.target.value)}
-                placeholder={'例如: { "code": 200, "data": @Result }'}
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 0' }}>
+      <ProForm
+        form={form}
+        submitter={false}
+        layout="vertical"
+      >
+        <Row gutter={24}>
+          {/* ── 左侧：接口元信息 (占位较小) ── */}
+          <Col xs={24} lg={8}>
+            <div
+              style={{
+                background: '#fff',
+                border: '1px solid #ebeef5',
+                borderRadius: 8,
+                padding: '20px 24px',
+                marginBottom: 24,
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 20,
+                paddingBottom: 12,
+                borderBottom: '1px solid #ebeef5',
+              }}>
+                <InfoCircleOutlined style={{ fontSize: 16, color: '#1677ff' }} />
+                <span style={{ fontSize: 15, fontWeight: 600, color: '#1d2129' }}>
+                  接口元信息
+                </span>
+              </div>
+
+              <ProFormTextArea
+                name="info"
+                label="描述"
+                placeholder="请输入接口描述，描述该接口的用途和注意事项"
+                fieldProps={{ autoSize: { minRows: 3, maxRows: 6 } }}
+              />
+
+              <ProFormText
+                name="module"
+                label="模块"
+                placeholder="请输入所属模块，如: user、order"
+              />
+
+              <ProFormText
+                name="version"
+                label="版本"
+                placeholder="请输入版本号，如: v1、v2"
+              />
+
+              <ProFormDigit
+                name="level"
+                label="优先级"
+                placeholder="1-10"
+                min={1}
+                max={10}
+                fieldProps={{ precision: 0 }}
+              />
+
+              <ProFormSelect
+                name="tags"
+                label="标签"
+                mode="tags"
+                placeholder="输入后回车添加标签"
+                fieldProps={{ maxTagCount: 5, tokenSeparators: [','] }}
               />
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ marginBottom: 8, color: '#666' }}>失败返回包装</div>
-              <Input.TextArea
-                rows={3}
-                value={wrapError}
-                onChange={(e) => onWrapErrorChange(e.target.value)}
-                placeholder={'例如: { "code": 500, "msg": @Error }'}
-              />
+          </Col>
+
+          {/* ── 右侧：返回包装配置 (占位较大) ── */}
+          <Col xs={24} lg={16}>
+            <div
+              style={{
+                background: '#fafbfc',
+                border: '1px solid #ebeef5',
+                borderRadius: 8,
+                padding: '20px 24px',
+                marginBottom: 24,
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 20,
+                paddingBottom: 12,
+                borderBottom: '1px solid #ebeef5',
+              }}>
+                <GiftOutlined style={{ fontSize: 16, color: '#1677ff' }} />
+                <span style={{ fontSize: 15, fontWeight: 600, color: '#1d2129' }}>
+                  返回包装配置
+                </span>
+                <span style={{ fontSize: 12, color: '#a0a5b1', marginLeft: 4 }}>
+                  选择基座模板并可通过开关进行局部重载
+                </span>
+              </div>
+
+              {/* 响应模板配置组件被纳入 ProForm 管辖范围内 */}
+              <ResponseWrapperSection />
             </div>
-          </Flex>
-        </Collapse.Panel>
-      </Collapse>
-
-      <ProFormTextArea
-        name="info"
-        label="描述"
-        placeholder="请输入接口描述，描述该接口的用途和注意事项"
-        fieldProps={{ autoSize: { minRows: 3, maxRows: 6 } }}
-      />
-
-      <ProFormText
-        name="module"
-        label="模块"
-        placeholder="请输入所属模块，如: user、order"
-      />
-
-      <ProFormText
-        name="version"
-        label="版本"
-        placeholder="请输入版本号，如: v1、v2"
-      />
-
-      <ProFormDigit
-        name="level"
-        label="优先级"
-        placeholder="1-10"
-        min={1}
-        max={10}
-        fieldProps={{ precision: 0 }}
-      />
-
-      <ProFormSelect
-        name="tags"
-        label="标签"
-        mode="tags"
-        placeholder="输入后回车添加标签，最多 5 个"
-        fieldProps={{ maxTagCount: 5, tokenSeparators: [','] }}
-      />
-    </ProForm>
+          </Col>
+        </Row>
+      </ProForm>
+    </div>
   );
 };
 

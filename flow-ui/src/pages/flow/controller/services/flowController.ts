@@ -21,6 +21,14 @@ export interface FlowController {
   level?: number;
   rule?: string;
   tags?: string[]; // 标签字段，支持数组格式
+  /** 基座响应模板 ID */
+  templateId?: string;
+  /** 自定义成功返回包装（局部重载） */
+  customSuccessWrapper?: string;
+  /** 自定义分页返回包装（局部重载） */
+  customPageWrapper?: string;
+  /** 自定义失败返回包装（局部重载） */
+  customFailWrapper?: string;
   createTime?: string;
   updateTime?: string;
 }

@@ -32,6 +32,12 @@ export interface SchemaTreeTableProps {
   flat?: boolean;
   /** 是否隐藏工具栏（预览/导入按钮由外部控制） */
   hideToolbar?: boolean;
+  /** 隐藏「必填」列（如 Path 参数始终必填，无需展示） */
+  hideRequired?: boolean;
+  /** 隐藏底部「添加字段」按钮（如 Path 参数仅由 URL 自动生成） */
+  hideAddButton?: boolean;
+  /** 隐藏「操作」列（如 Path 参数不允许手动增删） */
+  hideActions?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -396,7 +402,7 @@ const CELL_INPUT_STYLE: React.CSSProperties = {
 // ═══════════════════════════════════════════════════════════════
 
 const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
-  value, onChange, flat = false, hideToolbar = false,
+  value, onChange, flat = false, hideToolbar = false, hideRequired = false, hideAddButton = false, hideActions = false,
 }) => {
   const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -618,7 +624,7 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
     },
 
     // ── 必填 ────────────────────────────────────────────────
-    {
+    ...(!hideRequired ? [{
       title: '必填',
       dataIndex: 'required',
       key: 'required',
@@ -632,7 +638,7 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
             onChange={(v) => handleFieldChange(record.id, 'required', v)}
           />
         ),
-    },
+    }] : []),
 
     // ── Mock ────────────────────────────────────────────────
     {
@@ -672,12 +678,12 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
     },
 
     // ── 操作 ────────────────────────────────────────────────
-    {
+    ...(!hideActions ? [{
       title: '操作',
       key: 'actions',
       width: flat ? 80 : 100,
-      align: 'center',
-      render: (_, record) => {
+      align: 'center' as const,
+      render: (_: any, record: SchemaNode) => {
         if (isRoot(record)) {
           return (
             <Tooltip title="添加子节点">
@@ -705,7 +711,7 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
           </Space>
         );
       },
-    },
+    }] : []),
   ];
 
   // ═══════════════════════════════════════════════════════════
@@ -768,7 +774,7 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
       </DndContext>
 
       {/* flat 模式底部添加按钮 */}
-      {flat && (
+      {flat && !hideAddButton && (
         <Button type="dashed" block size="small" icon={<PlusOutlined />}
           style={{ marginTop: 4, height: 28, fontSize: 12 }}
           onClick={() => { const nn = createEmptyNode(); emitChange([...dataSource, nn]); focusNewNode(nn.id); }}

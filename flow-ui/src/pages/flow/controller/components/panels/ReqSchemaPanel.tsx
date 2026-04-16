@@ -7,7 +7,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useMemo } from 'react';
-import { Alert, Empty, Input, Radio, Space, Tabs } from 'antd';
+import { Alert, Divider, Empty, Input, Radio, Space, Tabs } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import SchemaTreeTable from '../ApiContractDesigner/SchemaTreeTable';
 import useSchemaDrawer from '../ApiContractDesigner/useSchemaDrawer';
@@ -32,8 +32,11 @@ const BODY_TYPE_OPTIONS: { label: string; value: BodyType }[] = [
 
 export interface ReqSchemaPanelProps {
   method?: string;
+  url?: string;
   queryParams: SchemaNode[];
   onQueryParamsChange: (v: SchemaNode[]) => void;
+  pathParams: SchemaNode[];
+  onPathParamsChange: (v: SchemaNode[]) => void;
   headers: SchemaNode[];
   onHeadersChange: (v: SchemaNode[]) => void;
   bodyNodes: SchemaNode[];
@@ -52,7 +55,9 @@ const ROOT_ID = 'root';
 
 const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
   method = '',
+  url = '',
   queryParams, onQueryParamsChange,
+  pathParams, onPathParamsChange,
   headers, onHeadersChange,
   bodyNodes, onBodyNodesChange,
   bodyType, onBodyTypeChange,
@@ -123,7 +128,24 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
           {
             key: 'params',
             label: 'Params',
-            children: <SchemaTreeTable flat value={queryParams} onChange={onQueryParamsChange} />,
+            children: (
+              <div>
+                {/* ── Query 参数 ── */}
+                <div style={{ marginBottom: pathParams.length > 0 ? 8 : 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#595959', marginBottom: 6 }}>Query 参数</div>
+                  <SchemaTreeTable flat value={queryParams} onChange={onQueryParamsChange} />
+                </div>
+
+                {/* ── Path 参数（仅当 URL 含 path 占位符时显示） ── */}
+                {pathParams.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <Divider style={{ margin: '0 0 8px 0' }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#595959', marginBottom: 6 }}>Path 参数</div>
+                    <SchemaTreeTable flat hideRequired hideAddButton hideActions value={pathParams} onChange={onPathParamsChange} />
+                  </div>
+                )}
+              </div>
+            ),
           },
           ...(['GET', 'DELETE'].includes(method.toUpperCase())
             ? []
