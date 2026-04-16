@@ -85,6 +85,16 @@ public class FlowApiInterceptor implements HandlerInterceptor {
     /** 全局复用的 ObjectMapper（线程安全），杜绝方法内重复 new */
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
 
+    /** 全局复用的路径辅助工具，避免每次请求实例化 */
+    private final UrlPathHelper urlPathHelper = createUrlPathHelper();
+
+    private UrlPathHelper createUrlPathHelper() {
+        UrlPathHelper helper = new UrlPathHelper();
+        helper.setAlwaysUseFullPath(false);
+        helper.setUrlDecode(false);
+        return helper;
+    }
+
     // ============================= 拦截入口 =============================
 
     @Override
@@ -93,10 +103,6 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         if (!flowProperties.isEnabled()) {
             return true;
         }
-
-        UrlPathHelper urlPathHelper = new UrlPathHelper();
-        urlPathHelper.setAlwaysUseFullPath(false);
-        urlPathHelper.setUrlDecode(false);
 
         String requestPath = urlPathHelper.getPathWithinApplication(request);
         String requestMethod = request.getMethod();
@@ -299,7 +305,8 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         response.setContentType(JSON_CONTENT_TYPE);
         response.setCharacterEncoding("UTF-8");
         response.setStatus(status);
-        response.getWriter().write(objectMapper.writeValueAsString(data));
+        // 使用流式写出，避免 writeValueAsString 产生大字符串导致的 GC 压力
+        objectMapper.writeValue(response.getWriter(), data);
     }
 
     // ============================= 安全级别判断 =============================

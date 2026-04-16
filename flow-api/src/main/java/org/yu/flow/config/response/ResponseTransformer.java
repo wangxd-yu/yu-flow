@@ -28,28 +28,12 @@ public class ResponseTransformer {
 
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
 
-    // 初始化 JsonPath，使其使用 Jackson
-    static {
-        Configuration.setDefaults(new Configuration.Defaults() {
-            private final JsonProvider jsonProvider = new JacksonJsonProvider();
-            private final MappingProvider mappingProvider = new JacksonMappingProvider();
-
-            @Override
-            public JsonProvider jsonProvider() {
-                return jsonProvider;
-            }
-
-            @Override
-            public MappingProvider mappingProvider() {
-                return mappingProvider;
-            }
-
-            @Override
-            public java.util.Set<Option> options() {
-                return java.util.EnumSet.of(Option.SUPPRESS_EXCEPTIONS);
-            }
-        });
-    }
+    // JsonPath 配置对象，避免使用 Configuration.setDefaults 修改全局静态状态
+    private final Configuration jsonPathConfig = Configuration.builder()
+            .jsonProvider(new JacksonJsonProvider())
+            .mappingProvider(new JacksonMappingProvider())
+            .options(java.util.EnumSet.of(Option.SUPPRESS_EXCEPTIONS))
+            .build();
 
     // 模板缓存：避免每次请求都去解析 JSON 模板字符串
     private final Map<String, Map<String, Object>> templateMapCache = new java.util.concurrent.ConcurrentHashMap<>(64);
@@ -79,7 +63,7 @@ public class ResponseTransformer {
             // 将原始结果转换为 Jackson 原生支持的 Map 或 List 等结构
             // 这比将其序列化为 String 再重新由 JsonPath 解析要高效得多
             Object rawData = objectMapper.convertValue(rawResult, Object.class);
-            DocumentContext documentContext = JsonPath.parse(rawData);
+            DocumentContext documentContext = JsonPath.using(jsonPathConfig).parse(rawData);
 
             // 深度遍历并取值
             return traverseAndReplace(templateMap, documentContext);
@@ -123,5 +107,13 @@ public class ResponseTransformer {
             // 其他基础类型直出 (Number, Boolean, null 等)
             return node;
         }
+    }
+
+    /**
+     * 清空模板缓存（通常在 ResponseTemplate 重载时触发）
+     */
+    public void clearCache() {
+        templateMapCache.clear();
+        log.info("[ResponseTransformer] 响应模板解析缓存已清空。");
     }
 }

@@ -3,6 +3,7 @@ package org.yu.flow.module.responsetemplate.cache;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;
 import org.yu.flow.module.responsetemplate.repository.ResponseTemplateRepository;
+import org.yu.flow.config.response.ResponseTransformer;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -40,6 +41,9 @@ public class ResponseTemplateCacheManager {
     @Resource
     private ResponseTemplateRepository responseTemplateRepository;
 
+    @Resource
+    private ResponseTransformer responseTransformer;
+
     @PostConstruct
     public void init() {
         log.info("[ResponseTemplateCacheManager] 应用启动，开始全量加载响应模板缓存...");
@@ -64,6 +68,9 @@ public class ResponseTemplateCacheManager {
             }
 
             this.TEMPLATE_CACHE = newCache;
+
+            // 同时清空 Transformer 中的解析缓存，确保最新模板生效
+            responseTransformer.clearCache();
 
             log.info("[ResponseTemplateCacheManager] 缓存重载完成。加载模板数={}, 存在默认模板={}",
                     allTemplates.size(), newCache.containsKey(DEFAULT_KEY));
