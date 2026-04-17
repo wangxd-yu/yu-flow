@@ -1,5 +1,7 @@
 package org.yu.flow.module.page.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.BatchMoveDTO;
 import org.yu.flow.auto.dto.PageBean;
@@ -19,6 +21,7 @@ import java.util.Map;
  * @author yu-flow
  */
 @Slf4j
+@YuFlowApi
 @RestController
 @RequestMapping("flow-api/pages")
 public class PageInfoController {

@@ -26,11 +26,13 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.yu.flow.auto.dto.PageBean;
 
 /**
  * 动态数据源管理服务实现。
@@ -260,6 +262,59 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             c.setUpdateTime(rs.getTimestamp("update_time"));
             return c;
         }, id);
+    }
+
+    @Override
+    public PageBean<DataSourceDO> findPage(String name, String dbType, int page, int size) {
+        StringBuilder sql = new StringBuilder("SELECT " + DETAIL_COLUMNS + " FROM flow_datasource WHERE 1=1");
+        List<Object> params = new ArrayList<>();
+
+        if (StrUtil.isNotBlank(name)) {
+            sql.append(" AND name LIKE ?");
+            params.add("%" + name + "%");
+        }
+        if (StrUtil.isNotBlank(dbType)) {
+            sql.append(" AND db_type = ?");
+            params.add(dbType);
+        }
+
+        // 查询总数
+        String countSql = "SELECT COUNT(1) FROM (" + sql.toString() + ") as temp";
+        Long total = defaultJdbcTemplate.queryForObject(countSql, params.toArray(), Long.class);
+        if (total == null) {
+            total = 0L;
+        }
+
+        // 追加排序和分页
+        sql.append(" ORDER BY id DESC LIMIT ? OFFSET ?");
+        params.add(size);
+        params.add((page - 1) * size);
+
+        // 查询分页记录
+        List<DataSourceDO> records = defaultJdbcTemplate.query(sql.toString(), params.toArray(), (rs, rn) -> {
+            DataSourceDO c = new DataSourceDO();
+            c.setId(rs.getString("id"));
+            c.setName(rs.getString("name"));
+            c.setCode(rs.getString("code"));
+            c.setDbType(rs.getString("db_type"));
+            c.setDriverClassName(rs.getString("driver_class_name"));
+            c.setUrl(rs.getString("url"));
+            c.setUsername(rs.getString("username"));
+            c.setPassword(null);  // ⚠️ 脱敏：密码不返回给前端
+            c.setInitialSize(rs.getInt("initial_size"));
+            c.setMinIdle(rs.getInt("min_idle"));
+            c.setMaxActive(rs.getInt("max_active"));
+            c.setStatus(rs.getInt("status"));
+            c.setHealthStatus(rs.getString("health_status"));
+            c.setErrorCount(rs.getInt("error_count"));
+            c.setLastErrorMsg(rs.getString("last_error_msg"));
+            c.setCreateTime(rs.getTimestamp("create_time"));
+            c.setUpdateTime(rs.getTimestamp("update_time"));
+            return c;
+        });
+
+        int pages = size > 0 ? (int) Math.ceil((double) total / size) : 0;
+        return new PageBean<>(records, page, size, pages, total);
     }
 
     // ====================================================================

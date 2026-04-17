@@ -1,5 +1,7 @@
 package org.yu.flow.module.page.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.page.domain.PageDirectoryDO;
@@ -16,6 +18,7 @@ import java.util.List;
  * @author yu-flow
  */
 @Slf4j
+@YuFlowApi
 @RestController
 @RequestMapping("flow-api/page-directories")
 public class PageDirectoryController {

@@ -1,5 +1,7 @@
 package org.yu.flow.module.responsetemplate.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.responsetemplate.cache.ResponseTemplateCacheManager;
@@ -17,6 +19,7 @@ import java.util.List;
 /**
  * API 响应模板管理 Controller
  */
+@YuFlowApi
 @RestController
 @RequestMapping("/flow-api/response-templates")
 public class ResponseTemplateController {
@@ -25,7 +28,7 @@ public class ResponseTemplateController {
     private ResponseTemplateService responseTemplateService;
 
     @Resource
-    private ResponseTemplateCacheManager cacheManager;
+    private ResponseTemplateCacheManager responseTemplateCacheManager;
 
     /**
      * 分页查询模板列表
@@ -56,7 +59,7 @@ public class ResponseTemplateController {
      */
     @GetMapping("/default")
     public R<ResponseTemplateDO> getDefault() {
-        return R.ok(cacheManager.getDefaultTemplate().orElse(null));
+        return R.ok(responseTemplateCacheManager.getDefaultTemplate().orElse(null));
     }
 
     /**

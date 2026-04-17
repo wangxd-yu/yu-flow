@@ -1,5 +1,7 @@
 package org.yu.flow.module.sysconfig.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.sysconfig.domain.SysConfigDO;
@@ -16,6 +18,7 @@ import javax.validation.Valid;
 /**
  * 系统配置管理 Controller
  */
+@YuFlowApi
 @RestController
 @RequestMapping("/flow-api/sys-configs")
 public class SysConfigController {

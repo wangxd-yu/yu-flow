@@ -662,6 +662,24 @@ class SchemaValidatorServiceTest {
                 "错误列表: " + ex.getErrors());
     }
 
+    @Test
+    @DisplayName("Body: 纯数字 exclusiveMinimum 校验 (值等于下限 → 失败)")
+    void bodyNumericExclusiveMinimumFail() {
+        Map<String, Object> node = schemaNode("score", "number", "分数", false);
+        node.put("exclusiveMinimum", 0);
+
+        String contract = buildContract("json", Collections.singletonList(node), null);
+
+        SchemaValidationException ex = assertThrows(SchemaValidationException.class, () ->
+                service.validateFromContract(contract,
+                        mapOf("score", 0),
+                        null)
+        );
+        assertTrue(ex.getErrors().stream().anyMatch(e ->
+                        e.contains("小于最小值")),
+                "错误列表: " + ex.getErrors());
+    }
+
     // ============================= 17. uniqueItems =============================
 
     @Test

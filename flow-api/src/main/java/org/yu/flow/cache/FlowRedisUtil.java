@@ -28,7 +28,9 @@ public class FlowRedisUtil {
         redisUtil = this;
     }
 
-    @Resource
+    // TODO: 部署此修复后，务必在 Redis 中清理由于之前的 JDK 默认序列化机制产生的乱码脏数据
+    // 可以通过 keys *\xac\xed* 或者相关的命令来排查和清除相关旧数据，否则后续的反序列化操作会报错。
+    @Resource(name = "yuFlowRedisTemplate")
     private RedisTemplate<String, Object> redisTemplate;
 
     // ============================ String 类型 ============================

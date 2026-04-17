@@ -3,90 +3,85 @@ package org.yu.flow.config;
 import cn.hutool.core.exceptions.ValidateException;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.yu.flow.config.response.ResponseWrapperContext;
-import org.yu.flow.module.api.domain.FlowApiDO;
-import org.yu.flow.auto.service.FlowApiExecutionService;
-import org.yu.flow.auto.util.JwtTokenUtil;
-import org.yu.flow.dto.R;
-import org.yu.flow.dto.ResultCode;
-import org.yu.flow.exception.SchemaValidationException;
-import org.yu.flow.util.FlowObjectMapperUtil;
-import org.yu.flow.util.JsonDeserializerUtil;
-import org.yu.flow.util.ThrowableUtil;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
-import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
+import org.yu.flow.auto.service.FlowApiExecutionService;
+import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.config.response.ResponseStrategyResolver;
+import org.yu.flow.config.response.ResponseTransformer;
+import org.yu.flow.config.response.ResponseWrapperContext;
+import org.yu.flow.dto.R;
+import org.yu.flow.dto.ResultCode;
+import org.yu.flow.exception.SchemaValidationException;
+import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.util.FlowObjectMapperUtil;
+import org.yu.flow.util.ThrowableUtil;
 
-import javax.annotation.Resource;
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * 动态 API 请求拦截器
+ * 动态 API 请求网关核心过滤器
  *
- * <p>拦截所有 HTTP 请求，依次进行：
+ * <p>基于 Servlet Filter 实现的网关（低侵入设计）：
  * <ol>
  *   <li>管理端（{@code /flow-api}）JWT 鉴权</li>
- *   <li>通过 {@link FlowApiCacheManager} 在纯内存中匹配动态路由（精确 O(1) → Ant 模式 O(N)）</li>
+ *   <li>通过 {@link FlowApiCacheManager} 在纯内存中匹配动态路由</li>
  *   <li>提取请求参数并委托 {@link FlowApiExecutionService#executeApi} 执行业务</li>
- *   <li>写出响应（支持 ResponseEntity、JSON 包装、纯文本等多格式）</li>
+ *   <li>写出响应并短路后续的 FilterChain</li>
  * </ol>
+ * 不匹配的请求会原样放行给宿主系统。通过设置较低优先级，确保拿得到如 SpringSecurity 等的上下文。
+ * </p>
  *
  * @author yu-flow
  */
 @Slf4j
-@Component
-public class FlowApiInterceptor implements HandlerInterceptor {
+public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
-    /** 接口安全级别请求头标识 */
     private static final String SECURITY_LEVEL_HEADER = "ss-level";
-
-    /** JSON 响应 Content-Type 常量 */
     private static final String JSON_CONTENT_TYPE = "application/json;charset=UTF-8";
-
-    /** Ant 风格路径匹配器（线程安全，支持 /user/{id} 等路径参数） */
     private static final AntPathMatcher ANT_PATH_MATCHER = new AntPathMatcher();
 
-    @Resource
-    private YuFlowProperties flowProperties;
+    private final YuFlowProperties flowProperties;
+    private final FlowApiExecutionService flowApiService;
+    private final FlowApiCacheManager flowApiCacheManager;
+    private final SchemaValidatorService schemaValidatorService;
+    private final ResponseStrategyResolver responseStrategyResolver;
+    private final ResponseTransformer responseTransformer;
 
-    @Resource
-    private FlowApiExecutionService flowApiService;
-
-    @Resource
-    private FlowApiCacheManager flowApiCacheManager;
-
-    @Resource
-    private SchemaValidatorService schemaValidatorService;
-
-    @Resource
-    private org.yu.flow.config.response.ResponseStrategyResolver responseStrategyResolver;
-
-    @Resource
-    private org.yu.flow.config.response.ResponseTransformer responseTransformer;
-
-    /** 全局复用的 ObjectMapper（线程安全），杜绝方法内重复 new */
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
-
-    /** 全局复用的路径辅助工具，避免每次请求实例化 */
     private final UrlPathHelper urlPathHelper = createUrlPathHelper();
+
+    public FlowApiGatewayFilter(YuFlowProperties flowProperties,
+                                FlowApiExecutionService flowApiService,
+                                FlowApiCacheManager flowApiCacheManager,
+                                SchemaValidatorService schemaValidatorService,
+                                ResponseStrategyResolver responseStrategyResolver,
+                                ResponseTransformer responseTransformer) {
+        this.flowProperties = flowProperties;
+        this.flowApiService = flowApiService;
+        this.flowApiCacheManager = flowApiCacheManager;
+        this.schemaValidatorService = schemaValidatorService;
+        this.responseStrategyResolver = responseStrategyResolver;
+        this.responseTransformer = responseTransformer;
+    }
 
     private UrlPathHelper createUrlPathHelper() {
         UrlPathHelper helper = new UrlPathHelper();
@@ -95,99 +90,112 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return helper;
     }
 
-    // ============================= 拦截入口 =============================
-
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 全局开关关闭，直接放行
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+
+        // 1. 全局开关关闭，直接放行
         if (!flowProperties.isEnabled()) {
-            return true;
+            filterChain.doFilter(request, response);
+            return;
         }
 
         String requestPath = urlPathHelper.getPathWithinApplication(request);
+
+        // 2. 排除无需过滤的静态页面及 UI 路由路径
+        if (requestPath.startsWith("/flow-ui/") || requestPath.equals("/flow-ui.html")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         String requestMethod = request.getMethod();
 
-        // ─── 管理端鉴权 ───
+        // 3. 管理端鉴权
         if (requestPath.startsWith("/flow-api")) {
             if (requestPath.startsWith("/flow-api/login")) {
-                return true;
+                filterChain.doFilter(request, response);
+                return;
             }
             String token = JwtTokenUtil.resolveToken(request);
             if (token == null) {
                 writeJsonResponse(response, HttpStatus.OK.value(), R.fail("token 不能为空！"));
-                return false;
+                return;
             }
             try {
                 JwtTokenUtil.validateToken(token);
             } catch (ValidateException e) {
                 writeJsonResponse(response, HttpStatus.OK.value(),
                         R.fail(ResultCode.TOKEN_INVALID.getCode(), "token 已失效！"));
-                return false;
+                return;
             }
+
+
         }
 
-        // ─── 路由匹配（纯内存，零网络 I/O） ───
+        try {
+            // 4. 路由匹配（纯内存，零网络 I/O）
+            FlowApiDO flowApiDO = flowApiCacheManager.getExactMatch(requestMethod, requestPath);
 
-        // 1. 精确匹配 O(1)
-        FlowApiDO flowApiDO = flowApiCacheManager.getExactMatch(requestMethod, requestPath);
-
-        // 2. 精确未命中 → Ant 模式匹配 O(N)
-        if (flowApiDO == null) {
-            FlowApiCacheManager.AntMatchResult matchResult =
-                    flowApiCacheManager.getPatternMatch(requestMethod, requestPath, ANT_PATH_MATCHER);
-            if (matchResult != null) {
-                flowApiDO = matchResult.getApi();
-                if (matchResult.getPathVariables() != null && !matchResult.getPathVariables().isEmpty()) {
-                    request.setAttribute("flowPathVariables", matchResult.getPathVariables());
+            // 精确未命中 → Ant 模式匹配 O(N)
+            if (flowApiDO == null) {
+                FlowApiCacheManager.AntMatchResult matchResult =
+                        flowApiCacheManager.getPatternMatch(requestMethod, requestPath, ANT_PATH_MATCHER);
+                if (matchResult != null) {
+                    flowApiDO = matchResult.getApi();
+                    if (matchResult.getPathVariables() != null && !matchResult.getPathVariables().isEmpty()) {
+                        request.setAttribute("flowPathVariables", matchResult.getPathVariables());
+                    }
                 }
             }
-        }
 
-        // 未匹配到任何动态路由，放行给 Spring MVC 继续处理
-        if (flowApiDO == null) {
-            return true;
-        }
+            // 未匹配到动态路由（可能是宿主系统接口），放行
+            if (flowApiDO == null) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
-        // ─── 安全级别旁路判断 ───
-        if (shouldBypassBySecurityLevel(request, flowApiDO)) {
-            return true;
-        }
+            // 5. 安全级别旁路判断
+            if (shouldBypassBySecurityLevel(request, flowApiDO)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
-        // ─── 请求方法校验 ───
-        String configMethod = flowApiDO.getMethod();
-        if (!requestMethod.equalsIgnoreCase(configMethod)) {
-            writeJsonResponse(response, HttpStatus.METHOD_NOT_ALLOWED.value(),
-                    R.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
-                            String.format("此接口不支持 %s 请求。请改用 %s 请求。", requestMethod, configMethod)));
-            return false;
-        }
+            // 6. 请求方法校验
+            String configMethod = flowApiDO.getMethod();
+            if (!requestMethod.equalsIgnoreCase(configMethod)) {
+                writeJsonResponse(response, HttpStatus.METHOD_NOT_ALLOWED.value(),
+                        R.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
+                                String.format("此接口不支持 %s 请求。请改用 %s 请求。", requestMethod, configMethod)));
+                return;
+            }
 
-        // ─── 执行业务逻辑 ───
-        try {
-            return executeAndWriteResponse(request, response, flowApiDO);
-        } catch (Exception e) {
-            log.error(ThrowableUtil.getStackTrace(e));
-            handleExceptionResponse(response, flowApiDO, e);
-            return false;
+            // 7. 执行业务逻辑
+            try {
+                executeAndWriteResponse(request, response, flowApiDO);
+            } catch (Exception e) {
+                log.error("[FlowApiGatewayFilter] API 业务执行异常:\n{}", ThrowableUtil.getStackTrace(e));
+                handleExceptionResponse(response, flowApiDO, e);
+            }
+
+            // 执行完毕，直接 return 中断 FilterChain，绝不进入宿主应用逻辑
+            return;
+
+        } catch (Exception fatalEx) {
+            log.error("[FlowApiGatewayFilter] 网关发生意外错误:", fatalEx);
+            writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                    R.fail(500, "网关内部系统错误：" + fatalEx.getMessage()));
         }
     }
 
     private void handleExceptionResponse(HttpServletResponse response, FlowApiDO flowApiDO, Exception e) throws IOException {
         R<Object> r = R.fail(500, e.getMessage() != null ? e.getMessage() : "系统内部错误，请联系管理员");
-        org.yu.flow.config.response.ResponseWrapperContext context = responseStrategyResolver.resolve(flowApiDO);
+        ResponseWrapperContext context = responseStrategyResolver.resolve(flowApiDO);
         Object finalResult = responseTransformer.transform(r, context.getFailWrapper());
         writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(), finalResult);
     }
 
-    // ============================= 业务执行与响应写出 =============================
-
-    /**
-     * 执行动态 API 业务逻辑并写出响应。
-     *
-     * @return 始终返回 false（拦截请求，不再向下传递）
-     */
-    private boolean executeAndWriteResponse(HttpServletRequest request, HttpServletResponse response,
-                                            FlowApiDO flowApiDO) throws Exception {
+    private void executeAndWriteResponse(HttpServletRequest request, HttpServletResponse response,
+                                         FlowApiDO flowApiDO) throws Exception {
         // 1. 提取所有请求参数
         Map<String, String> queryParams = extractQueryParams(request);
         Map<String, Object> bodyParams = extractBodyParams(request);
@@ -208,7 +216,7 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         // 3. 提取分页对象
         Pageable pageable = extractPageable(request);
 
-        // 3.5 JSON Schema 入参前置校验（同时校验 Body 和 Query Params）
+        // 3.5 JSON Schema 入参前置校验
         String contractRule = flowApiDO.getContract();
         if (StrUtil.isNotBlank(contractRule)) {
             try {
@@ -216,7 +224,7 @@ public class FlowApiInterceptor implements HandlerInterceptor {
             } catch (SchemaValidationException e) {
                 writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(),
                         R.fail(400, e.getMessage()));
-                return false;
+                return;
             }
         }
 
@@ -243,14 +251,10 @@ public class FlowApiInterceptor implements HandlerInterceptor {
             } else {
                 templateToUse = context.getSuccessWrapper();
             }
-            // 兜底：如果执行结果本身没有外层 R 处理，但模板可能需要 code / message 等结构
-            // 如果觉得在这里统一包一层 Map 再 transform 更安全，也可以。
-            // 这里我们直接将原结果传入 transformer（如果是 R/Page，内部有相应字段）
+
             Object finalResult = responseTransformer.transform(result, templateToUse);
             objectMapper.writeValue(response.getWriter(), finalResult);
         }
-
-        return false;
     }
 
     private boolean isPageResponse(Object result) {
@@ -267,9 +271,6 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    /**
-     * 处理 ResponseEntity 类型的返回值：覆盖状态码、响应头，并按 body 类型写出。
-     */
     private void writeResponseEntity(HttpServletResponse response, ResponseEntity<?> responseEntity) throws IOException {
         response.setStatus(responseEntity.getStatusCodeValue());
         responseEntity.getHeaders().forEach((name, values) -> {
@@ -292,35 +293,13 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         }
     }
 
-    // ============================= 统一响应写出 =============================
-
-    /**
-     * 统一的 JSON 响应写出方法，消除重复的 response 设置样板代码。
-     *
-     * @param response HTTP 响应
-     * @param status   HTTP 状态码
-     * @param data     响应体对象（将通过 ObjectMapper 序列化为 JSON）
-     */
     private void writeJsonResponse(HttpServletResponse response, int status, Object data) throws IOException {
         response.setContentType(JSON_CONTENT_TYPE);
         response.setCharacterEncoding("UTF-8");
         response.setStatus(status);
-        // 使用流式写出，避免 writeValueAsString 产生大字符串导致的 GC 压力
         objectMapper.writeValue(response.getWriter(), data);
     }
 
-    // ============================= 安全级别判断 =============================
-
-    /**
-     * 判断是否应跳过动态 API 路由，使用代码中定义的原生接口。
-     *
-     * <p>比较请求头 {@code ss-level} 与数据库中配置的接口安全级别，
-     * 若请求级别更高（值更大），则跳过动态路由，放行给 Spring MVC 原生 Controller 处理。</p>
-     *
-     * @param request   HTTP 请求
-     * @param flowApiDO 匹配到的动态 API 定义
-     * @return true 表示应跳过（放行），false 表示正常走动态 API
-     */
     private static boolean shouldBypassBySecurityLevel(HttpServletRequest request, FlowApiDO flowApiDO) {
         String ssLevelHeader = request.getHeader(SECURITY_LEVEL_HEADER);
         if (ssLevelHeader == null) {
@@ -335,11 +314,6 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         }
     }
 
-    // ============================= 参数提取 =============================
-
-    /**
-     * 提取 URL 查询参数（Query String）。
-     */
     private Map<String, String> extractQueryParams(HttpServletRequest request) {
         Map<String, String> queryParams = new HashMap<>();
         Enumeration<String> paramNames = request.getParameterNames();
@@ -350,9 +324,6 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return queryParams;
     }
 
-    /**
-     * 提取请求头。
-     */
     private Map<String, String> extractHeaders(HttpServletRequest request) {
         Map<String, String> headers = new HashMap<>();
         Enumeration<String> headerNames = request.getHeaderNames();
@@ -363,16 +334,6 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return headers;
     }
 
-    /**
-     * 提取请求体参数。
-     *
-     * <p>支持 {@code application/x-www-form-urlencoded} 和 {@code application/json} 两种格式。
-     * 复用类级别的 {@link #objectMapper}，避免每次请求创建新实例的性能损耗。</p>
-     *
-     * @param request HTTP 请求
-     * @return 请求体参数 Map；无可用数据时返回空 Map
-     * @throws IOException 读取请求体时发生 I/O 异常
-     */
     private Map<String, Object> extractBodyParams(HttpServletRequest request) throws IOException {
         String contentType = request.getContentType();
         if (contentType == null) {
@@ -403,16 +364,8 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return new HashMap<>();
     }
 
-    // ============================= 参数合并 =============================
-
-    /**
-     * 合并查询参数和请求体参数。
-     *
-     * <p>同名参数 body 优先覆盖 query，并分别添加 {@code query.} 和 {@code body.} 前缀的带命名空间版本。</p>
-     */
     private Map<String, Object> mergeParams(Map<String, String> queryParams, Map<String, Object> bodyParams) {
         Map<String, Object> mergedParams = new HashMap<>();
-
         queryParams.forEach((k, v) -> mergedParams.put("query." + k, v));
         bodyParams.forEach((k, v) -> mergedParams.put("body." + k, v));
 
@@ -423,15 +376,6 @@ public class FlowApiInterceptor implements HandlerInterceptor {
         return mergedParams;
     }
 
-
-
-    // ============================= 分页提取 =============================
-
-    /**
-     * 从请求参数中提取分页信息。
-     *
-     * @return 分页对象，默认 page=0, size=10, unsorted
-     */
     private Pageable extractPageable(HttpServletRequest request) {
         int page = 0;
         int size = 10;
@@ -452,15 +396,10 @@ public class FlowApiInterceptor implements HandlerInterceptor {
                 sort = parseSortParameter(sortStr);
             }
         } catch (NumberFormatException e) {
-            // 格式错误使用默认值
         }
-
         return PageRequest.of(page, size, sort);
     }
 
-    /**
-     * 解析排序参数字符串（格式：{@code field:asc,field2:desc}）。
-     */
     private Sort parseSortParameter(String sortStr) {
         List<Sort.Order> orders = new ArrayList<>();
         for (String param : sortStr.split(",")) {

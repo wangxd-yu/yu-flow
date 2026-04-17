@@ -1,5 +1,7 @@
 package org.yu.flow.module.model.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.BatchMoveDTO;
 import org.yu.flow.auto.dto.PageBean;
@@ -20,6 +22,7 @@ import javax.annotation.Resource;
  * 数据模型信息管理 Controller
  */
 @Slf4j
+@YuFlowApi
 @RestController
 @RequestMapping("/flow-api/models")
 public class FlowModelInfoController {

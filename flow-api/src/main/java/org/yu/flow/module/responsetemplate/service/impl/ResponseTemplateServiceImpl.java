@@ -37,7 +37,7 @@ public class ResponseTemplateServiceImpl implements ResponseTemplateService {
     private ResponseTemplateRepository responseTemplateRepository;
 
     @Resource
-    private ResponseTemplateCacheManager cacheManager;
+    private ResponseTemplateCacheManager responseTemplateCacheManager;
 
     @Override
     public PageBean<ResponseTemplateDTO> findPage(ResponseTemplateQueryDTO queryDTO) {
@@ -110,7 +110,7 @@ public class ResponseTemplateServiceImpl implements ResponseTemplateService {
                 .build();
 
         ResponseTemplateDO saved = responseTemplateRepository.save(entity);
-        cacheManager.reloadAll();
+        responseTemplateCacheManager.reloadAll();
         return saved;
     }
 
@@ -146,7 +146,7 @@ public class ResponseTemplateServiceImpl implements ResponseTemplateService {
         existing.setUpdateTime(LocalDateTime.now());
 
         ResponseTemplateDO saved = responseTemplateRepository.save(existing);
-        cacheManager.reloadAll();
+        responseTemplateCacheManager.reloadAll();
         return saved;
     }
 
@@ -161,7 +161,7 @@ public class ResponseTemplateServiceImpl implements ResponseTemplateService {
         }
 
         responseTemplateRepository.deleteById(id);
-        cacheManager.reloadAll();
+        responseTemplateCacheManager.reloadAll();
     }
 
     @Override
@@ -178,6 +178,6 @@ public class ResponseTemplateServiceImpl implements ResponseTemplateService {
         existing.setUpdateTime(LocalDateTime.now());
         responseTemplateRepository.save(existing);
 
-        cacheManager.reloadAll();
+        responseTemplateCacheManager.reloadAll();
     }
 }

@@ -13,6 +13,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.core.Ordered;
 
 /**
  * yu-flow 自动装配入口。
@@ -64,5 +66,26 @@ public class FlowAutoConfiguration {
             return new SafeSpelExpressionEngine();
         }
         return new SimpleExpressionEngine();
+    }
+
+    @Bean
+    public FilterRegistrationBean<FlowApiGatewayFilter> flowApiGatewayFilterRegistration(
+            YuFlowProperties flowProperties,
+            org.yu.flow.auto.service.FlowApiExecutionService flowApiService,
+            org.yu.flow.config.FlowApiCacheManager flowApiCacheManager,
+            org.yu.flow.config.SchemaValidatorService schemaValidatorService,
+            org.yu.flow.config.response.ResponseStrategyResolver responseStrategyResolver,
+            org.yu.flow.config.response.ResponseTransformer responseTransformer) {
+
+        FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
+                schemaValidatorService, responseStrategyResolver, responseTransformer);
+
+        FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.addUrlPatterns("/*");
+        registration.setName("flowApiGatewayFilter");
+        // 极低优先级设置（LOWEST_PRECEDENCE - 10），确保在宿主的 Spring Security/Sa-Token 鉴权 Filter 之后执行，
+        // 从而能在动态 API 业务逻辑中获取到上下文及 ThreadLocal 用户信息。
+        registration.setOrder(Ordered.LOWEST_PRECEDENCE - 10);
+        return registration;
     }
 }

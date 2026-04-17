@@ -1,5 +1,7 @@
 package org.yu.flow.module.api.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.BatchMoveDTO;
 import org.yu.flow.auto.dto.PageBean;
@@ -21,6 +23,7 @@ import java.util.List;
  * @date 2025-03-05 23:32
  */
 @Slf4j
+@YuFlowApi
 @RestController
 @RequestMapping(value = {"flow-api/api"})
 public class FlowApiController {

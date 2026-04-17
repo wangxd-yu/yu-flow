@@ -1,5 +1,7 @@
 package org.yu.flow.module.sysmacro.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.dto.R;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
  * 系统全局宏定义管理 Controller
  */
 @Slf4j
+@YuFlowApi
 @RestController
 @RequestMapping("/flow-api/sys-macros")
 public class SysMacroController {

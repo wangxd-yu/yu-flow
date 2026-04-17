@@ -274,10 +274,26 @@ public class SchemaValidatorService {
 
             case "number":
             case "integer":
-                copyNumberIfPresent(node, prop, "minimum");
-                copyNumberIfPresent(node, prop, "maximum");
-                copyBoolIfPresent(node, prop, "exclusiveMinimum");
-                copyBoolIfPresent(node, prop, "exclusiveMaximum");
+                JsonNode exMinNode = node.path("exclusiveMinimum");
+                if (exMinNode.isBoolean() && exMinNode.asBoolean()) {
+                    copyNumberIfPresent(node, prop, "minimum", "exclusiveMinimum");
+                } else {
+                    copyNumberIfPresent(node, prop, "minimum");
+                    if (exMinNode.isNumber()) {
+                        copyNumberIfPresent(node, prop, "exclusiveMinimum");
+                    }
+                }
+
+                JsonNode exMaxNode = node.path("exclusiveMaximum");
+                if (exMaxNode.isBoolean() && exMaxNode.asBoolean()) {
+                    copyNumberIfPresent(node, prop, "maximum", "exclusiveMaximum");
+                } else {
+                    copyNumberIfPresent(node, prop, "maximum");
+                    if (exMaxNode.isNumber()) {
+                        copyNumberIfPresent(node, prop, "exclusiveMaximum");
+                    }
+                }
+
                 copyNumberIfPresent(node, prop, "multipleOf");
                 break;
 
@@ -347,17 +363,21 @@ public class SchemaValidatorService {
     }
 
     private void copyNumberIfPresent(JsonNode from, ObjectNode to, String field) {
-        JsonNode val = from.path(field);
+        copyNumberIfPresent(from, to, field, field);
+    }
+
+    private void copyNumberIfPresent(JsonNode from, ObjectNode to, String fromField, String toField) {
+        JsonNode val = from.path(fromField);
         if (!val.isMissingNode() && !val.isNull() && val.isNumber()) {
             // Jackson ObjectNode 不支持 put(String, Number)，需按具体类型调用
             if (val.isInt()) {
-                to.put(field, val.intValue());
+                to.put(toField, val.intValue());
             } else if (val.isLong()) {
-                to.put(field, val.longValue());
+                to.put(toField, val.longValue());
             } else if (val.isDouble() || val.isFloat()) {
-                to.put(field, val.doubleValue());
+                to.put(toField, val.doubleValue());
             } else {
-                to.put(field, val.decimalValue());
+                to.put(toField, val.decimalValue());
             }
         }
     }

@@ -1,5 +1,8 @@
 package org.yu.flow.module.datasource.controller;
 
+import org.yu.flow.annotation.YuFlowApi;
+
+import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.datasource.domain.DataSourceDO;
 import org.yu.flow.module.datasource.dto.TestConnectionDTO;
@@ -16,6 +19,7 @@ import java.util.Map;
  * 动态数据源管理控制器
  * 提供数据源的增删改查、启用禁用、测试连接等功能
  */
+@YuFlowApi
 @RestController
 @RequestMapping("/flow-api/dataSource")
 public class DynamicDataSourceController {
@@ -47,6 +51,25 @@ public class DynamicDataSourceController {
             return R.fail("未找到指定 ID 的数据源：" + e.getMessage());
         }
     }
+
+    /**
+     * 分页查询数据源列表
+     * 支持根据 name 模糊搜索, dbType 精确搜索
+     *
+     * @param name        模型名称（模糊，可选）
+     * @param dbType   物理表名（模糊，可选）
+     * @param page        页码
+     * @param size        每页条数
+     */
+    @GetMapping("/page")
+    public R<PageBean<DataSourceDO>> getPage(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String dbType,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return R.ok(dynamicDataSourceService.findPage(name, dbType, page, size));
+    }
+
 
     /**
      * 添加新数据源

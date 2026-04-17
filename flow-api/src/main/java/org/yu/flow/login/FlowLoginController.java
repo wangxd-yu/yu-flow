@@ -1,5 +1,7 @@
 package org.yu.flow.login;
 
+import org.yu.flow.annotation.YuFlowApi;
+
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.dto.R;
 import org.yu.flow.login.dto.LoginDto;
@@ -15,6 +17,7 @@ import javax.annotation.Resource;
  * @date 2025-07-28 23:32
  */
 @Slf4j
+@YuFlowApi
 @RestController
 @RequestMapping(value = {"flow-api"})
 public class FlowLoginController {

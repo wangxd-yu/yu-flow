@@ -116,16 +116,24 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
         const parsed = JSON.parse(jsonContent);
         onJsonContentChange(JSON.stringify(parsed, null, 2));
         message.success('JSON 格式化成功');
-      } catch {
+      } catch (e) {
+        console.error('JSON 格式化失败:', e);
         message.error('JSON 格式拼写有误，无法格式化');
       }
     } else if (type === 'DB') {
       if (!sqlContent) return;
       try {
-        const formatted = format(sqlContent, { language: 'sql', tabWidth: 2 });
+        const formatted = format(sqlContent, {
+          language: 'sql',
+          tabWidth: 2,
+          paramTypes: {
+            custom: [{ regex: String.raw`\$\{[^}]+\}` }]
+          }
+        });
         onSqlContentChange(formatted);
         message.success('SQL 格式化完成');
-      } catch {
+      } catch (e) {
+        console.error('SQL 格式化失败:', e);
         message.error('SQL 语法有误，无法格式化');
       }
     }

@@ -1,6 +1,7 @@
 package org.yu.flow.module.datasource.service;
 
 import org.yu.flow.module.datasource.domain.DataSourceDO;
+import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.module.datasource.dto.TestConnectionDTO;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
@@ -30,6 +31,8 @@ public interface DynamicDataSourceService {
      * 根据 ID 查询单条数据源配置（密码字段已脱敏 → null）
      */
     DataSourceDO getById(String id);
+
+    PageBean<DataSourceDO> findPage(String name, String dbType, int page, int size);
 
     boolean addDataSource(DataSourceDO config);
 
