@@ -65,7 +65,7 @@ public class DynamicDataSourceController {
     public R<PageBean<DataSourceDO>> getPage(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String dbType,
-            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return R.ok(dynamicDataSourceService.findPage(name, dbType, page, size));
     }

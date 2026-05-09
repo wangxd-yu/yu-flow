@@ -32,6 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.yu.flow.auto.dto.PageBean;
 
 /**
@@ -51,6 +54,9 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private final Map<String, JdbcTemplate> jdbcTemplateMap = new ConcurrentHashMap<>();
     /** 事务管理器缓存：key = code */
     private final Map<String, PlatformTransactionManager> transactionManagerMap = new ConcurrentHashMap<>();
+
+    /** 熔断探测定时调度器（自管理，不依赖宿主的 @EnableScheduling） */
+    private ScheduledExecutorService circuitBreakerExecutor;
 
     @Resource
     private DataSource defaultDataSource;
@@ -78,6 +84,45 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     @PostConstruct
     public void init() {
         loadAllEnabledDataSources();
+        startCircuitBreakerProbe();
+    }
+
+    @javax.annotation.PreDestroy
+    public void destroy() {
+        if (circuitBreakerExecutor != null && !circuitBreakerExecutor.isShutdown()) {
+            circuitBreakerExecutor.shutdown();
+            logger.info("熔断探测调度器已关闭");
+        }
+    }
+
+    /**
+     * 启动定时任务：
+     * 1) 健康巡检：每 60 秒对所有已启用的非熔断数据源做连接测试，累积失败计数并触发熔断
+     * 2) 熔断探测：每 5 分钟对已熔断的数据源做低频探测，恢复后自动重新注册连接池
+     *
+     * 使用自管理的 ScheduledExecutorService，避免对宿主项目强制开启 @EnableScheduling。
+     */
+    private void startCircuitBreakerProbe() {
+        circuitBreakerExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "ds-health-check");
+            t.setDaemon(true);
+            return t;
+        });
+
+        // 任务 1：健康巡检（对所有已启用的非熔断数据源做连接测试）
+        // 首次延迟 30 秒，之后每 60 秒执行一次
+        circuitBreakerExecutor.scheduleWithFixedDelay(
+                this::healthCheckAllEnabled,
+                30, 60, TimeUnit.SECONDS
+        );
+
+        // 任务 2：熔断探测（对已熔断数据源做低频探测）
+        // 首次延迟 60 秒，之后每 5 分钟执行一次
+        circuitBreakerExecutor.scheduleWithFixedDelay(
+                this::circuitBreakerProbe,
+                60, 5 * 60, TimeUnit.SECONDS
+        );
+        logger.info("数据源健康检查调度器已启动（巡检间隔 60s，熔断探测间隔 5min）");
     }
 
     /**
@@ -279,7 +324,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         }
 
         // 查询总数
-        String countSql = "SELECT COUNT(1) FROM (" + sql.toString() + ") as temp";
+        String countSql = "SELECT COUNT(1) FROM (" + sql + ") as temp";
         Long total = defaultJdbcTemplate.queryForObject(countSql, params.toArray(), Long.class);
         if (total == null) {
             total = 0L;
@@ -288,7 +333,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         // 追加排序和分页
         sql.append(" ORDER BY id DESC LIMIT ? OFFSET ?");
         params.add(size);
-        params.add((page - 1) * size);
+        params.add(page * size);
 
         // 查询分页记录
         List<DataSourceDO> records = defaultJdbcTemplate.query(sql.toString(), params.toArray(), (rs, rn) -> {
@@ -443,8 +488,9 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     @Override
     public boolean enableDataSource(String id) {
         try {
-            String sql = "UPDATE flow_datasource SET status = 1 WHERE id = ?";
-            int affected = defaultJdbcTemplate.update(sql, id);
+            // 启用时同时重置熔断状态，给数据源一个全新的机会
+            String sql = "UPDATE flow_datasource SET status = 1, health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?";
+            int affected = defaultJdbcTemplate.update(sql, DataSourceDO.HEALTH_UNKNOWN, id);
 
             if (affected > 0) {
                 // 重新加载到内存
@@ -538,10 +584,19 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             conn = DriverManager.getConnection(
                     config.getUrl(), config.getUsername(), config.getPassword());
 
-            // 测试成功 → 更新健康状态
+            // 测试成功 → 更新健康状态，重置失败计数
             defaultJdbcTemplate.update(
                     "UPDATE flow_datasource SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
                     DataSourceDO.HEALTH_HEALTHY, id);
+
+            // 如果之前处于熔断状态（内存中已被移除），恢复连接池
+            if (config.getStatus() != null && config.getStatus() == 1
+                    && StrUtil.isNotBlank(config.getCode())
+                    && !datasourceMap.containsKey(config.getCode())) {
+                addDataSourceToMemory(config);
+                logger.info("数据源从熔断状态恢复, code={}, name={}", config.getCode(), config.getName());
+            }
+
             logger.info("数据源连接测试成功, code={}, name={}", config.getCode(), config.getName());
             return true;
         } catch (Exception e) {
@@ -549,10 +604,27 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
             String errMsg = StrUtil.maxLength(e.getMessage(), 500);
 
-            // 测试失败 → 更新为 UNHEALTHY
-            defaultJdbcTemplate.update(
-                    "UPDATE flow_datasource SET health_status = ?, error_count = error_count + 1, last_error_msg = ? WHERE id = ?",
-                    DataSourceDO.HEALTH_UNHEALTHY, errMsg, id);
+            // 查询当前失败计数
+            Integer currentErrorCount = queryErrorCountById(id);
+            int newErrorCount = (currentErrorCount == null ? 0 : currentErrorCount) + 1;
+
+            if (newErrorCount >= DataSourceDO.CIRCUIT_OPEN_THRESHOLD) {
+                // 触发熔断 → 标记为 CIRCUIT_OPEN，从内存中移除连接池以停止 Druid 的空闲连接探测
+                defaultJdbcTemplate.update(
+                        "UPDATE flow_datasource SET health_status = ?, error_count = ?, last_error_msg = ? WHERE id = ?",
+                        DataSourceDO.HEALTH_CIRCUIT_OPEN, newErrorCount, errMsg, id);
+
+                if (StrUtil.isNotBlank(config.getCode())) {
+                    removeDataSourceFromMemory(config.getCode());
+                }
+                logger.warn("数据源已触发熔断（连续失败 {} 次）, code={}, name={}",
+                        newErrorCount, config.getCode(), config.getName());
+            } else {
+                // 未达阈值 → 标记为 UNHEALTHY
+                defaultJdbcTemplate.update(
+                        "UPDATE flow_datasource SET health_status = ?, error_count = ?, last_error_msg = ? WHERE id = ?",
+                        DataSourceDO.HEALTH_UNHEALTHY, newErrorCount, errMsg, id);
+            }
             return false;
         } finally {
             closeQuietly(conn);
@@ -622,6 +694,111 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     }
 
     // ====================================================================
+    //  定时健康检查（熔断探测）
+    // ====================================================================
+
+    /**
+     * 定时探测处于 CIRCUIT_OPEN（熔断）状态的数据源。
+     * <p>
+     * 执行频率：每 5 分钟一次（相比 Druid testWhileIdle 的默认 60 秒大幅降频）。
+     * 探测成功 → 状态恢复为 HEALTHY，重新将连接池注册到内存。
+     * 探测失败 → 保持 CIRCUIT_OPEN，仅更新 errorCount 和 lastErrorMsg。
+     * </p>
+     */
+    /**
+     * 熔断探测核心逻辑（由 ScheduledExecutorService 调用，非 @Scheduled）。
+     */
+    private void circuitBreakerProbe() {
+        String sql = "SELECT " + BASE_COLUMNS + ", error_count, health_status "
+                + "FROM flow_datasource WHERE status = 1 AND health_status = ?";
+
+        List<DataSourceDO> circuitOpenList;
+        try {
+            circuitOpenList = defaultJdbcTemplate.query(sql, (rs, rn) -> {
+                DataSourceDO c = mapRowToDataSourceDO(rs);
+                c.setErrorCount(rs.getInt("error_count"));
+                c.setHealthStatus(rs.getString("health_status"));
+                return c;
+            }, DataSourceDO.HEALTH_CIRCUIT_OPEN);
+        } catch (Exception e) {
+            logger.error("熔断探测：查询 CIRCUIT_OPEN 数据源失败", e);
+            return;
+        }
+
+        if (circuitOpenList.isEmpty()) {
+            return;
+        }
+
+        logger.info("熔断探测：发现 {} 个处于熔断状态的数据源，开始探测...", circuitOpenList.size());
+
+        for (DataSourceDO config : circuitOpenList) {
+            Connection conn = null;
+            try {
+                Class.forName(config.getDriverClassName());
+                DriverManager.setLoginTimeout(5);
+                conn = DriverManager.getConnection(
+                        config.getUrl(), config.getUsername(), config.getPassword());
+
+                // 探测成功 → 恢复为 HEALTHY
+                defaultJdbcTemplate.update(
+                        "UPDATE flow_datasource SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
+                        DataSourceDO.HEALTH_HEALTHY, config.getId());
+
+                // 重新注册连接池到内存
+                if (StrUtil.isNotBlank(config.getCode()) && !datasourceMap.containsKey(config.getCode())) {
+                    addDataSourceToMemory(config);
+                }
+                logger.info("熔断探测：数据源已恢复, code={}, name={}", config.getCode(), config.getName());
+            } catch (Exception e) {
+                // 探测仍然失败 → 仅更新 errorCount，保持 CIRCUIT_OPEN
+                String errMsg = StrUtil.maxLength(e.getMessage(), 500);
+                defaultJdbcTemplate.update(
+                        "UPDATE flow_datasource SET error_count = error_count + 1, last_error_msg = ? WHERE id = ?",
+                        errMsg, config.getId());
+                logger.debug("熔断探测：数据源仍不可达, code={}, name={}, msg={}",
+                        config.getCode(), config.getName(), errMsg);
+            } finally {
+                closeQuietly(conn);
+            }
+        }
+    }
+
+    /**
+     * 定时健康巡检：对所有已启用且非熔断状态的数据源执行连接测试。
+     * <p>
+     * 这是触发熔断的关键环节：Druid 的 testWhileIdle 不会经过我们的 testConnection()，
+     * 因此需要这个巡检任务主动调用 testConnection() 来累积 errorCount 并触发熔断。
+     * </p>
+     */
+    private void healthCheckAllEnabled() {
+        // 查询所有已启用且非熔断状态的数据源 ID
+        String sql = "SELECT id, code, name FROM flow_datasource WHERE status = 1 AND (health_status IS NULL OR health_status != ?)";
+        List<Map<String, Object>> enabledList;
+        try {
+            enabledList = defaultJdbcTemplate.queryForList(sql, DataSourceDO.HEALTH_CIRCUIT_OPEN);
+        } catch (Exception e) {
+            logger.error("健康巡检：查询已启用数据源失败", e);
+            return;
+        }
+
+        if (enabledList.isEmpty()) {
+            return;
+        }
+
+        for (Map<String, Object> row : enabledList) {
+            String id = (String) row.get("id");
+            String code = (String) row.get("code");
+            String name = (String) row.get("name");
+            try {
+                testConnection(id);
+            } catch (Exception e) {
+                // testConnection 内部已处理异常并更新 DB，这里只防御性捕获
+                logger.debug("健康巡检：数据源连接异常, code={}, name={}", code, name);
+            }
+        }
+    }
+
+    // ====================================================================
     //  私有工具方法
     // ====================================================================
 
@@ -636,6 +813,20 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         } catch (Exception e) {
             logger.warn("查询数据源 code 失败, id={}", id, e);
             return null;
+        }
+    }
+
+    /**
+     * 根据 id 查询当前连续失败次数。
+     */
+    private Integer queryErrorCountById(String id) {
+        try {
+            return defaultJdbcTemplate.queryForObject(
+                    "SELECT error_count FROM flow_datasource WHERE id = ?",
+                    Integer.class, id);
+        } catch (Exception e) {
+            logger.warn("查询数据源 error_count 失败, id={}", id, e);
+            return 0;
         }
     }
 

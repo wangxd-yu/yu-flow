@@ -225,28 +225,42 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
                 inputJson = "{}";
             }
 
-            // 构建包装脚本：先 JSON.parse 得到原生 JS 对象，
-            // 再将每个属性解构为顶级变量 + 保留 input 别名
-            StringBuilder scriptBuilder = new StringBuilder();
-            scriptBuilder.append("(function() {\n");
-            scriptBuilder.append("  var input = JSON.parse(").append(quoteForJs(inputJson)).append(");\n");
-            // 将 input 中的每个 key 解构为同名顶级变量
+            // 构建上下文环境初始化脚本
+            StringBuilder setupBuilder = new StringBuilder();
+            setupBuilder.append("var input = JSON.parse(").append(quoteForJs(inputJson)).append(");\n");
             if (context != null && !context.isEmpty()) {
                 for (String key : context.keySet()) {
                     // 校验 key 是否为合法 JS 标识符，防止注入
                     if (isValidJsIdentifier(key)) {
-                        scriptBuilder.append("  var ").append(key).append(" = input[")
+                        setupBuilder.append("var ").append(key).append(" = input[")
                                 .append(quoteForJs(key)).append("];\n");
                     }
                 }
             }
-            scriptBuilder.append("  return (").append(expression).append(");\n");
-            scriptBuilder.append("})()");
 
-            String wrappedScript = scriptBuilder.toString();
+            // 执行初始化脚本，将变量绑定到当前 Context 的全局作用域
+            jsContext.eval("js", setupBuilder.toString());
 
-            // ---- 执行脚本 ----
-            Value result = jsContext.eval("js", wrappedScript);
+            // ---- 执行用户脚本（支持表达式与多行块自动回退） ----
+            Value result;
+            try {
+                // 尝试 1：作为单个表达式执行 (用括号包裹可确保 {a:1} 被正确解析为对象而不是代码块)
+                result = jsContext.eval("js", "(" + expression + ")");
+            } catch (PolyglotException e) {
+                if (e.isSyntaxError()) {
+                    // 尝试 2：作为包含 return 的多行函数体执行
+                    try {
+                        String blockScript = "(function() {\n" + expression + "\n})()";
+                        result = jsContext.eval("js", blockScript);
+                    } catch (PolyglotException ex2) {
+                        // 如果第二种方式也失败，抛出第二种方式的异常
+                        // （因为多行函数体更包容，此时的 SyntaxError 更能反映真实的语法错误）
+                        throw ex2;
+                    }
+                } else {
+                    throw e;
+                }
+            }
 
             // ---- 结果转换：Value -> Java 类型 ----
             return convertValue(result);
