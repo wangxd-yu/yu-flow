@@ -18,18 +18,8 @@
 
 ---
 
-<!-- 
-  🎬 TODO: 录制一段 30 秒的操作 GIF，替换下面的占位图
-  推荐工具：ScreenToGif (Windows) / Kap (Mac) 
-  录制内容：新建 API → 拖入节点 → 连线 → 配置 → **控制台一键调试 (Debugger)** → 发布 → 调用成功
--->
-
 <div align="center">
-
-> 📹 **演示动图即将上线** — 在本地运行后，你将看到如下体验：
->
-> **新建 API** → **拖入数据库/HTTP/脚本节点** → **可视化连线** → **配置表达式** → **控制台一键调试 (Flow Debugger)** → **一键发布** → **即时调用**
-
+  <img src="doc/demo.gif" alt="yu-flow 动态 API 编排演示" width="85%" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
 </div>
 
 ---
