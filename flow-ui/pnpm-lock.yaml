@@ -17,6 +17,18 @@ importers:
       '@antv/x6':
         specifier: ^3.1.4
         version: 3.1.7
+      '@antv/x6-plugin-clipboard':
+        specifier: ^3.0.0
+        version: 3.0.0(@antv/x6@3.1.7)
+      '@antv/x6-plugin-keyboard':
+        specifier: ^3.0.0
+        version: 3.0.0(@antv/x6@3.1.7)
+      '@antv/x6-plugin-selection':
+        specifier: ^3.0.0
+        version: 3.0.0(@antv/x6@3.1.7)
+      '@antv/x6-plugin-snapline':
+        specifier: ^3.0.0
+        version: 3.0.0(@antv/x6@3.1.7)
       '@antv/x6-react-shape':
         specifier: ^3.0.1
         version: 3.0.1(@antv/x6@3.1.7)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -271,6 +283,30 @@ packages:
 
   '@antfu/utils@0.7.10':
     resolution: {integrity: sha512-+562v9k4aI80m1+VuMHehNJWLOFjBnXn3tdOitzD0il5b7smkSBal4+a3oKiQTbrwMmN/TBUMDvbdoWDehgOww==}
+
+  '@antv/x6-plugin-clipboard@3.0.0':
+    resolution: {integrity: sha512-fi8Sdz0xuE+6okhq9QplrVcALA3ow1/SCSzQB5e7DxpcKOztJreMOf3tR1cnrfkL1aOp7ckKAKTAhYbIDspC7A==}
+    deprecated: this package has been deprecated
+    peerDependencies:
+      '@antv/x6': ^3.x
+
+  '@antv/x6-plugin-keyboard@3.0.0':
+    resolution: {integrity: sha512-ECN5VWjYXAR+lLhCbtwSAW0mNA1bqQjbYk2ewKj1JQVjfkmvogBIXuEjANqVXH8IdmlgJEPptuBKIS3kO4AdWQ==}
+    deprecated: this package has been deprecated
+    peerDependencies:
+      '@antv/x6': ^3.x
+
+  '@antv/x6-plugin-selection@3.0.0':
+    resolution: {integrity: sha512-/POImdCnhi1E38Wvq9gZ4zaXm0vxwo1MLUO36rha1UnMOWf1m6X8jvdV7W9YZnGRkEsTbqKcju7tscz49xpxdQ==}
+    deprecated: this package has been deprecated
+    peerDependencies:
+      '@antv/x6': ^3.x
+
+  '@antv/x6-plugin-snapline@3.0.0':
+    resolution: {integrity: sha512-2CUbH40UHaPn7gnO0aMeef6pVT/DoGSFXrhZN07iC39IynCbR6x6MJpSZrZ17Hl834GpQvuGA7wVXJ8TJ1yAaw==}
+    deprecated: this package has been deprecated
+    peerDependencies:
+      '@antv/x6': ^3.x
 
   '@antv/x6-react-shape@3.0.1':
     resolution: {integrity: sha512-zLIJ0NMO6R3sXZGKQJKMUEZmaVwNDBxx3jYUMSXE9cZhKsvWV+P8WuiUCtJYNSVTezBLbxYLzrukA/QdQa/sKg==}
@@ -7970,7 +8006,7 @@ packages:
         optional: true
 
   webworkify-webpack@https://codeload.github.com/xqq/webworkify-webpack/tar.gz/24d1e719b4a6cac37a518b2bb10fe124527ef4ef:
-    resolution: {tarball: https://codeload.github.com/xqq/webworkify-webpack/tar.gz/24d1e719b4a6cac37a518b2bb10fe124527ef4ef}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/xqq/webworkify-webpack/tar.gz/24d1e719b4a6cac37a518b2bb10fe124527ef4ef}
     version: 2.1.5
 
   whatwg-fetch@3.6.20:
@@ -8587,6 +8623,23 @@ snapshots:
       find-up: 5.0.0
 
   '@antfu/utils@0.7.10': {}
+
+  '@antv/x6-plugin-clipboard@3.0.0(@antv/x6@3.1.7)':
+    dependencies:
+      '@antv/x6': 3.1.7
+
+  '@antv/x6-plugin-keyboard@3.0.0(@antv/x6@3.1.7)':
+    dependencies:
+      '@antv/x6': 3.1.7
+      mousetrap: 1.6.5
+
+  '@antv/x6-plugin-selection@3.0.0(@antv/x6@3.1.7)':
+    dependencies:
+      '@antv/x6': 3.1.7
+
+  '@antv/x6-plugin-snapline@3.0.0(@antv/x6@3.1.7)':
+    dependencies:
+      '@antv/x6': 3.1.7
 
   '@antv/x6-react-shape@3.0.1(@antv/x6@3.1.7)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:

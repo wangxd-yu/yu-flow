@@ -15,9 +15,13 @@ import java.util.Map;
  *
  * 将输入参数拆分为 headers、params、body 三部分存入上下文
  * 下游节点通过 edge port 选择使用哪部分数据:
- *   - $.request.headers
- *   - $.request.params
- *   - $.request.body
+ *   - $.{requestNodeId}.headers
+ *   - $.{requestNodeId}.params
+ *   - $.{requestNodeId}.body
+ *
+ * 数据来源优先级：
+ *   1. vars["request"] 子映射（调试模式下由 FlowApiController.debugRun 预注入）
+ *   2. vars 顶层直接的 headers/params/body（正式运行时由 Spring MVC 解析 HTTP 请求后注入）
  *
  * 支持参数校验 (复用 ParamValidator)
  */
@@ -28,20 +32,30 @@ public class RequestStepExecutor extends AbstractStepExecutor<RequestStep> {
     public String execute(RequestStep step, ExecutionContext context, FlowDefinition flow) {
         Map<String, Object> vars = context.getVar();
 
-        // 1. 提取 headers / params / body
-        Map<String, Object> headers = extractMap(vars, "headers");
-        Map<String, Object> params  = extractMap(vars, "params");
-        Map<String, Object> body    = extractMap(vars, "body");
+        // ── 1. 确定数据来源 ─────────────────────────────────────────────
+        // 调试模式：Controller 将 { headers, params, body } 打包在 vars["request"] 下；
+        // 正式运行：Spring MVC 解析 HTTP 请求后，headers/params/body 直接在 vars 顶层。
+        Map<String, Object> source = vars;
+        Object requestEntry = vars.get("request");
+        if (requestEntry instanceof Map) {
+            // 调试模式：优先使用 vars["request"] 子映射
+            source = (Map<String, Object>) requestEntry;
+        }
 
-        // 2. 收集所有参数用于校验 (params + body 合并)
+        // ── 2. 提取 headers / params / body ──────────────────────────────
+        Map<String, Object> headers = extractMap(source, "headers");
+        Map<String, Object> params  = extractMap(source, "params");
+        Map<String, Object> body    = extractMap(source, "body");
+
+        // ── 3. 收集所有参数用于校验 (params + body 合并) ─────────────────
         Map<String, Object> allParams = new HashMap<>();
         allParams.putAll(params);
         allParams.putAll(body);
 
-        // 3. 参数校验
+        // ── 4. 参数校验 ───────────────────────────────────────────────────
         ParamValidator.validate(step.getValidations(), allParams);
 
-        // 4. 存入上下文
+        // ── 5. 存入上下文（以节点 ID 为 key，供下游 $.{nodeId}.params 引用）──
         Map<String, Object> requestData = new HashMap<>();
         requestData.put("headers", headers);
         requestData.put("params", params);
@@ -49,10 +63,7 @@ public class RequestStepExecutor extends AbstractStepExecutor<RequestStep> {
         context.setVar(step.getId(), requestData);
 
         // Request 节点有多个输出端口 (headers / params / body)
-        // 但流程连线时通过 edge 的 port 来区分，这里统一返回 null
-        // FlowEngine 会根据 next 映射中有哪个 port 来路由
-        // 如果只有一个下游，通常用 "body" 或 "params"
-        // 返回第一个有效的 port
+        // FlowEngine 会根据 edge 中的 port 来路由，优先返回已配置的 port
         for (String port : new String[]{"headers", "params", "body"}) {
             if (step.getNext().containsKey(port)) {
                 return port;
@@ -68,11 +79,11 @@ public class RequestStepExecutor extends AbstractStepExecutor<RequestStep> {
     }
 
     /**
-     * 从上下文变量中提取 Map 类型数据
+     * 从指定 Map 中提取 Map 类型数据，如果不是 Map 则返回空 Map
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> extractMap(Map<String, Object> vars, String key) {
-        Object value = vars.get(key);
+    private Map<String, Object> extractMap(Map<String, Object> source, String key) {
+        Object value = source.get(key);
         if (value instanceof Map) {
             return (Map<String, Object>) value;
         }

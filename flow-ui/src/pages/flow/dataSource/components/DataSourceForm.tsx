@@ -68,13 +68,17 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
         password: password || undefined,
       });
 
-      if (res?.success) {
+      // res 是 R 包装体，实际测试结果在 res.data 中；兼容直返结构
+      const testResult = res?.data || res;
+      if (testResult?.success) {
         message.success('连接测试成功 ✅');
       } else {
-        message.error(`连接测试失败：${res?.message || '未知错误'}`);
+        message.error(`连接测试失败：${testResult?.message || '未知错误'}`);
       }
     } catch (e: any) {
-      message.error(`连接测试异常：${e?.message || '请求失败'}`);
+      // 错误已在 request.ts 拦截器中通过 message.error 弹出，
+      // 此处仅防御性捕获，防止未处理的 Promise Rejection 导致页面异常。
+      console.error('测试连接异常：', e);
     } finally {
       setTestLoading(false);
     }

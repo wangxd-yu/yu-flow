@@ -15,8 +15,11 @@ public class ExecutionContext {
 
     private Object output;
     private final boolean isReadOnly; // 标记只读上下文
+    private final boolean traceEnabled; // 标记是否开启全链路追踪
     // 节点完成状态跟踪（用于多父节点汇聚）
     private final Set<String> completedSteps = Collections.synchronizedSet(new HashSet<>());
+    // 追踪日志收集器
+    private List<org.yu.flow.engine.model.ExecutionLog> executionLogs;
     // 正则表达式匹配 ${xxx.xxx} 格式
     private static final Pattern PATTERN = Pattern.compile("\\$\\{(.+?)\\}");
 
@@ -27,19 +30,23 @@ public class ExecutionContext {
 
     // 构造函数组
     public ExecutionContext() {
-        this(null, false);
+        this(null, false, false);
     }
 
     public ExecutionContext(Map<String, Object> inputs) {
-        this(inputs, false);
+        this(inputs, false, false);
     }
 
-    private ExecutionContext(Map<String, Object> inputs, boolean readOnly) {
+    public ExecutionContext(Map<String, Object> inputs, boolean readOnly, boolean traceEnabled) {
         this.var = Collections.synchronizedMap(new HashMap<>());
         if (inputs != null) {
             this.var.putAll(deepCopyVariables(inputs));
         }
         this.isReadOnly = readOnly;
+        this.traceEnabled = traceEnabled;
+        if (this.traceEnabled) {
+            this.executionLogs = Collections.synchronizedList(new ArrayList<>());
+        }
     }
 
     // 线程安全的变量操作方法
@@ -129,7 +136,7 @@ public class ExecutionContext {
 
     // 上下文拷贝（支持深拷贝）
     public ExecutionContext copy(boolean deepCopy) {
-        ExecutionContext copy = new ExecutionContext();
+        ExecutionContext copy = new ExecutionContext(null, this.isReadOnly, this.traceEnabled);
         if (deepCopy) {
             copy.var.putAll(deepCopyVariables(this.var));
             copy.output = deepCopyIfNeeded(this.output);
@@ -139,12 +146,20 @@ public class ExecutionContext {
         }
         // 复制已完成节点集合（浅拷贝即可，节点ID是字符串）
         copy.completedSteps.addAll(this.completedSteps);
+        // 共享同一个追踪日志收集器
+        if (this.traceEnabled) {
+            copy.executionLogs = this.executionLogs;
+        }
         return copy;
     }
 
     // 创建只读视图
     public ExecutionContext asReadOnly() {
-        return new ExecutionContext(this.var, true);
+        ExecutionContext readOnlyCtx = new ExecutionContext(this.var, true, this.traceEnabled);
+        if (this.traceEnabled) {
+            readOnlyCtx.executionLogs = this.executionLogs;
+        }
+        return readOnlyCtx;
     }
 
     public boolean hasVariable(String k) {
@@ -175,5 +190,20 @@ public class ExecutionContext {
      */
     public void mergeCompletedStepsTo(ExecutionContext targetContext) {
         targetContext.completedSteps.addAll(this.completedSteps);
+    }
+
+    // ========== 全链路追踪 (Trace) ==========
+    public boolean isTraceEnabled() {
+        return traceEnabled;
+    }
+
+    public void addExecutionLog(org.yu.flow.engine.model.ExecutionLog log) {
+        if (traceEnabled && executionLogs != null) {
+            executionLogs.add(log);
+        }
+    }
+
+    public List<org.yu.flow.engine.model.ExecutionLog> getExecutionLogs() {
+        return executionLogs;
     }
 }

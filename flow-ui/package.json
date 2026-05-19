@@ -1,6 +1,6 @@
 {
   "private": true,
-  "author": "王晓冬 <657716219@qq.com>",
+  "author": "yu <657716219@qq.com>",
   "scripts": {
     "build": "max build",
     "dev": "max dev",
@@ -15,6 +15,10 @@
     "@ant-design/pro-components": "^2.4.4",
     "@antv/x6": "^3.1.4",
     "@antv/x6-react-shape": "^3.0.1",
+    "@antv/x6-plugin-clipboard": "^3.0.0",
+    "@antv/x6-plugin-keyboard": "^3.0.0",
+    "@antv/x6-plugin-selection": "^3.0.0",
+    "@antv/x6-plugin-snapline": "^3.0.0",
     "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/lang-javascript": "^6.2.0",
     "@codemirror/lang-json": "^6.0.0",

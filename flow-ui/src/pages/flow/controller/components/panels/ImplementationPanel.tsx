@@ -51,7 +51,8 @@ export interface ImplementationPanelProps {
   isEdit: boolean;
   onSave: (script?: any) => void;
   onCancel: () => void;
-  addonDebugger?: React.ReactNode;
+  apiUrl?: string;
+  apiMethod?: string;
 }
 
 const ENGINE_MODE_OPTIONS: { label: string; value: EngineMode; icon: React.ReactNode }[] = [
@@ -73,7 +74,7 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
   textContent, onTextContentChange,
   dbDatasource, onDbDatasourceChange,
   responseType, onResponseTypeChange,
-  form, isEdit, onSave, onCancel, addonDebugger,
+  form, isEdit, onSave, onCancel, apiUrl, apiMethod,
 }) => {
   // ─── 全屏状态 ──────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -194,7 +195,8 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
               onCancel={onCancel}
               isEdit={isEdit}
               height={'100%' as any}
-              addonDebugger={addonDebugger}
+              apiUrl={apiUrl}
+              apiMethod={apiMethod}
             />
           </div>
         )}

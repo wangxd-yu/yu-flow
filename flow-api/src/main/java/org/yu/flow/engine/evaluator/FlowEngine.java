@@ -128,11 +128,19 @@ public class FlowEngine {
      * @param args   输入参数
      * @return 执行结果
      */
+    public <T> T execute(String flowJson, Map<String, Object> args) throws JsonProcessingException {
+        return execute(flowJson, args, false);
+    }
+
+    /**
+     * 执行流程（支持全链路追踪模式）
+     */
     @SuppressWarnings("unchecked")
-    public <T> T  execute(String flowJson, Map<String, Object> args) throws JsonProcessingException {
+    public <T> T execute(String flowJson, Map<String, Object> args, boolean traceEnabled) throws JsonProcessingException {
         FlowDefinition flowDefinition = parser.parse(flowJson); // 解析时保存流程定义
 
-        ExecutionContext context = new ExecutionContext(args);
+        // 传递 traceEnabled 标记到上下文
+        ExecutionContext context = new ExecutionContext(args, false, traceEnabled);
 
         // 构建父节点映射（用于多父节点汇聚）
         Map<String, List<String>> parentMap = buildParentMapping(flowDefinition);
@@ -212,12 +220,23 @@ public class FlowEngine {
                     rr.getHeaders().forEach(httpHeaders::add);
                 }
                 int status = Integer.parseInt(String.valueOf(rr.getStatus()));
+                if (traceEnabled) {
+                    // 如果是 Debug 模式且包含 Response 节点，仍然优先返回日志快照
+                    return (T) context.getExecutionLogs();
+                }
                 return (T) new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
+            }
+
+            if (traceEnabled) {
+                return (T) context.getExecutionLogs();
             }
 
             return (T) ExecutionResult.success(context.getOutput());
         } catch (FlowException e) {
             log.error("e: ", e);
+            if (traceEnabled) {
+                return (T) context.getExecutionLogs();
+            }
             // 处理业务异常
             ErrorDefinition errorDef = flowDefinition.getErrors().get(e.getErrorCode());
             return (T) ExecutionResult.failure(
@@ -226,6 +245,9 @@ public class FlowEngine {
             );
         } catch (Exception e) {
             log.error(cn.hutool.core.exceptions.ExceptionUtil.stacktraceToString(e));
+            if (traceEnabled) {
+                return (T) context.getExecutionLogs();
+            }
             // 处理系统异常
             return (T) ExecutionResult.failure(500, "系统错误: " + e.getMessage());
         }
@@ -335,7 +357,22 @@ public class FlowEngine {
     private String executeStep(Step step, ExecutionContext context, FlowDefinition flowDefinition) {
         log.info("执行步骤 {} [{}]", step.getId(), step.getType());
         log.info("步骤前变量: {}", context.getVar());
-        // 默认端口为 "out"；若 executor 返回 null，则视为"主动终止信号"（如 ForStep/CollectStep 的线程接力）
+
+        // Trace 开始
+        ExecutionLog traceLog = null;
+        long startTime = System.currentTimeMillis();
+        if (context.isTraceEnabled()) {
+            traceLog = new ExecutionLog()
+                .setId(UUID.randomUUID().toString())
+                .setNodeId(step.getId())
+                .setNodeName(step.getName())
+                .setNodeType(step.getType())
+                .setStartTime(new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new Date(startTime)))
+                .setStatus("running");
+            context.addExecutionLog(traceLog);
+        }
+
+        // 默认端口为 "out"；若 executor 返回 null，则视为"主动终止信号"
         String nextPort = PortNames.OUT;
         try {
             StepExecutor executor = executors.get(step.getType());
@@ -344,15 +381,39 @@ public class FlowEngine {
             }
             String result = executor.execute(step, context, flowDefinition);
             // result 为 null：执行器主动返回 null，表示当前线程应终止调度循环
-            // （ForStep：发射完毕，主线程使命结束；CollectStep：非最后线程，静默退出）
-            nextPort = result;  // 可以是 null，runFlow 会正确处理
+            nextPort = result;
+
+            if (traceLog != null) {
+                traceLog.setStatus("success");
+                Object inputs = context.getCache("TRACE_INPUTS_" + step.getId());
+                if (inputs instanceof Map) {
+                    traceLog.setInputs((Map<String, Object>) inputs);
+                }
+                traceLog.setOutputs(context.getVariable(step.getId()));
+            }
         } catch (RetryStepException e) {
             Step retryStep = findStepById(e.getStepId(), flowDefinition);
             return executeStep(retryStep, context, flowDefinition);
         } catch (FlowException e) {
             log.error(ThrowableUtil.getStackTrace(e));
+            if (traceLog != null) {
+                traceLog.setStatus("error");
+                traceLog.setError(e.getMessage());
+            }
             throw e;
+        } catch (Exception e) {
+            log.error(cn.hutool.core.exceptions.ExceptionUtil.stacktraceToString(e));
+            if (traceLog != null) {
+                traceLog.setStatus("error");
+                traceLog.setError(e.getMessage());
+            }
+            throw e;
+        } finally {
+            if (traceLog != null) {
+                traceLog.setDuration(System.currentTimeMillis() - startTime);
+            }
         }
+
         log.info("步骤后变量: {}", context.getVar());
         return nextPort;
     }

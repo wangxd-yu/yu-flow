@@ -44,9 +44,9 @@ public class ServiceCallStepExecutor extends AbstractStepExecutor<ServiceCallSte
             // 4. 反射调用
             Object result = method.invoke(service, args);
 
-            // 5. 存储结果到步骤的 result 中
+            // 5. 存储结果到步骤的 out 中
             Map<String, Object> stepData = new HashMap<>();
-            stepData.put(ContextKeys.RESULT, result);
+            stepData.put(PortNames.OUT, result);
             context.setVar(step.getId(), stepData);
 
             if (step.getOutput() != null && !step.getOutput().trim().isEmpty()) {

@@ -78,3 +78,10 @@ export async function batchMoveAutoApiConfig(ids: string[], targetDirectoryId?: 
     data: { ids, targetDirectoryId },
   });
 }
+
+export async function debugRunAutoApiConfig(data: any) {
+  return request<any>('/flow-api/api/debug/run', {
+    method: 'POST',
+    data,
+  });
+}
