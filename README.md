@@ -199,8 +199,7 @@ java -jar flow-api/target/yu-flow-api-1.0-SNAPSHOT-exec.jar
 
 ## 💬 联系我们
 
-- **微信交流群**：添加微信 `yu-flow-bot`，备注 "yu-flow" 拉群
-- **邮箱**：657716219@qq.com
+- **邮箱/QQ**：657716219@qq.com
 
 ---
 
