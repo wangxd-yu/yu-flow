@@ -40,9 +40,25 @@ public class FlowEngine {
      */
     private ExecutorService executorService;
 
+    /**
+     * 单次流程执行允许的最大步骤数。0 表示不限制。
+     * <p>在演示模式下由 DemoModeGuard 自动注入，防止死循环和过于复杂的流程编排。</p>
+     */
+    private int maxSteps = 0;
+
     public FlowEngine() {
         initDefaultExecutor();
         registerExecutors();
+        // 尝试从 Spring 容器获取 DemoModeGuard 配置（非 Spring 环境下忽略）
+        try {
+            org.yu.flow.config.DemoModeGuard guard =
+                    cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.DemoModeGuard.class);
+            if (guard != null) {
+                this.maxSteps = guard.getMaxSteps();
+            }
+        } catch (Exception ignored) {
+            // 非 Spring 环境或容器未就绪，忽略
+        }
     }
 
     private void initDefaultExecutor() {
@@ -141,6 +157,11 @@ public class FlowEngine {
 
         // 传递 traceEnabled 标记到上下文
         ExecutionContext context = new ExecutionContext(args, false, traceEnabled);
+
+        // [防挂死] 将最大步骤数限制传递到执行上下文
+        if (maxSteps > 0) {
+            context.setMaxSteps(maxSteps);
+        }
 
         // 构建父节点映射（用于多父节点汇聚）
         Map<String, List<String>> parentMap = buildParentMapping(flowDefinition);
@@ -357,6 +378,9 @@ public class FlowEngine {
     private String executeStep(Step step, ExecutionContext context, FlowDefinition flowDefinition) {
         log.info("执行步骤 {} [{}]", step.getId(), step.getType());
         log.info("步骤前变量: {}", context.getVar());
+
+        // [防挂死] 步骤计数器递增并检查是否超出限制（由 ExecutionContext.maxSteps 控制）
+        context.incrementAndCheckStepLimit();
 
         // Trace 开始
         ExecutionLog traceLog = null;

@@ -93,6 +93,20 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
         // 因此所有分支上下文共享同一个 LoopBarrier 实例。
         // ====================================================================
         int totalCount = (items == null || items.isEmpty()) ? 0 : items.size();
+
+        // [防挂死] 演示模式下限制 For 循环的输入数组大小
+        try {
+            org.yu.flow.config.DemoModeGuard guard =
+                    cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.DemoModeGuard.class);
+            if (guard != null) {
+                guard.checkForLoopSize(totalCount, step.getId());
+            }
+        } catch (org.yu.flow.exception.FlowException e) {
+            throw e; // 演示模式限制异常，直接抛出
+        } catch (Exception ignored) {
+            // 非 Spring 环境或容器未就绪，忽略
+        }
+
         LoopBarrier barrier = new LoopBarrier(
                 step.getId(), collectStepId, totalCount, context, step.getTimeoutMs());
         context.setVar(barrierKey, barrier);

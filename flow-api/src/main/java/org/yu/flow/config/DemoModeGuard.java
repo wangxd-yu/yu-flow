@@ -132,6 +132,40 @@ public class DemoModeGuard {
     }
 
     /**
+     * 校验 ForStep 循环的输入数组大小，演示模式下禁止超大数组。
+     *
+     * @param arraySize   输入数组元素数
+     * @param forStepId   ForStep 节点 ID（用于日志）
+     * @throws FlowException 若当前为演示模式且数组大小超出限制
+     */
+    public void checkForLoopSize(int arraySize, String forStepId) {
+        if (!yuFlowProperties.isDemoMode()) {
+            return;
+        }
+        int limit = yuFlowProperties.getDemo().getMaxForLoopItems();
+        if (limit > 0 && arraySize > limit) {
+            log.warn("[DemoModeGuard] 拒绝 ForStep [{}] 执行，数组大小 {} 超出限制 {}。",
+                    forStepId, arraySize, limit);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：For 循环节点 [" + forStepId + "] 的输入数组大小（"
+                            + arraySize + "）超出上限（" + limit + "），已被安全机制拦截。"
+            );
+        }
+    }
+
+    /**
+     * 获取演示模式下的最大步骤数限制。
+     * @return 最大步骤数，若非演示模式返回 0（不限制）
+     */
+    public int getMaxSteps() {
+        if (!yuFlowProperties.isDemoMode()) {
+            return 0;
+        }
+        return yuFlowProperties.getDemo().getMaxSteps();
+    }
+
+    /**
      * @return 当前是否处于演示模式
      */
     public boolean isDemoMode() {

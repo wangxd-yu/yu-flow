@@ -28,6 +28,12 @@ yu:
     # 开启后：系统预置资产（API/模型/目录/数据源）将被只读锁定，Flow 引擎内的数据库写操作将被拦截
     # 部署演示环境时设为 true（可通过环境变量注入：YU_FLOW_DEMO_MODE=true）
     demo-mode: ${YU_FLOW_DEMO_MODE:false}
+    # 演示模式安全限制（仅 demo-mode=true 时生效）
+    demo:
+      # 单次流程执行允许的最大步骤数（防死循环），超过后强制终止
+      max-steps: 200
+      # For 循环节点允许的最大输入数组元素数（防线程池耗尽）
+      max-for-loop-items: 50
     # Flow Engine Group
     engine:
       expression-engine: simple

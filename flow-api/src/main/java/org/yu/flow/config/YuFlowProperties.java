@@ -74,6 +74,12 @@ public class YuFlowProperties {
      */
     private Security security = new Security();
 
+    /**
+     * 演示模式安全限制配置组。
+     * <p>仅在 {@code demoMode=true} 时生效。</p>
+     */
+    private Demo demo = new Demo();
+
     // ==================== Getters & Setters ====================
 
     public boolean isEnabled() {
@@ -130,6 +136,14 @@ public class YuFlowProperties {
 
     public void setSecurity(Security security) {
         this.security = security;
+    }
+
+    public Demo getDemo() {
+        return demo;
+    }
+
+    public void setDemo(Demo demo) {
+        this.demo = demo;
     }
 
     // ==================== 内部配置组：Engine ====================
@@ -215,6 +229,53 @@ public class YuFlowProperties {
 
         public void setAesSecretKey(String aesSecretKey) {
             this.aesSecretKey = aesSecretKey;
+        }
+    }
+
+    // ==================== 内部配置组：Demo ====================
+
+    /**
+     * 演示模式安全限制配置。
+     *
+     * <p>对应 YAML 路径：{@code yu.flow.demo.*}</p>
+     * <pre>
+     * yu:
+     *   flow:
+     *     demo-mode: true
+     *     demo:
+     *       max-steps: 200
+     *       max-for-loop-items: 50
+     * </pre>
+     */
+    public static class Demo {
+
+        /**
+         * 单次流程执行允许的最大步骤数。
+         * <p>用于防止死循环和过于复杂的流程编排。
+         * 执行步骤数超过此值时，引擎将强制终止流程并报错。</p>
+         */
+        private int maxSteps = 200;
+
+        /**
+         * For 循环节点允许的最大输入数组元素数。
+         * <p>防止传入巨大数组导致线程池耗尽或内存溢出。</p>
+         */
+        private int maxForLoopItems = 50;
+
+        public int getMaxSteps() {
+            return maxSteps;
+        }
+
+        public void setMaxSteps(int maxSteps) {
+            this.maxSteps = maxSteps;
+        }
+
+        public int getMaxForLoopItems() {
+            return maxForLoopItems;
+        }
+
+        public void setMaxForLoopItems(int maxForLoopItems) {
+            this.maxForLoopItems = maxForLoopItems;
         }
     }
 }

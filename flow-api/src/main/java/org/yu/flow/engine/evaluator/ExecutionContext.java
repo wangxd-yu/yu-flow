@@ -2,8 +2,10 @@ package org.yu.flow.engine.evaluator;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.yu.flow.exception.FlowException;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,6 +27,18 @@ public class ExecutionContext {
 
     // 内部缓存，用于懒加载节点结果
     private final Map<String, Object> transientCache = Collections.synchronizedMap(new HashMap<>());
+
+    /**
+     * 步骤执行计数器（线程安全）。
+     * <p>所有通过 copy() 创建的分支上下文共享同一个 AtomicInteger 引用，
+     * 因此并行分支也受全局步骤预算约束。</p>
+     */
+    private AtomicInteger stepCounter = new AtomicInteger(0);
+
+    /**
+     * 单次执行允许的最大步骤数。0 或负数表示不限制。
+     */
+    private int maxSteps = 0;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -150,6 +164,9 @@ public class ExecutionContext {
         if (this.traceEnabled) {
             copy.executionLogs = this.executionLogs;
         }
+        // 共享同一个步骤计数器（并行分支受全局预算约束）
+        copy.stepCounter = this.stepCounter;
+        copy.maxSteps = this.maxSteps;
         return copy;
     }
 
@@ -205,5 +222,36 @@ public class ExecutionContext {
 
     public List<org.yu.flow.engine.model.ExecutionLog> getExecutionLogs() {
         return executionLogs;
+    }
+
+    // ========== 步骤执行限制 (Anti-Hang) ==========
+
+    /**
+     * 设置单次执行允许的最大步骤数。
+     * @param maxSteps 最大步骤数，0 或负数表示不限制
+     */
+    public void setMaxSteps(int maxSteps) {
+        this.maxSteps = maxSteps;
+    }
+
+    /**
+     * 原子递增步骤计数，并检查是否超出限制。
+     * <p>在 FlowEngine.executeStep() 中调用，每执行一个节点 +1。
+     * 若超出 maxSteps 限制，立即抛出 FlowException 强行终止流程。</p>
+     *
+     * @throws FlowException 若步骤数超出限制
+     */
+    public void incrementAndCheckStepLimit() {
+        if (maxSteps <= 0) {
+            return; // 不限制
+        }
+        int count = stepCounter.incrementAndGet();
+        if (count > maxSteps) {
+            throw new FlowException(
+                    "STEP_LIMIT_EXCEEDED",
+                    "流程执行步骤数已达上限（" + maxSteps + "），已被安全机制强制终止。" +
+                    "可能存在死循环或过于复杂的流程编排，请检查流程设计。"
+            );
+        }
     }
 }
