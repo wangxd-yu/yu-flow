@@ -52,6 +52,16 @@ function exitFullscreen() {
     return Promise.resolve();
 }
 
+function isEditing() {
+    const active = document.activeElement;
+    if (!active) return false;
+    const tagName = active.tagName.toLowerCase();
+    if (tagName === 'input' || tagName === 'textarea') return true;
+    if (active.hasAttribute('contenteditable') || active.closest('[contenteditable="true"]')) return true;
+    if (active.classList.contains('cm-content')) return true;
+    return false;
+}
+
 // 扩展 Props
 export type ExtendedFlowEditorProps = FlowEditorProps & {
     globalForm?: FormInstance;
@@ -410,6 +420,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     // Graph 事件监听器 (Extracted to avoid useEffect closure traps)
     // ============================================================================
     const handleKeyboardDelete = useMemoizedFn(() => {
+        if (isEditing()) return true; // 正在编辑输入框时，允许 Backspace/Delete 删除字符，不删除画布节点
         if (!graphRef.current) return false;
         const cells = graphRef.current.getSelectedCells();
         if (cells.length) {
@@ -598,14 +609,17 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         graph.use(new Clipboard({ enabled: true }));
 
         graph.bindKey(['ctrl+z', 'meta+z'], () => {
+            if (isEditing()) return true; // 正在编辑时使用输入框自身的撤销
             if (history.canUndo()) history.undo();
             return false;
         });
         graph.bindKey(['ctrl+shift+z', 'meta+shift+z'], () => {
+            if (isEditing()) return true; // 正在编辑时使用输入框自身的重做
             if (history.canRedo()) history.redo();
             return false;
         });
         graph.bindKey(['ctrl+c', 'meta+c'], () => {
+            if (isEditing()) return true; // 正在编辑时使用浏览器默认复制
             const cells = graph.getSelectedCells();
             if (cells.length) {
                 graph.copy(cells);
@@ -614,6 +628,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             return false;
         });
         graph.bindKey(['ctrl+v', 'meta+v'], () => {
+            if (isEditing()) return true; // 正在编辑时使用浏览器默认粘贴
             if (!graph.isClipboardEmpty()) {
                 const cells = graph.paste({ offset: 32 });
                 graph.cleanSelection();

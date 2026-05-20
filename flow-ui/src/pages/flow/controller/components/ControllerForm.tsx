@@ -275,6 +275,16 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   // ─── 发布状态 ──────────────────────────────────────────────────────
   const [publishStatus, setPublishStatus] = useState<0 | 1>(0);
 
+  // ─── 保持 Form Store 与 React State 基础字段同步，防止右侧全局配置表单校验失败 ───
+  useEffect(() => {
+    form.setFieldsValue({
+      name,
+      url,
+      method,
+      publishStatus,
+    });
+  }, [name, url, method, publishStatus, form]);
+
   // ─── 服务实现: 引擎模式 ───────────────────────────────────────────
   const [engineMode, setEngineMode] = useState<EngineMode>('FLOW');
 

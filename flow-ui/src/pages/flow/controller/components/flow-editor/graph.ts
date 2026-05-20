@@ -549,12 +549,12 @@ export function importFlowDefinitionToGraph(graph: Graph, def: FlowDefinition) {
     return { ...s, type, id } as Step;
   });
 
-  const stepX = 160;
+  const stepX = 360;
   const stepStartY = 120;
   const stepGapY = 120;
   const stepCenterX = stepX + 120;
-  const inputX = stepCenterX - 140;
-  const inputY = 40;
+  const inputX = 40;
+  const inputY = 120;
 
   const ui = (def.args as any)?.[UI_LAYOUT_KEY] || {};
   const startFromFlow = ui?.start || null;
