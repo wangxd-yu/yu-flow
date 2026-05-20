@@ -172,6 +172,20 @@ const DataSourceList: React.FC = () => {
           );
         }
 
+        if (healthStatus === 'CIRCUIT_OPEN') {
+          const tipContent = (
+            <span>
+              已熔断（连续失败 <strong>{errorCount ?? 0}</strong> 次），系统已暂停自动重连，每 5 分钟探测一次
+              {lastErrorMsg ? `。最近报错：${lastErrorMsg}` : ''}
+            </span>
+          );
+          return (
+            <Tooltip title={tipContent} color="orange">
+              <Badge color="orange" text="已熔断" style={{ cursor: 'help' }} />
+            </Tooltip>
+          );
+        }
+
         // UNKNOWN 或未返回
         return <Badge status="default" text="未知" />;
       },
@@ -220,6 +234,10 @@ const DataSourceList: React.FC = () => {
               } else {
                 message.error('连接测试失败');
               }
+            } catch (error: any) {
+              // 错误已经在 request.ts 的拦截器中通过 message.error 弹出了，
+              // 这里只需要捕获异常，防止其变成未处理的 Promise Rejection 导致页面白屏报错。
+              console.log('测试连接异常：', error);
             } finally {
               hide();
               // 测试完毕后，不管成功与否都刷新列表，以更新健康度显示

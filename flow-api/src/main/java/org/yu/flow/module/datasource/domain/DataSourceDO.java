@@ -8,9 +8,14 @@ import java.util.Date;
 public class DataSourceDO {
 
     // -------- 健康状态常量 --------
-    public static final String HEALTH_HEALTHY   = "HEALTHY";
-    public static final String HEALTH_UNHEALTHY = "UNHEALTHY";
-    public static final String HEALTH_UNKNOWN   = "UNKNOWN";
+    public static final String HEALTH_HEALTHY      = "HEALTHY";
+    public static final String HEALTH_UNHEALTHY    = "UNHEALTHY";
+    public static final String HEALTH_UNKNOWN       = "UNKNOWN";
+    /** 熔断状态：连续失败次数达到阈值后进入，大幅降低探测频率 */
+    public static final String HEALTH_CIRCUIT_OPEN = "CIRCUIT_OPEN";
+
+    /** 连续失败多少次后触发熔断 */
+    public static final int CIRCUIT_OPEN_THRESHOLD = 5;
 
     private String id;
     private String name;
@@ -29,7 +34,7 @@ public class DataSourceDO {
     private Date updateTime;
 
     // -------- 健康度追踪字段 --------
-    /** 连接健康度：HEALTHY / UNHEALTHY / UNKNOWN */
+    /** 连接健康度：HEALTHY / UNHEALTHY / CIRCUIT_OPEN / UNKNOWN */
     private String healthStatus = HEALTH_UNKNOWN;
     /** 连续连接失败次数 */
     private Integer errorCount = 0;
