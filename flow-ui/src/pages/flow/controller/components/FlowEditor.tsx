@@ -7,8 +7,9 @@ import React from 'react';
 import { useMemoizedFn } from 'ahooks';
 import { Alert, message, Modal, Tooltip, Typography } from 'antd';
 
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
-import { Graph, Node, Dnd, History, Keyboard, MiniMap, Shape } from '@antv/x6';
+import { PlusOutlined, CopyOutlined, DeleteOutlined, GroupOutlined, UngroupOutlined, RightOutlined, LeftOutlined } from '@ant-design/icons';
+import { FlowDebugger } from './debugger';
+import { Graph, Node, Dnd, History, Keyboard, MiniMap, Shape, Snapline, Selection, Clipboard } from '@antv/x6';
 import debounce from 'lodash/debounce';
 import isEqual from 'lodash/isEqual';
 import CodeEditor from './flow-editor/components/CodeEditor';
@@ -33,6 +34,7 @@ import NodePropertyDrawer from './flow-editor/components/NodePropertyDrawer';
 import ActionToolbar from './flow-editor/components/ActionToolbar';
 import CanvasToolbar from './flow-editor/components/CanvasToolbar';
 import MiniMapPanel from './flow-editor/components/MiniMapPanel';
+import { debugRunAutoApiConfig } from '../services/flowController';
 
 const { Text } = Typography;
 
@@ -56,21 +58,26 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
     isEdit?: boolean;
     onSave?: (script?: string) => any;
     onCancel?: () => void;
-    /** Pro 扩展插槽：沉浸式调试器浮层（商业版注入点） */
-    addonDebugger?: React.ReactNode;
+    onChange?: (dslContent: string) => void;
+    apiUrl?: string;
+    apiMethod?: string;
 };
 
 export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const {
         value,
         onChange,
+        apiUrl,
+        apiMethod,
         height = 'calc(100vh - 48px)',
         globalForm,
         isEdit = true,
         onSave,
         onCancel,
-        addonDebugger,
     } = props;
+
+    // ── 控制台高度（用于撑开画布，防止被控制台遮挡） ──
+    const [consoleHeight, setConsoleHeight] = React.useState(0);
 
     // ── Refs ──
     const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -403,6 +410,21 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     // Graph 事件监听器 (Extracted to avoid useEffect closure traps)
     // ============================================================================
     const handleKeyboardDelete = useMemoizedFn(() => {
+        if (!graphRef.current) return false;
+        const cells = graphRef.current.getSelectedCells();
+        if (cells.length) {
+            cells.forEach(cell => {
+                const nd = cell.getData?.() as any;
+                if (nd?.__dslType === 'request') {
+                    message.warning('Request 节点为全局入口，不可删除');
+                } else {
+                    graphRef.current?.removeCell(cell);
+                }
+            });
+            setSelectedNodeId(null);
+            return false;
+        }
+
         const sid = selectedNodeId;
         if (sid) {
             const cell = graphRef.current?.getCellById(sid);
@@ -461,7 +483,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             container: containerRef.current,
             background: { color: '#f6f7fb' },
             grid: { size: 10, visible: true },
-            panning: { enabled: true },
+            panning: { enabled: true, modifiers: 'space' },
             mousewheel: { enabled: true, modifiers: ['ctrl', 'meta'], factor: 1.1 },
             interacting: {
                 edgeMovable: true,
@@ -560,12 +582,44 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         // Keyboard 插件
         const keyboard = new Keyboard();
         graph.use(keyboard);
+
+        // UI 交互插件 (吸附、框选、剪贴板)
+        graph.use(new Snapline({ enabled: true, sharp: true }));
+        graph.use(
+            new Selection({
+                enabled: true,
+                multiple: true,
+                rubberband: true,
+                movable: true,
+                showNodeSelectionBox: true,
+                modifiers: null,   // 鼠标左键直接框选（space 键已被 panning 占用时不冲突）
+            }),
+        );
+        graph.use(new Clipboard({ enabled: true }));
+
         graph.bindKey(['ctrl+z', 'meta+z'], () => {
             if (history.canUndo()) history.undo();
             return false;
         });
         graph.bindKey(['ctrl+shift+z', 'meta+shift+z'], () => {
             if (history.canRedo()) history.redo();
+            return false;
+        });
+        graph.bindKey(['ctrl+c', 'meta+c'], () => {
+            const cells = graph.getSelectedCells();
+            if (cells.length) {
+                graph.copy(cells);
+                message.success('已复制');
+            }
+            return false;
+        });
+        graph.bindKey(['ctrl+v', 'meta+v'], () => {
+            if (!graph.isClipboardEmpty()) {
+                const cells = graph.paste({ offset: 32 });
+                graph.cleanSelection();
+                graph.select(cells);
+                message.success('已粘贴');
+            }
             return false;
         });
         graph.bindKey(['backspace', 'delete'], handleKeyboardDelete);
@@ -1140,10 +1194,12 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                             position: 'relative',
                             height: '100%',
                             overflow: 'hidden',
+                            paddingBottom: consoleHeight,
+                            transition: 'padding-bottom 0.35s cubic-bezier(0.16,1,0.3,1)',
                             border: '1px solid transparent',
                             borderLeftColor: '#e5e6eb',
                             borderRightColor: '#e5e6eb',
-                            transition: 'border-color 0.2s',
+                            transitionProperty: 'border-color, padding-bottom',
                         }}
                     >
                         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
@@ -1180,8 +1236,31 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                             />
                         )}
 
-                        {/* ── Pro 扩展插槽: 调试器浮层 (addonDebugger) ── */}
-                        {addonDebugger}
+                        <FlowDebugger
+                            dslContent={value}
+                            apiUrl={apiUrl}
+                            apiMethod={apiMethod}
+                            onZoomIn={() => graphRef.current?.zoom(0.1)}
+                            onZoomOut={() => graphRef.current?.zoom(-0.1)}
+                            onFitView={() => graphRef.current?.centerContent()}
+                            onUndo={onUndo}
+                            onRedo={onRedo}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
+                            onRun={async (payload) => {
+                                const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
+                                const result = await debugRunAutoApiConfig({ ...payload, dslContent: currentDslStr });
+                                if (result?.code === 0) {
+                                    return result.data;
+                                } else if (Array.isArray(result)) {
+                                    return result;
+                                } else if (result?.data) {
+                                    return result.data;
+                                }
+                                throw new Error(result?.msg || 'Run failed');
+                            }}
+                            onConsoleOpenChange={(open) => setConsoleHeight(open ? 300 : 0)}
+                        />
                     </div>
 
                     {/* ── 属性配置面板 (V3.1 Property Drawer) ── */}

@@ -47,7 +47,7 @@ public class TemplateStepExecutor extends AbstractStepExecutor<TemplateStep> {
 
         // 3. 存入上下文
         Map<String, Object> stepResult = new HashMap<>();
-        stepResult.put(ContextKeys.RESULT, result);
+        stepResult.put(PortNames.OUT, result);
         context.setVar(step.getId(), stepResult);
 
         return PortNames.OUT;

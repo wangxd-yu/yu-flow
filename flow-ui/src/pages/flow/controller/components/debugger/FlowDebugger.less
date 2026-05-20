@@ -1,0 +1,683 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ProFlowDebugger.less
+ * Yu Flow Pro · 沉浸式运行调试面板 — 全量样式
+ *
+ * 设计语言：
+ *   - Postman Flows 风格：无遮罩浮层 + 底部控制台
+ *   - Glassmorphism 磨砂半透明面板
+ *   - 精细的微动画 + 过渡效果
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+@pfd-primary:         #4f46e5;       // Indigo-600 — 主色调
+@pfd-primary-hover:   #4338ca;       // Indigo-700
+@pfd-primary-light:   #eef2ff;       // Indigo-50
+@pfd-primary-glow:    rgba(79, 70, 229, 0.35);
+
+@pfd-surface:         rgba(255, 255, 255, 0.92);
+@pfd-surface-solid:   #ffffff;
+@pfd-border:          rgba(0, 0, 0, 0.06);
+@pfd-border-strong:   rgba(0, 0, 0, 0.1);
+@pfd-shadow-sm:       0 1px 3px rgba(0, 0, 0, 0.08);
+@pfd-shadow-md:       0 4px 16px rgba(0, 0, 0, 0.1);
+@pfd-shadow-lg:       0 8px 32px rgba(0, 0, 0, 0.12);
+@pfd-shadow-glow:     0 0 0 3px @pfd-primary-glow;
+
+@pfd-text:            #1f2937;       // Gray-800
+@pfd-text-secondary:  #6b7280;       // Gray-500
+@pfd-text-muted:      #9ca3af;       // Gray-400
+
+@pfd-success:         #10b981;       // Emerald-500
+@pfd-error:           #ef4444;       // Red-500
+@pfd-warning:         #f59e0b;       // Amber-500
+
+@pfd-console-bg:      #fafbfc;
+@pfd-console-height:  300px;
+@pfd-toolbar-radius:  24px;
+@pfd-panel-radius:    12px;
+
+@pfd-transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+@pfd-transition:      0.25s cubic-bezier(0.4, 0, 0.2, 1);
+@pfd-transition-slow: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+@pfd-font-mono:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+
+/* ── Root Container ─────────────────────────────────────────────────────── */
+.pfd-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; // 默认穿透到画布
+  z-index: 90;
+
+  // 所有子元素默认恢复事件
+  > * {
+    pointer-events: auto;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  1. 底部悬浮工具栏 (Floating Toolbar)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.pfd-floating-toolbar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+
+  background: @pfd-surface;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid @pfd-border;
+  border-radius: @pfd-toolbar-radius;
+  box-shadow: @pfd-shadow-md;
+
+  transition: bottom @pfd-transition-slow, box-shadow @pfd-transition;
+
+  &:hover {
+    box-shadow: @pfd-shadow-lg;
+  }
+}
+
+.pfd-toolbar-left,
+.pfd-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pfd-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: @pfd-border-strong;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* ── 工具栏按钮 ── */
+.pfd-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: @pfd-text-secondary;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all @pfd-transition-fast;
+  position: relative;
+
+  &:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.04);
+    color: @pfd-text;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  &--active {
+    background: @pfd-primary-light !important;
+    color: @pfd-primary !important;
+  }
+}
+
+.pfd-console-toggle {
+  position: relative;
+}
+
+.pfd-error-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+/* ── Run 按钮 ── */
+.pfd-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 18px 0 14px;
+  margin-left: 6px;
+  border: none;
+  border-radius: 17px;
+  background: @pfd-primary;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all @pfd-transition-fast;
+  white-space: nowrap;
+
+  span {
+    font-size: 13px;
+    letter-spacing: 0.3px;
+  }
+
+  &:hover:not(:disabled) {
+    background: @pfd-primary-hover;
+    box-shadow: @pfd-shadow-glow;
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+
+  &:disabled {
+    cursor: wait;
+  }
+
+  &--running {
+    background: linear-gradient(135deg, @pfd-primary 0%, #7c3aed 100%);
+    animation: pfd-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pfd-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 @pfd-primary-glow; }
+  50%      { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0.1); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  2. 右侧触发器面板 (Trigger Panel)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.pfd-trigger-panel {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 100;
+  width: 350px;
+
+  background: @pfd-surface;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid @pfd-border;
+  border-radius: @pfd-panel-radius;
+  box-shadow: @pfd-shadow-lg;
+
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 370px);
+
+  animation: pfd-slide-in-right @pfd-transition-slow forwards;
+}
+
+@keyframes pfd-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.pfd-trigger-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid @pfd-border;
+  flex-shrink: 0;
+}
+
+.pfd-trigger-title {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: @pfd-text;
+}
+
+.pfd-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: @pfd-text-muted;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all @pfd-transition-fast;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: @pfd-text;
+  }
+}
+
+.pfd-trigger-api-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: @pfd-console-bg;
+  border-bottom: 1px solid @pfd-border;
+  flex-shrink: 0;
+}
+
+.pfd-trigger-tabs {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px;
+
+  .ant-tabs-nav {
+    margin-bottom: 8px;
+  }
+
+  .ant-tabs-content {
+    max-height: 320px;
+    overflow-y: auto;
+  }
+}
+
+.pfd-trigger-footer {
+  padding: 12px 16px;
+  border-top: 1px solid @pfd-border;
+  flex-shrink: 0;
+}
+
+.pfd-trigger-send-btn {
+  border-radius: 8px !important;
+  height: 38px !important;
+  font-weight: 600;
+  background: @pfd-primary !important;
+  border-color: @pfd-primary !important;
+
+  &:hover {
+    background: @pfd-primary-hover !important;
+    border-color: @pfd-primary-hover !important;
+    box-shadow: @pfd-shadow-glow;
+  }
+}
+
+/* ── KV 编辑器 ── */
+.pfd-kv-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pfd-kv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pfd-kv-input {
+  flex: 1;
+  font-size: 12px !important;
+  font-family: @pfd-font-mono !important;
+  border-radius: 6px !important;
+}
+
+.pfd-kv-delete {
+  flex-shrink: 0;
+  opacity: 0.5;
+  &:hover { opacity: 1; }
+}
+
+.pfd-kv-add {
+  margin-top: 4px;
+  border-radius: 6px !important;
+  font-size: 12px;
+  color: @pfd-text-secondary;
+}
+
+.pfd-body-editor {
+  border-radius: 8px !important;
+  background: @pfd-console-bg !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  3. 底部运行控制台 (Run Console)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.pfd-console {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  z-index: 110;
+
+  display: flex;
+  flex-direction: column;
+
+  background: @pfd-surface-solid;
+  border-top: 1px solid @pfd-border-strong;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
+
+  overflow: hidden;
+  transition: height @pfd-transition-slow;
+
+  &--open {
+    height: @pfd-console-height;
+  }
+
+  &--resizing {
+    transition: none !important;
+  }
+}
+
+.pfd-console-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 120;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: @pfd-primary;
+    opacity: 0;
+    transition: opacity @pfd-transition-fast;
+  }
+  
+  &:hover::after,
+  &.active::after {
+    opacity: 1;
+  }
+}
+
+.pfd-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid @pfd-border;
+  background: @pfd-surface-solid;
+  flex-shrink: 0;
+  min-height: 42px;
+}
+
+.pfd-console-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pfd-console-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pfd-timestamp-tag {
+  font-family: @pfd-font-mono;
+  font-size: 11px;
+  background: @pfd-console-bg;
+  border-color: @pfd-border;
+  color: @pfd-text-secondary;
+}
+
+.pfd-console-filter {
+  font-size: 12px !important;
+  .ant-select-selector {
+    border-radius: 6px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* ── 控制台主体：左右分栏 ── */
+.pfd-console-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── 左侧：执行列表 (30%) ── */
+.pfd-exec-list {
+  width: 30%;
+  min-width: 240px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid @pfd-border;
+  background: @pfd-surface-solid;
+}
+
+.pfd-exec-list-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid @pfd-border;
+  flex-shrink: 0;
+}
+
+.pfd-exec-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* 自定义滚动条 */
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+    &:hover { background: rgba(0, 0, 0, 0.2); }
+  }
+}
+
+.pfd-exec-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+}
+
+.pfd-exec-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all @pfd-transition-fast;
+  gap: 8px;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  &--active {
+    background: @pfd-primary-light;
+    border-left-color: @pfd-primary;
+  }
+
+  & + & {
+    border-top: 1px solid @pfd-border;
+  }
+}
+
+.pfd-exec-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pfd-exec-item-info {
+  min-width: 0;
+}
+
+.pfd-exec-item-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.pfd-exec-item-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pfd-exec-item-time {
+  font-size: 11px;
+  font-family: @pfd-font-mono;
+  white-space: nowrap;
+}
+
+.pfd-exec-item-duration {
+  font-size: 11px;
+  font-family: @pfd-font-mono;
+  white-space: nowrap;
+}
+
+/* ── 右侧：节点详情 Inspector (70%) ── */
+.pfd-inspector {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: @pfd-surface-solid;
+  overflow: hidden;
+}
+
+.pfd-inspector-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 4px;
+}
+
+.pfd-inspector-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .ant-tabs-nav {
+    padding: 0 16px;
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  .ant-tabs-content-holder {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .ant-tabs-content {
+    height: 100%;
+  }
+
+  .ant-tabs-tabpane {
+    height: 100%;
+    overflow-y: auto;
+    padding: 12px 16px;
+
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 2px;
+    }
+  }
+}
+
+/* ── JSON 查看器 ── */
+.pfd-json-viewer {
+  margin: 0;
+  padding: 12px 16px;
+  background: @pfd-console-bg;
+  border: 1px solid @pfd-border;
+  border-radius: 8px;
+  font-family: @pfd-font-mono;
+  font-size: 12px;
+  line-height: 1.65;
+  color: @pfd-text;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+
+  code {
+    font-family: inherit;
+    background: none;
+    padding: 0;
+  }
+}
+
+.pfd-json-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  background: @pfd-console-bg;
+  border: 1px solid @pfd-border;
+  border-radius: 8px;
+}
+
+/* ── Details 面板 ── */
+.pfd-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pfd-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.pfd-error-block {
+  margin-top: 8px;
+  padding: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
+.pfd-error-text {
+  margin: 0;
+  padding: 0;
+  font-family: @pfd-font-mono;
+  font-size: 12px;
+  line-height: 1.5;
+  color: @pfd-error;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

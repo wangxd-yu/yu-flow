@@ -94,9 +94,8 @@ public class DynamicDataSourceController {
             @RequestBody DataSourceDO config) {
 
         try {
-            if (!id.equals(config.getId())) {
-                return R.fail("路径中的名称与请求体中的名称不一致");
-            }
+            // 前端可能没有在请求体中传 id，以路径中的 id 为准
+            config.setId(id);
 
             boolean result = dynamicDataSourceService.updateDataSource(config);
             return result ? R.ok(true, "更新数据源成功") : R.fail("更新数据源失败");

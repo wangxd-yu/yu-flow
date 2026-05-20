@@ -23,7 +23,7 @@ import {
 import ApiConfigForm from './components/ControllerForm';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
-import { extensionRegistry } from '@/utils/extensionRegistry';
+
 
 /**
  * 添加配置
@@ -348,7 +348,6 @@ const AutoApiConfigList: React.FC = () => {
           }
         }}
         values={currentRow}
-        addonDebuggerComponent={extensionRegistry.get('ProFlowDebugger')}
       />      <Drawer
         width={600}
         open={!!row}

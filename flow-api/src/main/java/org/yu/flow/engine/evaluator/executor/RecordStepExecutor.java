@@ -31,7 +31,7 @@ public class RecordStepExecutor extends AbstractStepExecutor<RecordStep> {
         if (schema == null || schema.isEmpty()) {
             log.warn("Record [{}]: schema 为空", step.getId());
             Map<String, Object> emptyResult = new HashMap<>();
-            emptyResult.put(ContextKeys.RESULT, new HashMap<>());
+            emptyResult.put(PortNames.OUT, new HashMap<>());
             context.setVar(step.getId(), emptyResult);
             return PortNames.OUT;
         }
@@ -69,7 +69,7 @@ public class RecordStepExecutor extends AbstractStepExecutor<RecordStep> {
 
         // 存入上下文
         Map<String, Object> stepResult = new HashMap<>();
-        stepResult.put(ContextKeys.RESULT, record);
+        stepResult.put(PortNames.OUT, record);
         context.setVar(step.getId(), stepResult);
 
         return PortNames.OUT;

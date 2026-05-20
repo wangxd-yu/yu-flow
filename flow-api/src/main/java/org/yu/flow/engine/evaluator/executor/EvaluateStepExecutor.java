@@ -26,9 +26,8 @@ public class EvaluateStepExecutor extends AbstractExpressionStepExecutor<Evaluat
 
     @Override
     protected String handleResult(Object evalResult, EvaluateStep step, ExecutionContext context) {
-        // 将结果存储到上下文 (使用 nodeId.result 格式, 同时添加 out 别名以对齐 autoFillExtractPath)
+        // 将结果存储到上下文，统一使用 PortNames.OUT
         Map<String, Object> nodeResult = new HashMap<>();
-        nodeResult.put(ContextKeys.RESULT, evalResult);
         nodeResult.put(PortNames.OUT, evalResult);
         context.setVar(step.getId(), nodeResult);
 

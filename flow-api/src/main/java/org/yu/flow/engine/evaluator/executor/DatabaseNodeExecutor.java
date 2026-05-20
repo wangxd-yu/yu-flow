@@ -46,6 +46,14 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
             // 解析动态 SQL (根据 FlowApiServiceImpl 逻辑)
             SqlAndParams sqlAndParams = DynamicSqlParser.parseDynamicSqlToPrepared(sql, mergeParams);
 
+            if (context.isTraceEnabled()) {
+                String displaySql = buildDisplaySql(sqlAndParams.getSql(), sqlAndParams.getParams());
+                Map<String, Object> traceInputs = (Map<String, Object>) context.getCache("TRACE_INPUTS_" + step.getId());
+                if (traceInputs != null) {
+                    traceInputs.put("actualSql", displaySql);
+                }
+            }
+
             // 3. 执行操作
             Object result = null;
             String sqlType = step.getSqlType();
@@ -112,10 +120,9 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
                     throw new FlowException("INVALID_SQL_TYPE", "不支持的 SQL 操作类型: " + sqlType);
             }
 
-            // 4. 设置结果
+            // 4. 设置结果（统一使用 PortNames.OUT，不再写冗余的 "result" 别名）
             Map<String, Object> output = new HashMap<>();
             output.put(PortNames.OUT, result);
-            output.put(ContextKeys.RESULT, result);
             context.setVar(step.getId(), output);
 
             return PortNames.OUT;
@@ -150,5 +157,24 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
 
     private Map<String, Object> prepareParams(DatabaseStep step, ExecutionContext context, FlowDefinition flow) {
         return this.prepareInputs(step, context, flow);
+    }
+
+    private String buildDisplaySql(String preparedSql, java.util.List<Object> params) {
+        if (params == null || params.isEmpty()) {
+            return preparedSql;
+        }
+        String result = preparedSql;
+        for (Object param : params) {
+            String valStr = "null";
+            if (param != null) {
+                if (param instanceof String || param instanceof java.util.Date) {
+                    valStr = "'" + param.toString().replace("'", "''") + "'";
+                } else {
+                    valStr = param.toString();
+                }
+            }
+            result = result.replaceFirst("\\?", java.util.regex.Matcher.quoteReplacement(valStr));
+        }
+        return result;
     }
 }

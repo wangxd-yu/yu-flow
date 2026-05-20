@@ -214,32 +214,30 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
             injectMacros(jsContext, context);
 
             // ---- 变量注入: 顶级变量绑定 + 向后兼容 input 对象 ----
-            // 将整个 Map 序列化为 JSON，再在 JS 中解析为原生对象。
-            // 同时将每个 key-value 都绑定为顶级变量，用户直接写 items.filter(...)
-            // 而非冗余的 input.items.filter(...)。
-            // input 对象仍保留，作为向后兼容别名。
-            String inputJson;
-            if (context != null && !context.isEmpty()) {
-                inputJson = OBJECT_MAPPER.writeValueAsString(context);
-            } else {
-                inputJson = "{}";
-            }
+            // 将整个 Map 序列化为 JSON，再在 JS 中解析为原生对象，以确保拥有完整的原生 JS 方法。
+            // 优化点：使用固定脚本并在 binding 中传递动态字符串，提高 GraalVM 的 AST 缓存命中率。
+            String inputJson = (context != null && !context.isEmpty()) ? 
+                    OBJECT_MAPPER.writeValueAsString(context) : "{}";
+                    
+            Value bindings = jsContext.getBindings("js");
+            bindings.putMember("__input_json_str__", inputJson);
+            
+            // 执行固定的初始化脚本，此脚本会被 GraalVM 引擎高效缓存
+            // 解析完成后立即 delete 临时变量，防止用户脚本访问到内部传递用的原始 JSON 字符串
+            jsContext.eval("js", "var input = JSON.parse(__input_json_str__); delete __input_json_str__;");
 
-            // 构建上下文环境初始化脚本
-            StringBuilder setupBuilder = new StringBuilder();
-            setupBuilder.append("var input = JSON.parse(").append(quoteForJs(inputJson)).append(");\n");
+            // 构建顶级变量展开脚本 (变量名组合通常是固定的，缓存命中率也很高)
             if (context != null && !context.isEmpty()) {
+                StringBuilder setupBuilder = new StringBuilder();
                 for (String key : context.keySet()) {
-                    // 校验 key 是否为合法 JS 标识符，防止注入
                     if (isValidJsIdentifier(key)) {
-                        setupBuilder.append("var ").append(key).append(" = input[")
-                                .append(quoteForJs(key)).append("];\n");
+                        setupBuilder.append("var ").append(key).append(" = input['").append(key).append("'];\n");
                     }
                 }
+                if (setupBuilder.length() > 0) {
+                    jsContext.eval("js", setupBuilder.toString());
+                }
             }
-
-            // 执行初始化脚本，将变量绑定到当前 Context 的全局作用域
-            jsContext.eval("js", setupBuilder.toString());
 
             // ---- 执行用户脚本（支持表达式与多行块自动回退） ----
             Value result;

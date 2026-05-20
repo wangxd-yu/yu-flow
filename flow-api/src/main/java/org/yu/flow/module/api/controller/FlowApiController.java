@@ -8,13 +8,22 @@ import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
-import org.yu.flow.module.api.service.FlowApiCrudService;
+import org.yu.flow.engine.evaluator.FlowEngine;
+import org.yu.flow.engine.model.ExecutionLog;
+import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
 import org.yu.flow.dto.R;
 
 import org.springframework.web.bind.annotation.*;
+import org.yu.flow.module.api.service.FlowApiCrudService;
 
 import javax.annotation.Resource;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * FlowApi CRUD 管理控制器
@@ -30,6 +39,48 @@ public class FlowApiController {
 
     @Resource
     private FlowApiCrudService flowApiCrudService;
+
+    @Resource
+    private FlowEngine flowEngine;
+
+    @PostMapping("/debug/run")
+    public R<List<ExecutionLog>> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
+        try {
+            Map<String, Object> args = new HashMap<>();
+            Map<String, Object> requestMap = new HashMap<>();
+            requestMap.put("headers", requestDTO.getHeaders() != null ? requestDTO.getHeaders() : new HashMap<>());
+            requestMap.put("params", requestDTO.getQueryParams() != null ? requestDTO.getQueryParams() : new HashMap<>());
+
+            // Try to parse body as JSON if possible, otherwise keep as string
+            Object parsedBody = requestDTO.getBody();
+            if (requestDTO.getBody() != null && !requestDTO.getBody().trim().isEmpty()) {
+                try {
+                    parsedBody = cn.hutool.json.JSONUtil.parse(requestDTO.getBody());
+                } catch (Exception e) {
+                    // Ignore parse error, treat as raw string
+                }
+            }
+            requestMap.put("body", parsedBody);
+            args.put("request", requestMap);
+
+            // Execute flow engine in trace mode
+            List<ExecutionLog> logs = flowEngine.execute(requestDTO.getDslContent(), args, true);
+
+            return R.ok(logs != null ? logs : new ArrayList<>());
+        } catch (Exception e) {
+            log.error("Debug run failed", e);
+            ExecutionLog errorLog = new ExecutionLog()
+                .setId("err_global")
+                .setNodeId("__global__")
+                .setNodeName("Global Error")
+                .setNodeType("error")
+                .setStatus("error")
+                .setStartTime(new SimpleDateFormat("HH:mm:ss.SSS").format(new Date()))
+                .setError(e.getMessage());
+            return R.ok(Collections.singletonList(errorLog));
+        }
+    }
+
 
     @PostMapping
     public R<FlowApiDO> create(@RequestBody FlowApiDO flowApiDO) {

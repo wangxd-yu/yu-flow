@@ -109,6 +109,10 @@ public abstract class AbstractStepExecutor<T extends Step> implements StepExecut
             }
         }
 
+        if (context.isTraceEnabled()) {
+            context.putCache("TRACE_INPUTS_" + step.getId(), new HashMap<>(inputs));
+        }
+
         return inputs;
     }
 

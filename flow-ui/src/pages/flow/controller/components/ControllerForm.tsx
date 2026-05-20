@@ -41,11 +41,7 @@ export type ControllerFormV2Props = {
   modalVisible: boolean;
   values?: Partial<any>;
   isEdit: boolean;
-  addonDebuggerComponent?: React.ComponentType<{
-    dslContent?: string;
-    apiUrl?: string;
-    apiMethod?: string;
-  }>;
+
 };
 
 /** Tab Key 类型 */
@@ -179,7 +175,8 @@ const ApiPathInput = React.forwardRef<any, {
 });
 
 const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
-  modalVisible, onCancel, onSubmit, values = {}, isEdit, addonDebuggerComponent: AddonDebuggerComponent
+  modalVisible, onCancel, onSubmit, values = {}, isEdit
+
 }) => {
   // ─── Tab 状态 ──────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>('implementation');
@@ -553,15 +550,8 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             isEdit={isEdit}
             onSave={handleSubmit}
             onCancel={onCancel}
-            addonDebugger={
-              AddonDebuggerComponent && engineMode === 'FLOW' ? (
-                <AddonDebuggerComponent
-                  dslContent={dslContent}
-                  apiUrl={url}
-                  apiMethod={method}
-                />
-              ) : undefined
-            }
+            apiUrl={url}
+            apiMethod={method}
           />
         );
       case 'req-schema':
