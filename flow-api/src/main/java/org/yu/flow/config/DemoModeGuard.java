@@ -1,0 +1,140 @@
+package org.yu.flow.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+import org.yu.flow.exception.FlowException;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.Resource;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * 演示模式守卫。
+ *
+ * <p>当 {@code yu.flow.demo-mode=true} 时，本 Bean 在启动时将数据库中现存的所有
+ * 资产 ID（API、模型、目录、数据源）加载到内存保护名单中。</p>
+ *
+ * <p>后续任何对保护名单内 ID 的修改或删除请求都将被立即拦截，并返回友好提示，
+ * 而用户新建的资产（启动后创建，ID 不在名单中）则不受任何限制。</p>
+ *
+ * <p>本组件无论 demoMode 是否开启都会被注入；所有守卫方法会在 demoMode 关闭时
+ * 直接放行，因此对非演示环境的性能影响为零。</p>
+ *
+ * @author yu-flow
+ */
+@Component
+public class DemoModeGuard {
+
+    private static final Logger log = LoggerFactory.getLogger(DemoModeGuard.class);
+
+    @Resource
+    private YuFlowProperties yuFlowProperties;
+
+    @Resource
+    private JdbcTemplate jdbcTemplate;
+
+    /** 启动时加载的系统预置资产 ID 保护名单（key=id, value=true） */
+    private final Set<String> protectedIds = ConcurrentHashMap.newKeySet();
+
+    // ====================================================================
+    //  初始化
+    // ====================================================================
+
+    @PostConstruct
+    public void init() {
+        if (!yuFlowProperties.isDemoMode()) {
+            log.debug("[DemoModeGuard] 演示模式未开启，守卫空载运行。");
+            return;
+        }
+
+        log.warn("[DemoModeGuard] *** 演示模式已开启 *** 正在锁定当前所有系统预置资产...");
+        loadProtectedIds("flow_api_info", "API 接口");
+        loadProtectedIds("flow_model_info", "数据模型");
+        loadProtectedIds("flow_datasource", "数据源");
+        loadProtectedIds("flow_directory", "目录");
+        log.warn("[DemoModeGuard] 演示模式资产锁定完成，共保护 {} 个资产 ID。", protectedIds.size());
+    }
+
+    private void loadProtectedIds(String tableName, String description) {
+        try {
+            List<String> ids = jdbcTemplate.queryForList(
+                    "SELECT id FROM " + tableName + " LIMIT 5000", String.class);
+            protectedIds.addAll(ids);
+            log.info("[DemoModeGuard] 已锁定{}（{}）的 {} 条记录。", description, tableName, ids.size());
+        } catch (Exception e) {
+            log.error("[DemoModeGuard] 加载保护名单失败，表名={}，原因={}", tableName, e.getMessage(), e);
+        }
+    }
+
+    // ====================================================================
+    //  守卫校验方法
+    // ====================================================================
+
+    /**
+     * 校验某资产 ID 是否在演示保护名单中（用于修改/删除操作前的检查）。
+     *
+     * @param id         被操作的资产 ID
+     * @param targetName 资产名称（用于错误提示，如"API 接口"）
+     * @throws FlowException 若当前为演示模式且 ID 在保护名单内
+     */
+    public void checkModifyOrDelete(String id, String targetName) {
+        if (!yuFlowProperties.isDemoMode()) {
+            return;
+        }
+        if (id != null && protectedIds.contains(id)) {
+            log.warn("[DemoModeGuard] 拒绝修改/删除操作，ID={} 为演示预置资产（{}）。", id, targetName);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：系统预置的【" + targetName + "】不允许被修改或删除，您可以创建新的资产进行体验！"
+            );
+        }
+    }
+
+    /**
+     * 校验当前是否为演示模式，若是则拒绝所有 SQL 写操作（INSERT / UPDATE / DELETE）。
+     *
+     * @param operationType 操作类型描述（如"INSERT"/"UPDATE"/"DELETE"）
+     * @throws FlowException 若当前为演示模式
+     */
+    public void checkSqlWrite(String operationType) {
+        if (yuFlowProperties.isDemoMode()) {
+            log.warn("[DemoModeGuard] 拒绝 SQL 写操作：{}，当前为演示模式。", operationType);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：禁止执行数据库写入/修改/删除操作（" + operationType + "）。"
+                            + "如需体验增删改功能，请联系管理员获取完整版！"
+            );
+        }
+    }
+
+    /**
+     * 校验 API 的响应类型，演示模式下禁止新建/更新为写入类 API（INSERT/UPDATE）。
+     *
+     * @param responseType API 的 responseType 字段值
+     * @throws FlowException 若当前为演示模式且 responseType 为写入类型
+     */
+    public void checkApiResponseType(String responseType) {
+        if (!yuFlowProperties.isDemoMode()) {
+            return;
+        }
+        if ("INSERT".equalsIgnoreCase(responseType) || "UPDATE".equalsIgnoreCase(responseType)) {
+            log.warn("[DemoModeGuard] 拒绝创建/更新写入类 API，responseType={}。", responseType);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：禁止创建或修改数据库写入类型接口（" + responseType + "）。"
+                            + "演示环境仅支持 SELECT / PAGE / LIST / OBJECT 类查询接口！"
+            );
+        }
+    }
+
+    /**
+     * @return 当前是否处于演示模式
+     */
+    public boolean isDemoMode() {
+        return yuFlowProperties.isDemoMode();
+    }
+}

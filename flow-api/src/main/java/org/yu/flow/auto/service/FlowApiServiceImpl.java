@@ -40,6 +40,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Resource
     private DynamicDataSourceService dynamicDataSourceService;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // ============================= 策略与调度配置 =============================
@@ -322,6 +325,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Override
     public int executeUpdate(String datasource, SqlAndParams sqlAndParams) {
+        // [Demo 模式] 禁止执行 UPDATE / DELETE SQL
+        demoModeGuard.checkSqlWrite("UPDATE/DELETE");
         return dynamicDataSourceService.executeInTransaction(datasource, jt -> jt.update(
                 sqlAndParams.getSql(),
                 sqlAndParams.getParams().toArray()
@@ -330,6 +335,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Override
     public int executeInsert(String datasource, SqlAndParams sqlAndParams) {
+        // [Demo 模式] 禁止执行 INSERT SQL
+        demoModeGuard.checkSqlWrite("INSERT");
         return dynamicDataSourceService.executeInTransaction(datasource, jt -> jt.update(
                 sqlAndParams.getSql(),
                 sqlAndParams.getParams().toArray()

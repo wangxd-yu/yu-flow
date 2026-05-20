@@ -65,6 +65,9 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
     @Resource
     private DynamicDataSourceService dynamicDataSourceService;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     @Override
     public PageBean<FlowModelInfoDTO> findPage(String directoryId, String name, String tableName, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), size, Sort.by(Sort.Direction.DESC, "createTime"));
@@ -173,6 +176,8 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowModelInfoDO update(String id, SaveModelDTO saveModelDTO) {
+        // [Demo 模式] 系统预置模型不可修改
+        demoModeGuard.checkModifyOrDelete(id, "数据模型");
         FlowModelInfoDO existing = flowModelInfoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("数据模型不存在，id: " + id));
 
@@ -210,6 +215,8 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        // [Demo 模式] 系统预置模型不可删除
+        demoModeGuard.checkModifyOrDelete(id, "数据模型");
         if (!flowModelInfoRepository.existsById(id)) {
             throw new RuntimeException("数据模型不存在，id: " + id);
         }

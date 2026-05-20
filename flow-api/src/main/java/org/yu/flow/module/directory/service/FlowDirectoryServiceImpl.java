@@ -36,6 +36,9 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
     @Resource
     private PageInfoRepository pageInfoRepository;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     // ================================================================
     // 获取目录树
     // ================================================================
@@ -94,6 +97,8 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowDirectoryDO update(String id, FlowDirectoryDO directory) {
+        // [Demo 模式] 系统预置目录不可修改
+        demoModeGuard.checkModifyOrDelete(id, "目录");
         FlowDirectoryDO existing = directoryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("目录不存在，id: " + id));
 
@@ -114,6 +119,8 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        // [Demo 模式] 系统预置目录不可删除
+        demoModeGuard.checkModifyOrDelete(id, "目录");
         // 校验1：是否有子目录
         if (directoryRepository.existsByParentId(id)) {
             throw new RuntimeException("该目录下还有子目录，请先删除子目录");

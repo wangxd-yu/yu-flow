@@ -37,6 +37,18 @@ public class YuFlowProperties {
     private boolean enabled = true;
 
     /**
+     * 是否开启演示模式。
+     * <p>开启后将执行以下限制：</p>
+     * <ul>
+     *   <li>系统启动时已存在的所有 API、模型、数据源、目录资产将被锁定，不可修改或删除。</li>
+     *   <li>Flow 引擎内的 Database 节点禁止执行 INSERT / UPDATE / DELETE 操作。</li>
+     *   <li>通过 API 管理界面禁止新建 INSERT / UPDATE 类型的数据库操作接口。</li>
+     * </ul>
+     * <p>用户仍可自由创建新的查询类 API 并进行体验。</p>
+     */
+    private boolean demoMode = false;
+
+    /**
      * 是否启用内置管理 UI 界面。
      * <p>关闭后管理后台将返回 403，但对外发布的页面（preview / designer）不受影响。</p>
      */
@@ -70,6 +82,14 @@ public class YuFlowProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isDemoMode() {
+        return demoMode;
+    }
+
+    public void setDemoMode(boolean demoMode) {
+        this.demoMode = demoMode;
     }
 
     public boolean isEnableUi() {

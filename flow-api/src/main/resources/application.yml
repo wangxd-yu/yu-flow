@@ -24,6 +24,10 @@ yu:
     enable-ui: true
     username: admin
     password: ${YU_FLOW_ADMIN_PASSWORD:flow@699}
+    # 演示模式开关（默认关闭）
+    # 开启后：系统预置资产（API/模型/目录/数据源）将被只读锁定，Flow 引擎内的数据库写操作将被拦截
+    # 部署演示环境时设为 true（可通过环境变量注入：YU_FLOW_DEMO_MODE=true）
+    demo-mode: ${YU_FLOW_DEMO_MODE:false}
     # Flow Engine Group
     engine:
       expression-engine: simple

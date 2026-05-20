@@ -55,11 +55,17 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Resource
     private FlowApiCacheManager flowApiCacheManager;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     // ============================= FlowApiDO CRUD =============================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO save(FlowApiDO flowApiDO) {
+        // [Demo 模式] 禁止新建写入类 DB API
+        demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
+
         flowApiDO.setCreateTime(LocalDateTime.now());
         flowApiDO = flowApiRepository.save(flowApiDO);
 
@@ -101,6 +107,10 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional
     public FlowApiDO update(FlowApiDO flowApiDO) {
+        // [Demo 模式] 系统预置 API 不可修改；禁止改为写入类 API
+        demoModeGuard.checkModifyOrDelete(flowApiDO.getId(), "API 接口");
+        demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
+
         Optional<FlowApiDO> existing = flowApiRepository.findById(flowApiDO.getId());
         if (!existing.isPresent()) {
             throw new RuntimeException("配置不存在，id: " + flowApiDO.getId());
@@ -114,6 +124,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Override
     public void delete(String id) {
+        // [Demo 模式] 系统预置 API 不可删除
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
         flowApiRepository.deleteById(id);
         flowApiCacheManager.publishRefreshEvent();
     }
@@ -122,6 +134,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Transactional(rollbackFor = Exception.class)
     public void batchDelete(List<String> ids) {
         if (ids != null && !ids.isEmpty()) {
+            // [Demo 模式] 逐一检查，只要有一个受保护的 ID 就整体拒绝
+            ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
             flowApiRepository.logicDeleteByIds(ids);
             flowApiCacheManager.publishRefreshEvent();
         }

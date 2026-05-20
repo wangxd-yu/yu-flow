@@ -27,6 +27,9 @@ public class DynamicDataSourceController {
     @Resource
     private DynamicDataSourceService dynamicDataSourceService;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     /**
      * 获取所有数据源
      * @return 包含所有数据源的Map，key为数据源名称，value为数据源对象
@@ -215,6 +218,9 @@ public class DynamicDataSourceController {
     public R<Integer> executeUpdate(
             @PathVariable String code,
             @RequestBody String sql) {
+
+        // [Demo 模式] 禁止直接执行 SQL 写操作
+        demoModeGuard.checkSqlWrite("SQL 直接写入");
 
         try {
             Integer result = dynamicDataSourceService.execute(code, jdbcTemplate -> jdbcTemplate.update(sql));

@@ -65,6 +65,9 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     @Resource
     private AesEncryptUtil aesEncryptUtil;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     // ====================================================================
     //  通用查询 SQL 片段
     // ====================================================================
@@ -410,6 +413,8 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
     @Override
     public boolean updateDataSource(DataSourceDO config) {
+        // [Demo 模式] 系统预置数据源不可修改
+        demoModeGuard.checkModifyOrDelete(config.getId(), "数据源");
         try {
             // 查询当前数据源的 code，用于更新内存缓存
             String code = queryCodeById(config.getId());
@@ -468,6 +473,8 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
     @Override
     public boolean removeDataSource(String id) {
+        // [Demo 模式] 系统预置数据源不可删除
+        demoModeGuard.checkModifyOrDelete(id, "数据源");
         try {
             // 先查出 code，用于清理缓存
             String code = queryCodeById(id);
@@ -506,6 +513,8 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
     @Override
     public boolean disableDataSource(String id) {
+        // [Demo 模式] 系统预置数据源不可被禁用
+        demoModeGuard.checkModifyOrDelete(id, "数据源");
         try {
             // 先查出 code
             String code = queryCodeById(id);
