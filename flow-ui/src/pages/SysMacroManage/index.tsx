@@ -157,7 +157,8 @@ const SysMacroManage: React.FC = () => {
       message.success('删除成功');
       actionRef.current?.reload();
     } catch (error) {
-      message.error('删除失败，请重试');
+      // 错误由全局拦截器处理，此处不再重复弹窗
+      console.error('Delete failed:', error);
     }
   };
 
@@ -168,6 +169,7 @@ const SysMacroManage: React.FC = () => {
     {
       title: '宏编码',
       dataIndex: 'macroCode',
+      width: 150,
       copyable: true,
       formItemProps: {
         rules: [
@@ -179,6 +181,7 @@ const SysMacroManage: React.FC = () => {
     {
       title: '宏名称',
       dataIndex: 'macroName',
+      width: 150,
       formItemProps: {
         rules: [{ required: true, message: '请输入宏名称' }],
       },
@@ -187,6 +190,7 @@ const SysMacroManage: React.FC = () => {
       title: '类型',
       dataIndex: 'macroType',
       valueType: 'select',
+      width: 100,
       valueEnum: {
         VARIABLE: { text: '变量', status: 'Default' },
         FUNCTION: { text: '方法', status: 'Processing' },
@@ -208,12 +212,14 @@ const SysMacroManage: React.FC = () => {
       title: '返回值类型',
       dataIndex: 'returnType',
       hideInSearch: true,
+      width: 120,
       initialValue: 'String',
     },
     {
       title: '作用域',
       dataIndex: 'scope',
       valueType: 'select',
+      width: 100,
       valueEnum: {
         ALL: { text: '全局' },
         SQL_ONLY: { text: '仅SQL' },
@@ -225,6 +231,7 @@ const SysMacroManage: React.FC = () => {
       title: '状态',
       dataIndex: 'status',
       valueType: 'switch',
+      width: 100,
       render: (_, record) => (
         <Tag color={record.status === 1 ? 'success' : 'default'}>
           {record.status === 1 ? '启用' : '停用'}
@@ -238,12 +245,14 @@ const SysMacroManage: React.FC = () => {
       title: '备注',
       dataIndex: 'remark',
       hideInSearch: true,
+      width: 150,
       ellipsis: true,
     },
     {
       title: '创建时间',
       dataIndex: 'createTime',
       valueType: 'dateTime',
+      width: 180,
       hideInForm: true,
       search: false,
     },
@@ -251,6 +260,7 @@ const SysMacroManage: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
+      width: 200,
       render: (_, record) => [
         <Button
           key="edit"
@@ -366,7 +376,7 @@ const SysMacroManage: React.FC = () => {
       flex: 1;
       min-height: 0;
       max-height: none !important;
-      overflow-y: auto !important;
+      overflow-y: scroll !important;
     }
     .fh-table .ant-table-pagination {
       flex-shrink: 0;
@@ -394,7 +404,8 @@ const SysMacroManage: React.FC = () => {
       <ProTable<SysMacroDTO>
         className="fh-table"
         headerTitle="全局参数管理"
-        scroll={{ x: 'max-content', y: 100000 }}
+        tableLayout="fixed"
+        scroll={{ x: 1250, y: 100000 }}
         actionRef={actionRef}
         rowKey="id"
         search={{
@@ -423,6 +434,10 @@ const SysMacroManage: React.FC = () => {
         title={currentRow?.id ? '编辑宏定义' : '新建宏定义'}
         open={modalVisible}
         onOpenChange={setModalVisible}
+        width={680}
+        grid={true}
+        layout="vertical"
+        rowProps={{ gutter: [24, 0] }}
         initialValues={currentRow ? {
           ...currentRow,
           status: currentRow.status === 1
@@ -457,92 +472,94 @@ const SysMacroManage: React.FC = () => {
             return true;
           } catch (error) {
             hide();
-            message.error('保存失败，请检查参数或网络');
+            // 错误由全局拦截器处理，此处不再重复弹窗
             return false;
           }
         }}
       >
-        <Space direction="vertical" style={{ width: '100%' }} size="large">
-          <Space style={{ width: '100%' }} size="middle">
-            <ProFormText
-              name="macroCode"
-              label="宏编码"
-              placeholder="如 sys_user_id"
-              width="md"
-              disabled={!!currentRow?.id} // 编码一般不允许修改
-            />
-            <ProFormText
-              name="macroName"
-              label="宏名称"
-              placeholder="如 当前登录用户 ID"
-              width="md"
-            />
-          </Space>
+        <ProFormText
+          name="macroCode"
+          label="宏编码"
+          placeholder="如 sys_user_id"
+          colProps={{ span: 12 }}
+          disabled={!!currentRow?.id} // 编码一般不允许修改
+        />
+        <ProFormText
+          name="macroName"
+          label="宏名称"
+          placeholder="如 当前登录用户 ID"
+          colProps={{ span: 12 }}
+        />
 
-          <Space style={{ width: '100%' }} size="middle">
-            <ProFormSelect
-              name="macroType"
-              label="类型"
-              valueEnum={{
-                VARIABLE: '变量',
-                FUNCTION: '方法',
-              }}
-              width="md"
-            />
-            <ProFormSelect
-              name="scope"
-              label="作用域"
-              valueEnum={{
-                ALL: '全局',
-                SQL_ONLY: '仅SQL',
-                JS_ONLY: '仅JS',
-              }}
-              width="md"
-            />
-          </Space>
+        <ProFormSelect
+          name="macroType"
+          label="类型"
+          valueEnum={{
+            VARIABLE: '变量',
+            FUNCTION: '方法',
+          }}
+          colProps={{ span: 12 }}
+        />
+        <ProFormSelect
+          name="scope"
+          label="作用域"
+          valueEnum={{
+            ALL: '全局',
+            SQL_ONLY: '仅SQL',
+            JS_ONLY: '仅JS',
+          }}
+          colProps={{ span: 12 }}
+        />
 
-          <ProFormText
-            name="returnType"
-            label="返回值类型"
-            placeholder="String, Number, Boolean 等"
-            tooltip="用于前端 JS 解析时的类型推导提示"
-          />
+        <ProFormText
+          name="returnType"
+          label="返回值类型"
+          placeholder="String, Number, Boolean 等"
+          tooltip="用于前端 JS 解析时的类型推导提示"
+          colProps={{ span: 24 }}
+        />
 
-          <ProFormTextArea
-            name="expression"
-            label="SpEL 表达式"
-            placeholder="@userContext.getUserId()"
-            tooltip="Spring Expression Language 表达式，支持引用容器中的 Bean"
-            fieldProps={{
-              onChange: handleExpressionChange,
-            }}
-          />
+        <ProFormTextArea
+          name="expression"
+          label="SpEL 表达式"
+          placeholder="@userContext.getUserId()"
+          tooltip="Spring Expression Language 表达式，支持引用容器中的 Bean"
+          colProps={{ span: 24 }}
+          fieldProps={{
+            onChange: handleExpressionChange,
+            rows: 4,
+            style: { fontFamily: 'Consolas, Monaco, monospace', backgroundColor: '#fafafa', fontSize: '13px' },
+          }}
+        />
 
-          {/* ---- 入参列表：仅当 macroType === 'FUNCTION' 时渲染 ---- */}
-          <ProFormDependency name={['macroType']}>
-            {({ macroType }) =>
-              macroType === 'FUNCTION' ? (
-                <ProFormText
-                  name="macroParams"
-                  label="入参列表"
-                  placeholder="如 date, format（多个参数用逗号分隔）"
-                  tooltip="多个参数用逗号分隔，顺序须与表达式中 #参数名 一致"
-                />
-              ) : null
-            }
-          </ProFormDependency>
+        {/* ---- 入参列表：仅当 macroType === 'FUNCTION' 时渲染 ---- */}
+        <ProFormDependency name={['macroType']}>
+          {({ macroType }) =>
+            macroType === 'FUNCTION' ? (
+              <ProFormText
+                name="macroParams"
+                label="入参列表"
+                placeholder="如 date, format（多个参数用逗号分隔）"
+                tooltip="多个参数用逗号分隔，顺序须与表达式中 #参数名 一致"
+                colProps={{ span: 24 }}
+              />
+            ) : null
+          }
+        </ProFormDependency>
 
-          <ProFormSwitch
-            name="status"
-            label="启用状态"
-          />
+        <ProFormSwitch
+          name="status"
+          label="启用状态"
+          colProps={{ span: 24 }}
+        />
 
-          <ProFormTextArea
-            name="remark"
-            label="备注"
-            placeholder="请输入备注说明"
-          />
-        </Space>
+        <ProFormTextArea
+          name="remark"
+          label="备注"
+          placeholder="请输入备注说明"
+          colProps={{ span: 24 }}
+          fieldProps={{ rows: 3 }}
+        />
       </ModalForm>
     </PageContainer>
   );
