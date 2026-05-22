@@ -76,8 +76,8 @@ const PageManageList: React.FC = () => {
       await updatePageStatus(id, checked ? 1 : 0);
       message.success(checked ? '上线成功' : '下线成功');
       actionRef.current?.reload();
-    } catch {
-      message.error('状态切换失败');
+    } catch (error: any) {
+      // 错误由全局拦截器处理
     }
   };
 
@@ -87,8 +87,8 @@ const PageManageList: React.FC = () => {
       await clonePage(record.id as string);
       message.success('克隆成功');
       actionRef.current?.reload();
-    } catch {
-      message.error('克隆失败');
+    } catch (error: any) {
+      // 错误由全局拦截器处理
     }
   };
 
@@ -189,8 +189,8 @@ const PageManageList: React.FC = () => {
               await deletePage(record.id as string);
               message.success('删除成功');
               actionRef.current?.reload();
-            } catch {
-              message.error('删除失败');
+            } catch (error: any) {
+              // 错误由全局拦截器处理
             } finally {
               hide();
             }
@@ -291,7 +291,7 @@ const PageManageList: React.FC = () => {
       flex: 1;
       min-height: 0;
       max-height: none !important;
-      overflow-y: auto !important;
+      overflow-y: scroll !important;
     }
     .fh-table .ant-table-pagination {
       flex-shrink: 0;
@@ -316,7 +316,8 @@ const PageManageList: React.FC = () => {
             <ProTable<PageManage.PageConfig>
               className="fh-table"
               headerTitle={`页面列表 (${selectedDirectoryName || '全部'})`}
-              scroll={{ x: 'max-content', y: 100000 }}
+              tableLayout="fixed"
+              scroll={{ x: 1120, y: 100000 }}
             actionRef={actionRef}
             rowKey="id"
             search={{ labelWidth: 100 }}
@@ -388,8 +389,8 @@ const PageManageList: React.FC = () => {
             }
             setModalVisible(false);
             actionRef.current?.reload();
-          } catch {
-            message.error(currentRow?.id ? '更新失败' : '创建失败');
+          } catch (error: any) {
+            // 错误由全局拦截器处理
           }
           return true;
         }}
@@ -426,8 +427,8 @@ const PageManageList: React.FC = () => {
             actionRef.current?.clearSelected?.();
             actionRef.current?.reload();
             return true;
-          } catch {
-            message.error('批量移动失败');
+          } catch (error: any) {
+            // 错误由全局拦截器处理
             return false;
           }
         }}
