@@ -118,7 +118,6 @@ const SysConfigManage: React.FC = () => {
       return true;
     }
 
-    const hide = message.loading(`正在保存 [${GROUP_NAMES[group] || group}] 的配置...`);
     try {
       // 通过 Promise.all 批量发送多次更新请求
       await Promise.all(
@@ -130,13 +129,11 @@ const SysConfigManage: React.FC = () => {
           });
         }),
       );
-      hide();
       message.success('配置已保存生效');
       loadData(); // 重新加载以更新本地缓存原始值
       return true;
     } catch (error) {
-      hide();
-      message.error('保存失败，请检查网络');
+      // 错误由全局拦截器处理
       return false;
     }
   };

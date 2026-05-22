@@ -36,6 +36,9 @@ public class SysConfigServiceImpl implements SysConfigService {
     @Resource
     private SysConfigCacheManager sysConfigCacheManager;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     @Override
     public PageBean<SysConfigDTO> findPage(SysConfigQueryDTO queryDTO) {
         int page = Math.max(queryDTO.getPage() - 1, 0);
@@ -107,6 +110,9 @@ public class SysConfigServiceImpl implements SysConfigService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SysConfigDO update(String id, SaveSysConfigDTO dto) {
+        // [Demo 模式] 预置系统参数不可修改
+        demoModeGuard.checkModifyOrDelete(id, "系统参数");
+
         SysConfigDO existing = sysConfigRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("配置不存在，id: " + id));
 
@@ -151,6 +157,9 @@ public class SysConfigServiceImpl implements SysConfigService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        // [Demo 模式] 预置系统参数不可删除
+        demoModeGuard.checkModifyOrDelete(id, "系统参数");
+
         SysConfigDO existing = sysConfigRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("配置不存在，id: " + id));
 
