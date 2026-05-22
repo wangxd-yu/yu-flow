@@ -173,38 +173,80 @@ const ResponseTemplateManage: React.FC = () => {
     {
       title: '成功包装体',
       dataIndex: 'successWrapper',
-      width: 280,
+      width: 200,
       ellipsis: true,
       search: false,
-      render: (text) => (
-        <code style={{ fontSize: 12, color: '#389e0d', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {text || '-'}
-        </code>
-      ),
+      render: (text) => {
+        if (!text) return '-';
+        return (
+          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12 }}>{text}</pre>} placement="topLeft">
+            <code style={{
+              display: 'block',
+              fontSize: 12,
+              color: '#389e0d',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 180,
+              cursor: 'pointer'
+            }}>
+              {text}
+            </code>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '分页包装体',
       dataIndex: 'pageWrapper',
-      width: 320,
+      width: 200,
       ellipsis: true,
       search: false,
-      render: (text) => (
-        <code style={{ fontSize: 12, color: '#1677ff', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {text || '-'}
-        </code>
-      ),
+      render: (text) => {
+        if (!text) return '-';
+        return (
+          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12 }}>{text}</pre>} placement="topLeft">
+            <code style={{
+              display: 'block',
+              fontSize: 12,
+              color: '#1677ff',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 180,
+              cursor: 'pointer'
+            }}>
+              {text}
+            </code>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '失败包装体',
       dataIndex: 'failWrapper',
-      width: 280,
+      width: 200,
       ellipsis: true,
       search: false,
-      render: (text) => (
-        <code style={{ fontSize: 12, color: '#cf1322', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {text || '-'}
-        </code>
-      ),
+      render: (text) => {
+        if (!text) return '-';
+        return (
+          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12 }}>{text}</pre>} placement="topLeft">
+            <code style={{
+              display: 'block',
+              fontSize: 12,
+              color: '#cf1322',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 180,
+              cursor: 'pointer'
+            }}>
+              {text}
+            </code>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '备注',
@@ -224,7 +266,7 @@ const ResponseTemplateManage: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 200,
+      width: 120,
       fixed: 'right',
       render: (_, record) => (
         <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
@@ -400,19 +442,19 @@ const ResponseTemplateManage: React.FC = () => {
         initialValues={
           currentRow
             ? {
-                templateName: currentRow.templateName,
-                successWrapper: currentRow.successWrapper,
-                pageWrapper: currentRow.pageWrapper,
-                failWrapper: currentRow.failWrapper,
-                isDefault: currentRow.isDefault === 1,
-                remark: currentRow.remark,
-              }
+              templateName: currentRow.templateName,
+              successWrapper: currentRow.successWrapper,
+              pageWrapper: currentRow.pageWrapper,
+              failWrapper: currentRow.failWrapper,
+              isDefault: currentRow.isDefault === 1,
+              remark: currentRow.remark,
+            }
             : {
-                isDefault: false,
-                successWrapper: '{"code": 200, "data": "$"}',
-                pageWrapper: '{"code": 200, "data": {"list": "$.items", "total": "$.total"}}',
-                failWrapper: '{"code": "$.code", "message": "$.msg", "data": null}',
-              }
+              isDefault: false,
+              successWrapper: '{"code": 200, "data": "$"}',
+              pageWrapper: '{"code": 200, "data": {"list": "$.items", "total": "$.total"}}',
+              failWrapper: '{"code": "$.code", "message": "$.msg", "data": null}',
+            }
         }
         onFinish={async (values) => {
           const payload = {
