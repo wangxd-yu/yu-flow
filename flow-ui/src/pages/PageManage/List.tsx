@@ -100,13 +100,13 @@ const PageManageList: React.FC = () => {
       title: '页面名称',
       dataIndex: 'name',
       ellipsis: true,
-      width: '20%',
+      width: 180,
     },
     {
       title: '所属目录',
       dataIndex: 'directoryName',
       hideInSearch: true,
-      width: '10%',
+      width: 100,
       render: (_, record) => record.directoryName ? <Tag color="blue">{record.directoryName}</Tag> : '-',
     },
     {
@@ -114,12 +114,12 @@ const PageManageList: React.FC = () => {
       dataIndex: 'routePath',
       ellipsis: true,
       copyable: true,
-      width: '20%',
+      width: 220,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: '10%',
+      width: 100,
       search: false,
       render: (_, record) => (
         <Switch
@@ -136,13 +136,14 @@ const PageManageList: React.FC = () => {
       dataIndex: 'createTime',
       valueType: 'dateTime',
       search: false,
-      width: '15%',
+      width: 180,
     },
     {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: '30%',
+      width: 340,
+      fixed: 'right',
       render: (_, record) => [
         <a
           key="design"
@@ -201,15 +202,121 @@ const PageManageList: React.FC = () => {
     },
   ];
 
+  // ---- Full-height ProTable CSS overrides ----
+  const fullHeightTableCSS = `
+    .fh-container.ant-pro-page-container {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    .fh-container.ant-pro-page-container > .ant-pro-grid-content,
+    .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
+      flex: 1 !important;
+      min-height: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
+      flex: 1 !important;
+      min-height: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      height: auto !important;
+      padding-block-end: 0 !important;
+    }
+    .fh-container .dir-tree-layout {
+      flex: 1 !important;
+      min-height: 0 !important;
+      height: 100% !important;
+    }
+    .fh-table.ant-pro-table {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+    .fh-table .ant-pro-table-search {
+      flex-shrink: 0;
+    }
+    .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
+      flex: 1;
+      min-height: 0;
+      display: flex !important;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .fh-table .ant-pro-table-list-toolbar {
+      flex-shrink: 0;
+    }
+    .fh-table .ant-table-wrapper {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fh-table .ant-spin-nested-loading {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fh-table .ant-spin-container {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fh-table .ant-table {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fh-table .ant-table-container {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fh-table .ant-table-header {
+      flex-shrink: 0;
+      overflow: hidden !important;
+    }
+    .fh-table .ant-table-body {
+      flex: 1;
+      min-height: 0;
+      max-height: none !important;
+      overflow-y: auto !important;
+    }
+    .fh-table .ant-table-pagination {
+      flex-shrink: 0;
+      padding: 6px 0;
+      margin: 0 !important;
+    }
+  `;
+
   // ================================================================
   // JSX 渲染
   // ================================================================
   return (
-    <PageContainer header={{ title: '页面可视化管理' }}>
-      <DirectoryTreeLayout>
+    <PageContainer
+      className="fh-container"
+      header={{ title: '页面可视化管理' }}
+      style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
+    >
+      <DirectoryTreeLayout height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
-          <ProTable<PageManage.PageConfig>
-            headerTitle={`页面列表 (${selectedDirectoryName || '全部'})`}
+          <>
+            <style>{fullHeightTableCSS}</style>
+            <ProTable<PageManage.PageConfig>
+              className="fh-table"
+              headerTitle={`页面列表 (${selectedDirectoryName || '全部'})`}
+              scroll={{ x: 'max-content', y: 100000 }}
             actionRef={actionRef}
             rowKey="id"
             search={{ labelWidth: 100 }}
@@ -258,6 +365,7 @@ const PageManageList: React.FC = () => {
               </Space>
             )}
           />
+          </>
         )}
       </DirectoryTreeLayout>
 
