@@ -44,6 +44,9 @@ public class PageInfoServiceImpl implements PageInfoService {
     @Resource
     private FlowDirectoryService flowDirectoryService;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     // ================================================================
     // 校验页面访问路径是否已被占用
     // ================================================================
@@ -146,6 +149,9 @@ public class PageInfoServiceImpl implements PageInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageInfoDO update(String id, PageInfoDO pageInfo) {
+        // [Demo 模式] 预置页面不可修改
+        demoModeGuard.checkModifyOrDelete(id, "页面设计");
+
         PageInfoDO existing = pageInfoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("页面不存在，id: " + id));
 
@@ -175,6 +181,9 @@ public class PageInfoServiceImpl implements PageInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageInfoDO updateJson(String id, String json) {
+        // [Demo 模式] 预置页面不可修改
+        demoModeGuard.checkModifyOrDelete(id, "页面设计");
+
         PageInfoDO existing = pageInfoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("页面不存在，id: " + id));
 
@@ -189,6 +198,9 @@ public class PageInfoServiceImpl implements PageInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageInfoDO updateStatus(String id, Integer status) {
+        // [Demo 模式] 预置页面不可修改
+        demoModeGuard.checkModifyOrDelete(id, "页面设计");
+
         PageInfoDO existing = pageInfoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("页面不存在，id: " + id));
 
@@ -226,6 +238,9 @@ public class PageInfoServiceImpl implements PageInfoService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        // [Demo 模式] 预置页面不可删除
+        demoModeGuard.checkModifyOrDelete(id, "页面设计");
+
         if (!pageInfoRepository.existsById(id)) {
             throw new RuntimeException("页面不存在，id: " + id);
         }
@@ -241,6 +256,12 @@ public class PageInfoServiceImpl implements PageInfoService {
         if (ids == null || ids.isEmpty()) {
             return;
         }
+
+        // [Demo 模式] 预置页面不可修改
+        for (String id : ids) {
+            demoModeGuard.checkModifyOrDelete(id, "页面设计");
+        }
+
         if ("0".equals(targetDirectoryId) || StrUtil.isBlank(targetDirectoryId)) {
             targetDirectoryId = null;
         }

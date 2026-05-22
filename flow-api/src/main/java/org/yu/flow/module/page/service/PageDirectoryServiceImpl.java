@@ -27,6 +27,9 @@ public class PageDirectoryServiceImpl implements PageDirectoryService {
     @Resource
     private PageInfoRepository pageInfoRepository;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     // ================================================================
     // 获取目录树
     // ================================================================
@@ -85,6 +88,9 @@ public class PageDirectoryServiceImpl implements PageDirectoryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PageDirectoryDO update(String id, PageDirectoryDO directory) {
+        // [Demo 模式] 预置目录不可修改
+        demoModeGuard.checkModifyOrDelete(id, "页面目录");
+
         PageDirectoryDO existing = directoryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("目录不存在，id: " + id));
 
@@ -105,6 +111,9 @@ public class PageDirectoryServiceImpl implements PageDirectoryService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        // [Demo 模式] 预置目录不可删除
+        demoModeGuard.checkModifyOrDelete(id, "页面目录");
+
         // 校验1：是否有子目录
         if (directoryRepository.existsByParentId(id)) {
             throw new RuntimeException("该目录下还有子目录，请先删除子目录");

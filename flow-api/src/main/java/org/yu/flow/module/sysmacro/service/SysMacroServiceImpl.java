@@ -41,6 +41,9 @@ public class SysMacroServiceImpl implements SysMacroService {
     @Resource
     private SysMacroCacheManager sysMacroCacheManager;
 
+    @Resource
+    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+
     @Override
     public PageBean<SysMacroDTO> findPage(SysMacroQueryDTO queryDTO) {
         int page = Math.max(queryDTO.getPage() - 1, 0);
@@ -124,6 +127,9 @@ public class SysMacroServiceImpl implements SysMacroService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SysMacroDO update(String id, SaveSysMacroDTO dto) {
+        // [Demo 模式] 预置宏不可修改
+        demoModeGuard.checkModifyOrDelete(id, "系统宏定义");
+
         SysMacroDO existing = sysMacroRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("宏定义不存在，id: " + id));
 
@@ -173,6 +179,9 @@ public class SysMacroServiceImpl implements SysMacroService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        // [Demo 模式] 预置宏不可删除
+        demoModeGuard.checkModifyOrDelete(id, "系统宏定义");
+
         if (!sysMacroRepository.existsById(id)) {
             throw new RuntimeException("宏定义不存在，id: " + id);
         }
