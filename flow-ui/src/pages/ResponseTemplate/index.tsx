@@ -18,7 +18,7 @@ import {
   ProFormTextArea,
   ProFormSwitch,
 } from '@ant-design/pro-components';
-import { Button, message, Tag, Popconfirm, Space, Typography } from 'antd';
+import { Button, message, Tag, Popconfirm, Space, Typography, Tooltip, Row, Col, Tabs } from 'antd';
 import { PlusOutlined, StarOutlined } from '@ant-design/icons';
 import { request } from '@umijs/max';
 
@@ -335,7 +335,7 @@ const ResponseTemplateManage: React.FC = () => {
       flex: 1;
       min-height: 0;
       max-height: none !important;
-      overflow-y: auto !important;
+      overflow-y: scroll !important;
     }
     .fh-table .ant-table-pagination {
       flex-shrink: 0;
@@ -355,6 +355,7 @@ const ResponseTemplateManage: React.FC = () => {
         headerTitle="响应模板列表"
         actionRef={actionRef}
         rowKey="id"
+        tableLayout="fixed"
         scroll={{ x: 'max-content', y: 100000 }}
         search={{
           labelWidth: 120,
@@ -383,7 +384,7 @@ const ResponseTemplateManage: React.FC = () => {
       {/* ── 新增/编辑弹窗 ── */}
       <ModalForm<SaveFormValues>
         title={isEdit ? '编辑响应模板' : '新建响应模板'}
-        width={720}
+        width={920}
         open={modalVisible}
         onOpenChange={(visible) => {
           if (!visible) {
@@ -391,7 +392,11 @@ const ResponseTemplateManage: React.FC = () => {
           }
           setModalVisible(visible);
         }}
-        modalProps={{ destroyOnClose: true }}
+        modalProps={{
+          destroyOnClose: true,
+          maskClosable: false,
+          bodyStyle: { padding: '12px 24px 24px' }
+        }}
         initialValues={
           currentRow
             ? {
@@ -433,76 +438,139 @@ const ResponseTemplateManage: React.FC = () => {
           }
         }}
       >
-        <ProFormText
-          name="templateName"
-          label="模板名称"
-          placeholder="请输入模板名称，如: 标准App响应"
-          rules={[{ required: true, message: '模板名称不能为空' }]}
-        />
+        <Row gutter={24}>
+          {/* 左侧：模板属性与备注 */}
+          <Col span={9}>
+            <ProFormText
+              name="templateName"
+              label="模板名称"
+              placeholder="如: 标准App响应"
+              rules={[{ required: true, message: '模板名称不能为空' }]}
+            />
 
-        {/* ── 普通成功包装体 ── */}
-        <ProFormTextArea
-          name="successWrapper"
-          label="成功包装体"
-          placeholder={'{"code": 200, "data": "$"}'}
-          fieldProps={{
-            rows: 4,
-            style: { fontFamily: 'monospace' },
-          }}
-          extra={
-            <ExtraHint>
-              使用 JSONPath（以 <Text code>$</Text> 开头）提取底层结果。例如底层直接返回对象，可配置为:
-              <CodeSnippet>{'{"code": 200, "data": "$"}'}</CodeSnippet>
-            </ExtraHint>
-          }
-        />
+            <div style={{ marginBottom: 20 }}>
+              <ProFormSwitch
+                name="isDefault"
+                label="全局默认模板"
+                tooltip="开启后，该模板将自动成为未指定模板的 API 的全局默认包装格式"
+              />
+            </div>
 
-        {/* ── 分页成功包装体 ── */}
-        <ProFormTextArea
-          name="pageWrapper"
-          label="分页包装体"
-          placeholder={'{"code": 200, "data": {"list": "$.items", "total": "$.total"}}'}
-          fieldProps={{
-            rows: 4,
-            style: { fontFamily: 'monospace' },
-          }}
-          extra={
-            <ExtraHint>
-              底层分页结构包含 <Text code>items</Text>, <Text code>current</Text>, <Text code>size</Text>, <Text code>total</Text> 等字段。若需转换为前端常用结构，配置示例:
-              <CodeSnippet>{'{"code": 200, "data": {"list": "$.items", "total": "$.total"}}'}</CodeSnippet>
-            </ExtraHint>
-          }
-        />
+            <ProFormTextArea
+              name="remark"
+              label="备注"
+              placeholder="请输入对此模板的备注说明信息..."
+              fieldProps={{ rows: 7 }}
+            />
+          </Col>
 
-        {/* ── 失败返回包装体 ── */}
-        <ProFormTextArea
-          name="failWrapper"
-          label="失败包装体"
-          placeholder={'{"code": "$.code", "message": "$.msg", "data": null}'}
-          fieldProps={{
-            rows: 4,
-            style: { fontFamily: 'monospace' },
-          }}
-          extra={
-            <ExtraHint>
-              底层异常结构 <Text code>{'R<T>'}</Text> 包含 <Text code>ok</Text>, <Text code>code</Text>, <Text code>msg</Text>, <Text code>data</Text>。配置示例:
-              <CodeSnippet>{'{"code": "$.code", "message": "$.msg", "data": null}'}</CodeSnippet>
-            </ExtraHint>
-          }
-        />
-
-        <ProFormSwitch
-          name="isDefault"
-          label="全局默认"
-          extra="开启后，该模板将自动成为未指定模板的 API 的全局默认包装格式"
-        />
-
-        <ProFormTextArea
-          name="remark"
-          label="备注"
-          placeholder="请输入备注信息"
-          fieldProps={{ rows: 2 }}
-        />
+          {/* 右侧：IDE风格包装体配置区域 */}
+          <Col span={15}>
+            <div style={{
+              background: '#fafafa',
+              border: '1px solid #f0f0f0',
+              borderRadius: '8px',
+              padding: '16px',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: 12, color: '#262626' }}>
+                包装体模板配置 (JSONPath)
+              </div>
+              <Tabs
+                defaultActiveKey="success"
+                type="card"
+                items={[
+                  {
+                    key: 'success',
+                    label: '🟢 成功包装体',
+                    children: (
+                      <div style={{ paddingTop: 8 }}>
+                        <ProFormTextArea
+                          name="successWrapper"
+                          placeholder={'{"code": 200, "data": "$"}'}
+                          noStyle
+                          fieldProps={{
+                            rows: 8,
+                            style: {
+                              fontFamily: 'Consolas, Monaco, monospace',
+                              backgroundColor: '#ffffff',
+                              fontSize: '13px',
+                              border: '1px solid #d9d9d9',
+                            },
+                          }}
+                        />
+                        <div style={{ marginTop: 8, fontSize: '12px', color: '#8c8c8c', lineHeight: '1.6' }}>
+                          💡 使用 JSONPath（以 <code>$</code> 开头）提取接口返回的对象。示例:
+                          <code style={{ display: 'block', marginTop: 4, padding: '6px 10px', background: '#f5f5f5', color: '#595959', borderRadius: 4, fontFamily: 'monospace' }}>
+                            {"{\"code\": 200, \"data\": \"$\"}"}
+                          </code>
+                        </div>
+                      </div>
+                    )
+                  },
+                  {
+                    key: 'page',
+                    label: '🔵 分页包装体',
+                    children: (
+                      <div style={{ paddingTop: 8 }}>
+                        <ProFormTextArea
+                          name="pageWrapper"
+                          placeholder={'{"code": 200, "data": {"list": "$.items", "total": "$.total"}}'}
+                          noStyle
+                          fieldProps={{
+                            rows: 8,
+                            style: {
+                              fontFamily: 'Consolas, Monaco, monospace',
+                              backgroundColor: '#ffffff',
+                              fontSize: '13px',
+                              border: '1px solid #d9d9d9',
+                            },
+                          }}
+                        />
+                        <div style={{ marginTop: 8, fontSize: '12px', color: '#8c8c8c', lineHeight: '1.6' }}>
+                          💡 底层分页包含 <code>items</code>, <code>total</code> 等。配置示例:
+                          <code style={{ display: 'block', marginTop: 4, padding: '6px 10px', background: '#f5f5f5', color: '#595959', borderRadius: 4, fontFamily: 'monospace' }}>
+                            {"{\"code\": 200, \"data\": {\"list\": \"$.items\", \"total\": \"$.total\"}}"}
+                          </code>
+                        </div>
+                      </div>
+                    )
+                  },
+                  {
+                    key: 'fail',
+                    label: '🔴 失败包装体',
+                    children: (
+                      <div style={{ paddingTop: 8 }}>
+                        <ProFormTextArea
+                          name="failWrapper"
+                          placeholder={'{"code": "$.code", "message": "$.msg", "data": null}'}
+                          noStyle
+                          fieldProps={{
+                            rows: 8,
+                            style: {
+                              fontFamily: 'Consolas, Monaco, monospace',
+                              backgroundColor: '#ffffff',
+                              fontSize: '13px',
+                              border: '1px solid #d9d9d9',
+                            },
+                          }}
+                        />
+                        <div style={{ marginTop: 8, fontSize: '12px', color: '#8c8c8c', lineHeight: '1.6' }}>
+                          💡 异常结构包含 <code>code</code>, <code>msg</code> 等。配置示例:
+                          <code style={{ display: 'block', marginTop: 4, padding: '6px 10px', background: '#f5f5f5', color: '#595959', borderRadius: 4, fontFamily: 'monospace' }}>
+                            {"{\"code\": \"$.code\", \"message\": \"$.msg\", \"data\": null}"}
+                          </code>
+                        </div>
+                      </div>
+                    )
+                  }
+                ]}
+              />
+            </div>
+          </Col>
+        </Row>
       </ModalForm>
     </PageContainer>
   );
