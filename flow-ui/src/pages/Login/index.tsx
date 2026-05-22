@@ -1,33 +1,34 @@
 import React, { useState, useCallback } from 'react';
 import { message } from 'antd';
-import { useNavigate } from '@umijs/max';
+import { useNavigate, useModel } from '@umijs/max';
 import { request } from '@umijs/max';
 import styles from './index.module.css';
+import logo from '@/assets/logo1.svg';
 
-/* ── Inline SVG Icons (极简线条风格) ── */
+/* ── Inline SVG Icons ── */
 const UserIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
     <circle cx="12" cy="7" r="4" />
   </svg>
 );
 
 const LockIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </svg>
 );
 
 const EyeIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
     <circle cx="12" cy="12" r="3" />
   </svg>
 );
 
 const EyeOffIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
     <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
     <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
@@ -35,22 +36,18 @@ const EyeOffIcon = () => (
   </svg>
 );
 
-const BrandIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="16 18 22 12 16 6" />
-    <polyline points="8 6 2 12 8 18" />
-    <line x1="14" y1="4" x2="10" y2="20" />
-  </svg>
-);
-
-/* ── Login Page Component ── */
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { setInitialState } = useModel('@@initialState');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ username: '', password: '' });
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
-  const [focused, setFocused] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    localStorage.removeItem('flow_token');
+    setInitialState((prev: any) => ({ ...prev, isLogin: false }));
+  }, [setInitialState]);
 
   const validate = useCallback(() => {
     const e: { username?: string; password?: string } = {};
@@ -64,7 +61,6 @@ const Login: React.FC = () => {
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    // Clear error on typing
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     }
@@ -82,6 +78,7 @@ const Login: React.FC = () => {
       });
 
       localStorage.setItem('flow_token', response);
+      await setInitialState((prev: any) => ({ ...prev, isLogin: true }));
       message.success('登录成功');
       navigate('/');
     } catch (error) {
@@ -91,110 +88,75 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSubmit(e as unknown as React.FormEvent);
-    }
-  };
-
   return (
-    <div className={styles.loginPage}>
-      {/* Extra glow element */}
-      <div className={styles.glowBottomLeft} />
+    <div className={styles.container}>
+      <div className={styles.leftSide}>
+        <div className={styles.brandInfo}>
+          <img src={logo} alt="YU Flow Logo" className={styles.hugeLogo} />
+          <h1 className={styles.slogan}>
+            企业级<br />
+            低代码流程引擎
+          </h1>
+          <p className={styles.description}>
+            YU Flow 提供强大的可视化编排能力，帮助您快速构建复杂的业务流程。
+            安全、稳定、高效。
+          </p>
+        </div>
+      </div>
 
-      <div className={styles.cardWrapper}>
-        <form className={styles.card} onSubmit={handleSubmit} noValidate>
-          {/* Brand mark */}
-          <div className={styles.brandMark}>
-            <BrandIcon />
+      <div className={styles.rightSide}>
+        <div className={styles.formContainer}>
+          <div className={styles.formHeader}>
+            <img src={logo} alt="YU Flow Logo" className={styles.mobileLogo} />
+            <h2>欢迎回来</h2>
+            <p>登录 YU Flow 控制台</p>
           </div>
 
-          {/* Header */}
-          <div className={styles.headerSection}>
-            <h1 className={styles.title}>系统登录</h1>
-            <p className={styles.subtitle}>欢迎使用 YU Flow 平台</p>
-          </div>
-
-          {/* Username field */}
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="login-username">
-              用户名
-            </label>
-            <div className={styles.inputWrapper}>
-              <span className={styles.inputIcon}>
-                <UserIcon />
-              </span>
-              <input
-                id="login-username"
-                className={styles.input}
-                type="text"
-                placeholder="请输入用户名"
-                autoComplete="username"
-                value={formData.username}
-                onChange={handleChange('username')}
-                onFocus={() => setFocused('username')}
-                onBlur={() => setFocused(null)}
-                onKeyDown={handleKeyDown}
-              />
+          <form onSubmit={handleSubmit} noValidate>
+            <div className={styles.inputGroup}>
+              <label htmlFor="username">用户名</label>
+              <div className={styles.inputWrapper}>
+                <span className={styles.inputIcon}><UserIcon /></span>
+                <input
+                  id="username"
+                  className={styles.inputField}
+                  type="text"
+                  placeholder="请输入用户名"
+                  value={formData.username}
+                  onChange={handleChange('username')}
+                />
+              </div>
+              {errors.username && <span className={styles.errorMsg}>{errors.username}</span>}
             </div>
-            {errors.username && (
-              <div className={styles.errorText}>{errors.username}</div>
-            )}
-          </div>
 
-          {/* Password field */}
-          <div className={styles.formGroup}>
-            <label className={styles.label} htmlFor="login-password">
-              密码
-            </label>
-            <div className={styles.inputWrapper}>
-              <span className={styles.inputIcon}>
-                <LockIcon />
-              </span>
-              <input
-                id="login-password"
-                className={styles.input}
-                type={showPassword ? 'text' : 'password'}
-                placeholder="请输入密码"
-                autoComplete="current-password"
-                value={formData.password}
-                onChange={handleChange('password')}
-                onFocus={() => setFocused('password')}
-                onBlur={() => setFocused(null)}
-                onKeyDown={handleKeyDown}
-              />
-              <button
-                type="button"
-                className={styles.passwordToggle}
-                onClick={() => setShowPassword((v) => !v)}
-                tabIndex={-1}
-                aria-label={showPassword ? '隐藏密码' : '显示密码'}
-              >
-                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-              </button>
+            <div className={styles.inputGroup}>
+              <label htmlFor="password">密码</label>
+              <div className={styles.inputWrapper}>
+                <span className={styles.inputIcon}><LockIcon /></span>
+                <input
+                  id="password"
+                  className={styles.inputField}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="请输入密码"
+                  value={formData.password}
+                  onChange={handleChange('password')}
+                />
+                <button
+                  type="button"
+                  className={styles.passwordToggle}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
+              {errors.password && <span className={styles.errorMsg}>{errors.password}</span>}
             </div>
-            {errors.password && (
-              <div className={styles.errorText}>{errors.password}</div>
-            )}
-          </div>
 
-          {/* Submit button */}
-          <button
-            type="submit"
-            className={styles.submitButton}
-            disabled={loading}
-          >
-            <span className={styles.buttonContent}>
-              {loading && <span className={styles.spinner} />}
-              {loading ? '登录中...' : '登 录'}
-            </span>
-          </button>
-
-          {/* Footer */}
-          <div className={styles.footer}>
-            <p className={styles.footerText}>YU Flow · 低代码流程引擎</p>
-          </div>
-        </form>
+            <button type="submit" className={styles.submitBtn} disabled={loading}>
+              {loading ? '登录中...' : '登录系统'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

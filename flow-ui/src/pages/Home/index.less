@@ -1,3 +1,195 @@
-.container {
-  padding-top: 80px;
+.dashboardContainer {
+  padding: 24px;
+  min-height: calc(100vh - 120px);
+  background: transparent;
+
+  :global {
+    .ant-card {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+
+      &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+        border-color: rgba(255, 255, 255, 0.4);
+      }
+    }
+
+    .ant-card-head {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      font-weight: 600;
+      color: #1f2937;
+    }
+  }
+}
+
+.greetingCard {
+  background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%) !important;
+  color: white;
+  border: none !important;
+  position: relative;
+  overflow: hidden;
+
+  h1 {
+    color: white;
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  p {
+    font-size: 16px;
+    opacity: 0.9;
+    margin-bottom: 0;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+}
+
+.metricCard {
+  .metricHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .metricIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    background: rgba(0, 0, 0, 0.04);
+    transition: all 0.3s ease;
+  }
+
+  .metricValue {
+    font-size: 32px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.2;
+    margin-bottom: 8px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .metricFooter {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: #6b7280;
+    gap: 8px;
+
+    .trendUp {
+      color: #10b981;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+    }
+  }
+
+  &:hover .metricIcon {
+    transform: scale(1.1) rotate(5deg);
+  }
+}
+
+/* 颜色变体 */
+.cardApi .metricIcon { color: #8b5cf6; background: rgba(139, 92, 246, 0.1); }
+.cardSource .metricIcon { color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+.cardModel .metricIcon { color: #10b981; background: rgba(16, 185, 129, 0.1); }
+.cardPage .metricIcon { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+
+.engineStatus {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+
+  .statusRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed rgba(0,0,0,0.06);
+    
+    &:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+  }
+
+  .statusLabel {
+    color: #4b5563;
+    font-weight: 500;
+  }
+  
+  .statusValue {
+    font-weight: 600;
+    color: #111827;
+  }
+}
+
+.quickActions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+
+  .actionBtn {
+    height: auto;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.05);
+    background: rgba(255,255,255,0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+
+    .actionIcon {
+      font-size: 24px;
+      color: #6366f1;
+    }
+
+    .actionText {
+      font-weight: 500;
+      color: #374151;
+    }
+
+    &:hover {
+      background: #fff;
+      border-color: rgba(99, 102, 241, 0.3);
+      box-shadow: 0 8px 24px rgba(99, 102, 241, 0.1);
+      transform: translateY(-2px);
+      
+      .actionIcon {
+        transform: scale(1.1);
+      }
+    }
+  }
 }

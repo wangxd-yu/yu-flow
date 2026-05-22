@@ -1,11 +1,10 @@
 import { history, RequestConfig } from '@umijs/max';
 import { message, Modal } from 'antd';
 
-// 处理未授权情况
+// 处理未授权情况（立即跳转，不延迟，防止敏感页面继续展示）
 function handleUnauthorized() {
   localStorage.removeItem('flow_token');
-  //message.error('登录已过期，请重新登录');
-  setTimeout(() => history.push('/login'), 1500);
+  history.push('/login');
 }
 
 // 创建请求配置

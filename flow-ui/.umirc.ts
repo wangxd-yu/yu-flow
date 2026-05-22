@@ -2,6 +2,7 @@ import { defineConfig } from '@umijs/max';
 
 export default defineConfig({
   antd: {},
+  favicons: [process.env.NODE_ENV === 'production' ? '/flow-ui/logo1.svg' : '/logo1.svg'],
   access: {},
   model: {},
   initialState: {},
@@ -30,11 +31,15 @@ export default defineConfig({
   // 文件名带 hash 戳避免浏览器缓存问题
   hash: true,
   layout: {
-    title: '@umijs/max',
+    title: 'YU Flow',
     // 排除登录页，让登录页不显示布局
     exclude: ['/login'],
   },
   routes: [
+    {
+      path: '/',
+      redirect: '/home',
+    },
     {
       path: '/login',
       component: './Login',
@@ -88,6 +93,12 @@ export default defineConfig({
       path: '/response-template/manage',
       icon: 'FileTextOutlined',
       component: './ResponseTemplate',
+    },
+    {
+      name: '登录日志',
+      path: '/log/login-log',
+      icon: 'AuditOutlined',
+      component: './Log/LoginLog',
     },
     {
       path: '/page-manage/designer/:id',
