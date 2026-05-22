@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ProCard } from '@ant-design/pro-components';
 import {
   Button,
   Input,
@@ -16,6 +15,8 @@ import {
   FolderOutlined,
   FolderOpenOutlined,
   FileOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import { request } from '@umijs/max';
 import type { DataNode, TreeProps } from 'antd/es/tree';
@@ -166,6 +167,13 @@ const treeStyles = `
     flex: 1;
     min-width: 0;
   }
+  .dir-tree-layout .dir-tree-toggle-btn:hover {
+    background-color: #1677ff !important;
+    border-color: #1677ff !important;
+  }
+  .dir-tree-layout .dir-tree-toggle-btn:hover span {
+    color: #fff !important;
+  }
 `;
 
 // ================================================================
@@ -193,6 +201,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   const [treeSearchValue, setTreeSearchValue] = useState('');
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [treeData, setTreeData] = useState<DataNode[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
 
   // ---- 加载目录树 ----
   const loadTree = useCallback(async () => {
@@ -280,63 +289,121 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   };
 
   // ---- 渲染 ----
+  const treeWidthPx = typeof treeWidth === 'number' ? `${treeWidth}px` : treeWidth;
+
   return (
     <div className="dir-tree-layout" style={{ height }}>
       <style>{treeStyles}</style>
 
-      <ProCard split="vertical" bordered style={{ height: '100%' }}>
+      <div
+        style={{
+          display: 'flex',
+          height: '100%',
+          border: '1px solid #f0f0f0',
+          borderRadius: 2,
+          background: '#fff',
+        }}
+      >
         {/* ========== 左侧：全局目录树 ========== */}
-        <ProCard
-          colSpan={treeWidth}
-          style={{ height: '100%' }}
-          bodyStyle={{
-            paddingInline: 8,
-            paddingBlock: 12,
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
+        <div
+          style={{
+            width: collapsed ? 0 : treeWidthPx,
+            transition: 'width 0.28s cubic-bezier(0.2, 0, 0, 1)',
             overflow: 'hidden',
+            flexShrink: 0,
+            height: '100%',
           }}
         >
-          <Input.Search
-            placeholder="搜索目录"
-            allowClear
-            size="small"
-            style={{ marginBottom: 12 }}
-            onChange={(e) => setTreeSearchValue(e.target.value)}
-          />
-
-          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-            <Tree
-              className="directory-tree"
-              treeData={filteredTreeData}
-              selectedKeys={selectedDirKey ? [selectedDirKey] : []}
-              expandedKeys={expandedKeys}
-              onExpand={(keys) => setExpandedKeys(keys)}
-              onSelect={handleTreeSelect}
-              blockNode
-              showIcon
-              icon={(props: any) => {
-                if (props.data?.isLeaf) return <FileOutlined />;
-                return props.expanded ? <FolderOpenOutlined /> : <FolderOutlined />;
-              }}
-              titleRender={(nodeData) => (
-                <TreeNodeTitle
-                  nodeData={nodeData}
-                  onAdd={handleAddDir}
-                  onRename={handleRenameDir}
-                  onDelete={handleDeleteDir}
-                />
-              )}
+          <div
+            style={{
+              width: treeWidthPx,
+              height: '100%',
+              paddingInline: 8,
+              paddingBlock: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+            }}
+          >
+            <Input.Search
+              placeholder="搜索目录"
+              allowClear
+              size="small"
+              style={{ marginBottom: 12 }}
+              onChange={(e) => setTreeSearchValue(e.target.value)}
             />
+
+            <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+              <Tree
+                className="directory-tree"
+                treeData={filteredTreeData}
+                selectedKeys={selectedDirKey ? [selectedDirKey] : []}
+                expandedKeys={expandedKeys}
+                onExpand={(keys) => setExpandedKeys(keys)}
+                onSelect={handleTreeSelect}
+                blockNode
+                showIcon
+                icon={(props: any) => {
+                  if (props.data?.isLeaf) return <FileOutlined />;
+                  return props.expanded ? <FolderOpenOutlined /> : <FolderOutlined />;
+                }}
+                titleRender={(nodeData) => (
+                  <TreeNodeTitle
+                    nodeData={nodeData}
+                    onAdd={handleAddDir}
+                    onRename={handleRenameDir}
+                    onDelete={handleDeleteDir}
+                  />
+                )}
+              />
+            </div>
           </div>
-        </ProCard>
+        </div>
+
+        {/* ========== 分隔线 + 收缩/展开按钮 ========== */}
+        <div
+          style={{
+            position: 'relative',
+            width: 1,
+            flexShrink: 0,
+            background: '#f0f0f0',
+          }}
+        >
+          <div
+            className="dir-tree-toggle-btn"
+            onClick={() => setCollapsed(!collapsed)}
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 100,
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              backgroundColor: '#fff',
+              border: '1px solid #e8e8e8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              transition: 'left 0.28s cubic-bezier(0.2, 0, 0, 1), background-color 0.2s, border-color 0.2s',
+            }}
+          >
+            {collapsed
+              ? <RightOutlined style={{ fontSize: 10, color: '#8c8c8c' }} />
+              : <LeftOutlined style={{ fontSize: 10, color: '#8c8c8c' }} />
+            }
+          </div>
+        </div>
 
         {/* ========== 右侧：业务内容渲染区 ========== */}
-        <ProCard bodyStyle={{ paddingInline: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
           {children(selectedDirKey, selectedDirName)}
-        </ProCard>
-      </ProCard>
+        </div>
+      </div>
     </div>
   );
 };
