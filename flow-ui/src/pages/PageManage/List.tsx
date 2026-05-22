@@ -184,15 +184,12 @@ const PageManageList: React.FC = () => {
           key="delete"
           title="确定要删除该页面吗？"
           onConfirm={async () => {
-            const hide = message.loading('正在删除...');
             try {
               await deletePage(record.id as string);
               message.success('删除成功');
               actionRef.current?.reload();
             } catch (error: any) {
               // 错误由全局拦截器处理
-            } finally {
-              hide();
             }
           }}
         >
