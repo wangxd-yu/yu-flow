@@ -44,6 +44,9 @@ import java.nio.charset.StandardCharsets;
 @Controller
 public class FlowUiController {
 
+    @javax.annotation.Resource
+    private org.yu.flow.config.YuFlowProperties yuFlowProperties;
+
     /** 前端 SPA 路由前缀（不含 contextPath） */
     private static final String UI_PATH_PREFIX = "/flow-ui";
 
@@ -168,9 +171,11 @@ public class FlowUiController {
         // 2. window.publicPath: 供 UmiJS 的 runtimePublicPath 机制读取，确保异步 chunk 加载路径正确
         // 即使 contextPath 为空也注入，保证前端代码可以统一访问这些变量
         String runtimePublicPath = contextPath + UI_PATH_PREFIX + "/";
+        boolean isDemoMode = yuFlowProperties != null && yuFlowProperties.isDemoMode();
         String injectedScript = "<script>"
                 + "window.__CONTEXT_PATH__='" + contextPath + "';"
                 + "window.publicPath='" + runtimePublicPath + "';"
+                + "window.__DEMO_MODE__=" + isDemoMode + ";"
                 + "</script>";
         html = html.replace("<head>", "<head>" + injectedScript);
 

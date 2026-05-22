@@ -36,6 +36,12 @@ const EyeOffIcon = () => (
   </svg>
 );
 
+declare global {
+  interface Window {
+    __DEMO_MODE__?: boolean;
+  }
+}
+
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { setInitialState } = useModel('@@initialState');
@@ -47,6 +53,11 @@ const Login: React.FC = () => {
   React.useEffect(() => {
     localStorage.removeItem('flow_token');
     setInitialState((prev: any) => ({ ...prev, isLogin: false }));
+    
+    // 演示环境自动填充默认账号密码
+    if (typeof window !== 'undefined' && window.__DEMO_MODE__) {
+      setFormData({ username: 'admin', password: '123456' });
+    }
   }, [setInitialState]);
 
   const validate = useCallback(() => {

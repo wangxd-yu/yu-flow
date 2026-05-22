@@ -23,11 +23,11 @@ yu:
     enabled: true
     enable-ui: true
     username: admin
-    password: ${YU_FLOW_ADMIN_PASSWORD:flow@699}
+    password: ${YU_FLOW_ADMIN_PASSWORD:123456}
     # 演示模式开关（默认关闭）
     # 开启后：系统预置资产（API/模型/目录/数据源）将被只读锁定，Flow 引擎内的数据库写操作将被拦截
     # 部署演示环境时设为 true（可通过环境变量注入：YU_FLOW_DEMO_MODE=true）
-    demo-mode: ${YU_FLOW_DEMO_MODE:false}
+    demo-mode: ${YU_FLOW_DEMO_MODE:true}
     # 演示模式安全限制（仅 demo-mode=true 时生效）
     demo:
       # 单次流程执行允许的最大步骤数（防死循环），超过后强制终止
