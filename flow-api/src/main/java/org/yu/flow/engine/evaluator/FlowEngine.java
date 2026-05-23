@@ -399,8 +399,7 @@ public class FlowEngine {
         log.info("执行步骤 {} [{}]", step.getId(), step.getType());
         log.info("步骤前变量: {}", context.getVar());
 
-        // [防挂死] 步骤计数器递增并检查是否超出限制（由 ExecutionContext.maxSteps 控制）
-        context.incrementAndCheckStepLimit();
+
 
         // Trace 开始
         ExecutionLog traceLog = null;
@@ -421,6 +420,9 @@ public class FlowEngine {
         // 默认端口为 "out"；若 executor 返回 null，则视为"主动终止信号"
         String nextPort = PortNames.OUT;
         try {
+            // [防挂死] 步骤计数器递增并检查是否超出限制（由 ExecutionContext.maxSteps 控制）
+            context.incrementAndCheckStepLimit();
+
             StepExecutor executor = executors.get(step.getType());
             if (executor == null) {
                 throw new FlowException("UNKNOWN_STEP_TYPE", "未知的步骤类型: " + step.getType());

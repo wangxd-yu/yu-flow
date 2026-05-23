@@ -300,6 +300,8 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   canRedo = false,
   onRun,
   onConsoleOpenChange,
+  onExecutionLogsChange,
+  onSelectedLogChange,
 }) => {
   // ─── DOM 引用 ──────────────────────────────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);

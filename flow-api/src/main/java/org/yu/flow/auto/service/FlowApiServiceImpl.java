@@ -1,6 +1,7 @@
 package org.yu.flow.auto.service;
 
 import cn.hutool.core.util.StrUtil;
+import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.util.CamelCaseColumnMapRowMapper;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -43,6 +44,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Resource
     private org.yu.flow.config.DemoModeGuard demoModeGuard;
 
+    @Resource
+    private org.yu.flow.module.executionlog.service.FlowExecutionLogService flowExecutionLogService;
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // ============================= 策略与调度配置 =============================
@@ -64,7 +68,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public void initStrategies() {
         serviceStrategyMap.put("FLOW", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
             FlowEngine flowEngine = new FlowEngine();
-            return flowEngine.execute(content, flowInputSupplier.get());
+            return flowEngine.execute(content, flowInputSupplier.get(), true);
         });
 
         serviceStrategyMap.put("STRING", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
@@ -121,13 +125,138 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Override
     public Object executeApi(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams,
                              Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response) throws Exception {
-        return doExecute(queryParams, bodyParams, mergeParamsMap, pageable, response, flowApiDO);
+        long start = System.currentTimeMillis();
+        org.yu.flow.module.executionlog.domain.FlowExecutionLogDO logDO = new org.yu.flow.module.executionlog.domain.FlowExecutionLogDO();
+        logDO.setApiId(flowApiDO.getId());
+        logDO.setApiName(flowApiDO.getName());
+        logDO.setUrl(flowApiDO.getUrl());
+        logDO.setMethod(flowApiDO.getMethod());
+        
+        try {
+            Map<String, Object> requestMap = new HashMap<>();
+            if (queryParams != null) requestMap.put("queryParams", queryParams);
+            if (bodyParams != null) requestMap.put("bodyParams", bodyParams);
+            logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(requestMap));
+        } catch (Exception e) {
+            logDO.setRequestParams("JSON parse error");
+        }
+
+        try {
+            Object result = doExecute(queryParams, bodyParams, mergeParamsMap, pageable, response, flowApiDO);
+            logDO.setStatus("SUCCESS");
+            
+            if (result instanceof org.yu.flow.engine.model.FlowTrace) {
+                org.yu.flow.engine.model.FlowTrace trace = (org.yu.flow.engine.model.FlowTrace) result;
+                try {
+                    logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+                } catch (Exception ignored) {}
+                
+                if ("error".equals(trace.getStatus())) {
+                    logDO.setStatus("ERROR");
+                    logDO.setErrorMsg(trace.getErrorMsg());
+                    throw new RuntimeException(trace.getErrorMsg());
+                }
+                
+                Object outputs = trace.getGlobalOutputs();
+                if (outputs instanceof org.yu.flow.engine.model.step.ResponseResult) {
+                    org.yu.flow.engine.model.step.ResponseResult rr = (org.yu.flow.engine.model.step.ResponseResult) outputs;
+                    try {
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
+                    } catch (Exception ignored) {}
+                    org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
+                    if (rr.getHeaders() != null) {
+                        rr.getHeaders().forEach(httpHeaders::add);
+                    }
+                    int status = Integer.parseInt(String.valueOf(rr.getStatus()));
+                    return new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
+                } else {
+                    ExecutionResult er = ExecutionResult.success(outputs);
+                    try {
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
+                    } catch (Exception ignored) {}
+                    return er;
+                }
+            } else if (result != null) {
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(result));
+                } catch (Exception ignored) {}
+            }
+            return result;
+        } catch (Exception e) {
+            logDO.setStatus("ERROR");
+            logDO.setErrorMsg(e.getMessage());
+            throw e;
+        } finally {
+            logDO.setCostTimeMs(System.currentTimeMillis() - start);
+            flowExecutionLogService.saveLogAsync(logDO);
+        }
     }
 
     @Override
     public Object executeApi(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response) throws Exception {
-        return doExecute(params, pageable, response, flowApiDO);
+        long start = System.currentTimeMillis();
+        org.yu.flow.module.executionlog.domain.FlowExecutionLogDO logDO = new org.yu.flow.module.executionlog.domain.FlowExecutionLogDO();
+        logDO.setApiId(flowApiDO.getId());
+        logDO.setApiName(flowApiDO.getName());
+        logDO.setUrl(flowApiDO.getUrl());
+        logDO.setMethod(flowApiDO.getMethod());
+        
+        try {
+            if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
+        } catch (Exception e) {
+            logDO.setRequestParams("JSON parse error");
+        }
+
+        try {
+            Object result = doExecute(params, pageable, response, flowApiDO);
+            logDO.setStatus("SUCCESS");
+            
+            if (result instanceof org.yu.flow.engine.model.FlowTrace) {
+                org.yu.flow.engine.model.FlowTrace trace = (org.yu.flow.engine.model.FlowTrace) result;
+                try {
+                    logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+                } catch (Exception ignored) {}
+                
+                if ("error".equals(trace.getStatus())) {
+                    logDO.setStatus("ERROR");
+                    logDO.setErrorMsg(trace.getErrorMsg());
+                    throw new RuntimeException(trace.getErrorMsg());
+                }
+                
+                Object outputs = trace.getGlobalOutputs();
+                if (outputs instanceof org.yu.flow.engine.model.step.ResponseResult) {
+                    org.yu.flow.engine.model.step.ResponseResult rr = (org.yu.flow.engine.model.step.ResponseResult) outputs;
+                    try {
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
+                    } catch (Exception ignored) {}
+                    org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
+                    if (rr.getHeaders() != null) {
+                        rr.getHeaders().forEach(httpHeaders::add);
+                    }
+                    int status = Integer.parseInt(String.valueOf(rr.getStatus()));
+                    return new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
+                } else {
+                    ExecutionResult er = ExecutionResult.success(outputs);
+                    try {
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
+                    } catch (Exception ignored) {}
+                    return er;
+                }
+            } else if (result != null) {
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(result));
+                } catch (Exception ignored) {}
+            }
+            return result;
+        } catch (Exception e) {
+            logDO.setStatus("ERROR");
+            logDO.setErrorMsg(e.getMessage());
+            throw e;
+        } finally {
+            logDO.setCostTimeMs(System.currentTimeMillis() - start);
+            flowExecutionLogService.saveLogAsync(logDO);
+        }
     }
 
     // ============================= 核心执行逻辑 =============================

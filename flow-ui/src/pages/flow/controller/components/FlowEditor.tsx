@@ -71,6 +71,7 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
     onChange?: (dslContent: string) => void;
     apiUrl?: string;
     apiMethod?: string;
+    readonlyTrace?: any; // FlowTrace type
 };
 
 export default function FlowEditor(props: ExtendedFlowEditorProps) {
@@ -84,6 +85,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         isEdit = true,
         onSave,
         onCancel,
+        readonlyTrace,
     } = props;
 
     // ── 控制台高度（用于撑开画布，防止被控制台遮挡） ──
@@ -106,7 +108,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
 
     // ── State ──
     const [parseError, setParseError] = React.useState<string | null>(null);
-    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
     const [minimapVisible, setMinimapVisible] = React.useState(true);
     const [isFullscreen, setIsFullscreen] = React.useState(false);
     const [canUndo, setCanUndo] = React.useState(false);
@@ -116,8 +118,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const [rightPanelCollapsed, setRightPanelCollapsed] = React.useState(true);
 
     // 调试器状态
-    const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
-    const [debuggerSelectedNodeId, setDebuggerSelectedNodeId] = useState<string | null>(null);
+    const [executionLogs, setExecutionLogs] = React.useState<ExecutionLog[]>(readonlyTrace?.stepLogs || []);
+    const [debuggerSelectedNodeId, setDebuggerSelectedNodeId] = React.useState<string | null>(null);
 
     // ── 快捷添加菜单 (Quick Add Menu) ──
     const [quickAddMenu, setQuickAddMenu] = React.useState<{

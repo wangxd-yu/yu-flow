@@ -101,6 +101,12 @@ export default defineConfig({
       component: './Log/LoginLog',
     },
     {
+      name: '调用大盘',
+      path: '/log/execution-log',
+      icon: 'DashboardOutlined',
+      component: './Log/ExecutionLog',
+    },
+    {
       path: '/page-manage/designer/:id',
       component: './PageManage/Designer',
       layout: false,
