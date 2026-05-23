@@ -106,7 +106,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
 
     // ── State ──
     const [parseError, setParseError] = React.useState<string | null>(null);
-    const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
+    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [minimapVisible, setMinimapVisible] = React.useState(true);
     const [isFullscreen, setIsFullscreen] = React.useState(false);
     const [canUndo, setCanUndo] = React.useState(false);
@@ -114,6 +114,10 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const [mode, setMode] = React.useState<'design' | 'code'>('design');
     const [leftPanelCollapsed, setLeftPanelCollapsed] = React.useState(true);
     const [rightPanelCollapsed, setRightPanelCollapsed] = React.useState(true);
+
+    // 调试器状态
+    const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
+    const [debuggerSelectedNodeId, setDebuggerSelectedNodeId] = useState<string | null>(null);
 
     // ── 快捷添加菜单 (Quick Add Menu) ──
     const [quickAddMenu, setQuickAddMenu] = React.useState<{
@@ -141,7 +145,31 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const isGraphReadyRef = React.useRef(false);
 
     // ============================================================================
-    // DSL 导出 → 触发 onChange
+    // 节点样式管理
+    // ============================================================================
+    const resetNodeStyle = useMemoizedFn((n: Node) => {
+        const d = n.getData() as any;
+        if (!d || !d.__dslType) return;
+        if (!getNodeRegistration(d.__dslType as DslNodeType)) return;
+        try {
+            n.setAttrs({
+                body: { ...n.getAttrs()?.body, strokeWidth: 1 },
+            });
+        } catch { /* React shape 节点无 body attr，忽略 */ }
+    });
+
+    const highlightNode = useMemoizedFn((n: Node) => {
+        n.setAttrs({
+            body: {
+                ...n.getAttrs()?.body,
+                stroke: accentColor,
+                strokeWidth: 3,
+            },
+        });
+    });
+
+    // ============================================================================
+    // 数据反向加载: DSL JSON -> Graph Cells
     // ============================================================================
     const handleEmitChange = useMemoizedFn((graph: Graph) => {
         if (!onChange) return;
@@ -311,29 +339,50 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     );
 
 
-    // ============================================================================
-    // 节点样式管理
-    // ============================================================================
-    const resetNodeStyle = useMemoizedFn((n: Node) => {
-        const d = n.getData() as any;
-        if (!d || !d.__dslType) return;
-        if (!getNodeRegistration(d.__dslType as DslNodeType)) return;
-        try {
-            n.setAttrs({
-                body: { ...n.getAttrs()?.body, strokeWidth: 1 },
-            });
-        } catch { /* React shape 节点无 body attr，忽略 */ }
-    });
 
-    const highlightNode = useMemoizedFn((n: Node) => {
-        n.setAttrs({
-            body: {
-                ...n.getAttrs()?.body,
-                stroke: accentColor,
-                strokeWidth: 3,
-            },
+    // ── 调试器高亮 ──
+    React.useEffect(() => {
+        const graph = graphRef.current;
+        if (!graph) return;
+
+        // Reset
+        graph.getNodes().forEach(n => {
+            // Only reset if it's not currently selected in the property panel
+            if (n.id !== selectedNodeId) {
+                resetNodeStyle(n);
+            } else {
+                highlightNode(n);
+            }
         });
-    });
+
+        // Apply execution log styles
+        executionLogs.forEach(log => {
+            const node = graph.getCellById(log.nodeId) as Node;
+            if (node) {
+                const attrs = node.getAttrs();
+                let stroke = '#A2B1C3';
+                if (log.status === 'success') stroke = '#52c41a'; // green
+                if (log.status === 'error') stroke = '#ff4d4f';   // red
+                if (log.status === 'running') stroke = '#1677ff'; // blue
+
+                node.setAttrs({
+                    body: { ...attrs?.body, stroke, strokeWidth: log.status === 'error' ? 3 : 2 }
+                });
+            }
+        });
+
+        // Highlight selected log node
+        if (debuggerSelectedNodeId) {
+            const node = graph.getCellById(debuggerSelectedNodeId) as Node;
+            if (node) {
+                const attrs = node.getAttrs();
+                node.setAttrs({
+                    body: { ...attrs?.body, strokeWidth: 4, strokeDasharray: '5 5' }
+                });
+                graph.centerCell(node, { padding: 50 });
+            }
+        }
+    }, [executionLogs, debuggerSelectedNodeId, selectedNodeId, resetNodeStyle, highlightNode]);
 
     // ============================================================================
     // ResizeObserver
@@ -1231,7 +1280,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 canvasPosition={quickAddMenu.canvasPosition}
                                 direction={quickAddMenu.direction}
                                 canCreate={canCreate}
-                                onNodeCreated={(nodeId, type) => {
+                                onNodeCreated={(nodeId) => {
                                     // 选中新建节点
                                     setSelectedNodeId(nodeId);
                                     setTimeout(() => {
@@ -1265,16 +1314,18 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                             onRun={async (payload) => {
                                 const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
                                 const result = await debugRunAutoApiConfig({ ...payload, dslContent: currentDslStr });
-                                if (result?.code === 0) {
+                                if (result?.code === 0 && result.data) {
                                     return result.data;
-                                } else if (Array.isArray(result)) {
-                                    return result;
                                 } else if (result?.data) {
                                     return result.data;
+                                } else if (result?.traceId) { // Just in case umi request unwraps it
+                                    return result;
                                 }
                                 throw new Error(result?.msg || 'Run failed');
                             }}
                             onConsoleOpenChange={(open) => setConsoleHeight(open ? 300 : 0)}
+                            onExecutionLogsChange={setExecutionLogs}
+                            onSelectedLogChange={setDebuggerSelectedNodeId}
                         />
                     </div>
 

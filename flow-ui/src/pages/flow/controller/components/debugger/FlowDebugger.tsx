@@ -55,6 +55,19 @@ export interface ExecutionLog {
   error?: string;
 }
 
+/** 完整执行追踪快照 */
+export interface FlowTrace {
+  traceId: string;
+  startTime: number;
+  endTime: number;
+  totalDurationMs: number;
+  status: 'success' | 'error';
+  errorMsg?: string;
+  globalInputs?: Record<string, any>;
+  globalOutputs?: any;
+  stepLogs: ExecutionLog[];
+}
+
 /** 键值对条目（Headers / Query Params） */
 interface KVEntry {
   key: string;
@@ -84,9 +97,13 @@ export interface FlowDebuggerProps {
     headers: Record<string, string>;
     queryParams: Record<string, string>;
     body: string;
-  }) => Promise<ExecutionLog[]>;
+  }) => Promise<FlowTrace>;
   /** 控制台打开/关闭回调，供父容器感知高度变化 */
   onConsoleOpenChange?: (open: boolean) => void;
+  /** 选中日志条目改变时 */
+  onSelectedLogChange?: (nodeId: string | null) => void;
+  /** 运行日志列表更新时 */
+  onExecutionLogsChange?: (logs: ExecutionLog[]) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -294,6 +311,18 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
+  // 提取为统一的方法以触发外部回调
+  const updateLogs = useCallback((logs: ExecutionLog[]) => {
+    setExecutionLogs(logs);
+    onExecutionLogsChange?.(logs);
+  }, [onExecutionLogsChange]);
+
+  const updateSelectedLog = useCallback((id: string | null) => {
+    setSelectedLogId(id);
+    const nodeIds = id && executionLogs.find(l => l.id === id)?.nodeId;
+    onSelectedLogChange?.(nodeIds || null);
+  }, [executionLogs, onSelectedLogChange]);
+
   // ─── Trigger Panel 的输入状态 ──────────────────────────────────────
   const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>([createEmptyKV()]);
   const [triggerParams, setTriggerParams] = useState<KVEntry[]>([createEmptyKV()]);
@@ -343,8 +372,8 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
     setRunningStatus('running');
     setIsConsoleOpen(true);
     onConsoleOpenChange?.(true);
-    setExecutionLogs([]);
-    setSelectedLogId(null);
+    updateLogs([]);
+    updateSelectedLog(null);
     setRunTimestamp(new Date().toLocaleTimeString());
 
     const payload = {
@@ -356,8 +385,11 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
 
     try {
       let logs: ExecutionLog[] = [];
+      let trace: FlowTrace | null = null;
+      
       if (onRun) {
-        logs = await onRun(payload);
+        trace = await onRun(payload);
+        logs = trace.stepLogs || [];
       } else {
         // ── Mock 运行（开发/演示用） ──
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -365,6 +397,14 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
           ...log,
           startTime: new Date().toLocaleTimeString(),
         }));
+        trace = {
+          traceId: 'mock_1',
+          startTime: Date.now(),
+          endTime: Date.now(),
+          totalDurationMs: logs.reduce((acc, l) => acc + l.duration, 0),
+          status: logs.some(l => l.status === 'error') ? 'error' : 'success',
+          stepLogs: logs,
+        };
       }
 
       // 将触发器面板的入参注入到第一个节点（通常为 request）的输入中展示
@@ -393,14 +433,13 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
         };
       }
 
-      setExecutionLogs(logs);
-      const hasError = logs.some((l) => l.status === 'error');
-      setRunningStatus(hasError ? 'error' : 'finished');
-      if (logs.length > 0) setSelectedLogId(logs[0].id);
+      updateLogs(logs);
+      setRunningStatus(trace ? trace.status : (logs.some((l) => l.status === 'error') ? 'error' : 'finished'));
+      if (logs.length > 0) updateSelectedLog(logs[0].id);
 
     } catch (err: any) {
       setRunningStatus('error');
-      setExecutionLogs([{
+      updateLogs([{
         id: 'err_global',
         nodeId: '__global__',
         nodeName: 'Global Error',
@@ -410,7 +449,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
         duration: 0,
         error: err?.message || 'Unknown execution error',
       }]);
-      setSelectedLogId('err_global');
+      updateSelectedLog('err_global');
     }
   }, [dslContent, triggerHeaders, triggerParams, triggerBody, onRun, kvToRecord]);
 
@@ -822,7 +861,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                 <div
                   key={log.id}
                   className={`pfd-exec-item ${selectedLogId === log.id ? 'pfd-exec-item--active' : ''}`}
-                  onClick={() => setSelectedLogId(log.id)}
+                  onClick={() => updateSelectedLog(log.id)}
                 >
                   <div className="pfd-exec-item-left">
                     <StatusIcon status={log.status} />
