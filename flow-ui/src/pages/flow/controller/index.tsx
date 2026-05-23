@@ -35,9 +35,11 @@ const handleAdd = async (fields: Partial<FlowController>) => {
     hide();
     message.success('添加成功');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     hide();
-    message.error('添加失败请重试！');
+    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+      message.error('添加失败请重试！');
+    }
     return false;
   }
 };
@@ -52,9 +54,11 @@ const handleUpdate = async (id: string, fields: Partial<FlowController>) => {
     hide();
     message.success('更新成功');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     hide();
-    message.error('更新失败请重试！');
+    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+      message.error('更新失败请重试！');
+    }
     return false;
   }
 };
@@ -70,9 +74,11 @@ const handleRemove = async (selectedRows: FlowController[]) => {
     hide();
     message.success('删除成功，即将刷新');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     hide();
-    message.error('删除失败，请重试');
+    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+      message.error('删除失败，请重试');
+    }
     return false;
   }
 };
@@ -220,8 +226,12 @@ const AutoApiConfigList: React.FC = () => {
           <Popconfirm
             title="确认删除该配置吗？"
             onConfirm={async () => {
-              await deleteAutoApiConfig(record.id);
-              actionRef.current?.reload();
+              try {
+                await deleteAutoApiConfig(record.id);
+                actionRef.current?.reload();
+              } catch (error) {
+                // 已通过全局拦截器展示
+              }
             }}
           >
             <a>删除</a>
@@ -320,7 +330,7 @@ const AutoApiConfigList: React.FC = () => {
       flex: 1;
       min-height: 0;
       max-height: none !important;
-      overflow-y: auto !important;
+      overflow-y: scroll !important;
     }
     .fh-table .ant-table-pagination {
       flex-shrink: 0;
@@ -421,9 +431,13 @@ const AutoApiConfigList: React.FC = () => {
         >
           <Button
             onClick={async () => {
-              await handleRemove(selectedRowsState);
-              setSelectedRows([]);
-              actionRef.current?.reloadAndRest?.();
+              try {
+                await handleRemove(selectedRowsState);
+                setSelectedRows([]);
+                actionRef.current?.reloadAndRest?.();
+              } catch (error) {
+                // 已处理
+              }
             }}
           >
             批量删除
@@ -431,9 +445,13 @@ const AutoApiConfigList: React.FC = () => {
           <Button
             type="primary"
             onClick={async () => {
-              await updateAutoApiConfig(selectedRowsState[0].id, { publishStatus: 1 });
-              setSelectedRows([]);
-              actionRef.current?.reloadAndRest?.();
+              try {
+                await updateAutoApiConfig(selectedRowsState[0].id, { publishStatus: 1 });
+                setSelectedRows([]);
+                actionRef.current?.reloadAndRest?.();
+              } catch (error) {
+                // 已处理
+              }
             }}
           >
             批量发布
@@ -493,8 +511,10 @@ const AutoApiConfigList: React.FC = () => {
             setSelectedRows([]);
             actionRef.current?.reload();
             return true;
-          } catch (error) {
-            message.error('批量移动失败');
+          } catch (error: any) {
+            if (!error?.message?.includes('DEMO_RESTRICTED')) {
+              message.error('批量移动失败');
+            }
             return false;
           }
         }}

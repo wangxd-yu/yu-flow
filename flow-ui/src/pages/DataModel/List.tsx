@@ -296,7 +296,7 @@ const DataModelList: React.FC = () => {
       flex: 1;
       min-height: 0;
       max-height: none !important;
-      overflow-y: auto !important;
+      overflow-y: scroll !important;
     }
     .fh-table .ant-table-pagination {
       flex-shrink: 0;
@@ -475,8 +475,10 @@ const DataModelList: React.FC = () => {
             actionRef.current?.clearSelected?.();
             actionRef.current?.reload();
             return true;
-          } catch {
-            message.error('批量移动失败');
+          } catch (error: any) {
+            if (!error?.message?.includes('DEMO_RESTRICTED')) {
+              message.error('批量移动失败');
+            }
             return false;
           }
         }}

@@ -92,8 +92,20 @@ export const requestConfig: RequestConfig = {
           const isStatusError = data.status !== undefined && data.status !== 200 && data.status !== 0;
 
           if (isOkError || isStatusError) {
-            message.error(data.msg || '请求失败');
-            throw new Error(data.msg || '请求失败');
+            const errorMsg = data.msg || '请求失败';
+            if (errorMsg.includes('DEMO_RESTRICTED')) {
+              const cleanMsg = errorMsg.replace(/.*\[DEMO_RESTRICTED\]/, '').trim();
+              Modal.warning({
+                title: '演示环境安全限制',
+                content: cleanMsg,
+                okText: '我知道了',
+                centered: true,
+                maskClosable: true,
+              });
+            } else {
+              message.error(errorMsg);
+            }
+            throw new Error(errorMsg);
           }
 
           // 返回处理后的数据
@@ -118,7 +130,18 @@ export const requestConfig: RequestConfig = {
           
           // 提取后端返回的 msg 或 message 字段
           const errorMsg = data.msg || data.message || `请求错误，状态码: ${error.response.status}`;
-          message.error(errorMsg);
+          if (errorMsg.includes('DEMO_RESTRICTED')) {
+            const cleanMsg = errorMsg.replace(/.*\[DEMO_RESTRICTED\]/, '').trim();
+            Modal.warning({
+              title: '演示环境安全限制',
+              content: cleanMsg,
+              okText: '我知道了',
+              centered: true,
+              maskClosable: true,
+            });
+          } else {
+            message.error(errorMsg);
+          }
         } else {
           // 处理网络不通等其他异常
           message.error(error.message || '网络或服务器异常');

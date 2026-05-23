@@ -234,7 +234,8 @@ const LoginLog: React.FC = () => {
         headerTitle="登录记录"
         actionRef={actionRef}
         rowKey="id"
-        scroll={{ x: 1200, y: 100000 }}
+        tableLayout="fixed"
+        scroll={{ x: 1240, y: 100000 }}
         search={{
           labelWidth: 'auto',
           defaultCollapsed: false,
@@ -343,7 +344,7 @@ const LoginLog: React.FC = () => {
           flex: 1;
           min-height: 0;
           max-height: none !important;
-          overflow-y: auto !important;
+          overflow-y: scroll !important;
         }
         .fh-table .ant-table-pagination {
           flex-shrink: 0;

@@ -32,9 +32,11 @@ const handleAdd = async (fields: DataSourceDO) => {
     hide();
     message.success('添加成功');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     hide();
-    message.error('添加失败请重试！');
+    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+      message.error('添加失败请重试！');
+    }
     return false;
   }
 };
@@ -49,9 +51,11 @@ const handleUpdate = async (id: string, fields: Partial<DataSourceDO>) => {
     hide();
     message.success('更新成功');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     hide();
-    message.error('更新失败请重试！');
+    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+      message.error('更新失败请重试！');
+    }
     return false;
   }
 };
@@ -67,9 +71,11 @@ const handleRemove = async (selectedRows: DataSourceDO[]) => {
     hide();
     message.success('删除成功，即将刷新');
     return true;
-  } catch (error) {
+  } catch (error: any) {
     hide();
-    message.error('删除失败，请重试');
+    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+      message.error('删除失败，请重试');
+    }
     return false;
   }
 };
@@ -88,6 +94,7 @@ const DataSourceList: React.FC = () => {
       title: '名称',
       dataIndex: 'name',
       tip: '数据源名称',
+      width: 150,
       formItemProps: {
         rules: [
           {
@@ -101,6 +108,7 @@ const DataSourceList: React.FC = () => {
       title: '数据源编码',
       dataIndex: 'code',
       tip: '全局唯一编码，用于跨环境关联',
+      width: 150,
       copyable: true,
       ellipsis: true,
       search: false,
@@ -110,6 +118,7 @@ const DataSourceList: React.FC = () => {
       title: '数据库类型',
       dataIndex: 'dbType',
       valueType: 'text',
+      width: 120,
       valueEnum: {
         mysql: { text: 'MySQL' },
         postgresql: { text: 'PostgreSQL' },
@@ -130,17 +139,20 @@ const DataSourceList: React.FC = () => {
       title: 'URL',
       dataIndex: 'url',
       valueType: 'text',
+      width: 200,
       ellipsis: true,
     },
     {
       title: '用户名',
       dataIndex: 'username',
       valueType: 'text',
+      width: 120,
       search: false,
     },
     {
       title: '状态',
       dataIndex: 'status',
+      width: 100,
       valueEnum: {
         0: { text: '禁用', status: 'Error' },
         1: { text: '启用', status: 'Success' },
@@ -194,13 +206,14 @@ const DataSourceList: React.FC = () => {
       title: '创建时间',
       dataIndex: 'createTime',
       valueType: 'dateTime',
+      width: 180,
       search: false,
     },
     {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: '300px',
+      width: 300,
       render: (_, record) => [
         <a
           key="edit"
@@ -216,8 +229,12 @@ const DataSourceList: React.FC = () => {
           key="delete"
           title="确定要删除吗？"
           onConfirm={async () => {
-            await deleteDataSource(record.id);
-            actionRef.current?.reload();
+            try {
+              await deleteDataSource(record.id);
+              actionRef.current?.reload();
+            } catch (error) {
+              // 错误已通过全局拦截器展示
+            }
           }}
         >
           <a>删除</a>
@@ -252,9 +269,13 @@ const DataSourceList: React.FC = () => {
           <a
             key="disable"
             onClick={async () => {
-              await disableDataSource(record.id);
-              actionRef.current?.reload();
-              message.success('已禁用数据源');
+              try {
+                await disableDataSource(record.id);
+                actionRef.current?.reload();
+                message.success('已禁用数据源');
+              } catch (error) {
+                // 错误已通过全局拦截器展示
+              }
             }}
           >
             禁用
@@ -263,9 +284,13 @@ const DataSourceList: React.FC = () => {
           <a
             key="enable"
             onClick={async () => {
-              await enableDataSource(record.id);
-              actionRef.current?.reload();
-              message.success('已启用数据源');
+              try {
+                await enableDataSource(record.id);
+                actionRef.current?.reload();
+                message.success('已启用数据源');
+              } catch (error) {
+                // 错误已通过全局拦截器展示
+              }
             }}
           >
             启用
@@ -359,7 +384,7 @@ const DataSourceList: React.FC = () => {
       flex: 1;
       min-height: 0;
       max-height: none !important;
-      overflow-y: auto !important;
+      overflow-y: scroll !important;
     }
     .fh-table .ant-table-pagination {
       flex-shrink: 0;
@@ -382,7 +407,8 @@ const DataSourceList: React.FC = () => {
         headerTitle="数据源列表"
         actionRef={actionRef}
         rowKey="id"
-        scroll={{ x: 'max-content', y: 100000 }}
+        tableLayout="fixed"
+        scroll={{ x: 1420, y: 100000 }}
         search={{
           labelWidth: 120,
         }}
@@ -430,9 +456,13 @@ const DataSourceList: React.FC = () => {
         >
           <Button
             onClick={async () => {
-              await handleRemove(selectedRowsState);
-              setSelectedRows([]);
-              actionRef.current?.reloadAndRest?.();
+              try {
+                await handleRemove(selectedRowsState);
+                setSelectedRows([]);
+                actionRef.current?.reloadAndRest?.();
+              } catch (error) {
+                // 错误已通过 handleRemove 捕获并提示
+              }
             }}
           >
             批量删除

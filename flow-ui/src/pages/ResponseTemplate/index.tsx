@@ -174,12 +174,11 @@ const ResponseTemplateManage: React.FC = () => {
       title: '成功包装体',
       dataIndex: 'successWrapper',
       width: 200,
-      ellipsis: true,
       search: false,
       render: (text) => {
         if (!text) return '-';
         return (
-          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12 }}>{text}</pre>} placement="topLeft">
+          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{text}</pre>} placement="topLeft">
             <code style={{
               display: 'block',
               fontSize: 12,
@@ -200,12 +199,11 @@ const ResponseTemplateManage: React.FC = () => {
       title: '分页包装体',
       dataIndex: 'pageWrapper',
       width: 200,
-      ellipsis: true,
       search: false,
       render: (text) => {
         if (!text) return '-';
         return (
-          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12 }}>{text}</pre>} placement="topLeft">
+          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{text}</pre>} placement="topLeft">
             <code style={{
               display: 'block',
               fontSize: 12,
@@ -226,12 +224,11 @@ const ResponseTemplateManage: React.FC = () => {
       title: '失败包装体',
       dataIndex: 'failWrapper',
       width: 200,
-      ellipsis: true,
       search: false,
       render: (text) => {
         if (!text) return '-';
         return (
-          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12 }}>{text}</pre>} placement="topLeft">
+          <Tooltip title={<pre style={{ margin: 0, color: '#fff', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{text}</pre>} placement="topLeft">
             <code style={{
               display: 'block',
               fontSize: 12,
