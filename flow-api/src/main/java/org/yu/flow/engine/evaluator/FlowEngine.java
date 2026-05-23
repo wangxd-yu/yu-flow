@@ -243,20 +243,35 @@ public class FlowEngine {
                 int status = Integer.parseInt(String.valueOf(rr.getStatus()));
                 if (traceEnabled) {
                     // 如果是 Debug 模式且包含 Response 节点，仍然优先返回日志快照
-                    return (T) context.getExecutionLogs();
+                    FlowTrace trace = context.getFlowTrace();
+                    trace.setEndTime(System.currentTimeMillis());
+                    trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
+                    trace.setStatus("success");
+                    trace.setGlobalOutputs(rr);
+                    return (T) trace;
                 }
                 return (T) new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
             }
 
             if (traceEnabled) {
-                return (T) context.getExecutionLogs();
+                FlowTrace trace = context.getFlowTrace();
+                trace.setEndTime(System.currentTimeMillis());
+                trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
+                trace.setStatus("success");
+                trace.setGlobalOutputs(context.getOutput());
+                return (T) trace;
             }
 
             return (T) ExecutionResult.success(context.getOutput());
         } catch (FlowException e) {
             log.error("e: ", e);
             if (traceEnabled) {
-                return (T) context.getExecutionLogs();
+                FlowTrace trace = context.getFlowTrace();
+                trace.setEndTime(System.currentTimeMillis());
+                trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
+                trace.setStatus("error");
+                trace.setErrorMsg(e.getMessage());
+                return (T) trace;
             }
             // 处理业务异常
             ErrorDefinition errorDef = flowDefinition.getErrors().get(e.getErrorCode());
@@ -267,7 +282,12 @@ public class FlowEngine {
         } catch (Exception e) {
             log.error(cn.hutool.core.exceptions.ExceptionUtil.stacktraceToString(e));
             if (traceEnabled) {
-                return (T) context.getExecutionLogs();
+                FlowTrace trace = context.getFlowTrace();
+                trace.setEndTime(System.currentTimeMillis());
+                trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
+                trace.setStatus("error");
+                trace.setErrorMsg(e.getMessage());
+                return (T) trace;
             }
             // 处理系统异常
             return (T) ExecutionResult.failure(500, "系统错误: " + e.getMessage());
@@ -392,7 +412,9 @@ public class FlowEngine {
                 .setNodeName(step.getName())
                 .setNodeType(step.getType())
                 .setStartTime(new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new Date(startTime)))
-                .setStatus("running");
+                .setStatus("running")
+                // 快照：节点执行前的上下文变量
+                .setInputs(context.copy(true).getVar());
             context.addExecutionLog(traceLog);
         }
 
@@ -409,11 +431,8 @@ public class FlowEngine {
 
             if (traceLog != null) {
                 traceLog.setStatus("success");
-                Object inputs = context.getCache("TRACE_INPUTS_" + step.getId());
-                if (inputs instanceof Map) {
-                    traceLog.setInputs((Map<String, Object>) inputs);
-                }
-                traceLog.setOutputs(context.getVariable(step.getId()));
+                // 快照：节点执行后的上下文变量（也可以只记录该节点产生的变量，但全量更方便调试器回溯）
+                traceLog.setOutputs(context.copy(true).getVar());
             }
         } catch (RetryStepException e) {
             Step retryStep = findStepById(e.getStepId(), flowDefinition);

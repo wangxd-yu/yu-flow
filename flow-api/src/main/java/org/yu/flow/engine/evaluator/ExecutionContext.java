@@ -21,7 +21,7 @@ public class ExecutionContext {
     // 节点完成状态跟踪（用于多父节点汇聚）
     private final Set<String> completedSteps = Collections.synchronizedSet(new HashSet<>());
     // 追踪日志收集器
-    private List<org.yu.flow.engine.model.ExecutionLog> executionLogs;
+    private org.yu.flow.engine.model.FlowTrace flowTrace;
     // 正则表达式匹配 ${xxx.xxx} 格式
     private static final Pattern PATTERN = Pattern.compile("\\$\\{(.+?)\\}");
 
@@ -59,7 +59,12 @@ public class ExecutionContext {
         this.isReadOnly = readOnly;
         this.traceEnabled = traceEnabled;
         if (this.traceEnabled) {
-            this.executionLogs = Collections.synchronizedList(new ArrayList<>());
+            this.flowTrace = new org.yu.flow.engine.model.FlowTrace();
+            this.flowTrace.setStepLogs(Collections.synchronizedList(new ArrayList<>()));
+            this.flowTrace.setStartTime(System.currentTimeMillis());
+            this.flowTrace.setTraceId(UUID.randomUUID().toString());
+            // 保存初始入参的快照
+            this.flowTrace.setGlobalInputs(deepCopyVariables(this.var));
         }
     }
 
@@ -162,7 +167,7 @@ public class ExecutionContext {
         copy.completedSteps.addAll(this.completedSteps);
         // 共享同一个追踪日志收集器
         if (this.traceEnabled) {
-            copy.executionLogs = this.executionLogs;
+            copy.flowTrace = this.flowTrace;
         }
         // 共享同一个步骤计数器（并行分支受全局预算约束）
         copy.stepCounter = this.stepCounter;
@@ -174,7 +179,7 @@ public class ExecutionContext {
     public ExecutionContext asReadOnly() {
         ExecutionContext readOnlyCtx = new ExecutionContext(this.var, true, this.traceEnabled);
         if (this.traceEnabled) {
-            readOnlyCtx.executionLogs = this.executionLogs;
+            readOnlyCtx.flowTrace = this.flowTrace;
         }
         return readOnlyCtx;
     }
@@ -215,13 +220,13 @@ public class ExecutionContext {
     }
 
     public void addExecutionLog(org.yu.flow.engine.model.ExecutionLog log) {
-        if (traceEnabled && executionLogs != null) {
-            executionLogs.add(log);
+        if (traceEnabled && flowTrace != null && flowTrace.getStepLogs() != null) {
+            flowTrace.getStepLogs().add(log);
         }
     }
 
-    public List<org.yu.flow.engine.model.ExecutionLog> getExecutionLogs() {
-        return executionLogs;
+    public org.yu.flow.engine.model.FlowTrace getFlowTrace() {
+        return flowTrace;
     }
 
     // ========== 步骤执行限制 (Anti-Hang) ==========
