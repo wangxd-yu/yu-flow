@@ -1,4 +1,5 @@
-package org.yu.flow.module.directory.service;
+﻿package org.yu.flow.module.directory.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
@@ -37,7 +38,7 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
     private PageInfoRepository pageInfoRepository;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     // ================================================================
     // 获取目录树

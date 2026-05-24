@@ -1,4 +1,5 @@
-package org.yu.flow.module.page.service;
+﻿package org.yu.flow.module.page.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import org.yu.flow.module.page.domain.PageDirectoryDO;
 import org.yu.flow.module.page.dto.PageDirectoryDTO;
@@ -28,7 +29,7 @@ public class PageDirectoryServiceImpl implements PageDirectoryService {
     private PageInfoRepository pageInfoRepository;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     // ================================================================
     // 获取目录树

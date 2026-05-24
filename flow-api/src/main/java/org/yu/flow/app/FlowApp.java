@@ -2,6 +2,7 @@ package org.yu.flow.app;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * 流程引擎自研应用启动类
@@ -10,6 +11,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 开发联调用的启动类应置于独立的子包中（如 org.yu.flow.app）。
  * 这样它既能通过自动配置加载库功能，又不会因为重叠扫描导致 Bean 重复注册。
  */
+@EnableAsync
 @SpringBootApplication
 public class FlowApp {
     public static void main(String[] args) {

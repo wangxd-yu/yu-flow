@@ -23,18 +23,15 @@ const API_BASE = '/flow-api/execution-logs';
 // ============================
 // 类型定义
 // ============================
-interface ExecutionLogDTO {
+interface ExecutionLogListDTO {
   id: string;
   apiId: string;
   apiName: string;
   url: string;
   method: string;
-  requestParams: string;
-  responseBody: string;
   status: 'SUCCESS' | 'ERROR';
-  errorMsg: string;
   costTimeMs: number;
-  traceData: string;
+  hasTrace: boolean;
   createTime: string;
 }
 
@@ -42,11 +39,22 @@ interface ExecutionLogDTO {
 // API 请求
 // ============================
 const queryExecutionLogPage = async (params: any) => {
-  const { current, pageSize, ...rest } = params;
+  const { current, pageSize, createTime, ...rest } = params;
+  
+  // 处理时间范围
+  let startTime: string | undefined;
+  let endTime: string | undefined;
+  if (createTime && Array.isArray(createTime)) {
+    startTime = createTime[0];
+    endTime = createTime[1];
+  }
+
   const result = await request(`${API_BASE}/page`, {
     method: 'GET',
     params: {
       ...rest,
+      startTime,
+      endTime,
       page: (current || 1) - 1,
       size: pageSize || 20,
     },
@@ -59,8 +67,12 @@ const queryExecutionLogPage = async (params: any) => {
 };
 
 const getApiConfig = async (apiId: string) => {
-  const res = await request(`/flow-api/flow-api-info/${apiId}`);
-  return res.data;
+  // Umi-request 拦截器已自动剥离 R 外壳，res 即为 FlowApiDO 对象
+  return await request(`/flow-api/api/${apiId}`);
+};
+
+const getExecutionLogDetail = async (id: string) => {
+  return await request(`${API_BASE}/${id}`);
 };
 
 // ============================
@@ -78,22 +90,44 @@ const formatDuration = (ms: number) => {
 const ExecutionLog: React.FC = () => {
   const actionRef = useRef<ActionType>();
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [currentLog, setCurrentLog] = useState<ExecutionLogDTO | null>(null);
+  const [currentLog, setCurrentLog] = useState<ExecutionLogListDTO | null>(null);
   const [currentApiDsl, setCurrentApiDsl] = useState<string>('');
   const [currentTrace, setCurrentTrace] = useState<FlowTrace | null>(null);
 
-  const handleViewTrace = async (record: ExecutionLogDTO) => {
-    if (!record.traceData) {
+  const handleViewTrace = async (record: ExecutionLogListDTO) => {
+    if (!record.hasTrace) {
       message.warning('该执行日志没有关联的追踪快照数据');
       return;
     }
     
     try {
-      const trace: FlowTrace = JSON.parse(record.traceData);
-      const apiInfo = await getApiConfig(record.apiId);
+      // 列表使用的是轻量级 DTO，需调详情接口获取 traceData 大字段
+      const detail = await getExecutionLogDetail(record.id);
+      if (!detail || !detail.traceData) {
+        message.warning('未找到该执行日志的追踪快照数据');
+        return;
+      }
+
+      const trace: FlowTrace & { dslSnapshot?: string } = JSON.parse(detail.traceData);
+      
+      // 优先使用历史执行时的 DSL 快照（忠实复原现场），若无则 fallback 获取最新 API 配置
+      let dslContent = trace.dslSnapshot || '';
+      
+      if (!dslContent) {
+        try {
+          const apiInfo = await getApiConfig(record.apiId);
+          dslContent = apiInfo?.dslContent || '';
+        } catch (e) {
+          console.error('getApiConfig failed:', e);
+        }
+      }
+      
+      if (!dslContent) {
+        message.warning('无法加载 API 配置，画布将显示为空');
+      }
       
       setCurrentTrace(trace);
-      setCurrentApiDsl(apiInfo?.dslContent || '');
+      setCurrentApiDsl(dslContent);
       setCurrentLog(record);
       setDrawerVisible(true);
     } catch (e) {
@@ -102,7 +136,7 @@ const ExecutionLog: React.FC = () => {
     }
   };
 
-  const columns: ProColumns<ExecutionLogDTO>[] = [
+  const columns: ProColumns<ExecutionLogListDTO>[] = [
     {
       title: '序号',
       valueType: 'index',
@@ -174,19 +208,35 @@ const ExecutionLog: React.FC = () => {
       dataIndex: 'costTimeMs',
       width: 100,
       search: false,
-      render: (_, record) => (
-        <span>
-          <ClockCircleOutlined style={{ marginRight: 4, color: '#8c8c8c' }} />
-          {formatDuration(record.costTimeMs)}
-        </span>
-      ),
+      render: (_, record) => {
+        let color = '#52c41a'; // 绿色 (<200ms)
+        if (record.costTimeMs >= 1000) {
+          color = '#ff4d4f'; // 红色 (>1s)
+        } else if (record.costTimeMs >= 200) {
+          color = '#faad14'; // 橙色 (200ms~1s)
+        }
+        return (
+          <span style={{ color }}>
+            <ClockCircleOutlined style={{ marginRight: 4 }} />
+            {formatDuration(record.costTimeMs)}
+          </span>
+        );
+      },
     },
     {
       title: '执行时间',
       dataIndex: 'createTime',
       width: 180,
-      valueType: 'dateTime',
-      search: false,
+      valueType: 'dateTimeRange',
+      fieldProps: {
+        placeholder: ['开始时间', '结束时间'],
+      },
+      render: (_, record) => record.createTime || '-',
+      search: {
+        transform: (value) => ({
+          createTime: value,
+        }),
+      },
     },
     {
       title: '操作',
@@ -200,7 +250,7 @@ const ExecutionLog: React.FC = () => {
           size="small"
           icon={<EyeOutlined />}
           onClick={() => handleViewTrace(record)}
-          disabled={!record.traceData}
+          disabled={!record.hasTrace}
         >
           查看快照
         </Button>,
@@ -217,7 +267,7 @@ const ExecutionLog: React.FC = () => {
         subTitle: '监控与追溯生产环境下 API 的调用状态、耗时及请求上下文',
       }}
     >
-      <ProTable<ExecutionLogDTO>
+      <ProTable<ExecutionLogListDTO>
         className="fh-table"
         headerTitle="执行记录"
         actionRef={actionRef}

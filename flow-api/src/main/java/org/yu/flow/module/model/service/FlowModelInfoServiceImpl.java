@@ -1,4 +1,5 @@
-package org.yu.flow.module.model.service;
+﻿package org.yu.flow.module.model.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.Constants;
@@ -66,7 +67,7 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
     private DynamicDataSourceService dynamicDataSourceService;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     @Override
     public PageBean<FlowModelInfoDTO> findPage(String directoryId, String name, String tableName, int page, int size) {

@@ -8,6 +8,8 @@ import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.engine.model.Step;
 import org.yu.flow.engine.model.step.ForStep;
+import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.exception.FlowException;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -96,12 +98,12 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
 
         // [防挂死] 演示模式下限制 For 循环的输入数组大小
         try {
-            org.yu.flow.config.DemoModeGuard guard =
-                    cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.DemoModeGuard.class);
+            DemoModeGuard guard =
+                    cn.hutool.extra.spring.SpringUtil.getBean(DemoModeGuard.class);
             if (guard != null) {
                 guard.checkForLoopSize(totalCount, step.getId());
             }
-        } catch (org.yu.flow.exception.FlowException e) {
+        } catch (FlowException e) {
             throw e; // 演示模式限制异常，直接抛出
         } catch (Exception ignored) {
             // 非 Spring 环境或容器未就绪，忽略

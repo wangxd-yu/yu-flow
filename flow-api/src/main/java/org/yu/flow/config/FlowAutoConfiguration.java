@@ -15,6 +15,9 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.Ordered;
+import org.yu.flow.auto.service.FlowApiExecutionService;
+import org.yu.flow.config.response.ResponseStrategyResolver;
+import org.yu.flow.config.response.ResponseTransformer;
 
 /**
  * yu-flow 自动装配入口。
@@ -71,11 +74,11 @@ public class FlowAutoConfiguration {
     @Bean
     public FilterRegistrationBean<FlowApiGatewayFilter> flowApiGatewayFilterRegistration(
             YuFlowProperties flowProperties,
-            org.yu.flow.auto.service.FlowApiExecutionService flowApiService,
-            org.yu.flow.config.FlowApiCacheManager flowApiCacheManager,
-            org.yu.flow.config.SchemaValidatorService schemaValidatorService,
-            org.yu.flow.config.response.ResponseStrategyResolver responseStrategyResolver,
-            org.yu.flow.config.response.ResponseTransformer responseTransformer) {
+            FlowApiExecutionService flowApiService,
+            FlowApiCacheManager flowApiCacheManager,
+            SchemaValidatorService schemaValidatorService,
+            ResponseStrategyResolver responseStrategyResolver,
+            ResponseTransformer responseTransformer) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
                 schemaValidatorService, responseStrategyResolver, responseTransformer);

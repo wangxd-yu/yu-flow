@@ -236,6 +236,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
     node, selected, themeColor, outlineCss, backgroundColor, extraStyle, children, addon,
 }) => {
     const [hovered, setHovered] = React.useState(false);
+    const isReadonly = node.model?.graph?.options?.interacting === false;
 
     return React.createElement('div', {
         onMouseEnter: () => setHovered(true),
@@ -248,7 +249,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
             pointerEvents: 'auto' as const, // 关键：允许捕获 hover 事件
         },
     },
-        React.createElement(NodeToolbar, { node, selected, themeColor, visible: hovered && selected }),
+        React.createElement(NodeToolbar, { node, selected, themeColor, visible: hovered && selected && !isReadonly }),
         addon,
         React.createElement('div', {
             style: {
@@ -265,7 +266,18 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                 userSelect: 'none' as const,
                 ...extraStyle,
             },
-        }, children),
+        }, 
+            children,
+            isReadonly && React.createElement('div', {
+                style: {
+                    position: 'absolute' as const,
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    zIndex: 9999,
+                    cursor: 'not-allowed',
+                    pointerEvents: 'auto' as const,
+                }
+            })
+        ),
     );
 };
 

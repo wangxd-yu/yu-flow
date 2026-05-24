@@ -1,4 +1,5 @@
-package org.yu.flow.module.page.service;
+﻿package org.yu.flow.module.page.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.auto.dto.PageBean;
@@ -45,7 +46,7 @@ public class PageInfoServiceImpl implements PageInfoService {
     private FlowDirectoryService flowDirectoryService;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     // ================================================================
     // 校验页面访问路径是否已被占用

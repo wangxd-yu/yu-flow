@@ -8,11 +8,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.executionlog.dto.FlowExecutionLogDTO;
+import org.yu.flow.module.executionlog.dto.FlowExecutionLogListDTO;
 import org.yu.flow.module.executionlog.query.FlowExecutionLogQueryDTO;
 import org.yu.flow.module.executionlog.service.FlowExecutionLogService;
 
 import javax.annotation.Resource;
-import java.util.List;
 
 @RestController
 @RequestMapping("/flow-api/execution-logs")
@@ -21,11 +21,13 @@ public class FlowExecutionLogController {
     @Resource
     private FlowExecutionLogService flowExecutionLogService;
 
+    /**
+     * 分页列表（轻量，不含大字段，供大盘表格使用）
+     */
     @GetMapping("/page")
-    public R<PageBean<FlowExecutionLogDTO>> getPage(FlowExecutionLogQueryDTO queryDTO) {
-        Page<FlowExecutionLogDTO> pageResult = flowExecutionLogService.pageQuery(queryDTO);
-        
-        PageBean<FlowExecutionLogDTO> pageBean = new PageBean<>(
+    public R<PageBean<FlowExecutionLogListDTO>> getPage(FlowExecutionLogQueryDTO queryDTO) {
+        Page<FlowExecutionLogListDTO> pageResult = flowExecutionLogService.pageList(queryDTO);
+        PageBean<FlowExecutionLogListDTO> pageBean = new PageBean<>(
                 pageResult.getContent(),
                 pageResult.getSize(),
                 pageResult.getNumber(),
@@ -35,6 +37,9 @@ public class FlowExecutionLogController {
         return R.ok(pageBean);
     }
 
+    /**
+     * 按 ID 查询完整详情（含 traceData/requestParams/responseBody 等大字段，用于快照回放）
+     */
     @GetMapping("/{id}")
     public R<FlowExecutionLogDTO> getById(@PathVariable String id) {
         FlowExecutionLogDTO log = flowExecutionLogService.getById(id);
@@ -44,3 +49,4 @@ public class FlowExecutionLogController {
         return R.fail("Log not found");
     }
 }
+

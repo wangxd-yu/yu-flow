@@ -1,4 +1,5 @@
-package org.yu.flow.module.sysconfig.service.impl;
+﻿package org.yu.flow.module.sysconfig.service.impl;
+import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.auto.dto.PageBean;
@@ -37,7 +38,7 @@ public class SysConfigServiceImpl implements SysConfigService {
     private SysConfigCacheManager sysConfigCacheManager;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     @Override
     public PageBean<SysConfigDTO> findPage(SysConfigQueryDTO queryDTO) {

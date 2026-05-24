@@ -3,6 +3,8 @@ package org.yu.flow.engine.evaluator;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.yu.flow.exception.FlowException;
+import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.ExecutionLog;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,7 +23,7 @@ public class ExecutionContext {
     // 节点完成状态跟踪（用于多父节点汇聚）
     private final Set<String> completedSteps = Collections.synchronizedSet(new HashSet<>());
     // 追踪日志收集器
-    private org.yu.flow.engine.model.FlowTrace flowTrace;
+    private FlowTrace flowTrace;
     // 正则表达式匹配 ${xxx.xxx} 格式
     private static final Pattern PATTERN = Pattern.compile("\\$\\{(.+?)\\}");
 
@@ -59,7 +61,7 @@ public class ExecutionContext {
         this.isReadOnly = readOnly;
         this.traceEnabled = traceEnabled;
         if (this.traceEnabled) {
-            this.flowTrace = new org.yu.flow.engine.model.FlowTrace();
+            this.flowTrace = new FlowTrace();
             this.flowTrace.setStepLogs(Collections.synchronizedList(new ArrayList<>()));
             this.flowTrace.setStartTime(System.currentTimeMillis());
             this.flowTrace.setTraceId(UUID.randomUUID().toString());
@@ -219,13 +221,13 @@ public class ExecutionContext {
         return traceEnabled;
     }
 
-    public void addExecutionLog(org.yu.flow.engine.model.ExecutionLog log) {
+    public void addExecutionLog(ExecutionLog log) {
         if (traceEnabled && flowTrace != null && flowTrace.getStepLogs() != null) {
             flowTrace.getStepLogs().add(log);
         }
     }
 
-    public org.yu.flow.engine.model.FlowTrace getFlowTrace() {
+    public FlowTrace getFlowTrace() {
         return flowTrace;
     }
 

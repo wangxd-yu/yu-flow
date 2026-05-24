@@ -1,4 +1,5 @@
-package org.yu.flow.module.api.service;
+﻿package org.yu.flow.module.api.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
@@ -56,7 +57,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private FlowApiCacheManager flowApiCacheManager;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     // ============================= FlowApiDO CRUD =============================
 

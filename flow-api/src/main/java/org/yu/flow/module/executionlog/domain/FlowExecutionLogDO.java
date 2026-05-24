@@ -38,7 +38,7 @@ public class FlowExecutionLogDO {
 
     private String status;
 
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(columnDefinition = "TEXT")
     private String errorMsg;
 
     private Long costTimeMs;

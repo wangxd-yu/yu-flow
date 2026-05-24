@@ -33,6 +33,7 @@ export type ActionToolbarProps = {
   onSave?: () => void;
   onCancel?: () => void;
   onFormat?: () => void;
+  readonly?: boolean;
 };
 
 export default function ActionToolbar(props: ActionToolbarProps) {
@@ -50,7 +51,8 @@ export default function ActionToolbar(props: ActionToolbarProps) {
     mode,
     onModeChange,
     onSave,
-    onFormat
+    onFormat,
+    readonly
   } = props;
 
   return (
@@ -64,52 +66,64 @@ export default function ActionToolbar(props: ActionToolbarProps) {
         background: '#ffffff',
       }}
     >
-      <Radio.Group
-        value={mode}
-        onChange={(e) => onModeChange(e.target.value)}
-        optionType="button"
-        buttonStyle="solid"
-        size="small"
-      >
-        <Radio.Button value="design">
-          <Space size={4}>
-            <NodeIndexOutlined />
-            设计模式
-          </Space>
-        </Radio.Button>
-        <Radio.Button value="code">
-          <Space size={4}>
-            <CodeOutlined />
-            代码模式
-          </Space>
-        </Radio.Button>
-      </Radio.Group>
+      <div>
+        {!readonly && (
+          <Radio.Group
+            value={mode}
+            onChange={(e) => onModeChange(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+            size="small"
+          >
+            <Radio.Button value="design">
+              <Space size={4}>
+                <NodeIndexOutlined />
+                设计模式
+              </Space>
+            </Radio.Button>
+            <Radio.Button value="code">
+              <Space size={4}>
+                <CodeOutlined />
+                代码模式
+              </Space>
+            </Radio.Button>
+          </Radio.Group>
+        )}
+      </div>
 
       <Space>
-        {mode === 'code' && (
+        {!readonly && mode === 'code' && (
           <Tooltip title="格式化文档">
             <Button type="text" icon={<FormatPainterOutlined />} onClick={onFormat} />
           </Tooltip>
         )}
-        <Tooltip title="从 JSON 刷新">
-          <Button type="text" icon={<ReloadOutlined />} onClick={onReloadFromJson} />
-        </Tooltip>
-        <Tooltip title="复制 JSON">
-          <Button type="text" icon={<CopyOutlined />} onClick={onCopyJson} />
-        </Tooltip>
+        {!readonly && (
+          <>
+            <Tooltip title="从 JSON 刷新">
+              <Button type="text" icon={<ReloadOutlined />} onClick={onReloadFromJson} />
+            </Tooltip>
+            <Tooltip title="复制 JSON">
+              <Button type="text" icon={<CopyOutlined />} onClick={onCopyJson} />
+            </Tooltip>
+          </>
+        )}
         <Tooltip title={minimapVisible ? "隐藏导航" : "显示导航"}>
           <Button type="text" icon={minimapVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />} onClick={onToggleMinimap} />
         </Tooltip>
-        <Divider type="vertical" />
-        <Tooltip title="撤销 (Ctrl+Z)">
-          <Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} />
-        </Tooltip>
-        <Tooltip title="重做 (Ctrl+Shift+Z)">
-          <Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} />
-        </Tooltip>
+        {!readonly && (
+          <>
+            <Divider type="vertical" />
+            <Tooltip title="撤销 (Ctrl+Z)">
+              <Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} />
+            </Tooltip>
+            <Tooltip title="重做 (Ctrl+Shift+Z)">
+              <Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} />
+            </Tooltip>
+          </>
+        )}
 
         {/* ── 全屏模式下显示保存按钮 ── */}
-        {isFullscreen && (
+        {!readonly && isFullscreen && (
           <>
             <Divider type="vertical" />
             <Button type="primary" onClick={onSave} icon={<SaveOutlined />}>保存</Button>

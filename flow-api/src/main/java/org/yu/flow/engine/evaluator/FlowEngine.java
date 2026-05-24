@@ -14,6 +14,7 @@ import org.yu.flow.engine.model.step.*;
 import org.yu.flow.engine.service.SqlExecutorService;
 import org.yu.flow.util.ThrowableUtil;
 import org.springframework.stereotype.Component;
+import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.engine.evaluator.executor.*;
 import org.yu.flow.engine.model.step.ResponseResult;
 
@@ -51,8 +52,8 @@ public class FlowEngine {
         registerExecutors();
         // 尝试从 Spring 容器获取 DemoModeGuard 配置（非 Spring 环境下忽略）
         try {
-            org.yu.flow.config.DemoModeGuard guard =
-                    cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.DemoModeGuard.class);
+            DemoModeGuard guard =
+                    cn.hutool.extra.spring.SpringUtil.getBean(DemoModeGuard.class);
             if (guard != null) {
                 this.maxSteps = guard.getMaxSteps();
             }

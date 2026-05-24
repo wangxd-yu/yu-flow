@@ -10,6 +10,7 @@ import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
+import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
 import org.yu.flow.dto.R;
 
@@ -44,7 +45,7 @@ public class FlowApiController {
     private FlowEngine flowEngine;
 
     @PostMapping("/debug/run")
-    public R<org.yu.flow.engine.model.FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
+    public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
         try {
             Map<String, Object> args = new HashMap<>();
             Map<String, Object> requestMap = new HashMap<>();
@@ -64,9 +65,9 @@ public class FlowApiController {
             args.put("request", requestMap);
 
             // Execute flow engine in trace mode
-            org.yu.flow.engine.model.FlowTrace trace = flowEngine.execute(requestDTO.getDslContent(), args, true);
+            FlowTrace trace = flowEngine.execute(requestDTO.getDslContent(), args, true);
 
-            return R.ok(trace != null ? trace : new org.yu.flow.engine.model.FlowTrace());
+            return R.ok(trace != null ? trace : new FlowTrace());
         } catch (Exception e) {
             log.error("Debug run failed", e);
             ExecutionLog errorLog = new ExecutionLog()
@@ -77,7 +78,7 @@ public class FlowApiController {
                 .setStatus("error")
                 .setStartTime(new SimpleDateFormat("HH:mm:ss.SSS").format(new Date()))
                 .setError(e.getMessage());
-            org.yu.flow.engine.model.FlowTrace errorTrace = new org.yu.flow.engine.model.FlowTrace();
+            FlowTrace errorTrace = new FlowTrace();
             errorTrace.setStatus("error");
             errorTrace.setErrorMsg(e.getMessage());
             errorTrace.setStepLogs(Collections.singletonList(errorLog));

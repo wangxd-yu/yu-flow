@@ -1,4 +1,5 @@
-package org.yu.flow.module.datasource.service;
+﻿package org.yu.flow.module.datasource.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
@@ -66,7 +67,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private AesEncryptUtil aesEncryptUtil;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     // ====================================================================
     //  通用查询 SQL 片段

@@ -22,6 +22,7 @@ public class FlowTrace {
      */
     private String status;
     private String errorMsg;
+    private String dslSnapshot;
     
     private Map<String, Object> globalInputs;
     private Object globalOutputs;

@@ -1,4 +1,5 @@
-package org.yu.flow.module.sysmacro.service;
+﻿package org.yu.flow.module.sysmacro.service;
+import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +43,7 @@ public class SysMacroServiceImpl implements SysMacroService {
     private SysMacroCacheManager sysMacroCacheManager;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     @Override
     public PageBean<SysMacroDTO> findPage(SysMacroQueryDTO queryDTO) {

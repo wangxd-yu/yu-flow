@@ -1,4 +1,5 @@
-package org.yu.flow.module.datasource.controller;
+﻿package org.yu.flow.module.datasource.controller;
+import org.yu.flow.config.DemoModeGuard;
 
 import org.yu.flow.annotation.YuFlowApi;
 
@@ -28,7 +29,7 @@ public class DynamicDataSourceController {
     private DynamicDataSourceService dynamicDataSourceService;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     /**
      * 获取所有数据源

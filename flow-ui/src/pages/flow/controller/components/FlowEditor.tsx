@@ -82,11 +82,15 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         apiMethod,
         height = 'calc(100vh - 48px)',
         globalForm,
-        isEdit = true,
+        isEdit: propsIsEdit = true,
         onSave,
         onCancel,
         readonlyTrace,
     } = props;
+
+    // ── 只读快照模式标识 ──
+    const isReadonlySnapshot = !!readonlyTrace;
+    const isEdit = isReadonlySnapshot ? false : propsIsEdit;
 
     // ── 控制台高度（用于撑开画布，防止被控制台遮挡） ──
     const [consoleHeight, setConsoleHeight] = React.useState(0);
@@ -120,6 +124,14 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     // 调试器状态
     const [executionLogs, setExecutionLogs] = React.useState<ExecutionLog[]>(readonlyTrace?.stepLogs || []);
     const [debuggerSelectedNodeId, setDebuggerSelectedNodeId] = React.useState<string | null>(null);
+
+    // 问题十一修复：监听 readonlyTrace 变化，确保 executionLogs 同步更新
+    // （当前通过 destroyOnClose 规避，但显式同步更健壮）
+    React.useEffect(() => {
+        if (readonlyTrace?.stepLogs) {
+            setExecutionLogs(readonlyTrace.stepLogs);
+        }
+    }, [readonlyTrace]);
 
     // ── 快捷添加菜单 (Quick Add Menu) ──
     const [quickAddMenu, setQuickAddMenu] = React.useState<{
@@ -547,7 +559,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             grid: { size: 10, visible: true },
             panning: { enabled: true, modifiers: 'space' },
             mousewheel: { enabled: true, modifiers: ['ctrl', 'meta'], factor: 1.1 },
-            interacting: {
+            // 问题十二修复：只读回放模式下禁用所有 Graph 交互，防止用户意外创建连线
+            interacting: readonlyTrace ? false : {
                 edgeMovable: true,
                 edgeLabelMovable: false,
                 arrowheadMovable: false,
@@ -1170,6 +1183,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 onModeChange={setMode}
                 onSave={handleSave}
                 onFormat={handleFormat}
+                readonly={isReadonlySnapshot}
             />
 
             {parseError && (
@@ -1196,61 +1210,63 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 {/* ── 设计模式区域（始终挂载，mode=code 时隐藏） ── */}
                 <div style={{ display: mode === 'design' ? 'contents' : 'none' }}>
                     {/* ── 组件面板 (V3.1 Palette) ── */}
-                    <div style={{ position: 'relative', display: 'flex', height: '100%', flexShrink: 0 }}>
-                        <div
-                            style={{
-                                width: leftPanelCollapsed ? 0 : 280,
-                                minWidth: leftPanelCollapsed ? 0 : 280,
-                                height: '100%',
-                                overflow: leftPanelCollapsed ? 'hidden' : 'auto',
-                                borderRight: leftPanelCollapsed ? 'none' : '1px solid #e5e6eb',
-                                background: '#fff',
-                                transition: 'width 0.25s ease, min-width 0.25s ease',
-                            }}
-                        >
-                            <DslPalette
-                                graphRef={graphRef}
-                                onAddNode={handleAddNode}
-                                canCreate={canCreate}
-                            />
-                        </div>
-                        {/* 收起/展开按钮 */}
-                        <Tooltip title={leftPanelCollapsed ? '展开组件面板' : '收起组件面板'} placement="right">
+                    {!isReadonlySnapshot && (
+                        <div style={{ position: 'relative', display: 'flex', height: '100%', flexShrink: 0 }}>
                             <div
-                                onClick={() => setLeftPanelCollapsed((v) => !v)}
                                 style={{
-                                    position: 'absolute',
-                                    right: -16,
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    width: 16,
-                                    height: 48,
+                                    width: leftPanelCollapsed ? 0 : 280,
+                                    minWidth: leftPanelCollapsed ? 0 : 280,
+                                    height: '100%',
+                                    overflow: leftPanelCollapsed ? 'hidden' : 'auto',
+                                    borderRight: leftPanelCollapsed ? 'none' : '1px solid #e5e6eb',
                                     background: '#fff',
-                                    border: '1px solid #e5e6eb',
-                                    borderLeft: 'none',
-                                    borderRadius: '0 4px 4px 0',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    zIndex: 10,
-                                    color: '#8c8c8c',
-                                    fontSize: 10,
-                                    transition: 'color 0.2s, background 0.2s',
-                                }}
-                                onMouseEnter={(e) => {
-                                    (e.currentTarget as HTMLDivElement).style.background = '#f5f5f5';
-                                    (e.currentTarget as HTMLDivElement).style.color = '#1677ff';
-                                }}
-                                onMouseLeave={(e) => {
-                                    (e.currentTarget as HTMLDivElement).style.background = '#fff';
-                                    (e.currentTarget as HTMLDivElement).style.color = '#8c8c8c';
+                                    transition: 'width 0.25s ease, min-width 0.25s ease',
                                 }}
                             >
-                                {leftPanelCollapsed ? <RightOutlined /> : <LeftOutlined />}
+                                <DslPalette
+                                    graphRef={graphRef}
+                                    onAddNode={handleAddNode}
+                                    canCreate={canCreate}
+                                />
                             </div>
-                        </Tooltip>
-                    </div>
+                            {/* 收起/展开按钮 */}
+                            <Tooltip title={leftPanelCollapsed ? '展开组件面板' : '收起组件面板'} placement="right">
+                                <div
+                                    onClick={() => setLeftPanelCollapsed((v) => !v)}
+                                    style={{
+                                        position: 'absolute',
+                                        right: -16,
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        width: 16,
+                                        height: 48,
+                                        background: '#fff',
+                                        border: '1px solid #e5e6eb',
+                                        borderLeft: 'none',
+                                        borderRadius: '0 4px 4px 0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        zIndex: 10,
+                                        color: '#8c8c8c',
+                                        fontSize: 10,
+                                        transition: 'color 0.2s, background 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        (e.currentTarget as HTMLDivElement).style.background = '#f5f5f5';
+                                        (e.currentTarget as HTMLDivElement).style.color = '#1677ff';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        (e.currentTarget as HTMLDivElement).style.background = '#fff';
+                                        (e.currentTarget as HTMLDivElement).style.color = '#8c8c8c';
+                                    }}
+                                >
+                                    {leftPanelCollapsed ? <RightOutlined /> : <LeftOutlined />}
+                                </div>
+                            </Tooltip>
+                        </div>
+                    )}
 
                     {/* ── 画布区域 ── */}
                     <div
@@ -1273,7 +1289,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                         <MiniMapPanel visible={minimapVisible} containerRef={minimapRef} />
 
                         {/* ── 快捷添加弹窗 (Spotlight 风格) ── */}
-                        {quickAddMenu?.visible && graphRef.current && (
+                        {!isReadonlySnapshot && quickAddMenu?.visible && graphRef.current && (
                             <QuickAddPopover
                                 graph={graphRef.current}
                                 x={quickAddMenu.x}
@@ -1302,33 +1318,37 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                             />
                         )}
 
-                        <FlowDebugger
-                            dslContent={value}
-                            apiUrl={apiUrl}
-                            apiMethod={apiMethod}
-                            onZoomIn={() => graphRef.current?.zoom(0.1)}
-                            onZoomOut={() => graphRef.current?.zoom(-0.1)}
-                            onFitView={() => graphRef.current?.centerContent()}
-                            onUndo={onUndo}
-                            onRedo={onRedo}
-                            canUndo={canUndo}
-                            canRedo={canRedo}
-                            onRun={async (payload) => {
-                                const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
-                                const result = await debugRunAutoApiConfig({ ...payload, dslContent: currentDslStr });
-                                if (result?.code === 0 && result.data) {
-                                    return result.data;
-                                } else if (result?.data) {
-                                    return result.data;
-                                } else if (result?.traceId) { // Just in case umi request unwraps it
-                                    return result;
-                                }
-                                throw new Error(result?.msg || 'Run failed');
-                            }}
-                            onConsoleOpenChange={(open) => setConsoleHeight(open ? 300 : 0)}
-                            onExecutionLogsChange={setExecutionLogs}
-                            onSelectedLogChange={setDebuggerSelectedNodeId}
-                        />
+                        {/* 底部悬浮调试器 (支持设计时的真实运行，以及快照模式下的回放展示) */}
+                        {mode === 'design' && (
+                            <FlowDebugger
+                                dslContent={value}
+                                apiUrl={apiUrl}
+                                apiMethod={apiMethod}
+                                onZoomIn={() => graphRef.current?.zoom(0.1)}
+                                onZoomOut={() => graphRef.current?.zoom(-0.1)}
+                                onFitView={() => graphRef.current?.centerContent()}
+                                onUndo={onUndo}
+                                onRedo={onRedo}
+                                canUndo={canUndo}
+                                canRedo={canRedo}
+                                onRun={async (payload) => {
+                                    const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
+                                    const result = await debugRunAutoApiConfig({ ...payload, dslContent: currentDslStr });
+                                    if (result?.code === 0 && result.data) {
+                                        return result.data;
+                                    } else if (result?.data) {
+                                        return result.data;
+                                    } else if (result?.traceId) { // Just in case umi request unwraps it
+                                        return result;
+                                    }
+                                    throw new Error(result?.msg || 'Run failed');
+                                }}
+                                onConsoleOpenChange={(open) => setConsoleHeight(open ? 300 : 0)}
+                                onExecutionLogsChange={setExecutionLogs}
+                                onSelectedLogChange={setDebuggerSelectedNodeId}
+                                playbackTrace={isReadonlySnapshot ? readonlyTrace : undefined}
+                            />
+                        )}
                     </div>
 
                     {/* ── 属性配置面板 (V3.1 Property Drawer) ── */}
@@ -1398,7 +1418,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 </div>
 
                 {/* ── 代码模式 ── */}
-                {mode === 'code' && (
+                {!isReadonlySnapshot && mode === 'code' && (
                     <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                         <CodeEditor
                             value={value || ''}

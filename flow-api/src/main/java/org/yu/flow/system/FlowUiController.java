@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.yu.flow.config.YuFlowProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
@@ -44,8 +46,8 @@ import java.nio.charset.StandardCharsets;
 @Controller
 public class FlowUiController {
 
-    @javax.annotation.Resource
-    private org.yu.flow.config.YuFlowProperties yuFlowProperties;
+    @Resource
+    private YuFlowProperties yuFlowProperties;
 
     /** 前端 SPA 路由前缀（不含 contextPath） */
     private static final String UI_PATH_PREFIX = "/flow-ui";

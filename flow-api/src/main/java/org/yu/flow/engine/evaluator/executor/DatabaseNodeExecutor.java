@@ -16,6 +16,8 @@ import org.springframework.data.domain.Pageable;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.ExecutionLog;
 
 /**
  * Database 节点执行器
@@ -48,9 +50,13 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
 
             if (context.isTraceEnabled()) {
                 String displaySql = buildDisplaySql(sqlAndParams.getSql(), sqlAndParams.getParams());
-                Map<String, Object> traceInputs = (Map<String, Object>) context.getCache("TRACE_INPUTS_" + step.getId());
-                if (traceInputs != null) {
-                    traceInputs.put("actualSql", displaySql);
+                FlowTrace trace = context.getFlowTrace();
+                if (trace != null && trace.getStepLogs() != null && !trace.getStepLogs().isEmpty()) {
+                    ExecutionLog currentLog = trace.getStepLogs().get(trace.getStepLogs().size() - 1);
+                    if (currentLog.getInputs() == null) {
+                        currentLog.setInputs(new HashMap<>());
+                    }
+                    currentLog.getInputs().put("actualSql", displaySql);
                 }
             }
 

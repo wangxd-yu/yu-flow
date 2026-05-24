@@ -1,6 +1,7 @@
 package org.yu.flow.auto.service;
 
 import cn.hutool.core.util.StrUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.util.CamelCaseColumnMapRowMapper;
 import cn.hutool.json.JSONUtil;
@@ -25,6 +26,12 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import java.util.*;
 import java.util.regex.Pattern;
+import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.ExecutionLog;
+import org.yu.flow.engine.model.step.ResponseResult;
+import org.yu.flow.module.executionlog.domain.FlowExecutionLogDO;
+import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.module.executionlog.service.FlowExecutionLogService;
 
 /**
  * FlowApi 执行服务实现 —— 仅负责动态 API 的运行时执行逻辑（SQL 执行、参数校验、Flow 编排引擎调用等）
@@ -34,6 +41,7 @@ import java.util.regex.Pattern;
  * @author yu-flow
  * @date 2025-03-05 23:55
  */
+@Slf4j
 @Service
 public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorService {
 
@@ -42,10 +50,10 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private DynamicDataSourceService dynamicDataSourceService;
 
     @Resource
-    private org.yu.flow.config.DemoModeGuard demoModeGuard;
+    private DemoModeGuard demoModeGuard;
 
     @Resource
-    private org.yu.flow.module.executionlog.service.FlowExecutionLogService flowExecutionLogService;
+    private FlowExecutionLogService flowExecutionLogService;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -68,7 +76,16 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public void initStrategies() {
         serviceStrategyMap.put("FLOW", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
             FlowEngine flowEngine = new FlowEngine();
-            return flowEngine.execute(content, flowInputSupplier.get(), true);
+            Map<String, Object> allInputs = flowInputSupplier.get();
+            Map<String, Object> requestMap = new HashMap<>();
+            requestMap.put("headers", new HashMap<>());
+            requestMap.put("params", allInputs.get("queryParams") != null ? allInputs.get("queryParams") : new HashMap<>());
+            requestMap.put("body", allInputs.get("bodyParams") != null ? allInputs.get("bodyParams") : new HashMap<>());
+            
+            Map<String, Object> flowArgs = new HashMap<>();
+            flowArgs.put("request", requestMap);
+            
+            return flowEngine.execute(content, flowArgs, true);
         });
 
         serviceStrategyMap.put("STRING", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
@@ -126,12 +143,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public Object executeApi(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams,
                              Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response) throws Exception {
         long start = System.currentTimeMillis();
-        org.yu.flow.module.executionlog.domain.FlowExecutionLogDO logDO = new org.yu.flow.module.executionlog.domain.FlowExecutionLogDO();
-        logDO.setApiId(flowApiDO.getId());
-        logDO.setApiName(flowApiDO.getName());
-        logDO.setUrl(flowApiDO.getUrl());
-        logDO.setMethod(flowApiDO.getMethod());
-        
+        FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
         try {
             Map<String, Object> requestMap = new HashMap<>();
             if (queryParams != null) requestMap.put("queryParams", queryParams);
@@ -140,51 +152,20 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         } catch (Exception e) {
             logDO.setRequestParams("JSON parse error");
         }
-
         try {
             Object result = doExecute(queryParams, bodyParams, mergeParamsMap, pageable, response, flowApiDO);
             logDO.setStatus("SUCCESS");
-            
-            if (result instanceof org.yu.flow.engine.model.FlowTrace) {
-                org.yu.flow.engine.model.FlowTrace trace = (org.yu.flow.engine.model.FlowTrace) result;
-                try {
-                    logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
-                } catch (Exception ignored) {}
-                
-                if ("error".equals(trace.getStatus())) {
-                    logDO.setStatus("ERROR");
-                    logDO.setErrorMsg(trace.getErrorMsg());
-                    throw new RuntimeException(trace.getErrorMsg());
-                }
-                
-                Object outputs = trace.getGlobalOutputs();
-                if (outputs instanceof org.yu.flow.engine.model.step.ResponseResult) {
-                    org.yu.flow.engine.model.step.ResponseResult rr = (org.yu.flow.engine.model.step.ResponseResult) outputs;
-                    try {
-                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
-                    } catch (Exception ignored) {}
-                    org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
-                    if (rr.getHeaders() != null) {
-                        rr.getHeaders().forEach(httpHeaders::add);
-                    }
-                    int status = Integer.parseInt(String.valueOf(rr.getStatus()));
-                    return new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
-                } else {
-                    ExecutionResult er = ExecutionResult.success(outputs);
-                    try {
-                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
-                    } catch (Exception ignored) {}
-                    return er;
-                }
-            } else if (result != null) {
-                try {
-                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(result));
-                } catch (Exception ignored) {}
-            }
-            return result;
+            return resolveFlowResult(result, logDO, flowApiDO);
         } catch (Exception e) {
-            logDO.setStatus("ERROR");
-            logDO.setErrorMsg(e.getMessage());
+            if ("SUCCESS".equals(logDO.getStatus())) {
+                // resolveFlowResult 内部抛出（FlowTrace error 状态），status 已被设置
+            } else {
+                logDO.setStatus("ERROR");
+                truncateAndSetErrorMsg(logDO, e.getMessage());
+                if (!"FLOW".equals(flowApiDO.getServiceType())) {
+                    buildAndSetSyntheticTraceForError(logDO, flowApiDO, e);
+                }
+            }
             throw e;
         } finally {
             logDO.setCostTimeMs(System.currentTimeMillis() - start);
@@ -196,67 +177,197 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public Object executeApi(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response) throws Exception {
         long start = System.currentTimeMillis();
-        org.yu.flow.module.executionlog.domain.FlowExecutionLogDO logDO = new org.yu.flow.module.executionlog.domain.FlowExecutionLogDO();
-        logDO.setApiId(flowApiDO.getId());
-        logDO.setApiName(flowApiDO.getName());
-        logDO.setUrl(flowApiDO.getUrl());
-        logDO.setMethod(flowApiDO.getMethod());
-        
+        FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
         try {
             if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
         } catch (Exception e) {
             logDO.setRequestParams("JSON parse error");
         }
-
         try {
             Object result = doExecute(params, pageable, response, flowApiDO);
             logDO.setStatus("SUCCESS");
-            
-            if (result instanceof org.yu.flow.engine.model.FlowTrace) {
-                org.yu.flow.engine.model.FlowTrace trace = (org.yu.flow.engine.model.FlowTrace) result;
-                try {
-                    logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
-                } catch (Exception ignored) {}
-                
-                if ("error".equals(trace.getStatus())) {
-                    logDO.setStatus("ERROR");
-                    logDO.setErrorMsg(trace.getErrorMsg());
-                    throw new RuntimeException(trace.getErrorMsg());
-                }
-                
-                Object outputs = trace.getGlobalOutputs();
-                if (outputs instanceof org.yu.flow.engine.model.step.ResponseResult) {
-                    org.yu.flow.engine.model.step.ResponseResult rr = (org.yu.flow.engine.model.step.ResponseResult) outputs;
-                    try {
-                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
-                    } catch (Exception ignored) {}
-                    org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
-                    if (rr.getHeaders() != null) {
-                        rr.getHeaders().forEach(httpHeaders::add);
-                    }
-                    int status = Integer.parseInt(String.valueOf(rr.getStatus()));
-                    return new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
-                } else {
-                    ExecutionResult er = ExecutionResult.success(outputs);
-                    try {
-                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
-                    } catch (Exception ignored) {}
-                    return er;
-                }
-            } else if (result != null) {
-                try {
-                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(result));
-                } catch (Exception ignored) {}
-            }
-            return result;
+            return resolveFlowResult(result, logDO, flowApiDO);
         } catch (Exception e) {
-            logDO.setStatus("ERROR");
-            logDO.setErrorMsg(e.getMessage());
+            if ("SUCCESS".equals(logDO.getStatus())) {
+                // resolveFlowResult 内部抛出（FlowTrace error 状态），status 已被设置
+            } else {
+                logDO.setStatus("ERROR");
+                truncateAndSetErrorMsg(logDO, e.getMessage());
+                if (!"FLOW".equals(flowApiDO.getServiceType())) {
+                    buildAndSetSyntheticTraceForError(logDO, flowApiDO, e);
+                }
+            }
             throw e;
         } finally {
             logDO.setCostTimeMs(System.currentTimeMillis() - start);
             flowExecutionLogService.saveLogAsync(logDO);
         }
+    }
+
+    /**
+     * 构建日志 DO 基础字段（共用逻辑提取）
+     */
+    private FlowExecutionLogDO buildBaseLogDO(FlowApiDO flowApiDO) {
+        FlowExecutionLogDO logDO = new FlowExecutionLogDO();
+        logDO.setApiId(flowApiDO.getId());
+        logDO.setApiName(flowApiDO.getName());
+        logDO.setUrl(flowApiDO.getUrl());
+        logDO.setMethod(flowApiDO.getMethod());
+        return logDO;
+    }
+
+    /**
+     * 截断并设置 errorMsg，防止超出 TEXT 字段长度限制（65535 字节）。
+     * 保守取前 2000 字符。
+     */
+    private void truncateAndSetErrorMsg(
+            FlowExecutionLogDO logDO, String msg) {
+        if (msg == null) msg = "未知错误";
+        logDO.setErrorMsg(msg.length() > 2000 ? msg.substring(0, 2000) + "..." : msg);
+    }
+
+    /**
+     * 统一 FlowTrace 解包与业务响应提取（问题四：消除两个重载的代码重复；问题五：修复 null errorMsg）。
+     *
+     * <p>规则：
+     * <ul>
+     *   <li>若 result 是 FlowTrace 且状态为 error → 更新 logDO 并抛出 RuntimeException</li>
+     *   <li>若 result 是 FlowTrace 且输出包含 ResponseResult → 解包为原生 ResponseEntity</li>
+     *   <li>若 result 是 FlowTrace 且为普通输出 → 包装为 ExecutionResult</li>
+     *   <li>其他类型（DB / JSON / STRING）→ 直接返回，仅记录 responseBody</li>
+     * </ul>
+     */
+    private Object resolveFlowResult(
+            Object result,
+            FlowExecutionLogDO logDO,
+            FlowApiDO flowApiDO) throws Exception {
+        if (result instanceof FlowTrace) {
+            FlowTrace trace = (FlowTrace) result;
+            try {
+                // 保存当时执行的 DSL 快照，供排障回放时精确还原现场
+                if ("FLOW".equals(flowApiDO.getServiceType())) {
+                    trace.setDslSnapshot(flowApiDO.getDslContent());
+                }
+                logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+            } catch (Exception ignored) {}
+
+            if ("error".equals(trace.getStatus())) {
+                // 问题五修复：errorMsg 可能为 null，改用兜底文案
+                String errMsg = trace.getErrorMsg() != null
+                        ? trace.getErrorMsg() : "流程执行失败（引擎未返回具体错误信息）";
+                logDO.setStatus("ERROR");
+                truncateAndSetErrorMsg(logDO, errMsg);
+                throw new RuntimeException(errMsg);
+            }
+
+            Object outputs = trace.getGlobalOutputs();
+            if (outputs instanceof ResponseResult) {
+                ResponseResult rr = (ResponseResult) outputs;
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
+                } catch (Exception ignored) {}
+                org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
+                if (rr.getHeaders() != null) {
+                    rr.getHeaders().forEach(httpHeaders::add);
+                }
+                int status = Integer.parseInt(String.valueOf(rr.getStatus()));
+                return new org.springframework.http.ResponseEntity<>(
+                        rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
+            } else {
+                ExecutionResult er = ExecutionResult.success(outputs);
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
+                } catch (Exception ignored) {}
+                return er;
+            }
+        } else {
+            // 非 Flow 类型的返回值处理与合成快照构建
+            if (result != null) {
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(result));
+                } catch (Exception ignored) {}
+            }
+            if (!"FLOW".equals(flowApiDO.getServiceType())) {
+                buildAndSetSyntheticTraceForSuccess(logDO, flowApiDO, result);
+            }
+        }
+        return result;
+    }
+
+    private void buildAndSetSyntheticTraceForSuccess(
+            FlowExecutionLogDO logDO, 
+            FlowApiDO flowApiDO, 
+            Object result) {
+        try {
+            FlowTrace trace = new FlowTrace();
+            trace.setTraceId(UUID.randomUUID().toString());
+            trace.setStatus("success");
+            
+            ExecutionLog stepLog = new ExecutionLog();
+            stepLog.setId("step_1");
+            stepLog.setNodeId(flowApiDO.getServiceType().toLowerCase() + "_node");
+            stepLog.setNodeName(flowApiDO.getServiceType() + " 节点");
+            stepLog.setNodeType("DB".equalsIgnoreCase(flowApiDO.getServiceType()) ? "database" : flowApiDO.getServiceType().toLowerCase());
+            stepLog.setStatus("success");
+            
+            Map<String, Object> inputs = new HashMap<>();
+            if (logDO.getRequestParams() != null) {
+                try {
+                    inputs = OBJECT_MAPPER.readValue(logDO.getRequestParams(), new TypeReference<Map<String, Object>>(){});
+                } catch(Exception ignored){}
+            }
+            if ("DB".equalsIgnoreCase(flowApiDO.getServiceType())) {
+                inputs.put("actualSql", flowApiDO.getSqlContent()); 
+            } else if ("JSON".equalsIgnoreCase(flowApiDO.getServiceType())) {
+                inputs.put("jsonContent", flowApiDO.getJsonContent());
+            } else if ("STRING".equalsIgnoreCase(flowApiDO.getServiceType())) {
+                inputs.put("textContent", flowApiDO.getTextContent());
+            }
+            stepLog.setInputs(inputs);
+            
+            Map<String, Object> outputs = new HashMap<>();
+            outputs.put("result", result);
+            stepLog.setOutputs(outputs);
+            
+            trace.setStepLogs(Collections.singletonList(stepLog));
+            trace.setGlobalOutputs(result);
+            
+            logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+        } catch (Exception ignored) {}
+    }
+
+    private void buildAndSetSyntheticTraceForError(
+            FlowExecutionLogDO logDO, 
+            FlowApiDO flowApiDO, 
+            Exception e) {
+        try {
+            FlowTrace trace = new FlowTrace();
+            trace.setTraceId(UUID.randomUUID().toString());
+            trace.setStatus("error");
+            trace.setErrorMsg(e.getMessage());
+            
+            ExecutionLog stepLog = new ExecutionLog();
+            stepLog.setId("step_1");
+            stepLog.setNodeId(flowApiDO.getServiceType().toLowerCase() + "_node");
+            stepLog.setNodeName(flowApiDO.getServiceType() + " 节点");
+            stepLog.setNodeType("DB".equalsIgnoreCase(flowApiDO.getServiceType()) ? "database" : flowApiDO.getServiceType().toLowerCase());
+            stepLog.setStatus("error");
+            stepLog.setError(e.getMessage());
+            
+            Map<String, Object> inputs = new HashMap<>();
+            if (logDO.getRequestParams() != null) {
+                try {
+                    inputs = OBJECT_MAPPER.readValue(logDO.getRequestParams(), new TypeReference<Map<String, Object>>(){});
+                } catch(Exception ignored){}
+            }
+            if ("DB".equalsIgnoreCase(flowApiDO.getServiceType())) {
+                inputs.put("actualSql", flowApiDO.getSqlContent()); 
+            }
+            stepLog.setInputs(inputs);
+            
+            trace.setStepLogs(Collections.singletonList(stepLog));
+            logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+        } catch (Exception ignored) {}
     }
 
     // ============================= 核心执行逻辑 =============================

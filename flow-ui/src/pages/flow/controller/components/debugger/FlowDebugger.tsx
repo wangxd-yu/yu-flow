@@ -104,6 +104,8 @@ export interface FlowDebuggerProps {
   onSelectedLogChange?: (nodeId: string | null) => void;
   /** 运行日志列表更新时 */
   onExecutionLogsChange?: (logs: ExecutionLog[]) => void;
+  /** 只读回放模式下的 Trace 数据，如果有传入，则表示当前为回放模式 */
+  playbackTrace?: FlowTrace | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -302,16 +304,30 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   onConsoleOpenChange,
   onExecutionLogsChange,
   onSelectedLogChange,
+  playbackTrace,
 }) => {
   // ─── DOM 引用 ──────────────────────────────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);
 
   // ─── 核心交互状态 ──────────────────────────────────────────────────
   const [isTriggerPanelOpen, setIsTriggerPanelOpen] = useState(false);
-  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const [runningStatus, setRunningStatus] = useState<RunStatus>('idle');
-  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(!!playbackTrace);
+  const [runningStatus, setRunningStatus] = useState<RunStatus>(playbackTrace?.status || 'idle');
+  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>(playbackTrace?.stepLogs || []);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+
+  // 当外部传入 playbackTrace 时，强制同步内部状态（监听外部选中节点或整个 trace 的变化）
+  useEffect(() => {
+    if (playbackTrace) {
+      setExecutionLogs(playbackTrace.stepLogs || []);
+      setRunningStatus(playbackTrace.status);
+      setIsConsoleOpen(true);
+      onConsoleOpenChange?.(true);
+      if (playbackTrace.startTime) {
+        setRunTimestamp(new Date(playbackTrace.startTime).toLocaleTimeString());
+      }
+    }
+  }, [playbackTrace, onConsoleOpenChange]);
 
   // 提取为统一的方法以触发外部回调
   const updateLogs = useCallback((logs: ExecutionLog[]) => {
@@ -581,9 +597,10 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
           </Tooltip>
         </div>
 
-        {/* 右侧：主操作按钮 */}
-        <div className="pfd-toolbar-right">
-          <Tooltip title="触发器参数配置">
+        {/* 右侧：主操作按钮 (仅在非回放模式下显示) */}
+        {!playbackTrace && (
+          <div className="pfd-toolbar-right">
+            <Tooltip title="触发器参数配置">
             <button
               className={`pfd-tool-btn ${isTriggerPanelOpen ? 'pfd-tool-btn--active' : ''}`}
               onClick={toggleTriggerPanel}
@@ -631,6 +648,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             </Tooltip>
           )}
         </div>
+        )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
@@ -827,15 +845,17 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                 {isConsoleOpen ? <DownOutlined /> : <UpOutlined />}
               </button>
             </Tooltip>
-            <Tooltip title="关闭控制台">
-              <button
-                className="pfd-close-btn"
-                onClick={() => { setIsConsoleOpen(false); onConsoleOpenChange?.(false); }}
-                style={{ marginLeft: 4 }}
-              >
-                <CloseOutlined />
-              </button>
-            </Tooltip>
+            {!playbackTrace && (
+              <Tooltip title="关闭控制台">
+                <button
+                  className="pfd-close-btn"
+                  onClick={() => { setIsConsoleOpen(false); onConsoleOpenChange?.(false); }}
+                  style={{ marginLeft: 4 }}
+                >
+                  <CloseOutlined />
+                </button>
+              </Tooltip>
+            )}
           </div>
         </div>
 
