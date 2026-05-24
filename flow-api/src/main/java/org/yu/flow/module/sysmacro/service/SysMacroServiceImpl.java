@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.sysmacro.service;
+package org.yu.flow.module.sysmacro.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;

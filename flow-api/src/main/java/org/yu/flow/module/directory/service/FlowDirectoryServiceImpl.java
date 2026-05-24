@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.directory.service;
+package org.yu.flow.module.directory.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import org.yu.flow.module.api.repository.FlowApiRepository;

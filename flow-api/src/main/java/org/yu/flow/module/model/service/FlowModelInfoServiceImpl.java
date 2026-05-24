@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.model.service;
+package org.yu.flow.module.model.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;

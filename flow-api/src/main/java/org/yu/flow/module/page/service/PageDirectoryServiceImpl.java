@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.page.service;
+package org.yu.flow.module.page.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import org.yu.flow.module.page.domain.PageDirectoryDO;

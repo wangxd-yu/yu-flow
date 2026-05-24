@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.sysconfig.service.impl;
+package org.yu.flow.module.sysconfig.service.impl;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;

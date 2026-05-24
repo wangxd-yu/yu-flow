@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.api.service;
+package org.yu.flow.module.api.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.bean.BeanUtil;

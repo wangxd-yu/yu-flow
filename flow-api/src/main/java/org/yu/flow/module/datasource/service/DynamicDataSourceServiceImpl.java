@@ -1,4 +1,4 @@
-﻿package org.yu.flow.module.datasource.service;
+package org.yu.flow.module.datasource.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.IdUtil;
