@@ -34,7 +34,9 @@ export default defineConfig({
             { text: '数据模型', link: '/manual/data-model' },
             { text: '动态 API', link: '/manual/dynamic-api' },
             { text: '可视化页面', link: '/manual/visual-page' },
-            { text: '全局参数', link: '/manual/global-params' }
+            { text: '全局参数', link: '/manual/global-params' },
+            { text: '执行大盘与只读回放', link: '/manual/execution-trace' },
+            { text: '演示模式安全管控', link: '/manual/demo-mode' }
           ]
         }
       ],
@@ -73,7 +75,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/your-repo/yu-flow' }
+      { icon: 'github', link: 'https://github.com/wangxd-yu/yu-flow' }
     ],
 
     search: {

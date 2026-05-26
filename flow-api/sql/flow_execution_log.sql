@@ -3,6 +3,7 @@ CREATE TABLE `flow_execution_log` (
   `api_id` varchar(32) DEFAULT NULL COMMENT 'API ID',
   `api_name` varchar(128) DEFAULT NULL COMMENT 'API名称',
   `url` varchar(255) DEFAULT NULL COMMENT '请求URL',
+  `service_type` varchar(32) DEFAULT NULL COMMENT '接口类型: FLOW/DB/JSON/STRING',
   `method` varchar(16) DEFAULT NULL COMMENT '请求方法',
   `request_params` longtext COMMENT '请求参数快照(JSON)',
   `response_body` longtext COMMENT '返回结果快照(JSON)',

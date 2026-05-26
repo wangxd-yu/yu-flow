@@ -212,6 +212,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         logDO.setApiId(flowApiDO.getId());
         logDO.setApiName(flowApiDO.getName());
         logDO.setUrl(flowApiDO.getUrl());
+        logDO.setServiceType(flowApiDO.getServiceType());
         logDO.setMethod(flowApiDO.getMethod());
         return logDO;
     }

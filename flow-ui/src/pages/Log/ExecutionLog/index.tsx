@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
 import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
+import SimpleTraceViewer from './SimpleTraceViewer';
 
 const { Text } = Typography;
 
@@ -28,6 +29,8 @@ interface ExecutionLogListDTO {
   apiId: string;
   apiName: string;
   url: string;
+  /** 接口类型：FLOW / DB / JSON / STRING */
+  serviceType?: string;
   method: string;
   status: 'SUCCESS' | 'ERROR';
   costTimeMs: number;
@@ -93,6 +96,10 @@ const ExecutionLog: React.FC = () => {
   const [currentLog, setCurrentLog] = useState<ExecutionLogListDTO | null>(null);
   const [currentApiDsl, setCurrentApiDsl] = useState<string>('');
   const [currentTrace, setCurrentTrace] = useState<FlowTrace | null>(null);
+  /** 完整详情（供 SimpleTraceViewer 使用） */
+  const [currentDetail, setCurrentDetail] = useState<any>(null);
+  /** 当前快照的 serviceType（决定用哪种查看器） */
+  const [currentServiceType, setCurrentServiceType] = useState<string>('');
 
   const handleViewTrace = async (record: ExecutionLogListDTO) => {
     if (!record.hasTrace) {
@@ -108,27 +115,46 @@ const ExecutionLog: React.FC = () => {
         return;
       }
 
-      const trace: FlowTrace & { dslSnapshot?: string } = JSON.parse(detail.traceData);
-      
-      // 优先使用历史执行时的 DSL 快照（忠实复原现场），若无则 fallback 获取最新 API 配置
-      let dslContent = trace.dslSnapshot || '';
-      
-      if (!dslContent) {
+      // 检测 serviceType：优先用列表中返回的字段，兜底从 trace nodeType 推断
+      let detectedType = record.serviceType || detail.serviceType || '';
+      if (!detectedType) {
         try {
-          const apiInfo = await getApiConfig(record.apiId);
-          dslContent = apiInfo?.dslContent || '';
-        } catch (e) {
-          console.error('getApiConfig failed:', e);
-        }
+          const trace = JSON.parse(detail.traceData);
+          const nodeType = trace?.stepLogs?.[0]?.nodeType;
+          if (nodeType === 'database') detectedType = 'DB';
+          else if (nodeType === 'json') detectedType = 'JSON';
+          else if (nodeType === 'string') detectedType = 'STRING';
+          else if (trace?.dslSnapshot) detectedType = 'FLOW';
+        } catch { /* ignore */ }
       }
-      
-      if (!dslContent) {
-        message.warning('无法加载 API 配置，画布将显示为空');
-      }
-      
-      setCurrentTrace(trace);
-      setCurrentApiDsl(dslContent);
+
+      setCurrentServiceType(detectedType);
       setCurrentLog(record);
+      setCurrentDetail(detail);
+
+      if (detectedType === 'FLOW' || !detectedType) {
+        // FLOW 类型：走 X6 画布回放
+        const trace: FlowTrace & { dslSnapshot?: string } = JSON.parse(detail.traceData);
+        let dslContent = trace.dslSnapshot || '';
+        if (!dslContent) {
+          try {
+            const apiInfo = await getApiConfig(record.apiId);
+            dslContent = apiInfo?.dslContent || '';
+          } catch (e) {
+            console.error('getApiConfig failed:', e);
+          }
+        }
+        if (!dslContent) {
+          message.warning('无法加载 API 配置，画布将显示为空');
+        }
+        setCurrentTrace(trace);
+        setCurrentApiDsl(dslContent);
+      } else {
+        // 非 FLOW 类型：走 SimpleTraceViewer
+        setCurrentTrace(null);
+        setCurrentApiDsl('');
+      }
+
       setDrawerVisible(true);
     } catch (e) {
       message.error('解析执行快照失败');
@@ -296,20 +322,26 @@ const ExecutionLog: React.FC = () => {
         }}
       />
 
-      {drawerVisible && currentTrace && (
+      {drawerVisible && (
         <Drawer
           title={`API 快照复原 - ${currentLog?.apiName}`}
-          width="100%"
+          width={currentServiceType === 'FLOW' || !currentServiceType ? '100%' : '80%'}
           open={drawerVisible}
           onClose={() => setDrawerVisible(false)}
           styles={{ body: { padding: 0 } }}
           destroyOnClose
         >
-          <FlowEditor
-            value={currentApiDsl}
-            isEdit={false}
-            readonlyTrace={currentTrace}
-          />
+          {(currentServiceType === 'FLOW' || !currentServiceType) && currentTrace ? (
+            /* FLOW 类型：X6 可视化画布回放 */
+            <FlowEditor
+              value={currentApiDsl}
+              isEdit={false}
+              readonlyTrace={currentTrace}
+            />
+          ) : currentDetail ? (
+            /* 非 FLOW 类型：SimpleTraceViewer */
+            <SimpleTraceViewer detail={currentDetail} />
+          ) : null}
         </Drawer>
       )}
 

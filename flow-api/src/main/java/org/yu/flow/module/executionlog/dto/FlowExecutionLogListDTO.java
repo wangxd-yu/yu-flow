@@ -18,6 +18,8 @@ public class FlowExecutionLogListDTO {
     private String apiId;
     private String apiName;
     private String url;
+    /** 接口类型：FLOW / DB / JSON / STRING */
+    private String serviceType;
     private String method;
     /** 执行状态：SUCCESS / ERROR */
     private String status;
@@ -39,6 +41,7 @@ public class FlowExecutionLogListDTO {
         dto.setApiId(entity.getApiId());
         dto.setApiName(entity.getApiName());
         dto.setUrl(entity.getUrl());
+        dto.setServiceType(entity.getServiceType());
         dto.setMethod(entity.getMethod());
         dto.setStatus(entity.getStatus());
         dto.setCostTimeMs(entity.getCostTimeMs());

@@ -17,21 +17,21 @@ hero:
       link: /guide/introduction
 
 features:
-  - icon: ⚡
-    title: 零改造动态化
-    details: 把「发版」变成「配置」。接口业务逻辑在线修改，变更毫秒级生效。告别 改代码→提测→停机上线 的噩梦循环，让运维从此不再被业务叫醒。
+  - icon: 📄
+    title: 零门槛 Mock 与应急降级
+    details: 【JSON / 文本模式】无需任何编程基础，贴入一段 JSON 或字符串即可一键发布为真实的 API。完美解决前端联调等待与生产环境紧急硬编码回包的痛点。
 
-  - icon: 🔌
-    title: 纯粹的嵌入式架构
-    details: 以 Spring Boot Starter 形式无缝寄生于现有工程，不替换框架、不入侵架构、不产生技术债。引入依赖，就是全部。你的项目还是你的项目。
+  - icon: 🗄️
+    title: 一秒钟 SQL 变 API
+    details: 【DB 模式】面对繁琐的单表或连表查询需求，无需再写 Controller/Service/Mapper，只需一行 SQL，即刻暴露为带防注入的安全 RESTful 接口。
 
   - icon: 🧩
-    title: 可视化 Flow 编排
-    details: 拖拽式流程画布，将多个接口编排成完整业务流程。条件分支、数据映射、脚本计算、异常处理——全部可视化完成，所见即所得。
+    title: 终极可视化 Flow 编排
+    details: 【FLOW 模式】面对复杂的微服务聚合、跨库拼装，拖拽式画布引擎让你所见即所得。结合内置的多语言脚本沙箱，轻松搞定条件分支与数据清洗。
 
-  - icon: 🛡️
-    title: 企业级安全治理
-    details: 内置脚本沙箱防止恶意注入，完整的审计日志追溯一切变更，多租户权限隔离开箱即用。每一次改动，都有据可查。
+  - icon: ⚡
+    title: 零改造动态化与嵌入式架构
+    details: 以 Spring Boot Starter 形式无缝寄生于现有工程，不替换框架、不入侵架构。接口业务逻辑在线修改，变更毫秒级生效。你的项目还是你的项目。
 
 ---
 
@@ -242,7 +242,7 @@ public BigDecimal calculate(Order order) {
   <p>给 Yu Flow 5 分钟，它还你每一个本不该加班的夜晚。</p>
   <div class="bottom-cta-actions">
     <a href="/guide/quick-start" class="cta-button">立即开始，免费体验 →</a>
-    <a href="https://github.com/your-repo/yu-flow" class="cta-button-secondary" target="_blank">查看 GitHub 源码</a>
+    <a href="https://github.com/wangxd-yu/yu-flow" class="cta-button-secondary" target="_blank">查看 GitHub 源码</a>
   </div>
   <p class="bottom-trust">MIT 开源 · 永久免费 · 生产级品质</p>
 </div>

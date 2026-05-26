@@ -28,6 +28,8 @@ public class FlowExecutionLogDO {
     private String apiId;
     private String apiName;
     private String url;
+    /** 接口类型：FLOW / DB / JSON / STRING */
+    private String serviceType;
     private String method;
 
     @Column(columnDefinition = "LONGTEXT")

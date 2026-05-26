@@ -12,6 +12,7 @@ public class FlowExecutionLogDTO {
     private String apiId;
     private String apiName;
     private String url;
+    private String serviceType;
     private String method;
     private String requestParams;
     private String responseBody;
@@ -32,6 +33,7 @@ public class FlowExecutionLogDTO {
         dto.setApiId(entity.getApiId());
         dto.setApiName(entity.getApiName());
         dto.setUrl(entity.getUrl());
+        dto.setServiceType(entity.getServiceType());
         dto.setMethod(entity.getMethod());
         dto.setRequestParams(entity.getRequestParams());
         dto.setResponseBody(entity.getResponseBody());
