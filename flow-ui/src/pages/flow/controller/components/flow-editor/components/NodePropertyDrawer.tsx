@@ -54,6 +54,8 @@ type NodePropertyDrawerProps = {
     onDataChange: (node: Node, data: Record<string, any>) => void;
     globalForm?: FormInstance;
     isEdit?: boolean;
+    isBreakpoint?: boolean;
+    onToggleBreakpoint?: (nodeId: string) => void;
 };
 
 // ============================================================================
@@ -65,6 +67,8 @@ export default function NodePropertyDrawer({
     onDataChange,
     globalForm,
     isEdit,
+    isBreakpoint,
+    onToggleBreakpoint,
 }: NodePropertyDrawerProps) {
     if (!node) {
         return (
@@ -94,11 +98,25 @@ export default function NodePropertyDrawer({
     return (
         <div style={{ padding: 16 }}>
             {/* ── 节点标题 ── */}
-            <div style={{ marginBottom: 12 }}>
-                <Tag color={getNodeTagColor(nodeType)}>{nodeType.toUpperCase()}</Tag>
-                <Text strong style={{ marginLeft: 4 }}>
-                    {node.id}
-                </Text>
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                    <Tag color={getNodeTagColor(nodeType)}>{nodeType.toUpperCase()}</Tag>
+                    <Text strong style={{ marginLeft: 4 }}>
+                        {node.id}
+                    </Text>
+                </div>
+                {onToggleBreakpoint && (
+                    <Tooltip title={isBreakpoint ? '取消断点' : '设置断点'}>
+                        <Button
+                            type={isBreakpoint ? 'primary' : 'default'}
+                            danger={isBreakpoint}
+                            shape="circle"
+                            icon={<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: isBreakpoint ? '#fff' : '#ff4d4f' }} />}
+                            onClick={() => onToggleBreakpoint(node.id)}
+                            size="small"
+                        />
+                    </Tooltip>
+                )}
             </div>
 
             <Divider style={{ margin: '8px 0 16px 0' }} />

@@ -112,7 +112,9 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
         // 3. 管理端鉴权
         if (requestPath.startsWith("/flow-api")) {
-            if (requestPath.startsWith("/flow-api/login")) {
+            if (requestPath.startsWith("/flow-api/login")
+                    || requestPath.startsWith("/flow-api/v3/api-docs")
+                    || requestPath.equals("/flow-api/swagger-ui.html")) {
                 filterChain.doFilter(request, response);
                 return;
             }

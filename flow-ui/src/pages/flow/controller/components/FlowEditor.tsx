@@ -34,7 +34,7 @@ import NodePropertyDrawer from './flow-editor/components/NodePropertyDrawer';
 import ActionToolbar from './flow-editor/components/ActionToolbar';
 import CanvasToolbar from './flow-editor/components/CanvasToolbar';
 import MiniMapPanel from './flow-editor/components/MiniMapPanel';
-import { debugRunAutoApiConfig } from '../services/flowController';
+import { debugRunAutoApiConfig, startDebugSession, getDebugSessionStatus, resumeDebugSession, cancelDebugSession } from '../services/flowController';
 
 const { Text } = Typography;
 
@@ -94,6 +94,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
 
     // ── 控制台高度（用于撑开画布，防止被控制台遮挡） ──
     const [consoleHeight, setConsoleHeight] = React.useState(0);
+    // ── 断点信息 ──
+    const [breakpoints, setBreakpoints] = React.useState<string[]>([]);
 
     // ── Refs ──
     const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -120,6 +122,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const [mode, setMode] = React.useState<'design' | 'code'>('design');
     const [leftPanelCollapsed, setLeftPanelCollapsed] = React.useState(true);
     const [rightPanelCollapsed, setRightPanelCollapsed] = React.useState(true);
+    // TODO: 纯净画布与属性面板模式切换开关
+    const showPropertyPanel = false;
 
     // 调试器状态
     const [executionLogs, setExecutionLogs] = React.useState<ExecutionLog[]>(readonlyTrace?.stepLogs || []);
@@ -132,6 +136,41 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             setExecutionLogs(readonlyTrace.stepLogs);
         }
     }, [readonlyTrace]);
+
+    // ── 断点同步 ──
+    React.useEffect(() => {
+        if (!graphRef.current) return;
+        const nodes = graphRef.current.getNodes();
+        nodes.forEach(node => {
+            node.removeTool('breakpoint-button');
+            if (breakpoints.includes(node.id)) {
+                node.addTools({
+                    name: 'button',
+                    args: {
+                        markup: [
+                            {
+                                tagName: 'circle',
+                                selector: 'button',
+                                attrs: {
+                                    r: 6,
+                                    fill: '#ff4d4f',
+                                    stroke: '#fff',
+                                    strokeWidth: 2,
+                                    cursor: 'pointer',
+                                },
+                            },
+                        ],
+                        x: '100%',
+                        y: 0,
+                        offset: { x: -8, y: 8 },
+                        onClick: () => {
+                            setBreakpoints(prev => prev.filter(id => id !== node.id));
+                        },
+                    },
+                });
+            }
+        });
+    }, [breakpoints]);
 
     // ── 快捷添加菜单 (Quick Add Menu) ──
     const [quickAddMenu, setQuickAddMenu] = React.useState<{
@@ -666,7 +705,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 multiple: true,
                 rubberband: true,
                 movable: true,
-                showNodeSelectionBox: true,
+                showNodeSelectionBox: false,
                 modifiers: null,   // 鼠标左键直接框选（space 键已被 panning 占用时不冲突）
             }),
         );
@@ -722,6 +761,14 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         graph.on('node:click', handleNodeClick);
         graph.on('blank:mousedown', handleBlankMousedown);
         graph.on('cell:mousedown', handleCellMousedown);
+        graph.on('node:toggle-breakpoint', ({ node }: any) => {
+            setBreakpoints(prev => {
+                if (prev.includes(node.id)) {
+                    return prev.filter(id => id !== node.id);
+                }
+                return [...prev, node.id];
+            });
+        });
 
         const schedule = () => {
             if (importingRef.current) return;
@@ -1343,6 +1390,25 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                     }
                                     throw new Error(result?.msg || 'Run failed');
                                 }}
+                                onDebugStart={async (payload) => {
+                                    const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
+                                    const result = await startDebugSession({ ...payload, dslContent: currentDslStr });
+                                    if (result?.code === 0 && result.data) return result.data;
+                                    if (result?.data) return result.data;
+                                    if (result?.sessionId) return result;
+                                    throw new Error(result?.msg || 'Debug start failed');
+                                }}
+                                onDebugStatus={async (sessionId) => {
+                                    const res = await getDebugSessionStatus(sessionId);
+                                    return res?.data || res;
+                                }}
+                                onDebugResume={async (sessionId, inputs) => {
+                                    await resumeDebugSession(sessionId, inputs || {});
+                                }}
+                                onDebugCancel={async (sessionId) => {
+                                    await cancelDebugSession(sessionId);
+                                }}
+                                breakpoints={breakpoints}
                                 onConsoleOpenChange={(open) => setConsoleHeight(open ? 300 : 0)}
                                 onExecutionLogsChange={setExecutionLogs}
                                 onSelectedLogChange={setDebuggerSelectedNodeId}
@@ -1352,69 +1418,80 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                     </div>
 
                     {/* ── 属性配置面板 (V3.1 Property Drawer) ── */}
-                    <div
-                        style={{
-                            position: 'relative',
-                            display: 'flex',
-                            height: '100%',
-                            flexShrink: 0,
-                        }}
-                    >
-                        {/* 收起/展开按钮 */}
-                        <Tooltip title={rightPanelCollapsed ? '展开属性面板' : '收起属性面板'} placement="left">
-                            <div
-                                onClick={() => setRightPanelCollapsed((v) => !v)}
-                                style={{
-                                    position: 'absolute',
-                                    left: -16,
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    width: 16,
-                                    height: 48,
-                                    background: '#fff',
-                                    border: '1px solid #e5e6eb',
-                                    borderRight: 'none',
-                                    borderRadius: '4px 0 0 4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    zIndex: 10,
-                                    color: '#8c8c8c',
-                                    fontSize: 10,
-                                    transition: 'color 0.2s, background 0.2s',
-                                }}
-                                onMouseEnter={(e) => {
-                                    (e.currentTarget as HTMLDivElement).style.background = '#f5f5f5';
-                                    (e.currentTarget as HTMLDivElement).style.color = '#1677ff';
-                                }}
-                                onMouseLeave={(e) => {
-                                    (e.currentTarget as HTMLDivElement).style.background = '#fff';
-                                    (e.currentTarget as HTMLDivElement).style.color = '#8c8c8c';
-                                }}
-                            >
-                                {rightPanelCollapsed ? <LeftOutlined /> : <RightOutlined />}
-                            </div>
-                        </Tooltip>
+                    {showPropertyPanel && (
                         <div
                             style={{
-                                width: rightPanelCollapsed ? 0 : 420,
-                                minWidth: rightPanelCollapsed ? 0 : 420,
+                                position: 'relative',
+                                display: 'flex',
                                 height: '100%',
-                                overflow: rightPanelCollapsed ? 'hidden' : 'auto',
-                                borderLeft: rightPanelCollapsed ? 'none' : '1px solid #e5e6eb',
-                                background: '#fff',
-                                transition: 'width 0.25s ease, min-width 0.25s ease',
+                                flexShrink: 0,
                             }}
                         >
-                            <NodePropertyDrawer
-                                node={selectedNode}
-                                onDataChange={handleDataChange}
-                                globalForm={globalForm}
-                                isEdit={isEdit}
-                            />
+                            {/* 收起/展开按钮 */}
+                            <Tooltip title={rightPanelCollapsed ? '展开属性面板' : '收起属性面板'} placement="left">
+                                <div
+                                    onClick={() => setRightPanelCollapsed((v) => !v)}
+                                    style={{
+                                        position: 'absolute',
+                                        left: -16,
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        width: 16,
+                                        height: 48,
+                                        background: '#fff',
+                                        border: '1px solid #e5e6eb',
+                                        borderRight: 'none',
+                                        borderRadius: '4px 0 0 4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        zIndex: 10,
+                                        color: '#8c8c8c',
+                                        fontSize: 10,
+                                        transition: 'color 0.2s, background 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        (e.currentTarget as HTMLDivElement).style.background = '#f5f5f5';
+                                        (e.currentTarget as HTMLDivElement).style.color = '#1677ff';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        (e.currentTarget as HTMLDivElement).style.background = '#fff';
+                                        (e.currentTarget as HTMLDivElement).style.color = '#8c8c8c';
+                                    }}
+                                >
+                                    {rightPanelCollapsed ? <LeftOutlined /> : <RightOutlined />}
+                                </div>
+                            </Tooltip>
+                            <div
+                                style={{
+                                    width: rightPanelCollapsed ? 0 : 420,
+                                    minWidth: rightPanelCollapsed ? 0 : 420,
+                                    height: '100%',
+                                    overflow: rightPanelCollapsed ? 'hidden' : 'auto',
+                                    borderLeft: rightPanelCollapsed ? 'none' : '1px solid #e5e6eb',
+                                    background: '#fff',
+                                    transition: 'width 0.25s ease, min-width 0.25s ease',
+                                }}
+                            >
+                                <NodePropertyDrawer
+                                    node={selectedNodeId && graphRef.current ? graphRef.current.getCellById(selectedNodeId) as Node : undefined}
+                                    onDataChange={() => {}}
+                                    globalForm={globalForm}
+                                    isEdit={isEdit}
+                                    isBreakpoint={selectedNodeId ? breakpoints.includes(selectedNodeId) : false}
+                                    onToggleBreakpoint={(nodeId) => {
+                                        setBreakpoints(prev => {
+                                            if (prev.includes(nodeId)) {
+                                                return prev.filter(id => id !== nodeId);
+                                            }
+                                            return [...prev, nodeId];
+                                        });
+                                    }}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* ── 代码模式 ── */}

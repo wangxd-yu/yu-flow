@@ -16,6 +16,7 @@ import org.yu.flow.util.ThrowableUtil;
 import org.springframework.stereotype.Component;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.engine.evaluator.executor.*;
+import org.yu.flow.engine.debug.DebugSession;
 import org.yu.flow.engine.model.step.ResponseResult;
 
 import javax.annotation.PreDestroy;
@@ -154,6 +155,32 @@ public class FlowEngine {
      */
     @SuppressWarnings("unchecked")
     public <T> T execute(String flowJson, Map<String, Object> args, boolean traceEnabled) throws JsonProcessingException {
+        return execute(flowJson, args, traceEnabled, null);
+    }
+
+    /**
+     * 以交互式调试模式执行流程。
+     *
+     * <p>创建开启 Trace 的执行上下文，并将 {@link DebugSession} 关联到上下文中。
+     * 当引擎在 {@code executeStep} 中检测到断点时，会通过 DebugSession 自动挂起引擎线程。</p>
+     *
+     * @param flowJson     流程定义 JSON
+     * @param args         输入参数
+     * @param debugSession 调试会话实例
+     * @return FlowTrace 完整执行追踪报告
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T executeWithDebugSession(String flowJson, Map<String, Object> args,
+                                          DebugSession debugSession) throws JsonProcessingException {
+        return execute(flowJson, args, true, debugSession);
+    }
+
+    /**
+     * 执行流程（内部核心方法，支持全链路追踪和交互式调试）
+     */
+    @SuppressWarnings("unchecked")
+    private <T> T execute(String flowJson, Map<String, Object> args,
+                          boolean traceEnabled, DebugSession debugSession) throws JsonProcessingException {
         FlowDefinition flowDefinition = parser.parse(flowJson); // 解析时保存流程定义
 
         // 传递 traceEnabled 标记到上下文
@@ -162,6 +189,11 @@ public class FlowEngine {
         // [防挂死] 将最大步骤数限制传递到执行上下文
         if (maxSteps > 0) {
             context.setMaxSteps(maxSteps);
+        }
+
+        // [交互式调试] 将调试会话关联到执行上下文
+        if (debugSession != null) {
+            context.setDebugSession(debugSession);
         }
 
         // 构建父节点映射（用于多父节点汇聚）
@@ -400,7 +432,26 @@ public class FlowEngine {
         log.info("执行步骤 {} [{}]", step.getId(), step.getType());
         log.info("步骤前变量: {}", context.getVar());
 
+        // ═══════════════ 调试断点检测 (Debug Hook) ═══════════════
+        // 在节点业务逻辑执行前检查断点，若命中则挂起引擎线程等待前端指令。
+        DebugSession debugSession = context.getDebugSession();
+        if (debugSession != null && debugSession.getStatus() != DebugSession.Status.CANCELLED) {
+            // 传入当前变量的深拷贝快照，供前端查看和修改
+            Map<String, Object> varSnapshot = context.copy(true).getVar();
+            Map<String, Object> variableUpdates = debugSession.checkAndSuspend(
+                    step.getId(), step.getName(), varSnapshot);
 
+            // 若前端在调试面板中修改了变量，将修改注入回执行上下文
+            if (variableUpdates != null && !variableUpdates.isEmpty()) {
+                log.info("[调试模式] 注入前端修改的变量: {}", variableUpdates.keySet());
+                variableUpdates.forEach(context::setVar);
+            }
+
+            // 若会话已被取消，以异常方式终止引擎执行
+            if (debugSession.getStatus() == DebugSession.Status.CANCELLED) {
+                throw new FlowException("DEBUG_CANCELLED", "调试会话已被取消");
+            }
+        }
 
         // Trace 开始
         ExecutionLog traceLog = null;

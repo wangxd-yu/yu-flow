@@ -5,6 +5,7 @@ import {
 } from '@ant-design/icons';
 import type { ApiContract, BaseInfo, BodyType, SchemaNode } from './types';
 import SchemaTreeTable from './SchemaTreeTable';
+import CodeEditor from '../flow-editor/components/CodeEditor';
 
 // ─── Props ──────────────────────────────────────────────────
 
@@ -185,13 +186,15 @@ const ApiContractDesigner: React.FC<ApiContractDesignerProps> = ({
       case 'raw':
       case 'xml':
         return (
-          <Input.TextArea
-            value={contract.request.rawBody ?? ''}
-            onChange={(e) => handleRequestFieldChange('rawBody', e.target.value)}
-            placeholder={bodyType === 'xml' ? '请输入 XML 内容...' : '请输入原始内容...'}
-            autoSize={{ minRows: 8, maxRows: 20 }}
-            style={{ fontFamily: 'monospace', fontSize: 13 }}
-          />
+          <div style={{ border: '1px solid #d9d9d9', borderRadius: 6, overflow: 'hidden' }}>
+            <CodeEditor
+              value={contract.request.rawBody ?? ''}
+              onChange={(val) => handleRequestFieldChange('rawBody', val)}
+              language={bodyType === 'xml' ? 'text' : 'json'}
+              height="200px"
+              maxHeight="400px"
+            />
+          </div>
         );
 
       default:

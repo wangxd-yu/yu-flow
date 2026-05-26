@@ -3,6 +3,7 @@ package org.yu.flow.engine.evaluator;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.yu.flow.exception.FlowException;
+import org.yu.flow.engine.debug.DebugSession;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
 
@@ -41,6 +42,13 @@ public class ExecutionContext {
      * 单次执行允许的最大步骤数。0 或负数表示不限制。
      */
     private int maxSteps = 0;
+
+    /**
+     * 关联的调试会话（可为 null 表示非调试模式）。
+     * <p>所有通过 copy() 创建的分支上下文共享同一个 DebugSession 引用，
+     * 使得并行分支中的断点检测仍然有效。</p>
+     */
+    private DebugSession debugSession;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -174,6 +182,8 @@ public class ExecutionContext {
         // 共享同一个步骤计数器（并行分支受全局预算约束）
         copy.stepCounter = this.stepCounter;
         copy.maxSteps = this.maxSteps;
+        // 共享同一个调试会话（并行分支的断点检测仍然有效）
+        copy.debugSession = this.debugSession;
         return copy;
     }
 
@@ -229,6 +239,31 @@ public class ExecutionContext {
 
     public FlowTrace getFlowTrace() {
         return flowTrace;
+    }
+
+    // ========== 调试模式 (Debug Session) ==========
+
+    /**
+     * 设置关联的调试会话。
+     * @param debugSession 调试会话实例，null 表示非调试模式
+     */
+    public void setDebugSession(DebugSession debugSession) {
+        this.debugSession = debugSession;
+    }
+
+    /**
+     * 获取关联的调试会话。
+     * @return 调试会话实例，null 表示非调试模式
+     */
+    public DebugSession getDebugSession() {
+        return debugSession;
+    }
+
+    /**
+     * 当前是否处于交互式调试模式。
+     */
+    public boolean isDebugMode() {
+        return debugSession != null;
     }
 
     // ========== 步骤执行限制 (Anti-Hang) ==========

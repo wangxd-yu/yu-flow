@@ -85,3 +85,29 @@ export async function debugRunAutoApiConfig(data: any) {
     data,
   });
 }
+
+export async function startDebugSession(data: any) {
+  return request<any>('/flow-api/debug/session/start', {
+    method: 'POST',
+    data,
+  });
+}
+
+export async function getDebugSessionStatus(sessionId: string) {
+  return request<any>(`/flow-api/debug/session/${sessionId}/status`, {
+    method: 'GET',
+  });
+}
+
+export async function resumeDebugSession(sessionId: string, data: any) {
+  return request<any>(`/flow-api/debug/session/${sessionId}/resume`, {
+    method: 'POST',
+    data,
+  });
+}
+
+export async function cancelDebugSession(sessionId: string) {
+  return request<any>(`/flow-api/debug/session/${sessionId}`, {
+    method: 'DELETE',
+  });
+}

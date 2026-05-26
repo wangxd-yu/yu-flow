@@ -6,6 +6,13 @@
 
 import React from 'react';
 import { Node } from '@antv/x6';
+import {
+    BugOutlined,
+    SettingOutlined,
+    InfoCircleOutlined,
+    CopyOutlined,
+    DeleteOutlined
+} from '@ant-design/icons';
 
 // ═══════════════════════════════════════════════════════════════════
 // 1. 选中态 Hook
@@ -368,21 +375,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
 // 6. NodeToolbar — 顶部悬浮工具栏 (Refactored)
 // ═══════════════════════════════════════════════════════════════════
 
-const TOOLBAR_ICONS = {
-    settings: React.createElement('svg', { viewBox: '0 0 1024 1024', width: 16, height: 16, fill: 'currentColor' },
-        React.createElement('path', { d: 'M924.8 625.7l-65.5-56c3.1-19 4.7-38.4 4.7-57.8s-1.6-38.8-4.7-57.8l65.5-56a32.03 32.03 0 009.3-35.2l-.9-2.6a443.74 443.74 0 00-79.7-137.9l-1.8-2.1a32.12 32.12 0 00-35.1-9.5l-81.3 28.9c-30-24.6-63.5-44-99.7-57.6l-15.7-85a32.05 32.05 0 00-25.8-25.7l-2.7-.5c-52.1-9.4-106.9-9.4-159 0l-2.7.5a32.05 32.05 0 00-25.8 25.7l-15.8 85.4a351.86 351.86 0 00-99 57.4l-81.9-29.1a32 32 0 00-35.1 9.5l-1.8 2.1a446.02 446.02 0 00-79.7 137.9l-.9 2.6c-4.5 12.5-1.5 26.5 9.3 35.2l66.3 56.6c-3.1 18.8-4.6 38-4.6 57.1 0 19.2 1.5 38.4 4.6 57.1L99 625.5a32.03 32.03 0 00-9.3 35.2l.9 2.6c18.1 50.4 44.9 96.9 79.7 137.9l1.8 2.1a32.12 32.12 0 0035.1 9.5l81.9-29.1c29.8 24.5 63.1 43.9 99 57.4l15.8 85.4a32.05 32.05 0 0025.8 25.7l2.7.5a449.4 449.4 0 00159 0l2.7-.5a32.05 32.05 0 0025.8-25.7l15.7-85a350 350 0 0099.7-57.6l81.3 28.9a32 32 0 0035.1-9.5l1.8-2.1c34.8-41.1 61.6-87.5 79.7-137.9l.9-2.6c4.3-12.3 1.4-26.2-9.1-35zM788.3 465.9c2.5 15.1 3.8 30.6 3.8 46.1s-1.3 31-3.8 46.1l-6.6 40.1 74.7 63.9A372.95 372.95 0 00877 608l.3-.6-64.4 75.2c-5.8 6.8-11.1 12.9-15.3 17.9l-30.9-10.9-10.8-3.8-76.3-27.4c-11.7 12.3-24.3 23.4-37.5 33.3l-5.6 4.3l-14.8 79.8-7.9 42.6c-21.9 3.9-43.9 3.9-65.8 0l-7.9-42.6-14.8-79.8-5.6-4.3c-13.2-9.9-25.8-20.9-37.5-33.3l-76.3 27.4-10.8 3.8-30.9 10.9c-4.2-5-9.5-11.1-15.3-17.9L247 607.3l.3.6-20.6-54.1 74.7-63.9-6.6-40.1c-2.5-15.1-3.8-30.6-3.8-46.1s1.3-31 3.8-46.1l6.6-40.1-74.7-63.9 20.6-54.1-.3.6 64.4-75.2c5.8-6.8 11.1-12.9 15.3-17.9l30.9 10.9 10.8 3.8 76.3 27.4c11.7-12.3 24.3-23.4 37.5-33.3l5.6-4.3 14.8-79.8 7.9-42.6c21.9-3.9 43.9-3.9 65.8 0l7.9 42.6 14.8 79.8 5.6 4.3c13.2 9.9 25.8 20.9 37.5 33.3l76.3-27.4 10.8-3.8 30.9-10.9c4.2 5 9.5 11.1 15.3 17.9l64.4 75.2-.3-.6 20.6 54.1-74.7 63.9 6.6 40.1zM512 394c-65.1 0-118 52.9-118 118s52.9 118 118 118s118-52.9 118-118s-52.9-118-118-118zm0 168c-27.6 0-50-22.4-50-50s22.4-50 50-50 50 22.4 50 50-22.4 50-50 50z' }),
-    ),
-    info: React.createElement('svg', { viewBox: '0 0 1024 1024', width: 16, height: 16, fill: 'currentColor' },
-        React.createElement('path', { d: 'M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z' }),
-        React.createElement('path', { d: 'M464 336a48 48 0 1096 0 48 48 0 10-96 0zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.4-3.6-8-8-8z' }),
-    ),
-    copy: React.createElement('svg', { viewBox: '0 0 1024 1024', width: 16, height: 16, fill: 'currentColor' },
-        React.createElement('path', { d: 'M832 64H296c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h496v688c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8V96c0-17.7-14.3-32-32-32zM704 192H192c-17.7 0-32 14.3-32 32v530.7c0 8.5 3.4 16.6 9.4 22.6l173.3 173.3c2.2 2.2 4.7 4 7.4 5.5v1.9h4.2c3.5 1.3 7.2 2 11 2H704c17.7 0 32-14.3 32-32V224c0-17.7-14.3-32-32-32zM350 856.2L263.9 770H350v86.2zM664 888H414V746c0-22.1-17.9-40-40-40H232V264h432v624z' }),
-    ),
-    delete: React.createElement('svg', { viewBox: '0 0 1024 1024', width: 16, height: 16, fill: 'currentColor' },
-        React.createElement('path', { d: 'M360 184h-8c4.4 0 8-3.6 8-8v8h304v-8c0 4.4 3.6 8 8 8h-8v72h72v-80c0-35.3-28.7-64-64-64H352c-35.3 0-64 28.7-64 64v80h72v-72zm504 72H160c-17.7 0-32 14.3-32 32v32c0 4.4 3.6 8 8 8h60.4l24.7 523c1.6 34.1 29.8 61 63.9 61h454c34.2 0 62.3-26.8 63.9-61l24.7-523H888c4.4 0 8-3.6 8-8v-32c0-17.7-14.3-32-32-32zM731.3 840H292.7l-24.2-512h487l-24.2 512z' }),
-    ),
-};
+// 已弃用自定义 SVG，全部替换为 @ant-design/icons 组件
 
 // 色板预设
 const COLOR_PALETTE = [
@@ -439,6 +432,13 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ node, selected, themeC
         const graph = node.model?.graph;
         if (!graph) return;
         graph.removeNode(node);
+    };
+
+    const handleToggleBreakpoint = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const graph = node.model?.graph;
+        if (!graph) return;
+        graph.trigger('node:toggle-breakpoint', { node });
     };
 
     const handleColorChange = (color?: string) => {
@@ -539,28 +539,35 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ node, selected, themeC
             ),
             React.createElement('div', { style: { width: 1, height: 20, background: '#e8e8e8', margin: '0 4px' } }),
             React.createElement('div', {
+                onClick: handleToggleBreakpoint,
+                style: { ...btnStyle, color: '#eb2f96' },
+                title: '切换断点 (Breakpoint)',
+                onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff0f6'; },
+                onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
+            }, React.createElement(BugOutlined)),
+            React.createElement('div', {
                 style: btnStyle, title: '设置',
                 onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; },
                 onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
-            }, TOOLBAR_ICONS.settings),
+            }, React.createElement(SettingOutlined)),
             React.createElement('div', {
                 style: btnStyle, title: '详情',
                 onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; },
                 onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
-            }, TOOLBAR_ICONS.info),
+            }, React.createElement(InfoCircleOutlined)),
             React.createElement('div', {
                 onClick: handleCopy,
                 style: btnStyle, title: '复制',
                 onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; },
                 onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
-            }, TOOLBAR_ICONS.copy),
+            }, React.createElement(CopyOutlined)),
             React.createElement('div', {
                 onClick: handleDelete,
                 style: { ...btnStyle, color: '#ff4d4f' },
                 title: '删除',
                 onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff1f0'; },
                 onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
-            }, TOOLBAR_ICONS.delete),
+            }, React.createElement(DeleteOutlined)),
         )
     );
 };

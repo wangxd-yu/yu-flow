@@ -126,12 +126,13 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
                         />
                         <Input
                             size="small"
+                            bordered={false}
                             prefix={<div style={{ color: '#bfbfbf', display: 'flex' }}>{ICONS.path}</div>}
                             placeholder="$"
                             value={v.extractPath}
                             onChange={(e) => onUpdateVar(v.id, { extractPath: e.target.value })}
                             onMouseDown={(e) => e.stopPropagation()}
-                            style={{ flex: 1.5, fontSize: 12, height: 32 }}
+                            style={{ flex: 1.5, fontSize: 12, height: 32, backgroundColor: '#f0f0f0', borderRadius: 4 }}
                         />
                         {isHovering && !dragState && (
                             <div

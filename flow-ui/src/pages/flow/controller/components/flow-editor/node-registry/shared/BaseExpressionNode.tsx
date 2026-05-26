@@ -189,8 +189,9 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
                     maxHeight="250px"
                     fontSize={12}
                     lineNumbers={false}
+                    bordered={false}
                     theme="light"
-                    style={{ flex: 1, minHeight: MIN_QUERY_HEIGHT }}
+                    style={{ flex: 1, minHeight: MIN_QUERY_HEIGHT, backgroundColor: '#f0f0f0', borderRadius: 4 }}
                 />
             </div>
 

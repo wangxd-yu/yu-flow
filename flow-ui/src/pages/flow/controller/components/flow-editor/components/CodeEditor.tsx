@@ -39,6 +39,8 @@ export interface CodeEditorProps {
     style?: React.CSSProperties;
     /** 外层容器 className */
     className?: string;
+    /** 是否有边框，默认 true */
+    bordered?: boolean;
     /** 编辑器挂载回调（可用于拿到 EditorView 实例） */
     onMount?: (view: EditorView) => void;
 }
@@ -84,6 +86,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
     extensions: extraExtensions,
     style,
     className,
+    bordered = true,
     onMount,
 }) => {
     const isFlexHeight = height === '100%' || height === 'auto';
@@ -146,7 +149,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 
     // 容器样式 — 模仿 Ant Design Input 风格
     const wrapperStyle: React.CSSProperties = {
-        border: '1px solid #d9d9d9',
+        border: bordered ? '1px solid #d9d9d9' : 'none',
         borderRadius: 6,
         overflow: 'hidden',
         transition: 'border-color 0.2s',
@@ -160,10 +163,10 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
             className={className}
             style={wrapperStyle}
             onFocus={(e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor = '#4096ff';
+                if (bordered) (e.currentTarget as HTMLDivElement).style.borderColor = '#4096ff';
             }}
             onBlur={(e) => {
-                (e.currentTarget as HTMLDivElement).style.borderColor = '#d9d9d9';
+                if (bordered) (e.currentTarget as HTMLDivElement).style.borderColor = '#d9d9d9';
             }}
         >
             <CodeMirror

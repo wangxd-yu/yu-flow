@@ -231,9 +231,10 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                         value={statusCode}
                         min={100}
                         max={599}
+                        bordered={false}
                         onChange={handleStatusChange}
                         onMouseDown={(e) => e.stopPropagation()}
-                        style={{ width: 80 }}
+                        style={{ width: 80, backgroundColor: '#f0f0f0', borderRadius: 4 }}
                     />
                 </div>
 
@@ -287,15 +288,17 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                                     <Input
                                         placeholder="Key"
                                         value={h.key}
+                                        bordered={false}
                                         onChange={e => onUpdateHeader(idx, 'key', e.target.value)}
-                                        style={{ width: '40%', pointerEvents: 'auto' }}
+                                        style={{ width: '40%', pointerEvents: 'auto', backgroundColor: '#f0f0f0' }}
                                         onMouseDown={e => e.stopPropagation()}
                                     />
                                     <Input
                                         placeholder="Value"
                                         value={h.value}
+                                        bordered={false}
                                         onChange={e => onUpdateHeader(idx, 'value', e.target.value)}
-                                        style={{ width: '60%', pointerEvents: 'auto' }}
+                                        style={{ width: '60%', pointerEvents: 'auto', backgroundColor: '#f0f0f0' }}
                                         onMouseDown={e => e.stopPropagation()}
                                     />
                                 </Space.Compact>
@@ -356,8 +359,9 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                                 language="json"
                                 height="100%"
                                 lineNumbers={false}
+                                bordered={false}
                                 fontSize={12}
-                                style={{ border: '1px solid #e8e8e8', flex: 1, display: 'flex', flexDirection: 'column' }}
+                                style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#f0f0f0', borderRadius: 4 }}
                             />
                         </div>
                     </div>

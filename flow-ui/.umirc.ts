@@ -107,6 +107,12 @@ export default defineConfig({
       component: './Log/ExecutionLog',
     },
     {
+      name: 'API 文档',
+      path: '/api-docs',
+      icon: 'FileTextOutlined',
+      component: './ApiDocs',
+    },
+    {
       path: '/page-manage/designer/:id',
       component: './PageManage/Designer',
       layout: false,

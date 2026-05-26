@@ -27,9 +27,10 @@ import {
   CheckCircleFilled, CloseCircleFilled, LoadingOutlined,
   ClockCircleOutlined, UpOutlined, DownOutlined,
   SendOutlined, PlusOutlined, DeleteOutlined,
-  FileTextOutlined,
+  FileTextOutlined, BugOutlined, StepForwardOutlined, StopOutlined,
 } from '@ant-design/icons';
 import './FlowDebugger.less';
+import CodeEditor from '../flow-editor/components/CodeEditor';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -106,6 +107,18 @@ export interface FlowDebuggerProps {
   onExecutionLogsChange?: (logs: ExecutionLog[]) => void;
   /** 只读回放模式下的 Trace 数据，如果有传入，则表示当前为回放模式 */
   playbackTrace?: FlowTrace | null;
+  /** 触发调试回调 */
+  onDebugStart?: (payload: {
+    dslContent: string;
+    headers: Record<string, string>;
+    queryParams: Record<string, string>;
+    body: string;
+    breakpoints: string[];
+  }) => Promise<{ sessionId: string }>;
+  onDebugStatus?: (sessionId: string) => Promise<any>;
+  onDebugResume?: (sessionId: string, inputs?: any) => Promise<void>;
+  onDebugCancel?: (sessionId: string) => Promise<void>;
+  breakpoints?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -279,9 +292,16 @@ const JsonViewer: React.FC<{ data: any; emptyText?: string }> = ({
     );
   }
   return (
-    <pre className="pfd-json-viewer">
-      <code>{prettyJson(data)}</code>
-    </pre>
+    <div className="pfd-json-viewer-container" style={{ margin: '8px 0' }}>
+      <CodeEditor
+        value={prettyJson(data)}
+        onChange={() => {}}
+        language="json"
+        readOnly={true}
+        height="auto"
+        maxHeight="300px"
+      />
+    </div>
   );
 };
 
@@ -305,6 +325,11 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   onExecutionLogsChange,
   onSelectedLogChange,
   playbackTrace,
+  onDebugStart,
+  onDebugStatus,
+  onDebugResume,
+  onDebugCancel,
+  breakpoints,
 }) => {
   // ─── DOM 引用 ──────────────────────────────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);
@@ -357,6 +382,9 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   const [consoleHeight, setConsoleHeight] = useState<number>(300);
   const [isResizing, setIsResizing] = useState<boolean>(false);
 
+  const [debugSessionId, setDebugSessionId] = useState<string | null>(null);
+  const [debugStatus, setDebugStatus] = useState<RunStatus | 'suspended'>('idle');
+
   // ─── 派生：选中的日志条目 ──────────────────────────────────────────
   const selectedLog = useMemo(
     () => executionLogs.find((log) => log.id === selectedLogId) ?? null,
@@ -384,6 +412,94 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
     });
     return result;
   }, []);
+
+  const handleDebug = useCallback(async () => {
+    if (!onDebugStart) return;
+    setRunningStatus('running');
+    setDebugStatus('running');
+    setIsConsoleOpen(true);
+    onConsoleOpenChange?.(true);
+    updateLogs([]);
+    updateSelectedLog(null);
+    setRunTimestamp(new Date().toLocaleTimeString());
+
+    const payload = {
+      dslContent,
+      headers: kvToRecord(triggerHeaders),
+      queryParams: kvToRecord(triggerParams),
+      body: triggerBody,
+      breakpoints: breakpoints || [],
+    };
+
+    try {
+      const { sessionId } = await onDebugStart(payload);
+      setDebugSessionId(sessionId);
+    } catch (err: any) {
+      setRunningStatus('error');
+      setDebugStatus('error');
+    }
+  }, [dslContent, triggerHeaders, triggerParams, triggerBody, onDebugStart, kvToRecord, breakpoints, onConsoleOpenChange, updateLogs, updateSelectedLog]);
+
+  const pollStatus = useCallback(async () => {
+    if (!debugSessionId || !onDebugStatus) return;
+    try {
+      const res = await onDebugStatus(debugSessionId);
+      if (res && res.status) {
+        const currentStatus = res.status.toLowerCase();
+        setDebugStatus(currentStatus);
+        
+        if (res.trace && res.trace.stepLogs) {
+          updateLogs(res.trace.stepLogs);
+        } else if (currentStatus === 'suspended' && res.suspendedNodeId) {
+          // 在挂起状态下，后端不返回完整 trace，只返回当前快照。
+          // 我们伪造一条日志记录，以便在左侧列表中显示当前挂起的节点，并在右侧查看其上下文变量。
+          updateLogs([{
+            id: res.suspendedNodeId,
+            nodeId: res.suspendedNodeId,
+            nodeName: res.suspendedNodeName || res.suspendedNodeId,
+            nodeType: 'unknown',
+            status: 'running',
+            startTime: new Date().toLocaleTimeString(),
+            duration: 0,
+            inputs: res.variables || {}, // 将上下文变量展示在 "输入" 面板中
+            outputs: {},
+            error: null,
+          }]);
+        }
+
+        if (currentStatus === 'completed' || currentStatus === 'finished' || currentStatus === 'error') {
+          setRunningStatus(currentStatus === 'error' ? 'error' : 'success');
+          setDebugSessionId(null);
+        } else if (currentStatus === 'suspended' && res.suspendedNodeId) {
+          updateSelectedLog(res.suspendedNodeId);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [debugSessionId, onDebugStatus, updateLogs, updateSelectedLog]);
+
+  useEffect(() => {
+    let timer: any;
+    if (debugSessionId && (debugStatus === 'running' || debugStatus === 'suspended')) {
+      timer = setInterval(pollStatus, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [debugSessionId, debugStatus, pollStatus]);
+
+  const handleResume = useCallback(async () => {
+    if (!debugSessionId || !onDebugResume) return;
+    setDebugStatus('running');
+    await onDebugResume(debugSessionId);
+  }, [debugSessionId, onDebugResume]);
+
+  const handleCancel = useCallback(async () => {
+    if (!debugSessionId || !onDebugCancel) return;
+    await onDebugCancel(debugSessionId);
+    setDebugSessionId(null);
+    setDebugStatus('error');
+    setRunningStatus('error');
+  }, [debugSessionId, onDebugCancel]);
 
   /** 点击 Run 按钮 */
   const handleRun = useCallback(async () => {
@@ -609,24 +725,50 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             </button>
           </Tooltip>
 
-          {/* Run 按钮 */}
-          <button
-            className={`pfd-run-btn ${runningStatus === 'running' ? 'pfd-run-btn--running' : ''}`}
-            onClick={handleRun}
-            disabled={runningStatus === 'running'}
-          >
-            {runningStatus === 'running' ? (
-              <>
-                <LoadingOutlined spin />
-                <span>运行中...</span>
-              </>
-            ) : (
-              <>
-                <CaretRightOutlined />
-                <span>运行</span>
-              </>
-            )}
-          </button>
+          {/* 调试操作栏 */}
+          {(debugStatus === 'running' || debugStatus === 'suspended') ? (
+            <div style={{ display: 'flex', gap: 8, marginLeft: 8, alignItems: 'center' }}>
+              <Button 
+                type="primary" 
+                onClick={handleResume} 
+                disabled={debugStatus === 'running'}
+                icon={debugStatus === 'running' ? <LoadingOutlined /> : <StepForwardOutlined />}
+              >
+                {debugStatus === 'running' ? '执行中' : '单步跳过'}
+              </Button>
+              <Button danger onClick={handleCancel} icon={<StopOutlined />}>停止</Button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, marginLeft: 8 }}>
+              <button
+                className={`pfd-run-btn`}
+                style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
+                onClick={handleDebug}
+                disabled={runningStatus === 'running'}
+              >
+                <BugOutlined />
+                <span style={{marginLeft: 4}}>调试</span>
+              </button>
+              {/* Run 按钮 */}
+              <button
+                className={`pfd-run-btn ${runningStatus === 'running' ? 'pfd-run-btn--running' : ''}`}
+                onClick={handleRun}
+                disabled={runningStatus === 'running'}
+              >
+                {runningStatus === 'running' ? (
+                  <>
+                    <LoadingOutlined spin />
+                    <span>运行中...</span>
+                  </>
+                ) : (
+                  <>
+                    <CaretRightOutlined />
+                    <span>运行</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
 
           {/* 运行完成后的小指示器 */}
           {(runningStatus === 'finished' || runningStatus === 'error') && (
@@ -748,13 +890,13 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                 key: 'body',
                 label: 'Body',
                 children: (
-                  <TextArea
+                  <CodeEditor
                     value={triggerBody}
-                    onChange={(e) => setTriggerBody(e.target.value)}
-                    autoSize={{ minRows: 8, maxRows: 16 }}
+                    onChange={setTriggerBody}
+                    language="json"
+                    height="auto"
+                    maxHeight="400px"
                     className="pfd-body-editor"
-                    placeholder='{\n  "key": "value"\n}'
-                    style={{ fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace", fontSize: 12 }}
                   />
                 ),
               },
