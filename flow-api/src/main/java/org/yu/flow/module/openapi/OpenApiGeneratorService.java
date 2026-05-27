@@ -16,7 +16,11 @@ import org.yu.flow.util.FlowObjectMapperUtil;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 /**
  * OpenAPI 3.0 契约生成服务
@@ -71,18 +75,36 @@ public class OpenApiGeneratorService {
     private FlowDirectoryRepository flowDirectoryRepository;
 
     /**
+     * OpenAPI 契约缓存 (TTL 30秒，按 Server URL 分区)
+     */
+    private final Cache<String, String> openApiCache = Caffeine.newBuilder()
+            .expireAfterWrite(30, TimeUnit.SECONDS)
+            .maximumSize(50)
+            .build();
+
+    /**
      * 生成完整的 OpenAPI 3.0 文档
      *
      * @return OpenAPI JSON 字符串
      */
     public String generateOpenApiJson(HttpServletRequest request) {
-        try {
-            ObjectNode root = buildOpenApiDocument(request);
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
-        } catch (Exception e) {
-            log.error("[OpenApiGenerator] 生成 OpenAPI 文档失败", e);
-            return "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"Yu Flow API\",\"version\":\"1.0.0\"},\"paths\":{}}";
+        String cacheKey = "default";
+        if (request != null) {
+            String scheme = request.getScheme();
+            String serverName = request.getServerName();
+            int serverPort = request.getServerPort();
+            cacheKey = scheme + "://" + serverName + ":" + serverPort + request.getContextPath();
         }
+
+        return openApiCache.get(cacheKey, key -> {
+            try {
+                ObjectNode root = buildOpenApiDocument(request);
+                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+            } catch (Exception e) {
+                log.error("[OpenApiGenerator] 生成 OpenAPI 文档失败", e);
+                return "{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"Yu Flow API\",\"version\":\"1.0.0\"},\"paths\":{}}";
+            }
+        });
     }
 
     /**

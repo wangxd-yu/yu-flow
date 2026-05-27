@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.yu.flow.annotation.YuFlowApi;
+import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -41,6 +42,9 @@ public class OpenApiController {
     @Resource
     private OpenApiGeneratorService openApiGeneratorService;
 
+    @Resource
+    private SysConfigCacheManager sysConfigCacheManager;
+
     /**
      * 获取 OpenAPI 3.0 文档 (JSON)
      *
@@ -52,6 +56,15 @@ public class OpenApiController {
         response.setContentType("application/json;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         response.setHeader("Access-Control-Allow-Origin", "*");
+
+        // ── 网关层鉴权开关 ──
+        boolean openApiEnabled = sysConfigCacheManager.getBoolConfig("openapi.enabled", true);
+        if (!openApiEnabled) {
+            response.setStatus(403);
+            response.getWriter().write("{\"error\": \"OpenAPI 接口已禁用，请在系统配置中开启 (openapi.enabled=true)\"}");
+            response.getWriter().flush();
+            return;
+        }
 
         String json = openApiGeneratorService.generateOpenApiJson(request);
         response.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
@@ -65,8 +78,19 @@ public class OpenApiController {
      */
     @GetMapping(value = "/api-docs.yaml", produces = "application/x-yaml")
     public void getApiDocsYaml(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        // TODO: 后续可引入 snakeyaml 做 JSON→YAML 转换
         response.setContentType("application/json;charset=UTF-8");
+        response.setHeader("Access-Control-Allow-Origin", "*");
+
+        // ── 网关层鉴权开关 ──
+        boolean openApiEnabled = sysConfigCacheManager.getBoolConfig("openapi.enabled", true);
+        if (!openApiEnabled) {
+            response.setStatus(403);
+            response.getWriter().write("{\"error\": \"OpenAPI 接口已禁用，请在系统配置中开启 (openapi.enabled=true)\"}");
+            response.getWriter().flush();
+            return;
+        }
+
+        // TODO: 后续可引入 snakeyaml 做 JSON→YAML 转换
         String json = openApiGeneratorService.generateOpenApiJson(request);
         response.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
         response.getOutputStream().flush();
