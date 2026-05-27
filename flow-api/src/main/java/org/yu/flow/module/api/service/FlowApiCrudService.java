@@ -80,4 +80,16 @@ public interface FlowApiCrudService {
      * @return true-已占用/存在冲突, false-可用
      */
     boolean existsByUrlAndMethod(String url, String method);
+
+    /** 发布 API：将草稿内容冻结为发布快照 */
+    FlowApiDO publish(String id);
+
+    /** 下线 API：清除快照，线上停止服务 */
+    FlowApiDO unpublish(String id);
+
+    /** 回滚草稿：将发布快照中的内容复制回草稿字段 */
+    FlowApiDO rollbackToPublished(String id);
+
+    /** 重新发布：将最新草稿重新冻结为快照 */
+    FlowApiDO republish(String id);
 }

@@ -435,30 +435,58 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     /**
      * 根据 serviceType 精准读取对应的隔离内容字段。
      *
+     * <p>版本快照策略：已发布且存在 publishedSnapshot 时，从快照 JSON 中读取，
+     * 保证草稿编辑不影响线上运行时。</p>
+     *
      * @param flowApiDO API 定义实体
      * @return 当前引擎模式对应的脚本/配置内容
      */
     private String resolveContent(FlowApiDO flowApiDO) {
+        // ── 快照优先策略 ──
+        if (flowApiDO.getPublishStatus() != null
+                && flowApiDO.getPublishStatus() == 1
+                && flowApiDO.getPublishedSnapshot() != null) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode snap = OBJECT_MAPPER.readTree(flowApiDO.getPublishedSnapshot());
+                String serviceType = snap.has("serviceType") && !snap.get("serviceType").isNull()
+                        ? snap.get("serviceType").asText() : flowApiDO.getServiceType();
+                return getSnapshotField(snap, serviceType);
+            } catch (Exception e) {
+                log.warn("[FlowApiService] 解析 publishedSnapshot 失败，降级为草稿字段读取。apiId={}", flowApiDO.getId(), e);
+            }
+        }
+
+        // ── 降级：直接从草稿字段读取 ──
+        return resolveContentFromDraft(flowApiDO);
+    }
+
+    private String resolveContentFromDraft(FlowApiDO flowApiDO) {
         String serviceType = flowApiDO.getServiceType();
-        String content;
         switch (serviceType) {
             case "FLOW":
-                content = flowApiDO.getDslContent();
-                break;
+                return flowApiDO.getDslContent();
             case "DB":
-                content = flowApiDO.getSqlContent();
-                break;
+                return flowApiDO.getSqlContent();
             case "JSON":
-                content = flowApiDO.getJsonContent();
-                break;
+                return flowApiDO.getJsonContent();
             case "STRING":
-                content = flowApiDO.getTextContent();
-                break;
+                return flowApiDO.getTextContent();
             default:
-                content = null;
+                return null;
         }
-        // 降级兼容：新字段为空时回退到旧 config
-        return content;
+    }
+
+    private String getSnapshotField(com.fasterxml.jackson.databind.JsonNode snap, String serviceType) {
+        String fieldName;
+        switch (serviceType) {
+            case "FLOW":  fieldName = "dslContent"; break;
+            case "DB":    fieldName = "sqlContent"; break;
+            case "JSON":  fieldName = "jsonContent"; break;
+            case "STRING": fieldName = "textContent"; break;
+            default: return null;
+        }
+        com.fasterxml.jackson.databind.JsonNode node = snap.get(fieldName);
+        return node != null && !node.isNull() ? node.asText() : null;
     }
 
     /**

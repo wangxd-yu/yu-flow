@@ -110,6 +110,19 @@ public class FlowApiDO implements Serializable {
     private String contract;
 
     /**
+     * 发布时的完整内容快照 (JSON)。
+     * <p>运行时引擎从此字段读取，用户编辑的草稿不会影响线上。</p>
+     */
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String publishedSnapshot;
+
+    /**
+     * 最近一次发布时间
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime publishTime;
+
+    /**
      * 是否已删除 0：未删除；1：已删除
      */
     @Column(name = "deleted", columnDefinition = "int default 0")

@@ -136,8 +136,9 @@ public class FlowApiController {
     }
 
     @GetMapping("/{id}")
-    public R<FlowApiDO> getById(@PathVariable String id) {
-        return R.ok(flowApiCrudService.findById(id));
+    public R<FlowApiDTO> getById(@PathVariable String id) {
+        FlowApiDO configDO = flowApiCrudService.findById(id);
+        return R.ok(configDO != null ? FlowApiDTO.fromDO(configDO) : null);
     }
 
     @GetMapping
@@ -155,6 +156,38 @@ public class FlowApiController {
     public R<List<FlowApiDTO>> getByPublishStatus(@PathVariable Integer status) {
         List<FlowApiDTO> configs = flowApiCrudService.findByPublishStatus(status);
         return R.ok(configs);
+    }
+
+    /**
+     * 发布 API（冻结草稿为线上快照）
+     */
+    @PutMapping("/{id}/publish")
+    public R<FlowApiDO> publish(@PathVariable String id) {
+        return R.ok(flowApiCrudService.publish(id));
+    }
+
+    /**
+     * 下线 API（清除快照，停止线上服务）
+     */
+    @PutMapping("/{id}/unpublish")
+    public R<FlowApiDO> unpublish(@PathVariable String id) {
+        return R.ok(flowApiCrudService.unpublish(id));
+    }
+
+    /**
+     * 回滚草稿到发布版本
+     */
+    @PutMapping("/{id}/rollback")
+    public R<FlowApiDO> rollback(@PathVariable String id) {
+        return R.ok(flowApiCrudService.rollbackToPublished(id));
+    }
+
+    /**
+     * 重新发布（将最新草稿冻结为快照并上线）
+     */
+    @PutMapping("/{id}/republish")
+    public R<FlowApiDO> republish(@PathVariable String id) {
+        return R.ok(flowApiCrudService.republish(id));
     }
 
     @GetMapping("/name/{name}")

@@ -9,7 +9,7 @@ import {
   ProTable,
   ModalForm,
 } from '@ant-design/pro-components';
-import { Button, Divider, Drawer, message, Tag, Popconfirm, Space } from 'antd';
+import { Button, Divider, Drawer, message, Tag, Popconfirm, Space, Tooltip } from 'antd';
 import {
   queryAutoApiConfigDetail,
   queryAutoApiConfigList,
@@ -167,6 +167,19 @@ const AutoApiConfigList: React.FC = () => {
       valueEnum: {
         0: { text: '未发布', status: 'Default' },
         1: { text: '已发布', status: 'Success' },
+      },
+      render: (dom, record) => {
+        if (record.publishStatus === 1 && record.hasUnpublishedChanges) {
+          return (
+            <Tooltip title="存在未发布的草稿修改">
+              <span style={{ color: '#faad14', fontWeight: 500 }}>
+                <span style={{ marginRight: 6 }}>●</span>
+                待更新发布
+              </span>
+            </Tooltip>
+          );
+        }
+        return dom;
       },
     },
     {

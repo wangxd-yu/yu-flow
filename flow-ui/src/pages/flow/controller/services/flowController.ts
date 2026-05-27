@@ -29,6 +29,10 @@ export interface FlowController {
   customPageWrapper?: string;
   /** 自定义失败返回包装（局部重载） */
   customFailWrapper?: string;
+  /** 最近一次发布时间 */
+  publishTime?: string;
+  /** 是否存在未发布的草稿变更 */
+  hasUnpublishedChanges?: boolean;
   createTime?: string;
   updateTime?: string;
 }
@@ -110,4 +114,26 @@ export async function cancelDebugSession(sessionId: string) {
   return request<any>(`/flow-api/debug/session/${sessionId}`, {
     method: 'DELETE',
   });
+}
+
+// ============================= 版本快照 API =============================
+
+/** 发布 API（冻结草稿为线上快照） */
+export async function publishApi(id: string) {
+  return request<FlowController>(`/flow-api/api/${id}/publish`, { method: 'PUT' });
+}
+
+/** 下线 API（清除快照，停止线上服务） */
+export async function unpublishApi(id: string) {
+  return request<FlowController>(`/flow-api/api/${id}/unpublish`, { method: 'PUT' });
+}
+
+/** 回滚草稿到发布版本 */
+export async function rollbackApi(id: string) {
+  return request<FlowController>(`/flow-api/api/${id}/rollback`, { method: 'PUT' });
+}
+
+/** 重新发布（将最新草稿冻结为快照并上线） */
+export async function republishApi(id: string) {
+  return request<FlowController>(`/flow-api/api/${id}/republish`, { method: 'PUT' });
 }

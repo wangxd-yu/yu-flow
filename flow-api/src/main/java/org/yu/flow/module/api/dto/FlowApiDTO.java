@@ -31,6 +31,13 @@ public class FlowApiDTO {
     private Integer level;
     private String contract;
     private String tags;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime publishTime;
+
+    /** 是否存在未发布的草稿变更（前端展示用） */
+    private Boolean hasUnpublishedChanges;
+
     private Integer deleted = 0;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
@@ -61,9 +68,19 @@ public class FlowApiDTO {
         dto.setLevel(configDO.getLevel());
         dto.setContract(configDO.getContract());
         dto.setTags(configDO.getTags());
+        dto.setPublishTime(configDO.getPublishTime());
         dto.setDeleted(configDO.getDeleted());
         dto.setCreateTime(configDO.getCreateTime());
         dto.setUpdateTime(configDO.getUpdateTime());
+        // 判断草稿是否与线上快照有差异
+        dto.setHasUnpublishedChanges(
+                configDO.getPublishStatus() != null
+                        && configDO.getPublishStatus() == 1
+                        && configDO.getPublishedSnapshot() != null
+                        && configDO.getUpdateTime() != null
+                        && configDO.getPublishTime() != null
+                        && configDO.getUpdateTime().isAfter(configDO.getPublishTime())
+        );
         return dto;
     }
 

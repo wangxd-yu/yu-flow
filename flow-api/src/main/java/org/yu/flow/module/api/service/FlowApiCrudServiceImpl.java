@@ -1,4 +1,6 @@
 package org.yu.flow.module.api.service;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.bean.BeanUtil;
@@ -116,10 +118,22 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (!existing.isPresent()) {
             throw new RuntimeException("配置不存在，id: " + flowApiDO.getId());
         }
-        flowApiDO.setCreateTime(existing.get().getCreateTime());
+        FlowApiDO dbRecord = existing.get();
+        flowApiDO.setCreateTime(dbRecord.getCreateTime());
         flowApiDO.setUpdateTime(LocalDateTime.now());
+
+        // ── 版本快照策略 ──
+        // 保留已有的发布快照和发布时间，草稿编辑不影响线上
+        flowApiDO.setPublishedSnapshot(dbRecord.getPublishedSnapshot());
+        flowApiDO.setPublishTime(dbRecord.getPublishTime());
+
         flowApiRepository.save(flowApiDO);
-        flowApiCacheManager.publishRefreshEvent();
+
+        // 如果当前是未发布状态，仍然刷新缓存（兑容旧逻辑）
+        // 已发布状态下编辑草稿不刷新缓存（快照隔离）
+        if (flowApiDO.getPublishStatus() == null || flowApiDO.getPublishStatus() != 1) {
+            flowApiCacheManager.publishRefreshEvent();
+        }
         return flowApiDO;
     }
 
@@ -262,6 +276,113 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     public boolean existsByUrlAndMethod(String url, String method) {
         return flowApiRepository.existsByUrlAndMethod(url, method);
+    }
+
+    // ============================= 发布/下线/回滚 =============================
+
+    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
+
+    /**
+     * 发布 API：将草稿内容冻结为发布快照
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO publish(String id) {
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+
+        // 生成快照 JSON
+        api.setPublishedSnapshot(buildSnapshot(api));
+        api.setPublishTime(LocalDateTime.now());
+        api.setPublishStatus(1);
+        flowApiRepository.save(api);
+
+        // 刷新缓存，线上生效
+        flowApiCacheManager.publishRefreshEvent();
+        return api;
+    }
+
+    /**
+     * 下线 API：清除快照，线上停止服务
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO unpublish(String id) {
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+
+        api.setPublishStatus(0);
+        api.setPublishedSnapshot(null);
+        flowApiRepository.save(api);
+
+        flowApiCacheManager.publishRefreshEvent();
+        return api;
+    }
+
+    /**
+     * 回滚草稿：将发布快照中的内容复制回草稿字段
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO rollbackToPublished(String id) {
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+
+        if (api.getPublishedSnapshot() == null) {
+            throw new RuntimeException("该 API 没有发布快照，无法回滚");
+        }
+
+        try {
+            com.fasterxml.jackson.databind.JsonNode snap = SNAPSHOT_MAPPER.readTree(api.getPublishedSnapshot());
+            api.setDslContent(getSnapText(snap, "dslContent"));
+            api.setSqlContent(getSnapText(snap, "sqlContent"));
+            api.setJsonContent(getSnapText(snap, "jsonContent"));
+            api.setTextContent(getSnapText(snap, "textContent"));
+            api.setContract(getSnapText(snap, "contract"));
+            api.setServiceType(getSnapText(snap, "serviceType"));
+            api.setDatasource(getSnapText(snap, "datasource"));
+            api.setResponseType(getSnapText(snap, "responseType"));
+            api.setUpdateTime(api.getPublishTime()); // 将 updateTime 对齐到发布时间，消除变更标记
+        } catch (Exception e) {
+            throw new RuntimeException("解析发布快照失败", e);
+        }
+
+        flowApiRepository.save(api);
+        return api;
+    }
+
+    /**
+     * 重新发布：将最新草稿重新冻结为快照
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO republish(String id) {
+        return publish(id);
+    }
+
+    /**
+     * 构建快照 JSON
+     */
+    private String buildSnapshot(FlowApiDO api) {
+        try {
+            ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
+            snap.put("serviceType", api.getServiceType());
+            snap.put("dslContent", api.getDslContent());
+            snap.put("sqlContent", api.getSqlContent());
+            snap.put("jsonContent", api.getJsonContent());
+            snap.put("textContent", api.getTextContent());
+            snap.put("datasource", api.getDatasource());
+            snap.put("responseType", api.getResponseType());
+            snap.put("contract", api.getContract());
+            return SNAPSHOT_MAPPER.writeValueAsString(snap);
+        } catch (Exception e) {
+            throw new RuntimeException("生成发布快照失败", e);
+        }
+    }
+
+    private String getSnapText(com.fasterxml.jackson.databind.JsonNode snap, String field) {
+        com.fasterxml.jackson.databind.JsonNode node = snap.get(field);
+        return node != null && !node.isNull() ? node.asText() : null;
     }
 
     // ============================= FlowServiceDO CRUD =============================

@@ -16,11 +16,11 @@ import {
   Space, Tag, Dropdown, Tooltip, Popover
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { SaveOutlined, CloseOutlined, CopyOutlined } from '@ant-design/icons';
+import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined, SyncOutlined } from '@ant-design/icons';
 import { merge } from 'lodash';
 import { PageContainer } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
-import { addAutoApiConfig, updateAutoApiConfig } from '../services/flowController';
+import { addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi } from '../services/flowController';
 
 // ── Panel 子组件 ──
 import ImplementationPanel from './panels/ImplementationPanel';
@@ -513,23 +513,115 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     </Space.Compact>
   );
 
-  const publishMenuItems: MenuProps['items'] = [
-    { key: '1', label: '已发布', onClick: () => setPublishStatus(1) },
-    { key: '0', label: '未发布', onClick: () => setPublishStatus(0) },
-  ];
-
   const headerExtra = (
     <Space size={12}>
-      <Dropdown menu={{ items: publishMenuItems }} placement="bottomRight">
-        <Tag
-          color={publishStatus === 1 ? 'success' : 'default'}
-          style={{ cursor: 'pointer', padding: '4px 12px', fontSize: 13 }}
+      {/* 状态指示标签 */}
+      <Tag
+        color={publishStatus === 1 ? 'success' : 'default'}
+        style={{ padding: '4px 12px', fontSize: 13 }}
+      >
+        {publishStatus === 1 ? '● 已发布' : '○ 未发布'}
+      </Tag>
+
+      {/* 按钮组 */}
+      {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
+        <Tooltip title="有未发布的草稿变更，点击重新发布">
+          <Button
+            type="primary"
+            style={{ backgroundColor: '#faad14' }}
+            icon={<SyncOutlined />}
+            onClick={async () => {
+              const saved = await handleSubmit();
+              if (saved && values?.id) {
+                const hide = message.loading('正在重新发布...');
+                try {
+                  await republishApi(values.id);
+                  hide();
+                  message.success('重新发布成功');
+                  onSubmit(true);
+                } catch (e) {
+                  hide();
+                }
+              }
+            }}
+          >
+            重新发布
+          </Button>
+        </Tooltip>
+      )}
+
+      {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
+        <Tooltip title="将草稿回滚到已发布的线上版本">
+          <Button
+            danger
+            icon={<RollbackOutlined />}
+            onClick={async () => {
+              if (values?.id) {
+                const hide = message.loading('正在回滚...');
+                try {
+                  await rollbackApi(values.id);
+                  hide();
+                  message.success('已回滚到线上版本');
+                  onSubmit(true);
+                } catch (e) {
+                  hide();
+                }
+              }
+            }}
+          >
+            回滚草稿
+          </Button>
+        </Tooltip>
+      )}
+
+      {isEdit && publishStatus === 0 && (
+        <Button
+          type="primary"
+          style={{ backgroundColor: '#52c41a' }}
+          icon={<CloudUploadOutlined />}
+          onClick={async () => {
+            const saved = await handleSubmit();
+            if (saved && values?.id) {
+              const hide = message.loading('正在发布...');
+              try {
+                await publishApi(values.id);
+                hide();
+                message.success('发布成功');
+                onSubmit(true);
+              } catch (e) {
+                hide();
+              }
+            }
+          }}
         >
-          {publishStatus === 1 ? '● 已发布' : '○ 未发布'}
-        </Tag>
-      </Dropdown>
+          发布上线
+        </Button>
+      )}
+
+      {isEdit && publishStatus === 1 && (
+        <Button
+          danger
+          icon={<CloudDownloadOutlined />}
+          onClick={async () => {
+            if (values?.id) {
+              const hide = message.loading('正在下线...');
+              try {
+                await unpublishApi(values.id);
+                hide();
+                message.success('下线成功');
+                onSubmit(true);
+              } catch (e) {
+                hide();
+              }
+            }
+          }}
+        >
+          下线
+        </Button>
+      )}
+
       <Button icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Button type="primary" icon={<SaveOutlined />} onClick={() => handleSubmit()}>保存</Button>
+      <Button type="primary" icon={<SaveOutlined />} onClick={() => handleSubmit()}>保存草稿</Button>
     </Space>
   );
 
