@@ -161,9 +161,9 @@ public class DebugSession {
             // 阻塞引擎线程，等待前端唤醒或超时
             boolean awoken = suspendLatch.await(timeoutMs, TimeUnit.MILLISECONDS);
             if (!awoken) {
-                log.warn("[DebugSession-{}] 调试超时（{}ms），自动恢复执行", sessionId, timeoutMs);
-                this.status = Status.RUNNING;
-                return null;
+                log.warn("[DebugSession-{}] 调试挂起超时（{}ms），强制抛出异常释放引擎线程池", sessionId, timeoutMs);
+                this.status = Status.CANCELLED;
+                throw new org.yu.flow.exception.FlowException("DEBUG_TIMEOUT", "调试会话挂起超时 (" + timeoutMs + "ms)，为防挂死已被强制释放");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

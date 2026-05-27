@@ -17,17 +17,9 @@ import CodeEditor from './flow-editor/components/CodeEditor';
 // V3.2 Modules
 import type { FlowDsl, DslNodeType, FlowEditorProps } from './flow-editor/types';
 import type { FormInstance } from 'antd';
-import {
-    exportGraphToDsl,
-    importDslToGraph,
-    createDefaultDslNode,
-    addSingleNodeToGraph,
-    updateNodeDslData,
-    EDGE_CONFIG,
-} from './flow-editor/adapter';
+import { exportGraphToDsl, importDslToGraph, createDefaultDslNode, addSingleNodeToGraph, updateNodeDslData, EDGE_CONFIG } from './flow-editor/adapter';
 import { validateFlowGraph, validatePortConnection, autoBindLoopNodes } from './flow-editor/validateFlowGraph';
-import { initNodeRegistry } from './flow-editor/node-registry';
-import { getNodeRegistration } from './flow-editor/node-registry';
+import { initNodeRegistry, getNodeRegistration } from './flow-editor/node-registry';
 import DslPalette from './flow-editor/components/DslPalette';
 import QuickAddPopover from './flow-editor/components/QuickAddPopover';
 import NodePropertyDrawer from './flow-editor/components/NodePropertyDrawer';
@@ -35,6 +27,7 @@ import ActionToolbar from './flow-editor/components/ActionToolbar';
 import CanvasToolbar from './flow-editor/components/CanvasToolbar';
 import MiniMapPanel from './flow-editor/components/MiniMapPanel';
 import { debugRunAutoApiConfig, startDebugSession, getDebugSessionStatus, resumeDebugSession, cancelDebugSession } from '../services/flowController';
+import { setCurrentDebugContext } from './flow-editor/components/MacroCompletion';
 
 const { Text } = Typography;
 
@@ -136,6 +129,18 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             setExecutionLogs(readonlyTrace.stepLogs);
         }
     }, [readonlyTrace]);
+
+    // ── 同步调试上下文供智能提示 (CodeMirror) ──
+    React.useEffect(() => {
+        if (debuggerSelectedNodeId) {
+            const log = executionLogs.find(l => l.nodeId === debuggerSelectedNodeId);
+            if (log && log.inputs) {
+                setCurrentDebugContext(log.inputs);
+                return;
+            }
+        }
+        setCurrentDebugContext(null);
+    }, [debuggerSelectedNodeId, executionLogs]);
 
     // ── 断点同步 ──
     React.useEffect(() => {

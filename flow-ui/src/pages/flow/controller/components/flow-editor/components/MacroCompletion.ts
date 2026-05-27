@@ -22,6 +22,13 @@ import { CompletionContext, Completion } from '@codemirror/autocomplete';
 import { EditorState, type Extension } from '@codemirror/state';
 import { request } from '@umijs/max';
 
+// ── 调试上下文 ────────────────────────────────────────────────────────────────────
+let currentDebugContext: Record<string, any> | null = null;
+
+export function setCurrentDebugContext(context: Record<string, any> | null) {
+  currentDebugContext = context;
+}
+
 // ── 类型定义 ────────────────────────────────────────────────────────────────────
 
 /** 后端宏字典 VO 结构 */
@@ -234,44 +241,43 @@ async function jsCompletionSource(context: CompletionContext) {
 
   const from = word ? word.from : context.pos;
 
-  // ── 构建补全项 ──
   const options: Completion[] = macros.map((macro) => {
     const isFunction = macro.macroType === 'FUNCTION';
 
     return {
-      // label: 补全弹窗展示文本
       label: `${macro.macroCode} - ${macro.macroName}`,
-      // detail: 右侧辅助信息
       detail: `返回类型: ${macro.returnType}`,
-      // type: 决定补全项左侧的图标样式
       type: isFunction ? 'function' : 'variable',
-      // apply: 实际插入到编辑器的文本
-      // 函数类型 → 插入 macroCode() 并将光标放在括号内（通过 apply 回调实现）
-      // 变量类型 → 直接插入 macroCode
       ...(isFunction
         ? {
-          // CodeMirror 6 的 snippet 补全：
-          // 使用 apply 回调函数来实现函数括号 + 光标定位
           apply: (view: any, completion: any, from: number, to: number) => {
             const insertText = `${macro.macroCode}()`;
-            // 替换 [from, to) 并将光标放在括号之间
             view.dispatch({
               changes: { from, to, insert: insertText },
-              // 光标位置 = from + macroCode长度 + 1（即 `(` 之后）
               selection: { anchor: from + macro.macroCode.length + 1 },
             });
           },
         }
-        : {
-          apply: macro.macroCode,
-        }),
+        : { apply: macro.macroCode }),
     };
   });
+
+  // 追加当前调试器上下文的变量补全
+  if (currentDebugContext) {
+    Object.keys(currentDebugContext).forEach((key) => {
+      options.push({
+        label: key,
+        detail: `[运行时变量] 类型: ${typeof currentDebugContext![key]}`,
+        type: 'variable',
+        apply: key,
+        boost: 20, // 运行时变量优先级更高
+      });
+    });
+  }
 
   return {
     from,
     options,
-    // validFor: 标识符字符继续输入时保持补全会话
     validFor: /^[a-zA-Z0-9_]*$/,
   };
 }
