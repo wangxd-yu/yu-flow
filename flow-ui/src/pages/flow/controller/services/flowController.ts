@@ -18,6 +18,7 @@ export interface FlowController {
   textContent?: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   publishStatus?: 0 | 1;
+  logEnabled?: boolean;
   level?: number;
   rule?: string;
   tags?: string[]; // 标签字段，支持数组格式
@@ -60,6 +61,13 @@ export async function updateAutoApiConfig(id: string, data: Partial<FlowControll
   return request<FlowController>(`/flow-api/api/${id}`, {
     method: 'PUT',
     data,
+  });
+}
+
+export async function updateAutoApiLogEnabled(id: string, enabled: boolean) {
+  return request<FlowController>(`/flow-api/api/${id}/log-enabled`, {
+    method: 'PUT',
+    params: { enabled },
   });
 }
 

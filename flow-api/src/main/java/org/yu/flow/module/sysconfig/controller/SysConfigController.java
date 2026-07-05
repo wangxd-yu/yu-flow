@@ -12,8 +12,8 @@ import org.yu.flow.module.sysconfig.service.SysConfigService;
 import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
-import javax.validation.Valid;
+import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 
 /**
  * 系统配置管理 Controller

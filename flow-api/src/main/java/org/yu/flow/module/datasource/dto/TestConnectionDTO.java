@@ -2,7 +2,7 @@ package org.yu.flow.module.datasource.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 /**
  * 独立连通性测试请求 DTO

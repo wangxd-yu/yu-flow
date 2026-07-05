@@ -660,6 +660,14 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   //  渲染
   // ═══════════════════════════════════════════════════════════════════
 
+  const shouldShowCollapsedConsole =
+    !isConsoleOpen && (
+      runningStatus !== 'idle'
+      || executionLogs.length > 0
+      || !!runTimestamp
+      || !!playbackTrace
+    );
+
   return (
     <div className="pfd-root" ref={rootRef}>
 
@@ -670,7 +678,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
         className="pfd-floating-toolbar"
         style={{
           // 控制台打开时，工具栏上移避让
-          bottom: isConsoleOpen ? consoleHeight + 24 : 24,
+          bottom: isConsoleOpen ? consoleHeight + 24 : shouldShowCollapsedConsole ? 82 : 24,
         }}
       >
         {/* 左侧：画布操作按钮 */}
@@ -923,7 +931,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
           3. 底部运行控制台 (Run Logs Console)
           ══════════════════════════════════════════════════════════════ */}
       <div
-        className={`pfd-console ${isConsoleOpen ? 'pfd-console--open' : ''} ${isResizing ? 'pfd-console--resizing' : ''}`}
+        className={`pfd-console ${isConsoleOpen ? 'pfd-console--open' : ''} ${shouldShowCollapsedConsole ? 'pfd-console--collapsed' : ''} ${isResizing ? 'pfd-console--resizing' : ''}`}
         style={isConsoleOpen ? { height: consoleHeight } : undefined}
       >
         {/* 顶部拖拽调整高度 */}

@@ -15,8 +15,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
-import javax.persistence.criteria.Predicate;
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -73,8 +73,8 @@ public class LoginLogServiceImpl implements LoginLogService {
 
         return new PageBean<>(
                 content,
-                result.getSize(),
                 result.getNumber() + 1,
+                result.getSize(),
                 result.getTotalPages(),
                 result.getTotalElements()
         );

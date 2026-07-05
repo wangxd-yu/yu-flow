@@ -28,7 +28,7 @@ VALUES (
     '1',
     '标准响应模板',
     '{"code": 200, "message": "success", "data": "$"}',
-    '{"code": 200, "message": "success", "data": {"items": "$.items", "total": "$.total", "current": "$.current", "size": "$.size", "pages": "$.pages"}}',
+    '{"code": 200, "message": "success", "data": {"items": "$.items", "page": "$.page", "total": "$.total", "current": "$.current", "size": "$.size", "pages": "$.pages"}}',
     '{"code": 500, "message": "$.msg", "data": null}',
     1,
     '系统内置标准响应格式，适用于大多数业务场景',

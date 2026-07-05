@@ -94,6 +94,21 @@ public class YuFlowExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<R<?>> handleRuntimeException(RuntimeException ex, WebRequest request) {
+        log.error("[YuFlowExceptionHandler] 运行时异常: path={}", getRequestPath(request), ex);
+
+        // 如果是直接抛出的 RuntimeException，通常是业务校验（如：“该目录下还有子目录”），将消息返回前端并返回 400
+        // 如果是其他子类（如 NullPointerException），为了安全，依然模糊提示并返回 500
+        if (ex.getClass() == RuntimeException.class && ex.getMessage() != null) {
+            R<?> response = R.fail(400, ex.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        } else {
+            R<?> response = R.fail(500, "YuFlow 引擎系统内部错误，请联系管理员");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     /**
      * 兜底处理器：捕获所有未预期的异常（只拦截引擎本身的 Controller）。
      */

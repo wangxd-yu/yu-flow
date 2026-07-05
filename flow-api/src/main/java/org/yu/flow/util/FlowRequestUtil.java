@@ -4,7 +4,7 @@ import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.cache.FlowRedisUtil;
 import org.springframework.web.util.UrlPathHelper;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Objects;
 
 /**

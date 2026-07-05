@@ -22,8 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.yu.flow.module.api.service.FlowApiCrudServiceImpl;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.yu.flow.engine.model.FlowTrace;
@@ -61,7 +61,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @FunctionalInterface
     private interface ServiceTypeStrategy {
-        Object execute(FlowApiDO apiDO, String content, Map<String, Object> params, Pageable pageable, HttpServletResponse response, FlowInputSupplier flowInputSupplier) throws Exception;
+        Object execute(FlowApiDO apiDO, String content, Map<String, Object> params, Pageable pageable, HttpServletResponse response, FlowInputSupplier flowInputSupplier, RuntimeLogContext runtimeLogContext) throws Exception;
     }
 
     @FunctionalInterface
@@ -72,23 +72,54 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private final Map<String, ServiceTypeStrategy> serviceStrategyMap = new HashMap<>();
     private final Map<String, DbResponseStrategy> dbResponseStrategyMap = new HashMap<>();
 
-    @javax.annotation.PostConstruct
+    private static class RuntimeLogContext {
+        private String actualSql;
+    }
+
+    private static Object firstPresent(Map<String, Object> source, String... keys) {
+        if (source == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (source.containsKey(key)) {
+                return source.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, Object> toObjectMap(Object value) {
+        if (!(value instanceof Map)) {
+            return new HashMap<>();
+        }
+        Map<?, ?> source = (Map<?, ?>) value;
+        Map<String, Object> result = new HashMap<>(source.size());
+        source.forEach((k, v) -> {
+            if (k != null) {
+                result.put(String.valueOf(k), v);
+            }
+        });
+        return result;
+    }
+
+    @jakarta.annotation.PostConstruct
     public void initStrategies() {
-        serviceStrategyMap.put("FLOW", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
+        serviceStrategyMap.put("FLOW", (apiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext) -> {
             FlowEngine flowEngine = new FlowEngine();
             Map<String, Object> allInputs = flowInputSupplier.get();
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("headers", new HashMap<>());
-            requestMap.put("params", allInputs.get("queryParams") != null ? allInputs.get("queryParams") : new HashMap<>());
-            requestMap.put("body", allInputs.get("bodyParams") != null ? allInputs.get("bodyParams") : new HashMap<>());
+            requestMap.put("headers", toObjectMap(firstPresent(allInputs, "headers")));
+            requestMap.put("params", toObjectMap(firstPresent(allInputs, "queryParams", "params", "@QP")));
+            requestMap.put("body", toObjectMap(firstPresent(allInputs, "bodyParams", "body", "@BP")));
             
             Map<String, Object> flowArgs = new HashMap<>();
             flowArgs.put("request", requestMap);
+            flowArgs.put("pageable", allInputs.get("pageable"));
             
-            return flowEngine.execute(content, flowArgs, true);
+            return flowEngine.execute(content, flowArgs, isLogEnabled(apiDO));
         });
 
-        serviceStrategyMap.put("STRING", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
+        serviceStrategyMap.put("STRING", (apiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext) -> {
             if (JSONUtil.isTypeJSON(content)) {
                 try {
                     return OBJECT_MAPPER.readValue(content, Object.class);
@@ -99,7 +130,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             return content;
         });
 
-        serviceStrategyMap.put("JSON", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
+        serviceStrategyMap.put("JSON", (apiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext) -> {
             try {
                 return OBJECT_MAPPER.readValue(content, Object.class);
             } catch (Exception e) {
@@ -107,12 +138,15 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             }
         });
 
-        serviceStrategyMap.put("DB", (apiDO, content, params, pageable, response, flowInputSupplier) -> {
+        serviceStrategyMap.put("DB", (apiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext) -> {
             SqlAndParams sqlAndParams = DynamicSqlParser.parseDynamicSqlToPrepared(content, params);
+            if (runtimeLogContext != null) {
+                runtimeLogContext.actualSql = buildActualSqlForLog(apiDO, sqlAndParams, pageable);
+            }
             return dispatchDb(apiDO, sqlAndParams, pageable, response);
         });
 
-        serviceStrategyMap.put("EXCEL", (apiDO, content, params, pageable, response, flowInputSupplier) ->
+        serviceStrategyMap.put("EXCEL", (apiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext) ->
             Collections.singletonMap("error", "EXCEL 导出暂未实现！")
         );
 
@@ -143,33 +177,43 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public Object executeApi(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams,
                              Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response) throws Exception {
         long start = System.currentTimeMillis();
-        FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
-        try {
-            Map<String, Object> requestMap = new HashMap<>();
-            if (queryParams != null) requestMap.put("queryParams", queryParams);
-            if (bodyParams != null) requestMap.put("bodyParams", bodyParams);
-            logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(requestMap));
-        } catch (Exception e) {
-            logDO.setRequestParams("JSON parse error");
+        boolean logEnabled = isLogEnabled(flowApiDO);
+        FlowExecutionLogDO logDO = logEnabled ? buildBaseLogDO(flowApiDO) : null;
+        RuntimeLogContext runtimeLogContext = logEnabled ? new RuntimeLogContext() : null;
+        if (logEnabled) {
+            try {
+                Map<String, Object> requestMap = new HashMap<>();
+                if (queryParams != null) requestMap.put("queryParams", queryParams);
+                if (bodyParams != null) requestMap.put("bodyParams", bodyParams);
+                logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(requestMap));
+            } catch (Exception e) {
+                logDO.setRequestParams("JSON parse error");
+            }
         }
         try {
-            Object result = doExecute(queryParams, bodyParams, mergeParamsMap, pageable, response, flowApiDO);
-            logDO.setStatus("SUCCESS");
-            return resolveFlowResult(result, logDO, flowApiDO);
+            Object result = doExecute(queryParams, bodyParams, mergeParamsMap, pageable, response, flowApiDO, runtimeLogContext);
+            if (logEnabled) {
+                logDO.setStatus("SUCCESS");
+            }
+            return resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
         } catch (Exception e) {
-            if ("SUCCESS".equals(logDO.getStatus())) {
+            if (!logEnabled) {
+                // 日志关闭时仅透传异常，不构建执行日志。
+            } else if ("SUCCESS".equals(logDO.getStatus())) {
                 // resolveFlowResult 内部抛出（FlowTrace error 状态），status 已被设置
             } else {
                 logDO.setStatus("ERROR");
                 truncateAndSetErrorMsg(logDO, e.getMessage());
                 if (!"FLOW".equals(flowApiDO.getServiceType())) {
-                    buildAndSetSyntheticTraceForError(logDO, flowApiDO, e);
+                    buildAndSetSyntheticTraceForError(logDO, flowApiDO, e, runtimeLogContext);
                 }
             }
             throw e;
         } finally {
-            logDO.setCostTimeMs(System.currentTimeMillis() - start);
-            flowExecutionLogService.saveLogAsync(logDO);
+            if (logEnabled) {
+                logDO.setCostTimeMs(System.currentTimeMillis() - start);
+                flowExecutionLogService.saveLogAsync(logDO);
+            }
         }
     }
 
@@ -177,31 +221,45 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public Object executeApi(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response) throws Exception {
         long start = System.currentTimeMillis();
-        FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
-        try {
-            if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
-        } catch (Exception e) {
-            logDO.setRequestParams("JSON parse error");
+        boolean logEnabled = isLogEnabled(flowApiDO);
+        FlowExecutionLogDO logDO = logEnabled ? buildBaseLogDO(flowApiDO) : null;
+        RuntimeLogContext runtimeLogContext = logEnabled ? new RuntimeLogContext() : null;
+        if (logEnabled) {
+            try {
+                if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
+            } catch (Exception e) {
+                logDO.setRequestParams("JSON parse error");
+            }
         }
         try {
-            Object result = doExecute(params, pageable, response, flowApiDO);
-            logDO.setStatus("SUCCESS");
-            return resolveFlowResult(result, logDO, flowApiDO);
+            Object result = doExecute(params, pageable, response, flowApiDO, runtimeLogContext);
+            if (logEnabled) {
+                logDO.setStatus("SUCCESS");
+            }
+            return resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
         } catch (Exception e) {
-            if ("SUCCESS".equals(logDO.getStatus())) {
+            if (!logEnabled) {
+                // 日志关闭时仅透传异常，不构建执行日志。
+            } else if ("SUCCESS".equals(logDO.getStatus())) {
                 // resolveFlowResult 内部抛出（FlowTrace error 状态），status 已被设置
             } else {
                 logDO.setStatus("ERROR");
                 truncateAndSetErrorMsg(logDO, e.getMessage());
                 if (!"FLOW".equals(flowApiDO.getServiceType())) {
-                    buildAndSetSyntheticTraceForError(logDO, flowApiDO, e);
+                    buildAndSetSyntheticTraceForError(logDO, flowApiDO, e, runtimeLogContext);
                 }
             }
             throw e;
         } finally {
-            logDO.setCostTimeMs(System.currentTimeMillis() - start);
-            flowExecutionLogService.saveLogAsync(logDO);
+            if (logEnabled) {
+                logDO.setCostTimeMs(System.currentTimeMillis() - start);
+                flowExecutionLogService.saveLogAsync(logDO);
+            }
         }
+    }
+
+    private boolean isLogEnabled(FlowApiDO flowApiDO) {
+        return flowApiDO.getLogEnabled() == null || flowApiDO.getLogEnabled();
     }
 
     /**
@@ -241,32 +299,39 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private Object resolveFlowResult(
             Object result,
             FlowExecutionLogDO logDO,
-            FlowApiDO flowApiDO) throws Exception {
+            FlowApiDO flowApiDO,
+            RuntimeLogContext runtimeLogContext) throws Exception {
         if (result instanceof FlowTrace) {
             FlowTrace trace = (FlowTrace) result;
-            try {
-                // 保存当时执行的 DSL 快照，供排障回放时精确还原现场
-                if ("FLOW".equals(flowApiDO.getServiceType())) {
-                    trace.setDslSnapshot(flowApiDO.getDslContent());
-                }
-                logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
-            } catch (Exception ignored) {}
+            if (logDO != null) {
+                try {
+                    // 保存当时执行的 DSL 快照，供排障回放时精确还原现场
+                    if ("FLOW".equals(flowApiDO.getServiceType())) {
+                        trace.setDslSnapshot(flowApiDO.getDslContent());
+                    }
+                    logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+                } catch (Exception ignored) {}
+            }
 
             if ("error".equals(trace.getStatus())) {
                 // 问题五修复：errorMsg 可能为 null，改用兜底文案
                 String errMsg = trace.getErrorMsg() != null
                         ? trace.getErrorMsg() : "流程执行失败（引擎未返回具体错误信息）";
-                logDO.setStatus("ERROR");
-                truncateAndSetErrorMsg(logDO, errMsg);
+                if (logDO != null) {
+                    logDO.setStatus("ERROR");
+                    truncateAndSetErrorMsg(logDO, errMsg);
+                }
                 throw new RuntimeException(errMsg);
             }
 
             Object outputs = trace.getGlobalOutputs();
             if (outputs instanceof ResponseResult) {
                 ResponseResult rr = (ResponseResult) outputs;
-                try {
-                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
-                } catch (Exception ignored) {}
+                if (logDO != null) {
+                    try {
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
+                    } catch (Exception ignored) {}
+                }
                 org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
                 if (rr.getHeaders() != null) {
                     rr.getHeaders().forEach(httpHeaders::add);
@@ -276,20 +341,22 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                         rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
             } else {
                 ExecutionResult er = ExecutionResult.success(outputs);
-                try {
-                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
-                } catch (Exception ignored) {}
+                if (logDO != null) {
+                    try {
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
+                    } catch (Exception ignored) {}
+                }
                 return er;
             }
         } else {
             // 非 Flow 类型的返回值处理与合成快照构建
-            if (result != null) {
+            if (logDO != null && result != null) {
                 try {
                     logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(result));
                 } catch (Exception ignored) {}
             }
-            if (!"FLOW".equals(flowApiDO.getServiceType())) {
-                buildAndSetSyntheticTraceForSuccess(logDO, flowApiDO, result);
+            if (logDO != null && !"FLOW".equals(flowApiDO.getServiceType())) {
+                buildAndSetSyntheticTraceForSuccess(logDO, flowApiDO, result, runtimeLogContext);
             }
         }
         return result;
@@ -298,7 +365,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private void buildAndSetSyntheticTraceForSuccess(
             FlowExecutionLogDO logDO, 
             FlowApiDO flowApiDO, 
-            Object result) {
+            Object result,
+            RuntimeLogContext runtimeLogContext) {
         try {
             FlowTrace trace = new FlowTrace();
             trace.setTraceId(UUID.randomUUID().toString());
@@ -318,7 +386,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                 } catch(Exception ignored){}
             }
             if ("DB".equalsIgnoreCase(flowApiDO.getServiceType())) {
-                inputs.put("actualSql", flowApiDO.getSqlContent()); 
+                inputs.put("actualSql", resolveActualSqlForLog(flowApiDO, runtimeLogContext)); 
             } else if ("JSON".equalsIgnoreCase(flowApiDO.getServiceType())) {
                 inputs.put("jsonContent", flowApiDO.getJsonContent());
             } else if ("STRING".equalsIgnoreCase(flowApiDO.getServiceType())) {
@@ -340,7 +408,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private void buildAndSetSyntheticTraceForError(
             FlowExecutionLogDO logDO, 
             FlowApiDO flowApiDO, 
-            Exception e) {
+            Exception e,
+            RuntimeLogContext runtimeLogContext) {
         try {
             FlowTrace trace = new FlowTrace();
             trace.setTraceId(UUID.randomUUID().toString());
@@ -362,7 +431,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                 } catch(Exception ignored){}
             }
             if ("DB".equalsIgnoreCase(flowApiDO.getServiceType())) {
-                inputs.put("actualSql", flowApiDO.getSqlContent()); 
+                inputs.put("actualSql", resolveActualSqlForLog(flowApiDO, runtimeLogContext)); 
             }
             stepLog.setInputs(inputs);
             
@@ -378,7 +447,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
      */
     private Object doExecute(Map<String, String> queryParams, Map<String, Object> bodyParams,
                              Map<String, Object> mergeParamsMap, Pageable pageable,
-                             HttpServletResponse response, FlowApiDO flowApiDO) throws Exception {
+                             HttpServletResponse response, FlowApiDO flowApiDO,
+                             RuntimeLogContext runtimeLogContext) throws Exception {
         // 参数校验
         if (StrUtil.isNotBlank(flowApiDO.getContract())) {
             Map<String, List<ValidationRule>> validationRules = OBJECT_MAPPER.readValue(
@@ -396,20 +466,21 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             inputsMap.put("mergeParams", mergeParamsMap);
             inputsMap.put("pageable", pageable);
             return inputsMap;
-        });
+        }, runtimeLogContext);
     }
 
     /**
      * 合并参数模式执行
      */
     private Object doExecute(Map<String, Object> params, Pageable pageable,
-                             HttpServletResponse response, FlowApiDO flowApiDO) throws Exception {
+                             HttpServletResponse response, FlowApiDO flowApiDO,
+                             RuntimeLogContext runtimeLogContext) throws Exception {
         return dispatch(flowApiDO, params, pageable, response, () -> {
             Map<String, Object> inputsMapObj = new HashMap<>();
             inputsMapObj.put("pageable", pageable);
             inputsMapObj.putAll(params);
             return inputsMapObj;
-        });
+        }, runtimeLogContext);
     }
 
     /**
@@ -421,7 +492,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     }
 
     private Object dispatch(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
-                            HttpServletResponse response, FlowInputSupplier flowInputSupplier) throws Exception {
+                            HttpServletResponse response, FlowInputSupplier flowInputSupplier,
+                            RuntimeLogContext runtimeLogContext) throws Exception {
         // 根据 serviceType 精准读取对应的隔离字段
         String content = resolveContent(flowApiDO);
 
@@ -429,7 +501,79 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         if (strategy == null) {
             throw new UnsupportedOperationException("接口配置错误，未知的 serviceType: " + flowApiDO.getServiceType());
         }
-        return strategy.execute(flowApiDO, content, params, pageable, response, flowInputSupplier);
+        return strategy.execute(flowApiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext);
+    }
+
+    private String resolveActualSqlForLog(FlowApiDO flowApiDO, RuntimeLogContext runtimeLogContext) {
+        if (runtimeLogContext != null && StrUtil.isNotBlank(runtimeLogContext.actualSql)) {
+            return runtimeLogContext.actualSql;
+        }
+        return flowApiDO.getSqlContent();
+    }
+
+    private String buildActualSqlForLog(FlowApiDO flowApiDO, SqlAndParams sqlAndParams, Pageable pageable) {
+        String responseType = flowApiDO.getResponseType();
+        if ("PAGE".equalsIgnoreCase(responseType) && pageable != null) {
+            String countSql = buildCountSql(sqlAndParams.getSql());
+            String pageSql = buildPageSql(sqlAndParams.getSql(), pageable);
+            return "COUNT SQL:\n" + inlinePreparedSql(countSql, sqlAndParams.getParams())
+                    + "\n\nPAGE SQL:\n" + inlinePreparedSql(pageSql, sqlAndParams.getParams());
+        }
+
+        String sql = sqlAndParams.getSql();
+        if ("LIST".equalsIgnoreCase(responseType) && pageable != null && pageable.getSort().isSorted()) {
+            sql = RegularSqlParseUtil.removeOrderByClause(sql);
+            sql += " ORDER BY " + RegularSqlParseUtil.buildOrderByClause(pageable.getSort());
+        }
+        return inlinePreparedSql(sql, sqlAndParams.getParams());
+    }
+
+    private String buildCountSql(String originalSql) {
+        String countSql;
+        if (originalSql.toUpperCase().contains("WITH")) {
+            String withClause = RegularSqlParseUtil.extractWithClause(originalSql);
+            String mainQuery = originalSql.substring(withClause.length());
+            countSql = withClause + "SELECT COUNT(*) FROM (" + mainQuery + ") AS total";
+        } else {
+            countSql = "SELECT COUNT(*) FROM (" + originalSql + ") AS total";
+        }
+        countSql = RegularSqlParseUtil.removeOrderByClause(countSql);
+        return RegularSqlParseUtil.removeLimitAndOffset(countSql);
+    }
+
+    private String buildPageSql(String originalSql, Pageable pageable) {
+        String pageSql = originalSql;
+        if (pageable.getSort().isSorted()) {
+            pageSql = RegularSqlParseUtil.removeOrderByClause(pageSql);
+            pageSql += " ORDER BY " + RegularSqlParseUtil.buildOrderByClause(pageable.getSort());
+        }
+        int offset = pageable.getPageNumber() * pageable.getPageSize();
+        return pageSql + String.format(" LIMIT %d OFFSET %d", pageable.getPageSize(), offset);
+    }
+
+    private String inlinePreparedSql(String preparedSql, List<Object> params) {
+        if (params == null || params.isEmpty()) {
+            return preparedSql;
+        }
+        String result = preparedSql;
+        for (Object param : params) {
+            result = result.replaceFirst("\\?", java.util.regex.Matcher.quoteReplacement(formatSqlValue(param)));
+        }
+        return result;
+    }
+
+    private String formatSqlValue(Object value) {
+        if (value == null) {
+            return "NULL";
+        }
+        if (value instanceof Number) {
+            return value.toString();
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value ? "TRUE" : "FALSE";
+        }
+        String escaped = String.valueOf(value).replace("'", "''");
+        return "'" + escaped + "'";
     }
 
     /**
@@ -569,7 +713,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                 sqlAndParams.getParams().toArray(),
                 Integer.class));
         if (totalSize == null || totalSize == 0) {
-            return new PageBean<>(Collections.emptyList(), pageable.getPageSize(), pageable.getPageNumber(), 0, 0L);
+            return new PageBean<>(Collections.emptyList(), pageable.getPageNumber(), pageable.getPageSize(), 0, 0L);
         }
 
         int totalPage = (int) Math.ceil((double) totalSize / pageable.getPageSize());
@@ -589,7 +733,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                 sqlAndParams.getParams().toArray(),
                 new CamelCaseColumnMapRowMapper(true)));
 
-        return new PageBean<>(content, pageable.getPageSize(), pageable.getPageNumber(), totalPage, totalSize.longValue());
+        return new PageBean<>(content, pageable.getPageNumber(), pageable.getPageSize(), totalPage, totalSize.longValue());
     }
 
     @Override

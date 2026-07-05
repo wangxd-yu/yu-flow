@@ -16,7 +16,7 @@ import {
   Space, Tag, Dropdown, Tooltip, Popover
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined, SyncOutlined } from '@ant-design/icons';
+import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import { merge } from 'lodash';
 import { PageContainer } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
@@ -377,15 +377,19 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   //  提交逻辑
   // ═══════════════════════════════════════════════════════════════════
 
-  const handleSubmit = useCallback(async (externalScript?: any) => {
+  const handleSubmit = useCallback(async (
+    externalScript?: any,
+    options: { notify?: boolean; closeOnSuccess?: boolean } = {},
+  ) => {
+    const { notify = true, closeOnSuccess = true } = options;
     setSubmitAttempted(true);
     if (!url?.trim() || !name?.trim()) {
       message.warning('请完善 API 路径和接口名称等必填项');
-      return false;
+      return { success: false };
     }
     if (urlConflictMsg) {
       message.warning('接口路径存在冲突，请修改后再保存');
-      return false;
+      return { success: false };
     }
     let hide = null;
     try {
@@ -416,7 +420,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 else if (cleanSql.startsWith('SELECT')) actualType = 'SELECT';
                 if (actualType && sqlType !== actualType) {
                   message.error(`校验失败: 数据库节点 [${node.label || node.id}] SQL 类型不匹配`);
-                  return false;
+                  return { success: false };
                 }
               }
             }
@@ -448,16 +452,21 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
 
       hide = message.loading(isEdit ? '正在更新...' : '正在添加...');
 
+      let savedRecord: any;
       if (isEdit) {
-        await updateAutoApiConfig(values.id!, merge({}, values, payload));
+        savedRecord = await updateAutoApiConfig(values.id!, merge({}, values, payload));
       } else {
-        await addAutoApiConfig(payload);
+        savedRecord = await addAutoApiConfig(payload);
       }
 
       hide();
-      message.success(isEdit ? '更新成功' : '添加成功');
-      onSubmit(true);
-      return true;
+      if (notify) {
+        message.success(isEdit ? '更新成功' : '添加成功');
+      }
+      if (closeOnSuccess) {
+        onSubmit(true);
+      }
+      return { success: true, id: savedRecord?.id || values?.id };
     } catch (error: any) {
       hide?.();
       if (error?.errorFields) {
@@ -466,7 +475,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         message.error(isEdit ? '更新失败' : '添加失败');
       }
       onSubmit(false);
-      return false;
+      return { success: false };
     }
   }, [
     form, dslContent, sqlContent, jsonContent, textContent,
@@ -476,6 +485,28 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     dbDatasource, engineMode, responseType,
     urlConflictMsg,
   ]);
+
+  const handlePublishCurrentDraft = useCallback(async () => {
+    const saved = await handleSubmit(undefined, { notify: false, closeOnSuccess: false });
+    if (!saved.success || !saved.id) {
+      return;
+    }
+
+    const isRepublish = isEdit && publishStatus === 1;
+    const hide = message.loading(isRepublish ? '正在发布更新...' : '正在发布...');
+    try {
+      if (isRepublish) {
+        await republishApi(saved.id);
+      } else {
+        await publishApi(saved.id);
+      }
+      hide();
+      message.success(isRepublish ? '发布更新成功' : '发布成功');
+      onSubmit(true);
+    } catch (e) {
+      hide();
+    }
+  }, [handleSubmit, isEdit, publishStatus, onSubmit]);
 
   // ═══════════════════════════════════════════════════════════════════
   //  Header 区域配置
@@ -523,33 +554,6 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         {publishStatus === 1 ? '● 已发布' : '○ 未发布'}
       </Tag>
 
-      {/* 按钮组 */}
-      {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
-        <Tooltip title="有未发布的草稿变更，点击重新发布">
-          <Button
-            type="primary"
-            style={{ backgroundColor: '#faad14' }}
-            icon={<SyncOutlined />}
-            onClick={async () => {
-              const saved = await handleSubmit();
-              if (saved && values?.id) {
-                const hide = message.loading('正在重新发布...');
-                try {
-                  await republishApi(values.id);
-                  hide();
-                  message.success('重新发布成功');
-                  onSubmit(true);
-                } catch (e) {
-                  hide();
-                }
-              }
-            }}
-          >
-            重新发布
-          </Button>
-        </Tooltip>
-      )}
-
       {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
           <Button
@@ -574,27 +578,14 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         </Tooltip>
       )}
 
-      {isEdit && publishStatus === 0 && (
+      {(publishStatus === 0 || isEdit) && (
         <Button
           type="primary"
-          style={{ backgroundColor: '#52c41a' }}
+          style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
           icon={<CloudUploadOutlined />}
-          onClick={async () => {
-            const saved = await handleSubmit();
-            if (saved && values?.id) {
-              const hide = message.loading('正在发布...');
-              try {
-                await publishApi(values.id);
-                hide();
-                message.success('发布成功');
-                onSubmit(true);
-              } catch (e) {
-                hide();
-              }
-            }
-          }}
+          onClick={handlePublishCurrentDraft}
         >
-          发布上线
+          {publishStatus === 1 ? '保存并发布' : '发布上线'}
         </Button>
       )}
 

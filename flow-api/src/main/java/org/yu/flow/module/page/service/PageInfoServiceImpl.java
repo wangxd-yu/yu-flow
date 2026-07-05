@@ -19,8 +19,8 @@ import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
 
-import javax.annotation.Resource;
-import javax.persistence.criteria.Predicate;
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -110,8 +110,8 @@ public class PageInfoServiceImpl implements PageInfoService {
 
         return new PageBean<>(
                 content,
-                result.getSize(),
                 result.getNumber(),
+                result.getSize(),
                 result.getTotalPages(),
                 result.getTotalElements()
         );

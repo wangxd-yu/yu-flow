@@ -9,7 +9,7 @@ import org.yu.flow.module.directory.dto.FlowDirectoryDTO;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.List;
 
 /**

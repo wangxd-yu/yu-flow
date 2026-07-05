@@ -9,7 +9,7 @@ import {
   ProTable,
   ModalForm,
 } from '@ant-design/pro-components';
-import { Button, Divider, Drawer, message, Tag, Popconfirm, Space, Tooltip } from 'antd';
+import { Button, Divider, Drawer, message, Tag, Popconfirm, Space, Switch, Tooltip } from 'antd';
 import {
   queryAutoApiConfigDetail,
   queryAutoApiConfigList,
@@ -18,6 +18,7 @@ import {
   deleteAutoApiConfig,
   batchDeleteAutoApiConfig,
   batchMoveAutoApiConfig,
+  updateAutoApiLogEnabled,
   FlowController,
 } from './services/flowController';
 import ApiConfigForm from './components/ControllerForm';
@@ -96,8 +97,8 @@ const AutoApiConfigList: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
   // 新建配置
-  const handleAddAction = () => {
-    setCurrentRow({});
+  const handleAddAction = (directoryId?: string) => {
+    setCurrentRow({ directoryId });
     setIsEditMode(false);
     setFormVisible(true);
   };
@@ -114,6 +115,19 @@ const AutoApiConfigList: React.FC = () => {
     } catch (error) {
       hide();
       message.error('获取详情失败，请重试');
+    }
+  };
+
+  const handleLogEnabledChange = async (record: FlowController, checked: boolean) => {
+    try {
+      await updateAutoApiLogEnabled(record.id, checked);
+      message.success(checked ? '已开启执行日志' : '已关闭执行日志');
+      actionRef.current?.reload();
+    } catch (error: any) {
+      if (!error?.message?.includes('DEMO_RESTRICTED')) {
+        message.error('更新执行日志开关失败');
+      }
+      actionRef.current?.reload();
     }
   };
 
@@ -181,6 +195,20 @@ const AutoApiConfigList: React.FC = () => {
         }
         return dom;
       },
+    },
+    {
+      title: '执行日志',
+      dataIndex: 'logEnabled',
+      hideInSearch: true,
+      render: (_, record) => (
+        <Switch
+          size="small"
+          checked={record.logEnabled !== false}
+          checkedChildren="开"
+          unCheckedChildren="关"
+          onChange={(checked) => handleLogEnabledChange(record, checked)}
+        />
+      ),
     },
     {
       title: '实现方式',
@@ -386,7 +414,7 @@ const AutoApiConfigList: React.FC = () => {
               <Button
                 key="1"
                 type="primary"
-                onClick={handleAddAction}
+                onClick={() => handleAddAction(selectedDirectoryId)}
               >
                 新建配置
               </Button>

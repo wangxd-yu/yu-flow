@@ -18,8 +18,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Resource;
-import javax.persistence.criteria.Predicate;
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,8 +70,8 @@ public class SysConfigServiceImpl implements SysConfigService {
 
         return new PageBean<>(
                 content,
+                result.getNumber() + 1,
                 result.getSize(),
-                result.getNumber(),
                 result.getTotalPages(),
                 result.getTotalElements()
         );

@@ -7,9 +7,9 @@ import org.yu.flow.log.loginLog.repository.LoginLogRepository;
 import org.yu.flow.module.executionlog.repository.FlowExecutionLogRepository;
 import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.Calendar;
 import java.util.Date;

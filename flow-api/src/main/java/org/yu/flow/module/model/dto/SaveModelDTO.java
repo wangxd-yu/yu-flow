@@ -2,7 +2,7 @@ package org.yu.flow.module.model.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 /**
  * 新建和更新数据模型的 DTO

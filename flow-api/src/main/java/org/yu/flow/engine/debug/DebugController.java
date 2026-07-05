@@ -10,7 +10,7 @@ import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;

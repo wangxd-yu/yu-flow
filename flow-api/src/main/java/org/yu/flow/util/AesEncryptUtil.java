@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.yu.flow.config.YuFlowProperties;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 
 /**
  * AES 对称加密工具（用于数据源密码等敏感信息的加解密）。

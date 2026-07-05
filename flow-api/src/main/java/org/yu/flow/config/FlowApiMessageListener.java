@@ -6,7 +6,7 @@ import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 import org.yu.flow.module.sysmacro.cache.SysMacroMessageListener;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 /**
  * 动态 API 路由缓存 Redis Pub/Sub 消息监听器

@@ -7,7 +7,7 @@ import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;
 import org.yu.flow.module.responsetemplate.cache.ResponseTemplateCacheManager;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 /**
  * 响应模板合并策略解析器

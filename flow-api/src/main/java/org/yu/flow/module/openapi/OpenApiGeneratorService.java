@@ -13,8 +13,8 @@ import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.util.FlowObjectMapperUtil;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;

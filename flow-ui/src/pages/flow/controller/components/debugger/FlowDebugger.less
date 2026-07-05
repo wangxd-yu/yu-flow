@@ -376,6 +376,18 @@
     height: @pfd-console-height;
   }
 
+  &--collapsed {
+    height: 58px;
+  }
+
+  &--collapsed &-header {
+    border-bottom: none;
+  }
+
+  &--collapsed &-body {
+    display: none;
+  }
+
   &--resizing {
     transition: none !important;
   }

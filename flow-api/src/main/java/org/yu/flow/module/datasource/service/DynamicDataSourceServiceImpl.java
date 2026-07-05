@@ -21,8 +21,8 @@ import org.yu.flow.module.datasource.metadata.DatabaseMetadataQueriesFactory;
 import org.yu.flow.util.AesEncryptUtil;
 import org.yu.flow.util.CamelCaseColumnMapRowMapper;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -91,7 +91,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         startCircuitBreakerProbe();
     }
 
-    @javax.annotation.PreDestroy
+    @jakarta.annotation.PreDestroy
     public void destroy() {
         if (circuitBreakerExecutor != null && !circuitBreakerExecutor.isShutdown()) {
             circuitBreakerExecutor.shutdown();

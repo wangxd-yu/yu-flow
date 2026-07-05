@@ -11,7 +11,7 @@ import org.yu.flow.module.datasource.service.DynamicDataSourceService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import javax.sql.DataSource;
 import java.util.List;
 import java.util.Map;

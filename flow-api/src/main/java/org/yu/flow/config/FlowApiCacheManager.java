@@ -12,8 +12,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.util.AntPathMatcher;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 

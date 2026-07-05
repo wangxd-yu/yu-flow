@@ -2,7 +2,7 @@ package org.yu.flow.module.responsetemplate.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 /**
  * 新建和更新 API 响应模板的 DTO

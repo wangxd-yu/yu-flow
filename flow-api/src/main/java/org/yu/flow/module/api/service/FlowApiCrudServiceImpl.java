@@ -28,8 +28,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Resource;
-import javax.persistence.criteria.Predicate;
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -69,6 +69,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // [Demo 模式] 禁止新建写入类 DB API
         demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
 
+        if (flowApiDO.getLogEnabled() == null) {
+            flowApiDO.setLogEnabled(true);
+        }
         flowApiDO.setCreateTime(LocalDateTime.now());
         flowApiDO = flowApiRepository.save(flowApiDO);
 
@@ -89,6 +92,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         boolean needRefreshCache = false;
 
         for (FlowApiDO api : flowApiDOList) {
+            if (api.getLogEnabled() == null) {
+                api.setLogEnabled(true);
+            }
             api.setCreateTime(now);
             if (!needRefreshCache && api.getPublishStatus() != null && api.getPublishStatus().equals(1)) {
                 needRefreshCache = true;
@@ -126,6 +132,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // 保留已有的发布快照和发布时间，草稿编辑不影响线上
         flowApiDO.setPublishedSnapshot(dbRecord.getPublishedSnapshot());
         flowApiDO.setPublishTime(dbRecord.getPublishTime());
+        if (flowApiDO.getLogEnabled() == null) {
+            flowApiDO.setLogEnabled(dbRecord.getLogEnabled());
+        }
 
         flowApiRepository.save(flowApiDO);
 
@@ -167,6 +176,20 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         }
         flowApiRepository.updateDirectoryIdByIds(targetDirectoryId, ids);
         flowApiCacheManager.publishRefreshEvent();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO updateLogEnabled(String id, boolean enabled) {
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+        api.setLogEnabled(enabled);
+        FlowApiDO saved = flowApiRepository.save(api);
+        if (saved.getPublishStatus() != null && saved.getPublishStatus() == 1) {
+            flowApiCacheManager.publishRefreshEvent();
+        }
+        return saved;
     }
 
     @Override
@@ -249,8 +272,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
         return new PageBean<>(
                 content,
-                result.getSize(),
                 result.getNumber(),
+                result.getSize(),
                 result.getTotalPages(),
                 result.getTotalElements()
         );

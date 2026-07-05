@@ -109,7 +109,7 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
                     }
                     switch (returnType.toUpperCase()) {
                          case "PAGE":
-                             Pageable pageable = buildPageable(mergeParams);
+                             Pageable pageable = buildPageable(mergeParams, context);
                              result = sqlExecutorService.executePageQuery(datasourceId, sqlAndParams, pageable);
                              break;
                          case "LIST":
@@ -140,7 +140,12 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
         }
     }
 
-    private Pageable buildPageable(Map<String, Object> params) {
+    private Pageable buildPageable(Map<String, Object> params, ExecutionContext context) {
+        Object pageableObj = context.getVariable("pageable");
+        if (!params.containsKey("page") && !params.containsKey("size") && pageableObj instanceof Pageable) {
+            return (Pageable) pageableObj;
+        }
+
         // 默认值
         int page = 1;
         int size = 20;

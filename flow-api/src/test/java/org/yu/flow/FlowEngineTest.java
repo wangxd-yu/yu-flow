@@ -437,6 +437,40 @@ public class FlowEngineTest {
         ExecutionResult result = engine.execute(flowJson, new HashMap<>());
         assertEquals(7L, result.getData()); // 3 + 4 = 7 (Aviator returns Long)
     }
+
+    @Test
+    @DisplayName("15-1、多输入节点等待祖先与下游父节点全部完成")
+    void testJoinWaitsForAncestorAndDownstreamParent() throws JsonProcessingException {
+        String flowJson = "{\n" +
+                "  \"nodes\": [\n" +
+                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"node_b\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"language\":\"JavaScript\", \"expression\":\"'B'\"} },\n" +
+                "    { \"id\": \"node_c\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"language\":\"JavaScript\", \"expression\":\"'C'\"} },\n" +
+                "    { \"id\": \"node_z\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
+                "      \"data\": {\n" +
+                "        \"language\":\"JavaScript\",\n" +
+                "        \"inputs\": { \n" +
+                "          \"bVal\": {\"extractPath\": \"$.node_b.result\"},\n" +
+                "          \"cVal\": {\"extractPath\": \"$.node_c.result\"}\n" +
+                "        },\n" +
+                "        \"expression\": \"cVal == null ? 'EARLY_' + bVal : bVal + '_' + cVal\"\n" +
+                "      }\n" +
+                "    },\n" +
+                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\":\"${node_z.result}\"} }\n" +
+                "  ],\n" +
+                "  \"edges\": [\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"node_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_c\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"node_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"node_c\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"node_z\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
+                "  ]\n" +
+                "}";
+
+        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
+        assertTrue(result.isSuccess(), result.getMessage());
+        assertEquals("B_C", result.getData());
+    }
 // -----------------------------------------------------------------------
     // 以下为新增的 SpEL 专用测试用例
     // -----------------------------------------------------------------------
@@ -1566,7 +1600,7 @@ public class FlowEngineTest {
         // ============================================
         // 使用 Mockito 模拟真实的 HttpServletRequest 提取
         // ============================================
-        javax.servlet.http.HttpServletRequest request = mock(javax.servlet.http.HttpServletRequest.class);
+        jakarta.servlet.http.HttpServletRequest request = mock(jakarta.servlet.http.HttpServletRequest.class);
 
         // 1. 模拟 Headers
         when(request.getHeaderNames()).thenReturn(Collections.enumeration(Arrays.asList("token", "X-Custom")));

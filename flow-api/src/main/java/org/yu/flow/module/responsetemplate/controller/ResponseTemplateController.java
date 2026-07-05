@@ -12,8 +12,8 @@ import org.yu.flow.module.responsetemplate.query.ResponseTemplateQueryDTO;
 import org.yu.flow.module.responsetemplate.service.ResponseTemplateService;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
-import javax.validation.Valid;
+import jakarta.annotation.Resource;
+import jakarta.validation.Valid;
 import java.util.List;
 
 /**

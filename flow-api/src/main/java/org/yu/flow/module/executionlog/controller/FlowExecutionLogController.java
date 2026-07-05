@@ -12,7 +12,7 @@ import org.yu.flow.module.executionlog.dto.FlowExecutionLogListDTO;
 import org.yu.flow.module.executionlog.query.FlowExecutionLogQueryDTO;
 import org.yu.flow.module.executionlog.service.FlowExecutionLogService;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 @RestController
 @RequestMapping("/flow-api/execution-logs")
@@ -29,8 +29,8 @@ public class FlowExecutionLogController {
         Page<FlowExecutionLogListDTO> pageResult = flowExecutionLogService.pageList(queryDTO);
         PageBean<FlowExecutionLogListDTO> pageBean = new PageBean<>(
                 pageResult.getContent(),
-                pageResult.getSize(),
                 pageResult.getNumber(),
+                pageResult.getSize(),
                 pageResult.getTotalPages(),
                 pageResult.getTotalElements()
         );

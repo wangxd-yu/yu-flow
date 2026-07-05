@@ -16,8 +16,8 @@ import org.yu.flow.module.executionlog.query.FlowExecutionLogQueryDTO;
 import org.yu.flow.module.executionlog.repository.FlowExecutionLogRepository;
 import org.yu.flow.module.executionlog.service.FlowExecutionLogService;
 
-import javax.annotation.Resource;
-import javax.persistence.criteria.Predicate;
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;

@@ -1,7 +1,6 @@
 package org.yu.flow.auto.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,8 +13,6 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Data
-@Builder
-@AllArgsConstructor
 @NoArgsConstructor
 public class PageBean<T> {
 
@@ -25,7 +22,12 @@ public class PageBean<T> {
     private List<T> items;
 
     /**
-     * 当前页码
+     * 当前页码（后端通用命名）
+     */
+    private int page;
+
+    /**
+     * 当前页码（兼容 Ant Design ProTable / amis）
      */
     private int current;
 
@@ -43,4 +45,24 @@ public class PageBean<T> {
      * 总条数
      */
     private Long total;
+
+    @Builder
+    public PageBean(List<T> items, int current, int size, int pages, Long total) {
+        this.items = items;
+        this.page = current;
+        this.current = current;
+        this.size = size;
+        this.pages = pages;
+        this.total = total;
+    }
+
+    public void setPage(int page) {
+        this.page = page;
+        this.current = page;
+    }
+
+    public void setCurrent(int current) {
+        this.current = current;
+        this.page = current;
+    }
 }

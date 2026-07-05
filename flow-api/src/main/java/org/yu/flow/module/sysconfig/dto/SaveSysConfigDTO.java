@@ -2,7 +2,7 @@ package org.yu.flow.module.sysconfig.dto;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 /**
  * 新建和更新系统配置的 DTO

@@ -6,8 +6,8 @@ import org.yu.flow.module.responsetemplate.repository.ResponseTemplateRepository
 import org.yu.flow.config.response.ResponseTransformer;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

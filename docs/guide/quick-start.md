@@ -89,7 +89,7 @@ yu:
     enabled: true        # 总开关：启用 Yu Flow 引擎
     enable-ui: true      # 启用内置管理界面
     username: admin      # 管理后台登录用户名
-    password: flow@699   # 管理后台登录密码
+    password: 123456     # 管理后台登录密码
 ```
 
 ::: tip 🔌 随时可插拔
@@ -104,7 +104,7 @@ yu:
     enabled: true
     enable-ui: true
     username: admin
-    password: ${YU_FLOW_ADMIN_PASSWORD:flow@699}
+    password: ${YU_FLOW_ADMIN_PASSWORD:123456}
     engine:
       expression-engine: simple   # simple (推荐) 或 spel
       strict-mode: true           # 执行前校验节点配置完整性
@@ -140,7 +140,7 @@ http://localhost:8080/flow-ui/index.html
 
 > 如果你的项目配置了 `server.servlet.context-path`（例如 `/flow`），请拼接上该路径：`http://localhost:8080/flow/flow-ui/index.html`
 
-使用你在 Step 3 中配置的用户名和密码登录（默认 `admin` / `flow@699`）。
+使用你在 Step 3 中配置的用户名和密码登录（默认 `admin` / `123456`）。
 
 ::: tip 🎉 恭喜！
 如果你看到了 Yu Flow 的管理后台界面——数据源、数据模型、API 配置、页面管理一应俱全——说明引擎已经成功嵌入到你的项目中了！

@@ -28,6 +28,7 @@ public class FlowApiDTO {
     private String method;
     private String serviceType;
     private Integer publishStatus;
+    private Boolean logEnabled;
     private Integer level;
     private String contract;
     private String tags;
@@ -65,6 +66,7 @@ public class FlowApiDTO {
         dto.setMethod(configDO.getMethod());
         dto.setServiceType(configDO.getServiceType());
         dto.setPublishStatus(configDO.getPublishStatus());
+        dto.setLogEnabled(configDO.getLogEnabled() == null || configDO.getLogEnabled());
         dto.setLevel(configDO.getLevel());
         dto.setContract(configDO.getContract());
         dto.setTags(configDO.getTags());
@@ -101,6 +103,7 @@ public class FlowApiDTO {
         configDO.setMethod(this.getMethod());
         configDO.setServiceType(this.getServiceType());
         configDO.setPublishStatus(this.getPublishStatus());
+        configDO.setLogEnabled(this.getLogEnabled());
         configDO.setLevel(this.getLevel());
         configDO.setContract(this.getContract());
         configDO.setTags(this.getTags());

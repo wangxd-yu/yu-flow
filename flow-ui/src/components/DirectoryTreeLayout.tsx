@@ -258,7 +258,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
       message.success('目录创建成功');
       loadTree();
     } catch {
-      message.error('创建失败');
+      // 错误提示已由 request 拦截器统一处理
     }
   };
 
@@ -270,7 +270,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
       message.success('重命名成功');
       loadTree();
     } catch {
-      message.error('重命名失败');
+      // 错误提示已由 request 拦截器统一处理
     }
   };
 
@@ -284,7 +284,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
       }
       loadTree();
     } catch (err: any) {
-      message.error(err?.message || '删除失败，该目录下可能还有子目录或关联资产');
+      // 错误提示已由 request 拦截器统一处理，避免出现 Request failed with status code 500 双重弹窗
     }
   };
 

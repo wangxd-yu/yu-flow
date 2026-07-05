@@ -14,7 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   flow:
  *     enabled: true
  *     username: admin
- *     password: flow@699
+ *     password: 123456
  *     enable-ui: true
  *     engine:
  *       expression-engine: simple
@@ -62,7 +62,7 @@ public class YuFlowProperties {
     /**
      * 内置管理后台的登录密码。
      */
-    private String password = "flow@699";
+    private String password = "123456";
 
     /**
      * 流程引擎核心配置组。

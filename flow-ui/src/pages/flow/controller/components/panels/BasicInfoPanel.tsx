@@ -13,6 +13,7 @@ import {
   ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea,
 } from '@ant-design/pro-components';
 import { GiftOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import ResponseWrapperSection from './ResponseWrapperSection';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -72,6 +73,12 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form }) => {
                 name="module"
                 label="模块"
                 placeholder="请输入所属模块，如: user、order"
+              />
+
+              <DirectoryTreeSelect
+                name="directoryId"
+                label="所属目录"
+                placeholder="请选择所属目录（不选默认为根目录）"
               />
 
               <ProFormText

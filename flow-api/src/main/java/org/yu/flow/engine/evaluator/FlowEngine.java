@@ -19,7 +19,7 @@ import org.yu.flow.engine.evaluator.executor.*;
 import org.yu.flow.engine.debug.DebugSession;
 import org.yu.flow.engine.model.step.ResponseResult;
 
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.*;
@@ -354,14 +354,26 @@ public class FlowEngine {
                 if (stopAtJoinNodes && isJoinNode(nextStepId, parentMap)) {
                     currentStep = null;
                 } else {
-                    currentStep = findStepById(nextStepId, flowDefinition);
+                    Step nextStep = findStepById(nextStepId, flowDefinition);
+                    if (isJoinNode(nextStepId, parentMap) && !allParentsCompleted(nextStep, context, parentMap, parallelSiblings)) {
+                        log.debug("汇聚节点 {} 的父节点尚未全部就绪，当前分支停止等待", nextStepId);
+                        currentStep = null;
+                    } else {
+                        currentStep = nextStep;
+                    }
                 }
             } else if (nextTarget instanceof List) {
                 // 并行分支 (List<String>)
                 List<String> nextStepIds = (List<String>) nextTarget;
                 List<CompletableFuture<ExecutionContext>> futures = new ArrayList<>();
+                Set<String> convergenceNodeIds = new HashSet<>();
 
                 for (String stepId : nextStepIds) {
+                    if (isJoinNode(stepId, parentMap)) {
+                        convergenceNodeIds.add(stepId);
+                        log.debug("节点 {} 是多父汇聚节点，跳过分支直启，等待父节点完成后统一执行", stepId);
+                        continue;
+                    }
                     Step branchStartStep = findStepById(stepId, flowDefinition);
                     futures.add(CompletableFuture.supplyAsync(() -> {
                         // 采用浅拷贝（类 Copy-On-Write），避免并行大范围数据时深克隆导致的 OOM
@@ -396,8 +408,10 @@ public class FlowEngine {
                     }
                 }
                 // 并行执行后，检查是否有汇聚节点可以执行
-                Set<String> convergenceNodeIds = new HashSet<>();
                 for (String stepId : nextStepIds) {
+                    if (isJoinNode(stepId, parentMap)) {
+                        continue;
+                    }
                     Step branchStep = findStepById(stepId, flowDefinition);
                     collectJoinNodeIds(branchStep, convergenceNodeIds, flowDefinition, parentMap, new HashSet<>());
                 }
@@ -768,6 +782,17 @@ public class FlowEngine {
         // 只有1个父节点，直接检查它是否完成
         if (parents.size() == 1) {
             return context.isStepCompleted(parents.get(0));
+        }
+
+        // 多个父节点：带 inputs 的节点是数据依赖汇聚，必须等待所有输入来源完成。
+        if (step.getInputs() != null && !step.getInputs().isEmpty()) {
+            boolean allCompleted = parents.stream().allMatch(context::isStepCompleted);
+            if (!allCompleted) {
+                long completedCount = parents.stream().filter(context::isStepCompleted).count();
+                log.debug("数据汇聚节点 {} 的父节点 {} 中有 {}/{} 个已完成，等待其他输入节点",
+                    step.getId(), parents, completedCount, parents.size());
+            }
+            return allCompleted;
         }
 
         // 多个父节点：需要区分并行分支汇聚和条件分支汇聚

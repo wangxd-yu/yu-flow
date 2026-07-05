@@ -15,7 +15,7 @@ import org.yu.flow.module.sysconfig.cache.SysConfigMessageListener;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 import org.yu.flow.module.sysmacro.cache.SysMacroMessageListener;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 /**
  * Yu Flow Redis 消息监听统一管理器（编程式纳管，零 Bean 泄漏）

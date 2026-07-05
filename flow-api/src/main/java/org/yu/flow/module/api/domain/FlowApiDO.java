@@ -9,7 +9,7 @@ import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -66,6 +66,13 @@ public class FlowApiDO implements Serializable {
      * 发布状态 0：未发布；1：已发布
      */
     private Integer publishStatus;
+
+    /**
+     * 是否记录执行日志。null 兼容历史数据，运行时按开启处理。
+     */
+    @Column(columnDefinition = "tinyint(1) default 1")
+    private Boolean logEnabled;
+
     /**
      * 优先级，与请求的ss-level比较，大的优先
      */

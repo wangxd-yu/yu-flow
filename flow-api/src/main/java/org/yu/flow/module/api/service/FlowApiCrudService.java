@@ -36,6 +36,9 @@ public interface FlowApiCrudService {
     /** 批量移动到指定目录 */
     void batchMove(List<String> ids, String targetDirectoryId);
 
+    /** 更新执行日志开关 */
+    FlowApiDO updateLogEnabled(String id, boolean enabled);
+
     /** 根据 ID 查询 */
     FlowApiDO findById(String id);
 

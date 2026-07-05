@@ -17,7 +17,7 @@ import org.yu.flow.dto.R;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.module.api.service.FlowApiCrudService;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -127,6 +127,11 @@ public class FlowApiController {
     public R<FlowApiDO> update(@PathVariable String id, @RequestBody FlowApiDO flowApiDO) {
         flowApiDO.setId(id);
         return R.ok(flowApiCrudService.update(flowApiDO));
+    }
+
+    @PutMapping("/{id}/log-enabled")
+    public R<FlowApiDO> updateLogEnabled(@PathVariable String id, @RequestParam boolean enabled) {
+        return R.ok(flowApiCrudService.updateLogEnabled(id, enabled));
     }
 
     @DeleteMapping("/{id}")
