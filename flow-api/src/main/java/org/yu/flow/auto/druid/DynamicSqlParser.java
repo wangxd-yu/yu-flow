@@ -12,7 +12,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.SqlAndParams;
 import org.yu.flow.auto.util.InputParamsUtil;
 
+import java.lang.reflect.Array;
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -25,6 +35,15 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 public class DynamicSqlParser {
+
+    private static final Pattern DATE_TIME_PATTERN =
+            Pattern.compile("^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?$");
+    private static final Pattern DATE_PATTERN = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
+    private static final Pattern TIME_PATTERN = Pattern.compile("^\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?$");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter DATE_TIME_MILLIS_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
     /**
      * 处理动态SQL，移除map中不存在的条件
@@ -624,10 +643,59 @@ public class DynamicSqlParser {
             throw new RuntimeException("SQL参数格式错误");
         }
 
-        // 先处理动态SQL，移除不存在的参数条件
-        String processedSql = parseDynamicSql(sql, params);
-        // 再将处理后的SQL转换为预编译格式
-        return transferHandler(processedSql, params);
+        try {
+            // 先处理动态SQL，移除不存在的参数条件
+            String processedSql = parseDynamicSql(sql, params);
+            // 再将处理后的SQL转换为预编译格式
+            return transferHandler(processedSql, params);
+        } catch (RuntimeException e) {
+            if (!canFallbackToDirectTransfer(sql, params)) {
+                throw e;
+            }
+            log.warn("SQL AST解析失败，已降级为直接参数化处理: {}", e.getMessage());
+            return transferHandler(sql, params);
+        }
+    }
+
+    /**
+     * Druid 对部分 PostgreSQL 语法（如 LATERAL 函数表、列别名列表）支持不完整。
+     * 只有在所有模板参数都已提供时才允许跳过 AST 改写，避免缺失参数场景生成残缺 SQL。
+     */
+    private static boolean canFallbackToDirectTransfer(String sql, Map<String, Object> params) {
+        List<String> paramNames = extractParamNames(sql);
+        if (paramNames.isEmpty()) {
+            return true;
+        }
+
+        for (String paramName : paramNames) {
+            Object value = InputParamsUtil.resolveParam(params, paramName);
+            if (isBlankValue(value)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static List<String> extractParamNames(String sql) {
+        List<String> paramNames = new ArrayList<>();
+        Matcher matcher = Pattern.compile("\\$\\{([^}]+)}").matcher(sql);
+        while (matcher.find()) {
+            paramNames.add(matcher.group(1));
+        }
+        return paramNames;
+    }
+
+    private static boolean isBlankValue(Object value) {
+        if (value == null) {
+            return true;
+        }
+        if (value instanceof String && ((String) value).isEmpty()) {
+            return true;
+        }
+        if (value instanceof Collection && ((Collection<?>) value).isEmpty()) {
+            return true;
+        }
+        return value.getClass().isArray() && Array.getLength(value) == 0;
     }
 
     /**
@@ -731,7 +799,8 @@ public class DynamicSqlParser {
                     .replaceAll("\\s+", " ")
                     .trim();
             if (!preText.isEmpty()) {
-                processedSql.append(preText).append(" ");
+                appendSqlSegment(processedSql, preText);
+                processedSql.append(" ");
             }
 
             if (paramMatcher.group(1) != null) {
@@ -785,7 +854,7 @@ public class DynamicSqlParser {
                 // 只有当参数存在且不为null、不为空字符串时，才添加这个条件
                 if (value != null && !(value instanceof String && ((String) value).isEmpty())) {
                     processedSql.append("?");
-                    paramValues.add(value);
+                    paramValues.add(normalizeJdbcParam(value));
                 }
             } else if (paramMatcher.group(4) != null) {
                 // 处理普通参数 ${param}
@@ -809,13 +878,13 @@ public class DynamicSqlParser {
                                     processedSql.append(", ");
                                 }
                                 processedSql.append("?");
-                                paramValues.add(listValue.get(i));
+                                paramValues.add(normalizeJdbcParam(listValue.get(i)));
                             }
                         }
                     } else {
                         // 普通参数，替换为单个占位符
                         processedSql.append("?");
-                        paramValues.add(value);
+                        paramValues.add(normalizeJdbcParam(value));
                     }
                 }
             }
@@ -828,13 +897,67 @@ public class DynamicSqlParser {
                 .replaceAll("\\s+", " ")
                 .trim();
         if (!remainingText.isEmpty()) {
-            processedSql.append(remainingText);
+            appendSqlSegment(processedSql, remainingText);
         }
 
         // 去除首尾的空格
         String finalSql = processedSql.toString().trim();
 
         return new SqlAndParams(finalSql, paramValues);
+    }
+
+    private static Object normalizeJdbcParam(Object value) {
+        if (!(value instanceof String)) {
+            return value;
+        }
+
+        String text = ((String) value).trim();
+        if (text.isEmpty()) {
+            return value;
+        }
+
+        try {
+            if (DATE_TIME_PATTERN.matcher(text).matches()) {
+                return Timestamp.valueOf(parseLocalDateTime(text));
+            }
+            if (DATE_PATTERN.matcher(text).matches()) {
+                return Date.valueOf(LocalDate.parse(text));
+            }
+            if (TIME_PATTERN.matcher(text).matches()) {
+                return Time.valueOf(LocalTime.parse(trimFractionToMillis(text)));
+            }
+        } catch (DateTimeParseException | IllegalArgumentException ignored) {
+            // 保持原始字符串，避免影响非日期字段的精确查询。
+        }
+        return value;
+    }
+
+    private static LocalDateTime parseLocalDateTime(String text) {
+        String normalized = text.replace('T', ' ');
+        if (normalized.contains(".")) {
+            return LocalDateTime.parse(trimFractionToMillis(normalized), DATE_TIME_MILLIS_FORMATTER);
+        }
+        return LocalDateTime.parse(normalized, DATE_TIME_FORMATTER);
+    }
+
+    private static String trimFractionToMillis(String text) {
+        int dotIndex = text.indexOf('.');
+        if (dotIndex < 0) {
+            return text;
+        }
+        int endIndex = Math.min(dotIndex + 4, text.length());
+        String millisText = text.substring(0, endIndex);
+        while (millisText.length() < dotIndex + 4) {
+            millisText += "0";
+        }
+        return millisText;
+    }
+
+    private static void appendSqlSegment(StringBuilder sql, String segment) {
+        if (sql.length() > 0 && !Character.isWhitespace(sql.charAt(sql.length() - 1))) {
+            sql.append(" ");
+        }
+        sql.append(segment);
     }
 }
 

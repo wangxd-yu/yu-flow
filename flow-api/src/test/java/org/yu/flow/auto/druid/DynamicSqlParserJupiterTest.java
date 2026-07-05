@@ -10,6 +10,7 @@ import org.yu.flow.auto.util.TestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +37,32 @@ class DynamicSqlParserJupiterTest {
         TestUtils.assertSqlEquals("SELECT * FROM users WHERE name = ? AND age > ?", result.getSql());
         List<Object> expectedParams = Arrays.asList("张三", 25);
         assertEquals(expectedParams, result.getParams());
+    }
+
+    @Test
+    void testParameterWhitespaceBeforeAndOrderBy() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("startTime", "2026-07-02 13:00:00 ");
+        params.put("endTime", "2026-07-02 17:00:00");
+
+        String sql = "SELECT\n" +
+                "  *\n" +
+                "FROM\n" +
+                "  jnsswzx_rainfall_event\n" +
+                "WHERE\n" +
+                "  event_time >= ${startTime}\n" +
+                "  AND event_time < ${endTime}\n" +
+                "ORDER BY\n" +
+                "  event_time DESC,\n" +
+                "  id DESC";
+        SqlAndParams result = DynamicSqlParser.parseDynamicSqlToPrepared(sql, params);
+
+        TestUtils.assertSqlEquals("SELECT * FROM jnsswzx_rainfall_event WHERE event_time >= ? " +
+                "AND event_time < ? ORDER BY event_time DESC, id DESC", result.getSql());
+        assertEquals(Arrays.asList(
+                Timestamp.valueOf("2026-07-02 13:00:00"),
+                Timestamp.valueOf("2026-07-02 17:00:00")
+        ), result.getParams());
     }
 
     // 测试WITH子句参数化
@@ -1155,6 +1182,73 @@ class DynamicSqlParserJupiterTest {
         SqlAndParams sqlAndParams1 = DynamicSqlParser.parseDynamicSqlToPrepared(originalSql, nonEmptyParamMap);
         // 断言验证：验证非空参数条件被保留
         assertTrue(sqlAndParams1.getSql().contains("od_detail.product_name LIKE ?"), "错误删除非空参数的条件");
+    }
+
+    @Test
+    public void testPostgresLateralFunctionTableFallback() {
+        String sql = """
+                SELECT
+                    r.id                          AS record_id,
+                    r.start_time                  AS record_start_time,
+                    r.end_time                    AS record_end_time,
+                    fp.flood_id                   AS flood_id,
+                    fp.flood_name                 AS flood_name,
+                    fp.area                       AS area,
+                    fp.flood_type                 AS flood_type,
+                    fp.flood_type_2               AS flood_type_2,
+                    fp.flood_type_3               AS flood_type_3,
+                    fp.flood_lon                  AS flood_lon,
+                    fp.flood_lat                  AS flood_lat,
+                    rel.flood_point_camera_rel_id AS rel_id,
+                    c.flood_camera_id             AS flood_camera_id,
+                    c.device_name                 AS device_name,
+                    c.foreign_code                AS foreign_code,
+                    c.device_id                   AS device_id,
+                    c.aiu_device_name             AS aiu_device_name,
+                    c.aiu_foreign_code            AS aiu_foreign_code,
+                    c.longitude                   AS camera_lon,
+                    c.latitude                    AS camera_lat,
+                    c.area_name                   AS camera_area_name,
+                    c.enable_flag                 AS enable_flag
+                FROM replay_record r
+                INNER JOIN flood_point fp
+                    ON fp.del_flag = 0
+                   AND fp.point_level = 1
+                INNER JOIN LATERAL jsonb_array_elements_text(r.districts) AS d(district)
+                    ON fp.area = d.district
+                INNER JOIN flood_point_camera_rel rel
+                    ON rel.flood_id = fp.flood_id
+                   AND rel.del_flag = 0
+                INNER JOIN flood_camera c
+                    ON c.flood_camera_id = rel.flood_camera_id
+                   AND c.del_flag = 0
+                   AND c.enable_flag = 0
+                WHERE r.id = ${recordId}
+                  AND r.is_deleted = 0
+                  AND jsonb_array_length(r.point_types) > 0
+                  AND (
+                      EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements_text(r.point_types) AS pt(point_type)
+                          WHERE fp.flood_type = pt.point_type
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements_text(r.point_types) AS pt(point_type)
+                          WHERE fp.flood_type_2 = pt.point_type
+                      )
+                  )
+                ORDER BY fp.area, fp.flood_type, fp.flood_type_2, fp.flood_name, c.device_name, c.flood_camera_id
+                """;
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("recordId", 1001L);
+
+        SqlAndParams result = DynamicSqlParser.parseDynamicSqlToPrepared(sql, params);
+
+        assertTrue(result.getSql().contains("INNER JOIN LATERAL jsonb_array_elements_text(r.districts) AS d(district)"));
+        assertTrue(result.getSql().contains("WHERE r.id = ?"));
+        assertEquals(List.of(1001L), result.getParams());
     }
 
 
