@@ -135,7 +135,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form }) => {
               </div>
 
               {/* 响应模板配置组件被纳入 ProForm 管辖范围内 */}
-              <ResponseWrapperSection />
+              <ResponseWrapperSection form={form} />
             </div>
           </Col>
         </Row>

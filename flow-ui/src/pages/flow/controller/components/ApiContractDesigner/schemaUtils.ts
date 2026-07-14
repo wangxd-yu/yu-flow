@@ -114,15 +114,13 @@ export const treeToSchema = (nodes: SchemaNode[]): JsonSchema => {
 // JSON Schema → SchemaNode[]
 // ═══════════════════════════════════════════════════════════════
 
-const VALID_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'object', 'array']);
+const VALID_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'null', 'object', 'array']);
 
 const mapType = (t: string | string[] | undefined): SchemaType => {
   if (Array.isArray(t)) return mapType(t[0]);
   switch (t) {
-    case 'string': case 'number': case 'boolean':
+    case 'string': case 'number': case 'integer': case 'boolean': case 'null':
       return t as SchemaType;
-    case 'integer':
-      return 'number';
     case 'object': return 'object';
     case 'array': return 'array';
     default: return 'string';

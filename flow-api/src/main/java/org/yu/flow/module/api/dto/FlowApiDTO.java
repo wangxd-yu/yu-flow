@@ -32,6 +32,10 @@ public class FlowApiDTO {
     private Integer level;
     private String contract;
     private String tags;
+    private String templateId;
+    private String customSuccessWrapper;
+    private String customPageWrapper;
+    private String customFailWrapper;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime publishTime;
@@ -70,6 +74,10 @@ public class FlowApiDTO {
         dto.setLevel(configDO.getLevel());
         dto.setContract(configDO.getContract());
         dto.setTags(configDO.getTags());
+        dto.setTemplateId(configDO.getTemplateId());
+        dto.setCustomSuccessWrapper(configDO.getCustomSuccessWrapper());
+        dto.setCustomPageWrapper(configDO.getCustomPageWrapper());
+        dto.setCustomFailWrapper(configDO.getCustomFailWrapper());
         dto.setPublishTime(configDO.getPublishTime());
         dto.setDeleted(configDO.getDeleted());
         dto.setCreateTime(configDO.getCreateTime());
@@ -107,6 +115,10 @@ public class FlowApiDTO {
         configDO.setLevel(this.getLevel());
         configDO.setContract(this.getContract());
         configDO.setTags(this.getTags());
+        configDO.setTemplateId(this.getTemplateId());
+        configDO.setCustomSuccessWrapper(this.getCustomSuccessWrapper());
+        configDO.setCustomPageWrapper(this.getCustomPageWrapper());
+        configDO.setCustomFailWrapper(this.getCustomFailWrapper());
         configDO.setDeleted(this.getDeleted());
         configDO.setCreateTime(this.getCreateTime());
         configDO.setUpdateTime(this.getUpdateTime());

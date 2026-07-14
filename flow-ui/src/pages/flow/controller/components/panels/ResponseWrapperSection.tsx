@@ -13,6 +13,7 @@
  */
 import React, { useEffect, useState, useMemo } from 'react';
 import { Space, Typography, Spin, Tag, Badge } from 'antd';
+import type { FormInstance } from 'antd';
 import {
   ProFormSelect,
   ProFormSwitch,
@@ -109,7 +110,11 @@ const WRAPPER_CONFIG = {
 //  组件实现
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ResponseWrapperSection: React.FC = () => {
+export interface ResponseWrapperSectionProps {
+  form: FormInstance;
+}
+
+const ResponseWrapperSection: React.FC<ResponseWrapperSectionProps> = ({ form }) => {
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -129,10 +134,21 @@ const ResponseWrapperSection: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const currentTemplateId = form.getFieldValue('templateId');
+    if (!currentTemplateId || templates.length === 0) {
+      return;
+    }
+    const matchedTemplate = templates.find((t) => String(t.id) === String(currentTemplateId));
+    if (matchedTemplate && currentTemplateId !== matchedTemplate.id) {
+      form.setFieldsValue({ templateId: matchedTemplate.id });
+    }
+  }, [form, templates]);
+
   // 生成下拉选项
   const templateOptions = useMemo(() => {
     return templates.map((t) => ({
-      value: t.id,
+      value: String(t.id),
       label: (
         <Space>
           {t.templateName}
@@ -179,7 +195,7 @@ const ResponseWrapperSection: React.FC = () => {
                 const isCustom = !!deps[config.switchField];
 
                 // 获取当前选中基座模板的值
-                const selectedTpl = templates.find((t) => t.id === templateId);
+                const selectedTpl = templates.find((t) => String(t.id) === String(templateId));
                 const baseValue = selectedTpl?.[config.templateField] || '';
 
                 return (

@@ -24,6 +24,12 @@ class DynamicSqlParserJupiterTest {
 
     private static final Logger log = LoggerFactory.getLogger(DynamicSqlParserJupiterTest.class);
 
+    public static void main(String[] args) {
+        DynamicSqlParserJupiterTest test = new DynamicSqlParserJupiterTest();
+        test.testMysqlBacktickIdentifier();
+        test.testPreserveLineAndBlockComments();
+    }
+
     // 基础测试用例：参数化SQL转换与参数验证
     @Test
     void testBasicConditionRemoval() {
@@ -63,6 +69,34 @@ class DynamicSqlParserJupiterTest {
                 Timestamp.valueOf("2026-07-02 13:00:00"),
                 Timestamp.valueOf("2026-07-02 17:00:00")
         ), result.getParams());
+    }
+
+    @Test
+    void testMysqlDateSubKeepsNowFunction() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("ids", Arrays.asList("device-1", "device-2"));
+
+        String sql = """
+                SELECT
+                    device_id AS deviceCode,
+                    MIN(stat_time) AS timeStart,
+                    MAX(stat_time) AS timeEnd,
+                    COALESCE(SUM(rain_minute), 0) AS hourRain
+                FROM xqx_meteor_data
+                WHERE device_id IN (${ids})
+                  AND stat_time > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                  AND stat_time < NOW()
+                GROUP BY device_id
+                """;
+
+        SqlAndParams result = DynamicSqlParser.parseDynamicSqlToPrepared(sql, params);
+
+        TestUtils.assertSqlEquals("SELECT device_id AS deviceCode, MIN(stat_time) AS timeStart, " +
+                "MAX(stat_time) AS timeEnd, COALESCE(SUM(rain_minute), 0) AS hourRain " +
+                "FROM xqx_meteor_data WHERE device_id IN (?, ?) " +
+                "AND stat_time > DATE_SUB(NOW(), INTERVAL '1' HOUR) " +
+                "AND stat_time < NOW() GROUP BY device_id", result.getSql());
+        assertEquals(Arrays.asList("device-1", "device-2"), result.getParams());
     }
 
     // 测试WITH子句参数化
@@ -1251,5 +1285,41 @@ class DynamicSqlParserJupiterTest {
         assertEquals(List.of(1001L), result.getParams());
     }
 
+    @Test
+    void testMysqlBacktickIdentifier() {
+        String sql = "SELECT str.`name` AS ditch_name FROM ditch str WHERE str.`status` = ${status}";
+        Map<String, Object> params = new HashMap<>();
+        params.put("status", 1);
+
+        SqlAndParams result = DynamicSqlParser.parseDynamicSqlToPrepared(sql, params);
+
+        assertTrue(result.getSql().contains("str.`name` AS ditch_name"));
+        assertTrue(result.getSql().contains("str.`status` = ?"));
+        assertEquals(List.of(1), result.getParams());
+    }
+
+    @Test
+    void testPreserveLineAndBlockComments() {
+        String sql = """
+                -- 查询沟渠
+                SELECT
+                    str.name AS ditch_name, /* 沟渠状态 */
+                    str.status
+                FROM ditch str
+                WHERE str.status = ${status} -- 仅查询指定状态
+                ORDER BY str.name
+                """;
+        Map<String, Object> params = new HashMap<>();
+        params.put("status", 1);
+
+        SqlAndParams result = DynamicSqlParser.parseDynamicSqlToPrepared(sql, params);
+
+        assertTrue(result.getSql().contains("-- 查询沟渠"));
+        assertTrue(result.getSql().contains("/* 沟渠状态 */"));
+        assertTrue(result.getSql().contains("-- 仅查询指定状态"));
+        assertTrue(result.getSql().contains("\nORDER BY"), "行注释后必须保留换行");
+        assertTrue(result.getSql().contains("str.status = ?"));
+        assertEquals(List.of(1), result.getParams());
+    }
 
 }

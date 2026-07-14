@@ -496,10 +496,17 @@ public class OpenApiGeneratorService {
                 copyNumberIfPresent(node, prop, "minItems");
                 copyNumberIfPresent(node, prop, "maxItems");
                 copyBoolIfPresent(node, prop, "uniqueItems");
-                // items
                 JsonNode children = node.path("children");
                 if (children.isArray() && children.size() > 0) {
-                    ObjectNode itemsSchema = buildObjectSchemaFromNodes(children);
+                    ObjectNode itemsSchema;
+                    if (children.size() == 1
+                            && "items".equals(children.get(0).path("name").asText())) {
+                        // Query 基础类型数组。
+                        itemsSchema = buildSchemaFromNode(children.get(0));
+                    } else {
+                        // Body 对象数组。
+                        itemsSchema = buildObjectSchemaFromNodes(children);
+                    }
                     prop.set("items", itemsSchema);
                 } else {
                     // 无 children 时默认 items 为 object

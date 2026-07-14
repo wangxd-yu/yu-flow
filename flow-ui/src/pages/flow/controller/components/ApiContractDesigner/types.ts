@@ -7,7 +7,7 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
 /** 字段数据类型枚举 */
-export type SchemaType = 'string' | 'number' | 'boolean' | 'object' | 'array';
+export type SchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'null' | 'object' | 'array';
 
 /** Body 内容类型枚举 */
 export type BodyType = 'none' | 'form-data' | 'x-www-form-urlencoded' | 'json' | 'xml' | 'raw';

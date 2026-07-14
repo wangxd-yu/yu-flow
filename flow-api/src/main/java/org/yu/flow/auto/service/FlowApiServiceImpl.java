@@ -7,6 +7,7 @@ import org.yu.flow.util.CamelCaseColumnMapRowMapper;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.yu.flow.dto.R;
 import org.yu.flow.auto.druid.DynamicSqlParser;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.auto.dto.SqlAndParams;
@@ -19,6 +20,8 @@ import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.datasource.service.DynamicDataSourceService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.yu.flow.module.api.service.FlowApiCrudServiceImpl;
 
@@ -30,6 +33,7 @@ import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.step.ResponseResult;
 import org.yu.flow.module.executionlog.domain.FlowExecutionLogDO;
+import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.module.executionlog.service.FlowExecutionLogService;
 
@@ -54,6 +58,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Resource
     private FlowExecutionLogService flowExecutionLogService;
+
+    @Resource
+    private ContractParamTypeConverter contractParamTypeConverter;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -292,7 +299,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
      * <ul>
      *   <li>若 result 是 FlowTrace 且状态为 error → 更新 logDO 并抛出 RuntimeException</li>
      *   <li>若 result 是 FlowTrace 且输出包含 ResponseResult → 解包为原生 ResponseEntity</li>
-     *   <li>若 result 是 FlowTrace 且为普通输出 → 包装为 ExecutionResult</li>
+     *   <li>若 result 是 FlowTrace 且为普通输出 → 返回业务输出，由网关响应模板统一包装</li>
+     *   <li>若 result 是 FLOW 的 ExecutionResult → 解出业务输出，由网关响应模板统一包装</li>
      *   <li>其他类型（DB / JSON / STRING）→ 直接返回，仅记录 responseBody</li>
      * </ul>
      */
@@ -327,10 +335,14 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             Object outputs = trace.getGlobalOutputs();
             if (outputs instanceof ResponseResult) {
                 ResponseResult rr = (ResponseResult) outputs;
+                Object body = rr.getBody();
                 if (logDO != null) {
                     try {
-                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(rr.getBody()));
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(body));
                     } catch (Exception ignored) {}
+                }
+                if (!shouldBypassResponseWrapper(rr.getStatus(), rr.getHeaders())) {
+                    return body;
                 }
                 org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
                 if (rr.getHeaders() != null) {
@@ -338,16 +350,39 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                 }
                 int status = Integer.parseInt(String.valueOf(rr.getStatus()));
                 return new org.springframework.http.ResponseEntity<>(
-                        rr.getBody(), httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
+                        body, httpHeaders, org.springframework.http.HttpStatus.valueOf(status));
             } else {
-                ExecutionResult er = ExecutionResult.success(outputs);
                 if (logDO != null) {
                     try {
-                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(er));
+                        logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(outputs));
                     } catch (Exception ignored) {}
                 }
-                return er;
+                return outputs;
             }
+        } else if ("FLOW".equals(flowApiDO.getServiceType()) && result instanceof ExecutionResult) {
+            ExecutionResult er = (ExecutionResult) result;
+            if (!er.isSuccess()) {
+                return R.fail(er.getCode(), er.getMessage());
+            }
+            Object outputs = er.getData();
+            if (logDO != null && outputs != null) {
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(outputs));
+                } catch (Exception ignored) {}
+            }
+            return outputs;
+        } else if ("FLOW".equals(flowApiDO.getServiceType()) && result instanceof ResponseEntity) {
+            ResponseEntity<?> responseEntity = (ResponseEntity<?>) result;
+            if (shouldBypassResponseWrapper(responseEntity.getStatusCodeValue(), responseEntity.getHeaders())) {
+                return responseEntity;
+            }
+            Object body = responseEntity.getBody();
+            if (logDO != null && body != null) {
+                try {
+                    logDO.setResponseBody(OBJECT_MAPPER.writeValueAsString(body));
+                } catch (Exception ignored) {}
+            }
+            return body;
         } else {
             // 非 Flow 类型的返回值处理与合成快照构建
             if (logDO != null && result != null) {
@@ -360,6 +395,17 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             }
         }
         return result;
+    }
+
+    /**
+     * Response 节点默认仍走 API 响应模板；只有显式使用自定义 Header 或非 200 状态码时才按原生 HTTP 响应输出。
+     */
+    private boolean shouldBypassResponseWrapper(int status, Map<String, String> headers) {
+        return status != 200 || (headers != null && !headers.isEmpty());
+    }
+
+    private boolean shouldBypassResponseWrapper(int status, HttpHeaders headers) {
+        return status != 200 || (headers != null && !headers.isEmpty());
     }
 
     private void buildAndSetSyntheticTraceForSuccess(
@@ -458,12 +504,26 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             validateParams(queryParams, bodyParams, mergeParamsMap, validationRules);
         }
 
+        Map<String, Object> typedQueryParams =
+                contractParamTypeConverter.convertSection(flowApiDO.getContract(), "query", queryParams);
+        Map<String, Object> typedBodyParams =
+                contractParamTypeConverter.convertSection(flowApiDO.getContract(), "body", bodyParams);
+        Map<String, Object> typedMergeParams = new HashMap<>(mergeParamsMap);
+        typedQueryParams.forEach((key, value) -> {
+            typedMergeParams.put("query." + key, value);
+            typedMergeParams.putIfAbsent(key, value);
+        });
+        typedBodyParams.forEach((key, value) -> {
+            typedMergeParams.put("body." + key, value);
+            typedMergeParams.put(key, value);
+        });
+
         // 根据请求类型分发
-        return dispatch(flowApiDO, mergeParamsMap, pageable, response, () -> {
+        return dispatch(flowApiDO, typedMergeParams, pageable, response, () -> {
             Map<String, Object> inputsMap = new HashMap<>();
-            inputsMap.put("queryParams", queryParams);
-            inputsMap.put("bodyParams", bodyParams);
-            inputsMap.put("mergeParams", mergeParamsMap);
+            inputsMap.put("queryParams", typedQueryParams);
+            inputsMap.put("bodyParams", typedBodyParams);
+            inputsMap.put("mergeParams", typedMergeParams);
             inputsMap.put("pageable", pageable);
             return inputsMap;
         }, runtimeLogContext);
@@ -475,12 +535,40 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private Object doExecute(Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response, FlowApiDO flowApiDO,
                              RuntimeLogContext runtimeLogContext) throws Exception {
-        return dispatch(flowApiDO, params, pageable, response, () -> {
+        Map<String, Object> typedParams = convertContextParams(flowApiDO.getContract(), params);
+        return dispatch(flowApiDO, typedParams, pageable, response, () -> {
             Map<String, Object> inputsMapObj = new HashMap<>();
             inputsMapObj.put("pageable", pageable);
-            inputsMapObj.putAll(params);
+            inputsMapObj.putAll(typedParams);
             return inputsMapObj;
         }, runtimeLogContext);
+    }
+
+    private Map<String, Object> convertContextParams(String contract, Map<String, Object> params) {
+        Map<String, Object> result = params == null ? new HashMap<>() : new HashMap<>(params);
+        Object querySource = firstPresent(result, "params", "queryParams", "@QP");
+        Object bodySource = firstPresent(result, "body", "bodyParams", "@BP");
+
+        Map<String, Object> query = contractParamTypeConverter.convertSection(
+                contract, "query", querySource == null ? result : toObjectMap(querySource));
+        Map<String, Object> body = contractParamTypeConverter.convertSection(
+                contract, "body", bodySource == null ? Collections.emptyMap() : toObjectMap(bodySource));
+        Map<String, Object> headers = contractParamTypeConverter.convertSection(
+                contract, "headers", toObjectMap(firstPresent(result, "headers")));
+        Map<String, Object> pathParams = contractParamTypeConverter.convertSection(
+                contract, "pathParams", toObjectMap(firstPresent(result, "pathParams", "@PP")));
+
+        result.put("@QP", query);
+        result.put("@BP", body);
+        result.put("@PP", pathParams);
+        result.put("params", query);
+        result.put("queryParams", query);
+        result.put("body", body);
+        result.put("bodyParams", body);
+        result.put("headers", headers);
+        result.putAll(query);
+        result.putAll(body);
+        return result;
     }
 
     /**

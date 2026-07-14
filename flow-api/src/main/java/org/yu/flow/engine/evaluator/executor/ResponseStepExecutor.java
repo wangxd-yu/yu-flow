@@ -1,5 +1,6 @@
 package org.yu.flow.engine.evaluator.executor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -7,6 +8,7 @@ import org.yu.flow.engine.evaluator.ExecutionContext;
 import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.engine.model.step.ResponseResult;
 import org.yu.flow.engine.model.step.ResponseStep;
+import org.yu.flow.util.FlowObjectMapperUtil;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +35,8 @@ import java.util.regex.Pattern;
 public class ResponseStepExecutor extends AbstractStepExecutor<ResponseStep> {
 
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{(.+?)}");
+    private static final Pattern QUOTED_VAR_PATTERN = Pattern.compile("\"\\$\\{(.+?)}\"");
+    private static final ObjectMapper OBJECT_MAPPER = FlowObjectMapperUtil.flowObjectMapper();
 
     @Override
     public String execute(ResponseStep step, ExecutionContext context, FlowDefinition flow) {
@@ -97,7 +101,11 @@ public class ResponseStepExecutor extends AbstractStepExecutor<ResponseStep> {
             // 完全匹配 ${...}：直接返回路径对应的原始对象（可能是 Map/List 等）
             Matcher matcher = VAR_PATTERN.matcher(str);
             if (matcher.matches()) {
-                return getValueByPath(matcher.group(1), localVariables);
+                return getValueByPath(matcher.group(1).trim(), localVariables);
+            }
+            Object jsonResult = resolveJsonTemplate(str, localVariables);
+            if (jsonResult != null) {
+                return jsonResult;
             }
             // 含有 ${...} 片段：按字符串模板展开
             if (str.contains("${")) {
@@ -115,9 +123,10 @@ public class ResponseStepExecutor extends AbstractStepExecutor<ResponseStep> {
                     String str = ((String) v).trim();
                     Matcher matcher = VAR_PATTERN.matcher(str);
                     if (matcher.matches()) {
-                        resolved.put(k, getValueByPath(matcher.group(1), localVariables));
+                        resolved.put(k, getValueByPath(matcher.group(1).trim(), localVariables));
                     } else if (str.contains("${")) {
-                        resolved.put(k, resolveString(str, localVariables));
+                        Object jsonResult = resolveJsonTemplate(str, localVariables);
+                        resolved.put(k, jsonResult != null ? jsonResult : resolveString(str, localVariables));
                     } else {
                         resolved.put(k, str);
                     }
@@ -131,12 +140,55 @@ public class ResponseStepExecutor extends AbstractStepExecutor<ResponseStep> {
         return body;
     }
 
+    private Object resolveJsonTemplate(String template, Map<String, Object> localVariables) {
+        String trimmed = template.trim();
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+            return null;
+        }
+
+        try {
+            String rendered = replaceJsonTemplateVariables(trimmed, localVariables);
+            return OBJECT_MAPPER.readValue(rendered, Object.class);
+        } catch (Exception e) {
+            log.warn("Response JSON 模板解析失败，降级为字符串模板。template={}, error={}", template, e.getMessage());
+            return null;
+        }
+    }
+
+    private String replaceJsonTemplateVariables(String template, Map<String, Object> localVariables) {
+        Matcher quotedMatcher = QUOTED_VAR_PATTERN.matcher(template);
+        StringBuffer quotedBuffer = new StringBuffer();
+        while (quotedMatcher.find()) {
+            Object value = getValueByPath(quotedMatcher.group(1).trim(), localVariables);
+            String replacement = value == null ? "\"\"" : toJsonLiteral(value);
+            quotedMatcher.appendReplacement(quotedBuffer, Matcher.quoteReplacement(replacement));
+        }
+        quotedMatcher.appendTail(quotedBuffer);
+
+        Matcher matcher = VAR_PATTERN.matcher(quotedBuffer.toString());
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            Object value = getValueByPath(matcher.group(1).trim(), localVariables);
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(toJsonLiteral(value)));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString();
+    }
+
+    private String toJsonLiteral(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (Exception e) {
+            return "null";
+        }
+    }
+
     private String resolveString(String template, Map<String, Object> localVariables) {
         if (template == null) return null;
         Matcher matcher = VAR_PATTERN.matcher(template);
         StringBuffer sb = new StringBuffer();
         while (matcher.find()) {
-            Object value = getValueByPath(matcher.group(1), localVariables);
+            Object value = getValueByPath(matcher.group(1).trim(), localVariables);
             matcher.appendReplacement(sb, value != null ? Matcher.quoteReplacement(String.valueOf(value)) : "");
         }
         matcher.appendTail(sb);
@@ -148,6 +200,7 @@ public class ResponseStepExecutor extends AbstractStepExecutor<ResponseStep> {
             return null;
         }
         try {
+            path = path != null ? path.trim() : "";
             // 支持 localVariables 直接提取
             String jsonPath = path.startsWith("$.") ? path : "$." + path;
             return JsonPath.read(localVariables, jsonPath);

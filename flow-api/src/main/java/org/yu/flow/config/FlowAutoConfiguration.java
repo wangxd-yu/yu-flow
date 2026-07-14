@@ -77,11 +77,12 @@ public class FlowAutoConfiguration {
             FlowApiExecutionService flowApiService,
             FlowApiCacheManager flowApiCacheManager,
             SchemaValidatorService schemaValidatorService,
+            ContractParamTypeConverter contractParamTypeConverter,
             ResponseStrategyResolver responseStrategyResolver,
             ResponseTransformer responseTransformer) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
-                schemaValidatorService, responseStrategyResolver, responseTransformer);
+                schemaValidatorService, contractParamTypeConverter, responseStrategyResolver, responseTransformer);
 
         FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/*");

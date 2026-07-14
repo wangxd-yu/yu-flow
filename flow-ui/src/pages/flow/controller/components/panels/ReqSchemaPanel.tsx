@@ -133,7 +133,7 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
                 {/* ── Query 参数 ── */}
                 <div style={{ marginBottom: pathParams.length > 0 ? 8 : 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, color: '#595959', marginBottom: 6 }}>Query 参数</div>
-                  <SchemaTreeTable flat value={queryParams} onChange={onQueryParamsChange} />
+                  <SchemaTreeTable flat allowArray value={queryParams} onChange={onQueryParamsChange} />
                 </div>
 
                 {/* ── Path 参数（仅当 URL 含 path 占位符时显示） ── */}

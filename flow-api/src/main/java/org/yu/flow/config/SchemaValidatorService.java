@@ -119,7 +119,7 @@ public class SchemaValidatorService {
      */
     public void validateFromContract(String contractJson,
                                      Map<String, Object> bodyParams,
-                                     Map<String, String> queryParams) {
+                                     Map<String, ?> queryParams) {
         if (StrUtil.isBlank(contractJson)) {
             return;
         }
@@ -130,13 +130,17 @@ public class SchemaValidatorService {
 
             // ─── 顺序同步校验 Body ───
             if (compiled.bodySchema != null) {
-                JsonNode bodyData = bodyParams != null ? objectMapper.valueToTree(bodyParams) : objectMapper.createObjectNode();
+                JsonNode bodyData = bodyParams != null
+                        ? objectMapper.valueToTree(toSchemaValidationValue(bodyParams))
+                        : objectMapper.createObjectNode();
                 allErrors.addAll(doValidate(compiled.bodySchema, bodyData));
             }
 
             // ─── 顺序同步校验 Query ───
             if (compiled.querySchema != null) {
-                JsonNode queryData = queryParams != null ? objectMapper.valueToTree(queryParams) : objectMapper.createObjectNode();
+                JsonNode queryData = queryParams != null
+                        ? objectMapper.valueToTree(toSchemaValidationValue(queryParams))
+                        : objectMapper.createObjectNode();
                 allErrors.addAll(doValidate(compiled.querySchema, queryData));
             }
 
@@ -158,6 +162,33 @@ public class SchemaValidatorService {
             }
             throw new SchemaValidationException("请求参数格式不正确: " + msg);
         }
+    }
+
+    /**
+     * JDBC/Java 强类型参数在校验时还原为 JSON Schema 对应的字符串表示。
+     */
+    private Object toSchemaValidationValue(Object value) {
+        if (value instanceof java.sql.Date || value instanceof java.sql.Time) {
+            return value.toString();
+        }
+        if (value instanceof java.sql.Timestamp) {
+            return ((java.sql.Timestamp) value).toInstant().toString();
+        }
+        if (value instanceof UUID) {
+            return value.toString();
+        }
+        if (value instanceof Map) {
+            Map<String, Object> converted = new LinkedHashMap<>();
+            ((Map<?, ?>) value).forEach((key, item) ->
+                    converted.put(String.valueOf(key), toSchemaValidationValue(item)));
+            return converted;
+        }
+        if (value instanceof Collection) {
+            return ((Collection<?>) value).stream()
+                    .map(this::toSchemaValidationValue)
+                    .collect(Collectors.toList());
+        }
+        return value;
     }
 
     /**
@@ -223,19 +254,8 @@ public class SchemaValidatorService {
             String fieldName = node.path("name").asText("");
             if (fieldName.isEmpty()) continue;
 
-            ObjectNode prop = objectMapper.createObjectNode();
-            // Query params 从 URL 取到的都是 string，所以 schema 中统一用 string
-            prop.put("type", "string");
-
-            // 复制 string 校验规则
-            copyIfPresent(node, prop, "pattern");
-            copyNumberIfPresent(node, prop, "minLength");
-            copyNumberIfPresent(node, prop, "maxLength");
-
-            String displayName = node.path("description").asText("");
-            if (!displayName.isEmpty()) {
-                prop.put("description", displayName);
-            }
+            // Query 参数已在网关按契约完成类型转换，直接使用声明的类型及约束。
+            ObjectNode prop = buildPropertyFromNode(node);
 
             properties.set(fieldName, prop);
 
@@ -301,8 +321,16 @@ public class SchemaValidatorService {
                 copyNumberIfPresent(node, prop, "minItems");
                 copyNumberIfPresent(node, prop, "maxItems");
                 copyBoolIfPresent(node, prop, "uniqueItems");
-                // items：将 children 构建为 object schema 后设置为 items
-                ObjectNode itemsSchema = buildChildSchema(node.path("children"));
+                JsonNode children = node.path("children");
+                ObjectNode itemsSchema = null;
+                if (children.isArray() && children.size() == 1
+                        && "items".equals(children.get(0).path("name").asText())) {
+                    // Query 基础类型数组：children[0] 直接作为 items schema。
+                    itemsSchema = buildPropertyFromNode(children.get(0));
+                } else {
+                    // Body 对象数组：children 表示对象的字段列表。
+                    itemsSchema = buildChildSchema(children);
+                }
                 if (itemsSchema != null) {
                     prop.set("items", itemsSchema);
                 }

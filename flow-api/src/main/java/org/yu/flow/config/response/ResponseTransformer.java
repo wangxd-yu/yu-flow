@@ -60,6 +60,10 @@ public class ResponseTransformer {
                 }
             });
             
+            if (rawResult == null) {
+                return traverseAndReplaceNull(templateMap);
+            }
+
             // 将原始结果转换为 Jackson 原生支持的 Map 或 List 等结构
             // 这比将其序列化为 String 再重新由 JsonPath 解析要高效得多
             Object rawData = objectMapper.convertValue(rawResult, Object.class);
@@ -72,6 +76,35 @@ public class ResponseTransformer {
             // 失败的话兜底返回原始结果（或根据系统要求抛出异常）
             return rawResult;
         }
+    }
+
+    /**
+     * rawResult 为 null 时，JsonPath 无法稳定解析 "$" / "$.xxx"，这里直接按模板保留包装结构。
+     */
+    @SuppressWarnings("unchecked")
+    private Object traverseAndReplaceNull(Object node) {
+        if (node instanceof Map) {
+            Map<String, Object> map = (Map<String, Object>) node;
+            Map<String, Object> newMap = new HashMap<>(map.size());
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                newMap.put(entry.getKey(), traverseAndReplaceNull(entry.getValue()));
+            }
+            return newMap;
+        } else if (node instanceof List) {
+            List<Object> list = (List<Object>) node;
+            List<Object> newList = new ArrayList<>(list.size());
+            for (Object item : list) {
+                newList.add(traverseAndReplaceNull(item));
+            }
+            return newList;
+        } else if (node instanceof String) {
+            String strNode = (String) node;
+            if ("$".equals(strNode) || strNode.startsWith("$.")) {
+                return null;
+            }
+            return strNode;
+        }
+        return node;
     }
 
     /**

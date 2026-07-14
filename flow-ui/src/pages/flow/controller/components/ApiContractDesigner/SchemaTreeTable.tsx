@@ -28,8 +28,10 @@ import {
 export interface SchemaTreeTableProps {
   value: SchemaNode[];
   onChange: (value: SchemaNode[]) => void;
-  /** 平铺模式：禁 object/array 和子节点 */
+  /** 平铺模式：禁 object 和子节点 */
   flat?: boolean;
+  /** 平铺模式下允许配置基础类型数组（Query 参数使用） */
+  allowArray?: boolean;
   /** 是否隐藏工具栏（预览/导入按钮由外部控制） */
   hideToolbar?: boolean;
   /** 隐藏「必填」列（如 Path 参数始终必填，无需展示） */
@@ -50,6 +52,10 @@ const genId = (): string => `node_${Date.now()}_${++idCounter}`;
 
 const createEmptyNode = (): SchemaNode => ({
   id: genId(), name: '', type: 'string', required: false, description: '',
+});
+
+const createArrayItemNode = (type: SchemaType = 'string'): SchemaNode => ({
+  id: genId(), name: 'items', type, required: false, description: '数组元素',
 });
 
 const createRootNode = (): SchemaNode => ({
@@ -119,7 +125,9 @@ const reorderInTree = (
 const TYPE_OPTIONS: { label: string; value: SchemaType }[] = [
   { label: 'string', value: 'string' },
   { label: 'number', value: 'number' },
+  { label: 'integer', value: 'integer' },
   { label: 'boolean', value: 'boolean' },
+  { label: 'null', value: 'null' },
   { label: 'object', value: 'object' },
   { label: 'array', value: 'array' },
 ];
@@ -128,6 +136,7 @@ const FORMAT_OPTIONS = [
   { label: '无', value: '' },
   { label: 'date-time', value: 'date-time' },
   { label: 'date', value: 'date' },
+  { label: 'time', value: 'time' },
   { label: 'email', value: 'email' },
   { label: 'uri', value: 'uri' },
   { label: 'ipv4', value: 'ipv4' },
@@ -135,13 +144,24 @@ const FORMAT_OPTIONS = [
   { label: 'uuid', value: 'uuid' },
 ];
 
+const ARRAY_ITEM_TYPE_OPTIONS: { label: string; value: SchemaType }[] = [
+  { label: 'string', value: 'string' },
+  { label: 'number', value: 'number' },
+  { label: 'integer', value: 'integer' },
+  { label: 'boolean', value: 'boolean' },
+];
+
 // ═══════════════════════════════════════════════════════════════
 // 高级设置面板
 // ═══════════════════════════════════════════════════════════════
 
-const AdvancedSettingsPanel: React.FC<{ record: SchemaNode; onPatch: (p: Partial<SchemaNode>) => void }> = ({ record, onPatch }) => {
+const AdvancedSettingsPanel: React.FC<{
+  record: SchemaNode;
+  onPatch: (p: Partial<SchemaNode>) => void;
+  showArrayItemType?: boolean;
+}> = ({ record, onPatch, showArrayItemType = false }) => {
   const isStr = record.type === 'string';
-  const isNum = record.type === 'number';
+  const isNum = record.type === 'number' || record.type === 'integer';
   const isArr = record.type === 'array';
   return (
     <div style={{ width: 320 }}>
@@ -208,6 +228,21 @@ const AdvancedSettingsPanel: React.FC<{ record: SchemaNode; onPatch: (p: Partial
         {isArr && (
           <>
             <Divider style={{ margin: '6px 0' }} />
+            {showArrayItemType && (
+              <Form.Item label="数组元素类型" style={{ marginBottom: 8 }}>
+                <Select
+                  value={record.children?.[0]?.type ?? 'string'}
+                  options={ARRAY_ITEM_TYPE_OPTIONS}
+                  onChange={(type: SchemaType) => {
+                    const current = record.children?.[0];
+                    onPatch({
+                      children: [{ ...(current ?? createArrayItemNode()), name: 'items', type }],
+                    });
+                  }}
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            )}
             <Space>
               <Form.Item label="最少元素" style={{ marginBottom: 8 }}>
                 <InputNumber min={0} value={record.minItems} onChange={(v) => onPatch({ minItems: v ?? undefined })} style={{ width: 100 }} />
@@ -402,7 +437,8 @@ const CELL_INPUT_STYLE: React.CSSProperties = {
 // ═══════════════════════════════════════════════════════════════
 
 const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
-  value, onChange, flat = false, hideToolbar = false, hideRequired = false, hideAddButton = false, hideActions = false,
+  value, onChange, flat = false, allowArray = false, hideToolbar = false,
+  hideRequired = false, hideAddButton = false, hideActions = false,
 }) => {
   const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -453,6 +489,14 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
     (id: string, patch: Partial<SchemaNode>) => emitChange(updateNodeById(dataSource, id, patch)),
     [dataSource, emitChange],
   );
+
+  const handleTypeChange = useCallback((record: SchemaNode, type: SchemaType) => {
+    const patch: Partial<SchemaNode> = { type };
+    if (flat && allowArray && type === 'array' && !record.children?.length) {
+      patch.children = [createArrayItemNode()];
+    }
+    emitChange(updateNodeById(dataSource, record.id, patch));
+  }, [allowArray, dataSource, emitChange, flat]);
 
   const focusNewNode = (newId: string) => {
     setTimeout(() => document.getElementById(`input-name-${newId}`)?.focus(), 50);
@@ -600,15 +644,23 @@ const SchemaTreeTable: React.FC<SchemaTreeTableProps> = ({
             <Select
               size="small" variant="borderless" className="stt-cell-select"
               value={record.type}
-              options={flat ? TYPE_OPTIONS.filter((o) => o.value !== 'object' && o.value !== 'array') : TYPE_OPTIONS}
-              onChange={(v) => handleFieldChange(record.id, 'type', v)}
+              options={flat
+                ? TYPE_OPTIONS.filter((o) => o.value !== 'object' && (allowArray || o.value !== 'array'))
+                : TYPE_OPTIONS}
+              onChange={(v) => handleTypeChange(record, v)}
               style={{ width: 85, fontSize: 12 }}
             />
             <Popover trigger="click" placement="bottomLeft"
               open={openPopoverId === record.id}
               onOpenChange={(vis) => setOpenPopoverId(vis ? record.id : null)}
               title="高级设置"
-              content={<AdvancedSettingsPanel record={record} onPatch={(p) => handleNodePatch(record.id, p)} />}
+              content={(
+                <AdvancedSettingsPanel
+                  record={record}
+                  showArrayItemType={flat && allowArray}
+                  onPatch={(p) => handleNodePatch(record.id, p)}
+                />
+              )}
             >
               <Tooltip title="高级设置">
                 <Button type="text" size="small" icon={<SettingOutlined style={{ fontSize: 12 }} />}

@@ -6,7 +6,9 @@ import com.alibaba.druid.sql.ast.SQLOrderBy;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.*;
 import com.alibaba.druid.sql.ast.statement.*;
+import com.alibaba.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.druid.sql.dialect.postgresql.parser.PGSQLStatementParser;
+import com.alibaba.druid.sql.parser.SQLParserFeature;
 import com.alibaba.druid.sql.parser.SQLStatementParser;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.SqlAndParams;
@@ -58,7 +60,7 @@ public class DynamicSqlParser {
         }
 
         try {
-            SQLStatementParser parser = new PGSQLStatementParser(sql);
+            SQLStatementParser parser = createStatementParser(sql);
             SQLStatement stmt = parser.parseStatement();
 
             // 新增参数上下文，用于跟踪参数存在性
@@ -74,10 +76,224 @@ public class DynamicSqlParser {
                 processStatement((SQLDeleteStatement) stmt, paramContext);
             }
 
-            return stmt.toString();
+            return restoreMissingComments(sql, stmt.toString());
         } catch (Exception e) {
             throw new RuntimeException("SQL解析失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Druid 可能丢弃 SELECT 列之间的块注释。以注释后的首个标识符为锚点，
+     * 将未输出的注释放回原来的相对位置。
+     */
+    private static String restoreMissingComments(String originalSql, String formattedSql) {
+        String result = formattedSql;
+        for (SqlComment comment : extractSqlComments(originalSql)) {
+            if (result.contains(comment.text)) {
+                continue;
+            }
+
+            String anchor = findNextCommentAnchor(originalSql, comment.endIndex);
+            int anchorIndex = anchor == null ? -1 : findAnchorIndex(result, anchor,
+                    countOccurrences(originalSql.substring(0, comment.endIndex), anchor));
+            if (anchorIndex >= 0) {
+                result = result.substring(0, anchorIndex) + comment.text + "\n" + result.substring(anchorIndex);
+            } else {
+                result = result + System.lineSeparator() + comment.text;
+            }
+        }
+        return result;
+    }
+
+    private static List<SqlComment> extractSqlComments(String sql) {
+        List<SqlComment> comments = new ArrayList<>();
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+
+        for (int i = 0; i < sql.length(); i++) {
+            char current = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+
+            if (inSingleQuote) {
+                if (current == '\'' && next == '\'') {
+                    i++;
+                } else if (current == '\'') {
+                    inSingleQuote = false;
+                }
+                continue;
+            }
+            if (inDoubleQuote) {
+                if (current == '"' && next == '"') {
+                    i++;
+                } else if (current == '"') {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+            if (current == '\'') {
+                inSingleQuote = true;
+                continue;
+            }
+            if (current == '"') {
+                inDoubleQuote = true;
+                continue;
+            }
+
+            if (current == '-' && next == '-') {
+                int start = i;
+                i += 2;
+                while (i < sql.length() && sql.charAt(i) != '\n' && sql.charAt(i) != '\r') {
+                    i++;
+                }
+                comments.add(new SqlComment(sql.substring(start, i), i));
+                i--;
+            } else if (current == '/' && next == '*') {
+                int start = i;
+                int end = sql.indexOf("*/", i + 2);
+                if (end < 0) {
+                    end = sql.length() - 2;
+                }
+                i = Math.min(end + 2, sql.length());
+                comments.add(new SqlComment(sql.substring(start, i), i));
+                i--;
+            }
+        }
+        return comments;
+    }
+
+    private static boolean hasLineComment(String sql) {
+        for (SqlComment comment : extractSqlComments(sql)) {
+            if (comment.text.startsWith("--")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String findNextCommentAnchor(String sql, int startIndex) {
+        int index = startIndex;
+        while (index < sql.length()) {
+            char current = sql.charAt(index);
+            if (Character.isLetterOrDigit(current) || current == '_' || current == '`' || current == '"') {
+                int end = index + 1;
+                while (end < sql.length()) {
+                    char value = sql.charAt(end);
+                    if (!(Character.isLetterOrDigit(value) || value == '_' || value == '.'
+                            || value == '`' || value == '"')) {
+                        break;
+                    }
+                    end++;
+                }
+                return sql.substring(index, end);
+            }
+            index++;
+        }
+        return null;
+    }
+
+    private static int countOccurrences(String text, String value) {
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(value, index)) >= 0) {
+            count++;
+            index += value.length();
+        }
+        return count;
+    }
+
+    private static int findAnchorIndex(String sql, String anchor, int occurrence) {
+        int index = 0;
+        for (int i = 0; i <= occurrence; i++) {
+            index = sql.indexOf(anchor, index);
+            if (index < 0) {
+                return -1;
+            }
+            if (i < occurrence) {
+                index += anchor.length();
+            }
+        }
+        return index;
+    }
+
+    private static class SqlComment {
+        private final String text;
+        private final int endIndex;
+
+        private SqlComment(String text, int endIndex) {
+            this.text = text;
+            this.endIndex = endIndex;
+        }
+    }
+
+    /**
+     * 反引号标识符属于 MySQL 语法，其他 SQL 继续使用 PostgreSQL 方言解析。
+     * KeepComments 确保格式化 AST 时保留 SQL 中的行注释和块注释。
+     */
+    private static SQLStatementParser createStatementParser(String sql) {
+        if (containsBacktickIdentifier(sql)) {
+            return new MySqlStatementParser(sql, SQLParserFeature.KeepComments);
+        }
+        return new PGSQLStatementParser(sql, SQLParserFeature.KeepComments);
+    }
+
+    /**
+     * 只识别 SQL 代码中的反引号，忽略字符串和注释中的反引号。
+     */
+    private static boolean containsBacktickIdentifier(String sql) {
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+        boolean inLineComment = false;
+        boolean inBlockComment = false;
+
+        for (int i = 0; i < sql.length(); i++) {
+            char current = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+
+            if (inLineComment) {
+                if (current == '\n' || current == '\r') {
+                    inLineComment = false;
+                }
+                continue;
+            }
+            if (inBlockComment) {
+                if (current == '*' && next == '/') {
+                    inBlockComment = false;
+                    i++;
+                }
+                continue;
+            }
+            if (inSingleQuote) {
+                if (current == '\'' && next == '\'') {
+                    i++;
+                } else if (current == '\'') {
+                    inSingleQuote = false;
+                }
+                continue;
+            }
+            if (inDoubleQuote) {
+                if (current == '"' && next == '"') {
+                    i++;
+                } else if (current == '"') {
+                    inDoubleQuote = false;
+                }
+                continue;
+            }
+
+            if (current == '-' && next == '-') {
+                inLineComment = true;
+                i++;
+            } else if (current == '/' && next == '*') {
+                inBlockComment = true;
+                i++;
+            } else if (current == '\'') {
+                inSingleQuote = true;
+            } else if (current == '"') {
+                inDoubleQuote = true;
+            } else if (current == '`') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -591,6 +807,10 @@ public class DynamicSqlParser {
         SQLMethodInvokeExpr newExpr = new SQLMethodInvokeExpr();
         newExpr.setMethodName(expr.getMethodName());
 
+        if (expr.getArguments().isEmpty()) {
+            return newExpr;
+        }
+
         boolean hasValidArgs = false;
         for (SQLExpr arg : expr.getArguments()) {
             if (arg instanceof SQLCharExpr) {
@@ -792,15 +1012,21 @@ public class DynamicSqlParser {
         Matcher paramMatcher = paramPattern.matcher(tempSql);
 
         int lastEnd = 0;
+        boolean preserveLineBreaks = hasLineComment(tempSql);
 
         while (paramMatcher.find()) {
-            // 添加匹配位置之前的文本，保留原始格式，只去除多余的连续空格
-            String preText = tempSql.substring(lastEnd, paramMatcher.start())
-                    .replaceAll("\\s+", " ")
-                    .trim();
+            // 保留原始换行，避免 "--" 行注释吞掉后续 SQL。
+            String preText = tempSql.substring(lastEnd, paramMatcher.start());
+            if (!preserveLineBreaks) {
+                preText = preText.replaceAll("\\s+", " ").trim();
+            }
             if (!preText.isEmpty()) {
-                appendSqlSegment(processedSql, preText);
-                processedSql.append(" ");
+                if (preserveLineBreaks) {
+                    processedSql.append(preText);
+                } else {
+                    appendSqlSegment(processedSql, preText);
+                    processedSql.append(" ");
+                }
             }
 
             if (paramMatcher.group(1) != null) {
@@ -892,12 +1118,17 @@ public class DynamicSqlParser {
             lastEnd = paramMatcher.end();
         }
 
-        // 添加剩余的文本，保留原始格式，只去除多余的连续空格
-        String remainingText = tempSql.substring(lastEnd)
-                .replaceAll("\\s+", " ")
-                .trim();
+        // 添加剩余文本，并保留注释所依赖的换行。
+        String remainingText = tempSql.substring(lastEnd);
+        if (!preserveLineBreaks) {
+            remainingText = remainingText.replaceAll("\\s+", " ").trim();
+        }
         if (!remainingText.isEmpty()) {
-            appendSqlSegment(processedSql, remainingText);
+            if (preserveLineBreaks) {
+                processedSql.append(remainingText);
+            } else {
+                appendSqlSegment(processedSql, remainingText);
+            }
         }
 
         // 去除首尾的空格
@@ -954,10 +1185,13 @@ public class DynamicSqlParser {
     }
 
     private static void appendSqlSegment(StringBuilder sql, String segment) {
-        if (sql.length() > 0 && !Character.isWhitespace(sql.charAt(sql.length() - 1))) {
+        char first = segment.charAt(0);
+        boolean punctuationFollows = first == ',' || first == ')' || first == ';';
+        if (!punctuationFollows && sql.length() > 0 && !Character.isWhitespace(sql.charAt(sql.length() - 1))) {
             sql.append(" ");
         }
         sql.append(segment);
     }
+
 }
 

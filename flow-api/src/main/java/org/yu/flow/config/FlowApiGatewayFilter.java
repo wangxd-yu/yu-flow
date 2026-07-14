@@ -63,6 +63,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     private final FlowApiExecutionService flowApiService;
     private final FlowApiCacheManager flowApiCacheManager;
     private final SchemaValidatorService schemaValidatorService;
+    private final ContractParamTypeConverter contractParamTypeConverter;
     private final ResponseStrategyResolver responseStrategyResolver;
     private final ResponseTransformer responseTransformer;
 
@@ -73,12 +74,14 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 FlowApiExecutionService flowApiService,
                                 FlowApiCacheManager flowApiCacheManager,
                                 SchemaValidatorService schemaValidatorService,
+                                ContractParamTypeConverter contractParamTypeConverter,
                                 ResponseStrategyResolver responseStrategyResolver,
                                 ResponseTransformer responseTransformer) {
         this.flowProperties = flowProperties;
         this.flowApiService = flowApiService;
         this.flowApiCacheManager = flowApiCacheManager;
         this.schemaValidatorService = schemaValidatorService;
+        this.contractParamTypeConverter = contractParamTypeConverter;
         this.responseStrategyResolver = responseStrategyResolver;
         this.responseTransformer = responseTransformer;
     }
@@ -202,35 +205,46 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         Map<String, String> queryParams = extractQueryParams(request);
         Map<String, Object> bodyParams = extractBodyParams(request);
         Map<String, String> headers = extractHeaders(request);
+        Map<String, Object> pathParams = toObjectMap(request.getAttribute("flowPathVariables"));
 
-        Map<String, Object> inputParamsMap = new HashMap<>(8);
-        inputParamsMap.put("@QP", queryParams);
-        inputParamsMap.put("@BP", bodyParams);
-        inputParamsMap.put("@PP", request.getAttribute("flowPathVariables"));
-        // 兼容 Request 节点
-        inputParamsMap.put("headers", headers);
-        inputParamsMap.put("params", queryParams);
-        inputParamsMap.put("body", bodyParams);
-
-        // 2. 合并参数（body 优先）
-        Map<String, Object> mergeParamsMap = mergeParams(queryParams, bodyParams);
-
-        // 3. 提取分页对象
+        // 2. 提取分页对象
         Pageable pageable = extractPageable(request);
 
-        // 3.5 JSON Schema 入参前置校验
+        // 3. 根据 API 契约转换参数类型，并使用转换后的值执行 JSON Schema 校验。
         String contractRule = flowApiDO.getContract();
+        Map<String, Object> typedQueryParams;
+        Map<String, Object> typedBodyParams;
+        Map<String, Object> typedHeaders;
+        Map<String, Object> typedPathParams;
         if (StrUtil.isNotBlank(contractRule)) {
             try {
-                schemaValidatorService.validateFromContract(contractRule, bodyParams, queryParams);
+                typedQueryParams = contractParamTypeConverter.convertSection(contractRule, "query", queryParams);
+                typedBodyParams = contractParamTypeConverter.convertSection(contractRule, "body", bodyParams);
+                typedHeaders = contractParamTypeConverter.convertSection(contractRule, "headers", headers);
+                typedPathParams = contractParamTypeConverter.convertSection(contractRule, "pathParams", pathParams);
+                schemaValidatorService.validateFromContract(contractRule, typedBodyParams, typedQueryParams);
             } catch (SchemaValidationException e) {
                 writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(),
                         R.fail(400, e.getMessage()));
                 return;
             }
+        } else {
+            typedQueryParams = new LinkedHashMap<>(queryParams);
+            typedBodyParams = new LinkedHashMap<>(bodyParams);
+            typedHeaders = new LinkedHashMap<>(headers);
+            typedPathParams = pathParams;
         }
 
-        // 4. 执行 API
+        Map<String, Object> inputParamsMap = new HashMap<>(8);
+        inputParamsMap.put("@QP", typedQueryParams);
+        inputParamsMap.put("@BP", typedBodyParams);
+        inputParamsMap.put("@PP", typedPathParams);
+        // 兼容 Request 节点
+        inputParamsMap.put("headers", typedHeaders);
+        inputParamsMap.put("params", typedQueryParams);
+        inputParamsMap.put("body", typedBodyParams);
+
+        // 4. 执行 API；DB 和 FlowEngine 均接收完成类型转换的参数。
         Object result = flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response);
 
         // 5. 获取包装上下文
@@ -334,6 +348,14 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             headers.put(headerName, request.getHeader(headerName));
         }
         return headers;
+    }
+
+    private Map<String, Object> toObjectMap(Object value) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (value instanceof Map) {
+            ((Map<?, ?>) value).forEach((key, item) -> result.put(String.valueOf(key), item));
+        }
+        return result;
     }
 
     private Map<String, Object> extractBodyParams(HttpServletRequest request) throws IOException {
