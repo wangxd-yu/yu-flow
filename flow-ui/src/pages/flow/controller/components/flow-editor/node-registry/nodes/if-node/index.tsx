@@ -16,6 +16,8 @@ const LANGUAGE_OPTIONS = [
     { value: 'JavaScript', label: 'JavaScript (默认)' },
     { value: 'Aviator', label: 'Aviator' },
     { value: 'SpEL', label: 'SpEL' },
+    { value: 'Python', label: 'Python (GraalPy)' },
+    { value: 'Groovy', label: 'Java / Groovy' },
 ];
 
 const editorLanguage = (lang: string) => (lang === 'JavaScript' || lang === 'js') ? 'javascript' : 'text';

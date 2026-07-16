@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * Evaluate 表达式计算节点执行器
- * 支持多表达式语言 (Aviator / SpEL)
+ * 支持多表达式语言 (Aviator / SpEL / JavaScript / Python / Groovy)
  */
 public class EvaluateStepExecutor extends AbstractExpressionStepExecutor<EvaluateStep> {
 

@@ -2,6 +2,9 @@ package org.yu.flow.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * yu-flow 引擎统一配置属性树。
  *
@@ -176,6 +179,11 @@ public class YuFlowProperties {
          */
         private boolean enableTrace = false;
 
+        /**
+         * Groovy 已编译脚本缓存上限。超过上限时关闭并淘汰最早的类加载器。
+         */
+        private int groovyScriptCacheSize = 256;
+
         public String getExpressionEngine() {
             return expressionEngine;
         }
@@ -198,6 +206,14 @@ public class YuFlowProperties {
 
         public void setEnableTrace(boolean enableTrace) {
             this.enableTrace = enableTrace;
+        }
+
+        public int getGroovyScriptCacheSize() {
+            return groovyScriptCacheSize;
+        }
+
+        public void setGroovyScriptCacheSize(int groovyScriptCacheSize) {
+            this.groovyScriptCacheSize = groovyScriptCacheSize;
         }
     }
 
@@ -223,12 +239,26 @@ public class YuFlowProperties {
          */
         private String aesSecretKey = "flow-secure-keys";
 
+        /**
+         * Groovy 脚本可通过 spring.getBean(name) 获取的 Bean 名称白名单。
+         * 默认空列表，不向脚本暴露任何 Spring Bean。
+         */
+        private List<String> scriptAllowedBeans = new ArrayList<>();
+
         public String getAesSecretKey() {
             return aesSecretKey;
         }
 
         public void setAesSecretKey(String aesSecretKey) {
             this.aesSecretKey = aesSecretKey;
+        }
+
+        public List<String> getScriptAllowedBeans() {
+            return scriptAllowedBeans;
+        }
+
+        public void setScriptAllowedBeans(List<String> scriptAllowedBeans) {
+            this.scriptAllowedBeans = scriptAllowedBeans == null ? new ArrayList<>() : scriptAllowedBeans;
         }
     }
 

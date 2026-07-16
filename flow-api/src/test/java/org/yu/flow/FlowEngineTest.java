@@ -2158,4 +2158,82 @@ public class FlowEngineTest {
         // (10 + 20) * 3 = 90
         assertEquals(90L, result.getData());
     }
+
+    @Test
+    @DisplayName("65、Python 引擎 - 多行脚本与复合结果")
+    @SuppressWarnings("unchecked")
+    void testPythonMultiLineScript() throws JsonProcessingException {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                org.yu.flow.engine.evaluator.expression.PythonEvaluatorImpl.isRuntimeAvailable(),
+                "当前测试 JVM 未安装 GraalPy，跳过 Python 正向集成测试");
+        String flowJson = "{"
+                + "\"nodes\":["
+                + "{\"id\":\"start\",\"type\":\"start\",\"ports\":[{\"id\":\"out\"}]},"
+                + "{\"id\":\"python_calc\",\"type\":\"evaluate\",\"ports\":[{\"id\":\"in\"},{\"id\":\"out\"}],"
+                + "\"data\":{\"language\":\"python\","
+                + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.args.items\"}},"
+                + "\"expression\":\"total = sum(input['items'])\\nreturn {'total': total, 'values': [x * 2 for x in items]}\"}},"
+                + "{\"id\":\"end\",\"type\":\"end\",\"ports\":[{\"id\":\"in\"}],"
+                + "\"data\":{\"responseBody\":\"${python_calc.out}\"}}],"
+                + "\"edges\":["
+                + "{\"source\":{\"cell\":\"start\",\"port\":\"out\"},\"target\":{\"cell\":\"python_calc\",\"port\":\"in\"}},"
+                + "{\"source\":{\"cell\":\"python_calc\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("items", Arrays.asList(2, 3, 4));
+        ExecutionResult result = engine.execute(flowJson, args);
+        assertTrue(result.isSuccess(), "Python 多行脚本应成功: " + result.getMessage());
+        assertTrue(result.getData() instanceof Map);
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals(9L, data.get("total"));
+        assertEquals(Arrays.asList(4L, 6L, 8L), data.get("values"));
+    }
+
+    @Test
+    @DisplayName("66、Groovy 引擎 - 多行脚本与复合结果")
+    @SuppressWarnings("unchecked")
+    void testGroovyMultiLineScript() throws JsonProcessingException {
+        String flowJson = "{"
+                + "\"nodes\":["
+                + "{\"id\":\"start\",\"type\":\"start\",\"ports\":[{\"id\":\"out\"}]},"
+                + "{\"id\":\"groovy_calc\",\"type\":\"evaluate\",\"ports\":[{\"id\":\"in\"},{\"id\":\"out\"}],"
+                + "\"data\":{\"language\":\"Groovy\","
+                + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.args.items\"},"
+                + "\"prefix\":{\"extractPath\":\"$.start.args.prefix\"}},"
+                + "\"expression\":\"def doubled = items.collect { it * 2 }\\nreturn [label: prefix + doubled.sum(), values: doubled]\"}},"
+                + "{\"id\":\"end\",\"type\":\"end\",\"ports\":[{\"id\":\"in\"}],"
+                + "\"data\":{\"responseBody\":\"${groovy_calc.out}\"}}],"
+                + "\"edges\":["
+                + "{\"source\":{\"cell\":\"start\",\"port\":\"out\"},\"target\":{\"cell\":\"groovy_calc\",\"port\":\"in\"}},"
+                + "{\"source\":{\"cell\":\"groovy_calc\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("items", Arrays.asList(1, 2, 3));
+        args.put("prefix", "sum=");
+        ExecutionResult result = engine.execute(flowJson, args);
+        assertTrue(result.isSuccess(), "Groovy 多行脚本应成功: " + result.getMessage());
+        assertTrue(result.getData() instanceof Map);
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals("sum=12", data.get("label"));
+        assertEquals(Arrays.asList(2, 4, 6), data.get("values"));
+    }
+
+    @Test
+    @DisplayName("67、Groovy 安全 - 阻止进程执行")
+    void testGroovySecurityBlocksProcessExecution() throws JsonProcessingException {
+        String flowJson = "{"
+                + "\"nodes\":["
+                + "{\"id\":\"start\",\"type\":\"start\",\"ports\":[{\"id\":\"out\"}]},"
+                + "{\"id\":\"groovy_hack\",\"type\":\"evaluate\",\"ports\":[{\"id\":\"in\"},{\"id\":\"out\"}],"
+                + "\"data\":{\"language\":\"groovy\","
+                + "\"expression\":\"java.lang.Runtime.getRuntime().exec('cmd')\"}},"
+                + "{\"id\":\"end\",\"type\":\"end\",\"ports\":[{\"id\":\"in\"}],"
+                + "\"data\":{\"responseBody\":\"unsafe\"}}],"
+                + "\"edges\":["
+                + "{\"source\":{\"cell\":\"start\",\"port\":\"out\"},\"target\":{\"cell\":\"groovy_hack\",\"port\":\"in\"}},"
+                + "{\"source\":{\"cell\":\"groovy_hack\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
+
+        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(result.isSuccess(), "Groovy 危险进程调用必须被阻止");
+    }
 }

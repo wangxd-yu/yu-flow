@@ -19,9 +19,11 @@ outline: deep
 
 | 语言 | 适用场景 | 示例 |
 | --- | --- | --- |
-| **Aviator** | 高性能的表达式计算 | `string.substring(name, 0, 5)` |
+| **Aviator** | 高性能的表达式计算（默认 / 未知语言回退） | `string.substring(name, 0, 5)` |
 | **SpEL** | 需要调用 Spring Bean 或静态方法时 | `#name.toUpperCase()` |
-| **JavaScript** | 复杂逻辑、JSON 操作 | `name.toUpperCase() + '_' + id` |
+| **JavaScript** | 复杂逻辑、JSON / 数组变换 | `name.toUpperCase() + '_' + id` |
+| **Groovy** | JVM 动态脚本、签名加密、白名单 Bean | `return MessageDigest.getInstance('SHA-256')...` |
+| **Python** | 可选；需部署机安装 GraalPy，未安装时返回 `null` | `return {'total': sum(items)}` |
 
 ### 2. 编写计算表达式
 
@@ -60,11 +62,11 @@ Evaluate 节点同样支持 **inputs** 动态变量。将上游节点的输出�
 Evaluate 节点计算完成后，结果会存入上下文。下游节点引用方式：
 
 ```text
-$.result    → 表达式的计算结果（任意类型：字符串、数字、对象、数组等）
+$.out    → 表达式的计算结果（任意类型：字符串、数字、对象、数组等）
 ```
 
 ::: info 💡小贴士
-Evaluate 节点的输出类型取决于你写的表达式返回什么。如果返回的是一个对象，下游节点可以用 `$.result.fieldName` 取其中的字段。
+Evaluate 节点的输出类型取决于你写的表达式返回什么。如果返回的是一个对象，下游节点可以用 `$.out.fieldName` 取其中的字段。
 :::
 
 ---
@@ -125,7 +127,7 @@ Evaluate 节点在 Flow DSL 中的完整结构：
 | --- | --- | --- |
 | `type` | String | 固定为 `"evaluate"`，引擎路由到 `EvaluateStepExecutor` |
 | `data.expression` | String | 计算表达式 |
-| `data.language` | String | `JavaScript` / `Aviator` / `SpEL` |
+| `data.language` | String | `JavaScript` / `Aviator` / `SpEL` / `Groovy` / `Python`（`py`） |
 | `data.inputs` | Object | 输入变量映射 |
 
 :::
@@ -138,12 +140,11 @@ Evaluate 节点在 Flow DSL 中的完整结构：
 
 2. **表达式求值** — 通过 `ExpressionEvaluatorFactory` 获取对应语言引擎，执行 `expression`。
 
-3. **结果写入** — 将计算结果同时存入 `result` 和 `out` 两个 Key：
+3. **结果写入** — 将计算结果写入输出端口键 `out`：
 
 ```java
 Map<String, Object> nodeResult = new HashMap<>();
-nodeResult.put("result", evalResult);
-nodeResult.put("out", evalResult);
+nodeResult.put(PortNames.OUT, evalResult);
 context.setVar(step.getId(), nodeResult);
 ```
 
@@ -152,12 +153,18 @@ context.setVar(step.getId(), nodeResult);
 **下游引用路径：**
 
 ```text
-$.evaluate_xxx.result  → 计算结果
-$.evaluate_xxx.out     → 同上（别名）
+$.evaluate_xxx.out  → 计算结果
 ```
+
+**语言扩展说明：**
+
+- **Groovy**：依赖随包提供；脚本编译结果有界缓存；`spring.getBean` 受 `yu.flow.security.script-allowed-beans` 白名单约束。
+- **Python**：可选能力。未安装 GraalPy 时应用可正常启动；执行 Python 节点时静默返回 `null`，不阻断进程启动。
 
 **异常类型：**
 
 - `EXPRESSION_EVAL_ERROR`：表达式语法错误或运行时异常
+- `GROOVY_SECURITY_ERROR` / `GROOVY_COMPILE_ERROR`：Groovy 安全拦截或编译失败
+- `PYTHON_SYNTAX_ERROR` / `PYTHON_RUNTIME_ERROR`：已安装 GraalPy 时的脚本错误
 
 :::

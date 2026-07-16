@@ -10,11 +10,13 @@ public class ExpressionEvaluatorFactory {
     private static final AviatorEvaluatorImpl AVIATOR_EVALUATOR = new AviatorEvaluatorImpl();
     private static final SpelEvaluatorImpl SPEL_EVALUATOR = new SpelEvaluatorImpl();
     private static final JavaScriptEvaluatorImpl JAVASCRIPT_EVALUATOR = new JavaScriptEvaluatorImpl();
+    private static final PythonEvaluatorImpl PYTHON_EVALUATOR = new PythonEvaluatorImpl();
+    private static final GroovyEvaluatorImpl GROOVY_EVALUATOR = new GroovyEvaluatorImpl();
 
     /**
      * 根据语言类型获取对应的表达式求值器
      *
-     * @param language 语言类型字符串 ("aviator", "spel", "js"/"javascript")，null 或未知值默认返回 Aviator
+     * @param language 语言类型字符串，null 或未知值默认返回 Aviator
      * @return 对应的表达式求值器
      */
     public static ExpressionEvaluatorStrategy getEvaluator(String language) {
@@ -38,6 +40,10 @@ public class ExpressionEvaluatorFactory {
                 return SPEL_EVALUATOR;
             case JAVASCRIPT:
                 return JAVASCRIPT_EVALUATOR;
+            case PYTHON:
+                return PYTHON_EVALUATOR;
+            case GROOVY:
+                return GROOVY_EVALUATOR;
             case AVIATOR:
             default:
                 return AVIATOR_EVALUATOR;
@@ -63,5 +69,19 @@ public class ExpressionEvaluatorFactory {
      */
     public static ExpressionEvaluatorStrategy getJavaScript() {
         return JAVASCRIPT_EVALUATOR;
+    }
+
+    /**
+     * 获取 Python (GraalPy) 求值器
+     */
+    public static ExpressionEvaluatorStrategy getPython() {
+        return PYTHON_EVALUATOR;
+    }
+
+    /**
+     * 获取 Groovy 求值器
+     */
+    public static ExpressionEvaluatorStrategy getGroovy() {
+        return GROOVY_EVALUATOR;
     }
 }

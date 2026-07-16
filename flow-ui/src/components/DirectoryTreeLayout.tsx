@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Input,
   message,
+  Popconfirm,
   Space,
   Tree,
   Tooltip,
@@ -75,6 +76,7 @@ const TreeNodeTitle: React.FC<{
   onDelete?: (key: string) => void;
 }> = ({ nodeData, onAdd, onRename, onDelete }) => {
   const isRoot = nodeData.key === 'root';
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   return (
     <div
@@ -97,7 +99,11 @@ const TreeNodeTitle: React.FC<{
       <Space
         size={2}
         className="tree-node-actions"
-        style={{ marginLeft: 8, flexShrink: 0 }}
+        style={{
+          marginLeft: 8,
+          flexShrink: 0,
+          opacity: deleteConfirmOpen ? 1 : undefined,
+        }}
       >
         {!nodeData.isLeaf && (
           <Tooltip title="新建子目录" mouseEnterDelay={0.5}>
@@ -127,19 +133,35 @@ const TreeNodeTitle: React.FC<{
                 style={{ width: 20, height: 20, fontSize: 12 }}
               />
             </Tooltip>
-            <Tooltip title="删除" mouseEnterDelay={0.5}>
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete?.(nodeData.key as string);
-                }}
-                style={{ width: 20, height: 20, fontSize: 12 }}
-              />
-            </Tooltip>
+            <Popconfirm
+              open={deleteConfirmOpen}
+              onOpenChange={setDeleteConfirmOpen}
+              title="确认删除该目录？"
+              description="删除后无法恢复，请谨慎操作。"
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={(e) => {
+                e?.stopPropagation();
+                setDeleteConfirmOpen(false);
+                onDelete?.(nodeData.key as string);
+              }}
+              onCancel={(e) => {
+                e?.stopPropagation();
+                setDeleteConfirmOpen(false);
+              }}
+            >
+              <Tooltip title="删除" mouseEnterDelay={0.5}>
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: 20, height: 20, fontSize: 12 }}
+                />
+              </Tooltip>
+            </Popconfirm>
           </>
         )}
       </Space>
@@ -167,6 +189,17 @@ const treeStyles = `
     flex: 1;
     min-width: 0;
   }
+  .dir-tree-layout .tree-node-title {
+    min-width: 0;
+  }
+  .dir-tree-layout .directory-tree .ant-tree-indent-unit {
+    width: 20px;
+  }
+  .dir-tree-layout .dir-tree-resizer:hover .dir-tree-divider,
+  .dir-tree-layout .dir-tree-resizer.is-resizing .dir-tree-divider {
+    width: 2px !important;
+    background-color: #1677ff !important;
+  }
   .dir-tree-layout .dir-tree-toggle-btn:hover {
     background-color: #1677ff !important;
     border-color: #1677ff !important;
@@ -182,8 +215,14 @@ const treeStyles = `
 export interface DirectoryTreeLayoutProps {
   /** render-props：将选中的 directoryId 传递给子组件 */
   children: (selectedDirectoryId: string | undefined, selectedDirectoryName?: string) => React.ReactNode;
-  /** 左侧目录树面板宽度，默认 250px */
+  /** 左侧目录树面板初始宽度，默认 300px */
   treeWidth?: string | number;
+  /** 左侧目录树最小宽度，默认 240px */
+  minTreeWidth?: number;
+  /** 左侧目录树最大宽度，默认 480px */
+  maxTreeWidth?: number;
+  /** 是否允许拖拽调整左侧宽度，默认 true */
+  resizable?: boolean;
   /** 容器高度，默认 100% */
   height?: string | number;
 }
@@ -193,7 +232,10 @@ export interface DirectoryTreeLayoutProps {
 // ================================================================
 const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   children,
-  treeWidth = '250px',
+  treeWidth = 300,
+  minTreeWidth = 240,
+  maxTreeWidth = 480,
+  resizable = true,
   height = '100%',
 }) => {
   // ---- 目录树状态 ----
@@ -202,6 +244,54 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [treeData, setTreeData] = useState<DataNode[]>([]);
   const [collapsed, setCollapsed] = useState(false);
+  const initialTreeWidth = typeof treeWidth === 'number'
+    ? treeWidth
+    : Number.parseFloat(treeWidth) || 300;
+  const [currentTreeWidth, setCurrentTreeWidth] = useState(
+    Math.min(maxTreeWidth, Math.max(minTreeWidth, initialTreeWidth)),
+  );
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef({ pointerX: 0, width: currentTreeWidth });
+
+  useEffect(() => {
+    setCurrentTreeWidth(Math.min(maxTreeWidth, Math.max(minTreeWidth, initialTreeWidth)));
+  }, [initialTreeWidth, maxTreeWidth, minTreeWidth]);
+
+  useEffect(() => () => {
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  const handleResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizable || collapsed) return;
+    resizeStartRef.current = { pointerX: event.clientX, width: currentTreeWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    setIsResizing(true);
+    event.preventDefault();
+  }, [collapsed, currentTreeWidth, resizable]);
+
+  const handleResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isResizing) return;
+    const nextWidth = resizeStartRef.current.width
+      + event.clientX - resizeStartRef.current.pointerX;
+    setCurrentTreeWidth(Math.min(maxTreeWidth, Math.max(minTreeWidth, nextWidth)));
+  }, [isResizing, maxTreeWidth, minTreeWidth]);
+
+  const handleResizeEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isResizing) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    stopResizing();
+  }, [isResizing, stopResizing]);
 
   // ---- 加载目录树 ----
   const loadTree = useCallback(async () => {
@@ -289,7 +379,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   };
 
   // ---- 渲染 ----
-  const treeWidthPx = typeof treeWidth === 'number' ? `${treeWidth}px` : treeWidth;
+  const treeWidthPx = `${currentTreeWidth}px`;
 
   return (
     <div className="dir-tree-layout" style={{ height }}>
@@ -363,16 +453,51 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
 
         {/* ========== 分隔线 + 收缩/展开按钮 ========== */}
         <div
+          className={`dir-tree-resizer${isResizing ? ' is-resizing' : ''}`}
+          role="separator"
+          aria-label="调整目录树宽度"
+          aria-orientation="vertical"
+          aria-valuemin={minTreeWidth}
+          aria-valuemax={maxTreeWidth}
+          aria-valuenow={currentTreeWidth}
+          title={resizable && !collapsed ? '拖拽调整目录树宽度，双击恢复默认宽度' : undefined}
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeEnd}
+          onPointerCancel={handleResizeEnd}
+          onDoubleClick={() => {
+            if (resizable && !collapsed) {
+              setCurrentTreeWidth(Math.min(maxTreeWidth, Math.max(minTreeWidth, initialTreeWidth)));
+            }
+          }}
           style={{
             position: 'relative',
-            width: 1,
+            width: resizable ? 7 : 1,
             flexShrink: 0,
-            background: '#f0f0f0',
+            cursor: resizable && !collapsed ? 'col-resize' : 'default',
+            touchAction: 'none',
           }}
         >
           <div
+            className="dir-tree-divider"
+            style={{
+              position: 'absolute',
+              insetBlock: 0,
+              left: '50%',
+              width: 1,
+              transform: 'translateX(-50%)',
+              background: '#f0f0f0',
+              transition: 'width 0.15s, background-color 0.15s',
+            }}
+          />
+          <div
             className="dir-tree-toggle-btn"
-            onClick={() => setCollapsed(!collapsed)}
+            onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              setCollapsed(!collapsed);
+            }}
             style={{
               position: 'absolute',
               top: '50%',

@@ -17,8 +17,8 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @Data
 public class EvaluateStep extends Step {
-    private String expression;  // 表达式，如 'Hello ' + 'World' (Aviator) 或 #a + #b (SpEL)
-    private String language;    // 表达式语言: "aviator" (默认) 或 "spel"
+    private String expression;  // 表达式或多行脚本
+    private String language;    // aviator(默认)、spel、javascript、python 或 groovy
 
     @Override
     public String getType() {

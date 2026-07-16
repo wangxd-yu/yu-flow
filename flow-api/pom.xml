@@ -20,6 +20,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>17</java.version>
+        <skipTests>true</skipTests>
     </properties>
 
     <dependencies>
@@ -186,6 +187,14 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- Groovy 3 core runtime for Evaluate dynamic scripts.
+             GraalPy 21.3 is supplied by the GraalVM JDK installation, not Maven Central. -->
+        <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <version>3.0.25</version>
+        </dependency>
+
         <!-- BouncyCastle 核心加密库 -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
@@ -232,7 +241,7 @@
                 <version>3.0.0-M5</version>
                 <configuration>
                     <!-- 默认跳过测试，可通过命令行 -DskipTests=false 启用 -->
-                    <skipTests>true</skipTests>
+                    <skipTests>${skipTests}</skipTests>
                 </configuration>
             </plugin>
 

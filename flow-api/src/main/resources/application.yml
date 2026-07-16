@@ -46,6 +46,10 @@ yu:
       expression-engine: simple
       strict-mode: true
       enable-trace: false
+      # Groovy 编译类缓存上限，防止不同脚本持续占用 Metaspace
+      groovy-script-cache-size: ${YU_FLOW_GROOVY_CACHE_SIZE:256}
     # Security Group
     security:
       aes-secret-key: ${YU_FLOW_AES_SECRET:flow-secure-keys}
+      # Groovy 脚本允许通过 spring.getBean(name) 访问的 Bean 名称，默认不开放
+      script-allowed-beans: []

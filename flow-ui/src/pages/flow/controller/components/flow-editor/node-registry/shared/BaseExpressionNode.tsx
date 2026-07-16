@@ -33,6 +33,8 @@ const LANGUAGE_ITEMS = [
     { key: 'JavaScript', label: 'JavaScript' },
     { key: 'Aviator', label: 'Aviator' },
     { key: 'SpEL', label: 'SpEL' },
+    { key: 'Python', label: 'Python (GraalPy)' },
+    { key: 'Groovy', label: 'Java / Groovy' },
 ];
 
 // ── 底部内容渲染函数的参数 ──

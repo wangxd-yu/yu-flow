@@ -15,6 +15,8 @@ const LANGUAGE_OPTIONS = [
     { value: 'Aviator', label: 'Aviator' },
     { value: 'SpEL', label: 'SpEL' },
     { value: 'JavaScript', label: 'JavaScript' },
+    { value: 'Python', label: 'Python (GraalPy)' },
+    { value: 'Groovy', label: 'Java / Groovy' },
 ];
 
 // ── 属性面板编辑器 ──
@@ -39,6 +41,20 @@ function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
             </div>
             <div>
                 <Text type="secondary" style={{ fontSize: 12 }}>表达式</Text>
+                {(lang === 'Python' || lang === 'python' || lang === 'py') && (
+                    <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                            可选能力：需部署机安装 GraalPy。多行脚本请 return，或赋给 result；未安装时返回 null
+                        </Text>
+                    </div>
+                )}
+                {(lang === 'Groovy' || lang === 'groovy') && (
+                    <div>
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                            支持多行脚本，最后一个表达式作为结果；Spring Bean 仅限服务端白名单
+                        </Text>
+                    </div>
+                )}
                 <div style={{ marginTop: 4 }}>
                     <CodeEditor
                         value={data.expression || ''}
