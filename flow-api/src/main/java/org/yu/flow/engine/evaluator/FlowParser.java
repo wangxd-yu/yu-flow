@@ -67,12 +67,12 @@ public class FlowParser {
             }
         }
 
-        // 设置 startStepId (start 或 request 节点作为入口)
+        // 设置 startStepId (start 、 request 或 schedule 节点作为入口)
         for (ObjectNode node : nodeMap.values()) {
             String type = node.get("type").asText();
-            if ("start".equals(type) || "request".equals(type)) {
+            if ("start".equals(type) || "request".equals(type) || "schedule".equals(type)) {
                 result.put("startStepId", node.get("id").asText());
-                break; // start 和 request 这里仅记录 startStepId，严格校验在下面
+                break;
             }
         }
 
@@ -107,6 +107,43 @@ public class FlowParser {
                                 }
                             } else if (requestNodeId.equals(target.asText())) {
                                 throw new FlowException("REQUEST_VALIDATION_ERROR", "request 节点必须为流程中的第一个节点，不能有其他节点指向它");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 对 Schedule 节点进行规则校验 ---
+        int scheduleCount = 0;
+        String scheduleNodeId = null;
+        for (ObjectNode node : nodeMap.values()) {
+            if ("schedule".equals(node.get("type").asText())) {
+                scheduleCount++;
+                scheduleNodeId = node.get("id").asText();
+            }
+        }
+
+        if (scheduleCount > 1) {
+            throw new FlowException("SCHEDULE_VALIDATION_ERROR", "单个流程中只能有一个 schedule 节点");
+        }
+
+        if (scheduleNodeId != null) {
+            for (ObjectNode node : nodeMap.values()) {
+                if (!node.get("id").asText().equals(scheduleNodeId)) {
+                    JsonNode nextNode = node.get("next");
+                    if (nextNode != null && nextNode.isObject()) {
+                        Iterator<JsonNode> nextTargets = nextNode.elements();
+                        while (nextTargets.hasNext()) {
+                            JsonNode target = nextTargets.next();
+                            if (target.isArray()) {
+                                for (JsonNode t : target) {
+                                    if (scheduleNodeId.equals(t.asText())) {
+                                        throw new FlowException("SCHEDULE_VALIDATION_ERROR", "schedule 节点必须为流程中的第一个节点，不能有其他节点指向它");
+                                    }
+                                }
+                            } else if (scheduleNodeId.equals(target.asText())) {
+                                throw new FlowException("SCHEDULE_VALIDATION_ERROR", "schedule 节点必须为流程中的第一个节点，不能有其他节点指向它");
                             }
                         }
                     }

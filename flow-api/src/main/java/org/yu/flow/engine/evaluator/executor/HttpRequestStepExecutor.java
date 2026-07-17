@@ -4,6 +4,7 @@ import org.yu.flow.engine.model.PortNames;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.yu.flow.engine.evaluator.ExecutionContext;
+import org.yu.flow.engine.evaluator.expression.ExpressionEvaluatorFactory;
 import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.engine.model.step.HttpRequestStep;
 import org.slf4j.Logger;
@@ -155,7 +156,25 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
             result.put("timeMs", duration);
             context.setVar(step.getId(), result);
 
-            return response.isSuccessful() ? PortNames.SUCCESS : PortNames.FAIL;
+            boolean success = resolveSuccess(step, result, response.isSuccessful());
+            return success ? PortNames.SUCCESS : PortNames.FAIL;
+        }
+    }
+
+    /**
+     * 有 successCondition 时按 Aviator 表达式判断；否则沿用 HTTP 2xx。
+     * 表达式可引用：status、body、headers、timeMs
+     */
+    private boolean resolveSuccess(HttpRequestStep step, Map<String, Object> result, boolean httpOk) {
+        String condition = step.getSuccessCondition();
+        if (condition == null || condition.trim().isEmpty()) {
+            return httpOk;
+        }
+        try {
+            return ExpressionEvaluatorFactory.getAviator().evaluateBoolean(condition.trim(), result);
+        } catch (Exception e) {
+            log.warn("successCondition 求值失败，视为 fail。expr={}, err={}", condition, e.getMessage());
+            return false;
         }
     }
 

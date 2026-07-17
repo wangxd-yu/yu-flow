@@ -120,8 +120,12 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
                         支持 {'${var}'} 变量替换
                     </div>
 
-                    <Form.Item label="Success Condition (Expression)" name="successCondition" tooltip="e.g. status == 200">
-                        <Input placeholder="status == 200" />
+                    <Form.Item
+                        label="Success Condition (Aviator)"
+                        name="successCondition"
+                        tooltip="Aviator 表达式，可引用 status / body / headers / timeMs；留空则按 HTTP 2xx"
+                    >
+                        <Input placeholder="status == 200 && body.code == 0" />
                     </Form.Item>
                 </div>
             )

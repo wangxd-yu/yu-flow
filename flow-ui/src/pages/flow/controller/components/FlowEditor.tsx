@@ -65,6 +65,11 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
     apiUrl?: string;
     apiMethod?: string;
     readonlyTrace?: any; // FlowTrace type
+    /**
+     * 画布 value 为空时创建的默认入口节点类型。
+     * 接口管理用 request；任务管理用 schedule。默认 request。
+     */
+    defaultEntryNode?: DslNodeType;
 };
 
 export default function FlowEditor(props: ExtendedFlowEditorProps) {
@@ -79,6 +84,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         onSave,
         onCancel,
         readonlyTrace,
+        defaultEntryNode = 'request',
     } = props;
 
     // ── 只读快照模式标识 ──
@@ -910,14 +916,15 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                     // value 已就绪（新建场景或数据先于 graph 到达），直接加载
                     rebuildFromScript(currentValue);
                 } else {
-                    // value 尚未到达（编辑模式表单数据异步加载中）
-                    // 创建默认 Request 节点作为视觉占位，不触发 emitChange
+                    // value 尚未到达（编辑模式表单数据异步加载中）或新建空白画布
+                    // 在左侧创建默认入口节点作为视觉占位，不触发 emitChange
                     // ⚠ 必须设置 importingRef 屏蔽 node:added → schedule → emitChange，
                     //    否则 debounced emitChange 会在 180ms 后覆盖真实数据
                     importingRef.current = true;
                     const containerRect = containerRef.current!.getBoundingClientRect();
                     const centerY = Math.max(Math.round(containerRect.height / 2 - 100), 60);
-                    const dslNode = createDefaultDslNode('request' as DslNodeType, { x: 80, y: centerY });
+                    const entryType = (defaultEntryNode || 'request') as DslNodeType;
+                    const dslNode = createDefaultDslNode(entryType, { x: 80, y: centerY });
                     addSingleNodeToGraph(graphRef.current, dslNode);
                     importingRef.current = false;
                 }

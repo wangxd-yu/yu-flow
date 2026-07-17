@@ -177,7 +177,6 @@ export function getPropertyEditor(type: DslNodeType): React.ComponentType<any> |
  */
 export function registerAllShapes(): void {
     if (_shapesRegistered) return;
-    _shapesRegistered = true;
 
     // ── 注入全局端口动画样式 ──
     if (typeof document !== 'undefined') {
@@ -240,6 +239,7 @@ export function registerAllShapes(): void {
             });
         }
     });
+    _shapesRegistered = true;
 }
 
 // ============================================================================

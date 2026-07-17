@@ -54,6 +54,7 @@ import { forNodeRegistration } from './nodes/for-node';          // Scatter-Gath
 import { recordNodeRegistration } from './nodes/record';
 import { responseNodeRegistration } from './nodes/response';
 import { requestNodeRegistration } from './nodes/request';
+import { scheduleNodeRegistration } from './nodes/schedule';
 import { templateNodeRegistration } from './nodes/template';
 import { collectNodeReactRegistration } from './nodes/collect-node'; // Scatter-Gather Collect (React)
 import { databaseNodeRegistration } from './nodes/database';
@@ -73,6 +74,7 @@ const BUILTIN_NODES = [
     recordNodeRegistration,
     responseNodeRegistration,
     requestNodeRegistration,
+    scheduleNodeRegistration,      // 定时调度入口节点（任务管理专用）
     templateNodeRegistration,
     collectNodeReactRegistration,  // Scatter-Gather: 汇聚屏障
     databaseNodeRegistration,
@@ -100,6 +102,11 @@ let _shapesReady = false;
  */
 export function initNodeRegistry(): void {
     if (_shapesReady) return;
-    _shapesReady = true;
-    registerAllShapes();
+    try {
+        registerAllShapes();
+        _shapesReady = true;
+    } catch (e) {
+        console.error('[initNodeRegistry] 形状注册失败', e);
+        throw e;
+    }
 }

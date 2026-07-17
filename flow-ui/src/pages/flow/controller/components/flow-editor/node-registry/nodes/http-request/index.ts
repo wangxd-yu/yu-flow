@@ -1,34 +1,66 @@
 // ============================================================================
-// node-registry/nodes/http-request.ts
-// HttpRequest (HTTP 请求) 节点 —— 自包含注册模块
+// node-registry/nodes/http-request
+// HttpRequest (HTTP 请求) —— 中间调用节点（非流程起点）
 // ============================================================================
 
+import type { DslPort } from '../../../types';
 import type { NodeRegistration } from '../../types';
-import { HttpRequestNodeComponent, HTTP_REQUEST_LAYOUT } from './HttpRequestNodeComponent';
+import {
+    HttpRequestNodeComponent,
+    HTTP_REQUEST_LAYOUT,
+    HTTP_REQUEST_IN_PORT_Y,
+} from './HttpRequestNodeComponent';
 
-// ── 注册配置 ──
-// 注意：HttpRequestNodeComponent 内部通过 useEffect 动态管理所有端口，
-// 不在注册时声明固定端口；size 使用 width 宽度，初始高度给一个合理默认值。
+/** 导入时不挂 X6 端口文字（文案由 React 节点内绘制，避免 IN / success / fail 重影） */
+const buildHttpRequestPortItems = (ports: DslPort[]) => {
+    const seen = new Set<string>();
+    const items: any[] = [];
+    for (const p of ports) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        const isOut = p.id === 'success' || p.id === 'fail' || p.id.startsWith('out');
+        const item: any = {
+            id: p.id,
+            group: p.group
+                || (p.id === 'fail' ? 'absolute-out-hollow' : isOut ? 'absolute-out-solid' : 'absolute-in-solid'),
+        };
+        if (p.id === 'in') {
+            item.args = { x: 0, y: HTTP_REQUEST_IN_PORT_Y, dx: 0 };
+        }
+        items.push(item);
+    }
+    return items;
+};
+
 export const httpRequestNodeRegistration: NodeRegistration = {
     type: 'httpRequest',
     label: 'HTTP 请求',
     category: '调用节点',
     color: '#fa8c16',
     tagColor: 'orange',
-    hasInputs: false, // HTTP Request 节点内部直接管理输入，无需通用 inputs 映射
+    hasInputs: false,
 
     shape: {
         shapeName: 'flow-httpRequest',
         kind: 'react',
         component: HttpRequestNodeComponent,
-        // 初始端口留空；组件内 useEffect 动态增删端口
         reactPorts: {
-            items: [],
+            items: [
+                {
+                    id: 'in',
+                    group: 'absolute-in-solid',
+                    args: { x: 0, y: HTTP_REQUEST_IN_PORT_Y, dx: 0 },
+                },
+            ],
         },
     },
 
     defaults: {
-        ports: [],
+        ports: [
+            { id: 'in', group: 'absolute-in-solid' },
+            { id: 'success', group: 'absolute-out-solid' },
+            { id: 'fail', group: 'absolute-out-hollow' },
+        ],
         data: {
             url: '',
             method: 'GET',
@@ -36,13 +68,14 @@ export const httpRequestNodeRegistration: NodeRegistration = {
             bodyType: 'json',
             successCondition: 'status == 200',
         },
-        size: { width: HTTP_REQUEST_LAYOUT.width, height: 300 }, // 初始高度，组件会自动 resize
+        size: { width: HTTP_REQUEST_LAYOUT.width, height: 280 },
     },
 
     importConfig: {
-        portMode: 'standard',
+        portMode: 'manual',
+        buildPortItems: buildHttpRequestPortItems,
         buildAttrs: () => ({
-            body: { stroke: '#fa8c16', strokeWidth: 2, fill: '#ffffff' },
+            body: { stroke: '#fa8c16', strokeWidth: 1, fill: '#ffffff' },
         }),
     },
 
@@ -51,7 +84,5 @@ export const httpRequestNodeRegistration: NodeRegistration = {
             ? `${data.method || 'GET'} ${String(data.url).substring(0, 20)}`
             : 'HTTP Request',
 
-    // HttpRequestNodeComponent 自身包含完整配置 UI，
-    // 属性面板无需额外 PropertyEditor
     PropertyEditor: undefined,
 };

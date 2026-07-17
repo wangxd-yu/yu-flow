@@ -118,6 +118,7 @@ public class FlowEngine {
         executors.put("database", new DatabaseNodeExecutor(null, evaluator));
         executors.put("systemVar", new SystemVarStepExecutor());
         executors.put("systemMethod", new SystemMethodStepExecutor());
+        executors.put("schedule", new ScheduleStepExecutor());
     }
 
     public void setSqlExecutorService(SqlExecutorService sqlExecutorService) {

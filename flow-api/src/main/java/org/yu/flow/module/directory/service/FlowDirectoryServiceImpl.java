@@ -7,6 +7,7 @@ import org.yu.flow.module.directory.dto.FlowDirectoryDTO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.model.repository.FlowModelInfoRepository;
 import org.yu.flow.module.page.repository.PageInfoRepository;
+import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +37,9 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
 
     @Resource
     private PageInfoRepository pageInfoRepository;
+
+    @Resource
+    private FlowTaskRepository flowTaskRepository;
 
     @Resource
     private DemoModeGuard demoModeGuard;
@@ -137,6 +141,10 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
         // 校验4：是否有关联页面
         if (pageInfoRepository.existsByDirectoryId(id)) {
             throw new RuntimeException("该目录下还有页面，请先移除或删除相关页面");
+        }
+        // 校验5：是否有关联定时任务
+        if (flowTaskRepository.existsByDirectoryId(id)) {
+            throw new RuntimeException("该目录下还有定时任务，请先移除或删除相关任务");
         }
         directoryRepository.deleteById(id);
     }

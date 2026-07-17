@@ -5,7 +5,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.yu.flow.engine.model.step.*;
-import org.yu.flow.engine.model.step.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +37,7 @@ import java.util.Map;
         @JsonSubTypes.Type(value = StartStep.class, name = "start"),
         @JsonSubTypes.Type(value = EndStep.class, name = "end"),
         @JsonSubTypes.Type(value = RequestStep.class, name = "request"),
+        @JsonSubTypes.Type(value = ScheduleStep.class, name = "schedule"),
         @JsonSubTypes.Type(value = HttpRequestStep.class, name = "httpRequest"),
         @JsonSubTypes.Type(value = ForStep.class, name = "for"),
         @JsonSubTypes.Type(value = CollectStep.class, name = "collect"),

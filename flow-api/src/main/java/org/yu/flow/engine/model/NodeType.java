@@ -15,6 +15,8 @@ public final class NodeType {
     public static final String END = "end";
     public static final String REQUEST = "request";
     public static final String RESPONSE = "response";
+    /** 定时调度入口节点（任务管理专用） */
+    public static final String SCHEDULE = "schedule";
 
     // ========== 基础逻辑 ==========
     public static final String EVALUATE = "evaluate";

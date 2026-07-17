@@ -38,6 +38,7 @@ export type DslNodeType =
   | 'record'
   | 'response'
   | 'request'
+  | 'schedule'
   | 'template'
   | 'collect'      // Scatter-Gather: 汇聚屏障（线程接力并发 Barrier）
   | 'database'
@@ -284,8 +285,9 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     category: '调用节点',
     color: '#fa8c16',
     defaultPorts: [
-      { id: 'in', group: 'left' },
-      { id: 'out', group: 'right' },
+      { id: 'in', group: 'absolute-in-solid' },
+      { id: 'success', group: 'absolute-out-solid' },
+      { id: 'fail', group: 'absolute-out-hollow' },
     ],
   },
   for: {
@@ -329,6 +331,15 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
       { id: 'headers', group: 'right' },
       { id: 'params', group: 'right' },
       { id: 'body', group: 'right' },
+    ],
+  },
+  schedule: {
+    type: 'schedule',
+    label: '调度入口 (Schedule)',
+    category: '基础节点',
+    color: '#722ed1',
+    defaultPorts: [
+      { id: 'out', group: 'right' },
     ],
   },
   template: {

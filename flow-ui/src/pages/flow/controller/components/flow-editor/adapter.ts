@@ -306,11 +306,14 @@ function buildPortItems(
         //   in:arg:*  —— SystemMethod 节点的参数端口
         //   out:*     —— 注意：这里就算有文字也由格组设置，不干涉
         const isVarPort = p.id.startsWith('in:var:') || p.id.startsWith('in:arg:');
+        const group = p.group || inferPortGroup(p.id);
+        // absolute-* 端口 markup 无 text 节点，禁止写 attrs.text（否则 X6 可能抛错导致画布空白）
+        const isAbsolute = typeof group === 'string' && group.startsWith('absolute-');
         const item: any = {
             id: p.id,
-            group: p.group || inferPortGroup(p.id),
+            group,
         };
-        if (!isVarPort) {
+        if (!isVarPort && !isAbsolute) {
             item.attrs = {
                 text: {
                     text: getPortLabel(p.id),
