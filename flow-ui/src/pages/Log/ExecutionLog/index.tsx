@@ -19,7 +19,7 @@ import SimpleTraceViewer from './SimpleTraceViewer';
 
 const { Text } = Typography;
 
-const API_BASE = '/flow-api/execution-logs';
+const API_BASE = '/flow-api/log/execution';
 
 // ============================
 // 类型定义

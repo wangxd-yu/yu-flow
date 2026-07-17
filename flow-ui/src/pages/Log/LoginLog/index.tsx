@@ -16,7 +16,7 @@ import {
 
 const { Text } = Typography;
 
-const API_BASE = '/flow-api/login-logs';
+const API_BASE = '/flow-api/log/login';
 
 // ============================
 // 类型定义

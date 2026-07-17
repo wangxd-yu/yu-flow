@@ -3,8 +3,8 @@ package org.yu.flow.config;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.yu.flow.log.loginLog.repository.LoginLogRepository;
-import org.yu.flow.module.executionlog.repository.FlowExecutionLogRepository;
+import org.yu.flow.log.login.repository.LoginLogRepository;
+import org.yu.flow.log.execution.repository.FlowExecutionLogRepository;
 import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 
 import jakarta.annotation.PostConstruct;
@@ -25,8 +25,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <h3>清理策略：</h3>
  * <ul>
- *   <li>API 执行日志 ({@code flow_execution_log})：默认保留 30 天，通过系统参数 {@code LOG_EXECUTION_RETENTION_DAYS} 可配</li>
- *   <li>登录审计日志 ({@code flow_login_log})：默认保留 90 天，通过系统参数 {@code LOG_LOGIN_RETENTION_DAYS} 可配</li>
+ *   <li>API 执行日志 ({@code flow_log_execution})：默认保留 30 天，通过系统参数 {@code LOG_EXECUTION_RETENTION_DAYS} 可配</li>
+ *   <li>登录审计日志 ({@code flow_log_login})：默认保留 90 天，通过系统参数 {@code LOG_LOGIN_RETENTION_DAYS} 可配</li>
  *   <li>配置值设置为 0 时，跳过对应日志的清理</li>
  * </ul>
  *

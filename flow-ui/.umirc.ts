@@ -71,6 +71,12 @@ export default defineConfig({
       component: './flow/controller',
     },
     {
+      name: '任务管理',
+      icon: 'ClockCircleOutlined',
+      path: '/flow/task',
+      component: './flow/task',
+    },
+    {
       name: '页面管理',
       path: '/page-manage/list',
       icon: 'LayoutOutlined',
@@ -95,22 +101,44 @@ export default defineConfig({
       component: './ResponseTemplate',
     },
     {
-      name: '登录日志',
-      path: '/log/login-log',
-      icon: 'AuditOutlined',
-      component: './Log/LoginLog',
-    },
-    {
-      name: '调用大盘',
-      path: '/log/execution-log',
-      icon: 'DashboardOutlined',
-      component: './Log/ExecutionLog',
+      name: '日志',
+      icon: 'FileSearchOutlined',
+      path: '/log',
+      routes: [
+        {
+          name: '登录日志',
+          path: '/log/login',
+          component: './Log/LoginLog',
+        },
+        {
+          name: '调用大盘',
+          path: '/log/execution',
+          component: './Log/ExecutionLog',
+        },
+        {
+          name: '任务日志',
+          path: '/log/task',
+          component: './Log/TaskLog',
+        },
+      ],
     },
     {
       name: 'API 文档',
       path: '/api-docs',
       icon: 'FileTextOutlined',
       component: './ApiDocs',
+    },
+    {
+      path: '/flow/task-log',
+      redirect: '/log/task',
+    },
+    {
+      path: '/log/login-log',
+      redirect: '/log/login',
+    },
+    {
+      path: '/log/execution-log',
+      redirect: '/log/execution',
     },
     {
       path: '/page-manage/designer/:id',
