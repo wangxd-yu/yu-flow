@@ -693,3 +693,16 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* 快照回放：禁用节点内编辑控件，指针事件交给 X6（平移/点选/滚轮缩放） */
+.yf-snapshot-readonly,
+.yf-snapshot-readonly * {
+  pointer-events: none !important;
+  user-select: none !important;
+}
+/* 仍允许右下角 Resize，方便查看长内容 */
+.yf-snapshot-readonly .yf-resize-handle,
+.yf-snapshot-readonly .yf-resize-handle * {
+  pointer-events: auto !important;
+  user-select: none !important;
+}

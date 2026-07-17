@@ -64,6 +64,10 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
     onChange?: (dslContent: string) => void;
     apiUrl?: string;
     apiMethod?: string;
+    /** 当前接口 ID（调试时写入三方日志 sourceRef） */
+    apiId?: string;
+    /** 当前接口名称（调试时写入三方日志 sourceName） */
+    apiName?: string;
     readonlyTrace?: any; // FlowTrace type
     /**
      * 画布 value 为空时创建的默认入口节点类型。
@@ -78,6 +82,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         onChange,
         apiUrl,
         apiMethod,
+        apiId,
+        apiName,
         height = 'calc(100vh - 48px)',
         globalForm,
         isEdit: propsIsEdit = true,
@@ -93,6 +99,9 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
 
     // ── 控制台高度（用于撑开画布，防止被控制台遮挡） ──
     const [consoleHeight, setConsoleHeight] = React.useState(0);
+    const handleConsoleOpenChange = React.useCallback((open: boolean) => {
+        setConsoleHeight(open ? 300 : 0);
+    }, []);
     // ── 断点信息 ──
     const [breakpoints, setBreakpoints] = React.useState<string[]>([]);
 
@@ -607,17 +616,33 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             container: containerRef.current,
             background: { color: '#f6f7fb' },
             grid: { size: 10, visible: true },
-            panning: { enabled: true, modifiers: 'space' },
-            mousewheel: { enabled: true, modifiers: ['ctrl', 'meta'], factor: 1.1 },
-            // 问题十二修复：只读回放模式下禁用所有 Graph 交互，防止用户意外创建连线
-            interacting: readonlyTrace ? false : {
-                edgeMovable: true,
-                edgeLabelMovable: false,
-                arrowheadMovable: false,
-                vertexMovable: false,
-                vertexAddable: false,
-                vertexDeletable: false,
-            },
+            // 快照回放：左键拖动画布、滚轮直接缩放；编辑模式仍要求 Space / Ctrl
+            panning: isReadonlySnapshot
+                ? { enabled: true }
+                : { enabled: true, modifiers: 'space' },
+            mousewheel: isReadonlySnapshot
+                ? { enabled: true, factor: 1.1 }
+                : { enabled: true, modifiers: ['ctrl', 'meta'], factor: 1.1 },
+            // 快照回放：保留节点选中以便查看日志，禁止改连线/拖节点；编辑区文字由节点内部 pointer-events 禁用
+            interacting: isReadonlySnapshot
+                ? {
+                    nodeMovable: false,
+                    edgeMovable: false,
+                    edgeLabelMovable: false,
+                    arrowheadMovable: false,
+                    vertexMovable: false,
+                    vertexAddable: false,
+                    vertexDeletable: false,
+                    magnetConnectable: false,
+                }
+                : {
+                    edgeMovable: true,
+                    edgeLabelMovable: false,
+                    arrowheadMovable: false,
+                    vertexMovable: false,
+                    vertexAddable: false,
+                    vertexDeletable: false,
+                },
             highlighting: {
                 magnetAdsorbed: {
                     name: 'stroke',
@@ -633,12 +658,12 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 connector: EDGE_CONFIG.connector,
                 anchor: 'center',
                 connectionPoint: 'anchor',
-                allowBlank: true,
+                allowBlank: !isReadonlySnapshot,
                 snap: { radius: 20 },
                 createEdge(this: any, args: any) {
                     const sourcePortId = args?.sourcePort || '';
                     const outputPorts = ['out', 'true', 'false', 'item', 'done', 'default',
-                        'headers', 'params', 'body', 'list', 'finish'];
+                        'headers', 'params', 'body', 'list', 'finish', 'success', 'fail'];
                     const isOutputPort =
                         outputPorts.includes(sourcePortId)
                         || sourcePortId.startsWith('out:')
@@ -661,6 +686,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 allowNode: false,
                 highlight: true,
                 validateConnection({ sourceCell, targetCell, sourcePort, targetPort }) {
+                    if (isReadonlySnapshot) return false;
                     if (!sourceCell) return false;
                     // ── 允许连接到空白画布（配合 allowBlank: true，由 QuickAddPopover 处理）──
                     if (!targetCell) return true;
@@ -677,7 +703,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                     // ── 出入端口方向校验 ──
                     // 出端口白名单（源端口合法值）
                     const outputPorts = ['out', 'true', 'false', 'item', 'done', 'default',
-                        'headers', 'params', 'body', 'list', 'finish'];// Scatter-Gather 新增
+                        'headers', 'params', 'body', 'list', 'finish', 'success', 'fail'];
                     // 入端口白名单（目标端口合法值）
                     const inputPorts = ['in', 'start']; // start = For 控制流输入
 
@@ -713,45 +739,47 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         graph.use(
             new Selection({
                 enabled: true,
-                multiple: true,
-                rubberband: true,
-                movable: true,
+                multiple: !isReadonlySnapshot,
+                rubberband: !isReadonlySnapshot,
+                movable: !isReadonlySnapshot,
                 showNodeSelectionBox: false,
                 modifiers: null,   // 鼠标左键直接框选（space 键已被 panning 占用时不冲突）
             }),
         );
-        graph.use(new Clipboard({ enabled: true }));
+        graph.use(new Clipboard({ enabled: !isReadonlySnapshot }));
 
-        graph.bindKey(['ctrl+z', 'meta+z'], () => {
-            if (isEditing()) return true; // 正在编辑时使用输入框自身的撤销
-            if (history.canUndo()) history.undo();
-            return false;
-        });
-        graph.bindKey(['ctrl+shift+z', 'meta+shift+z'], () => {
-            if (isEditing()) return true; // 正在编辑时使用输入框自身的重做
-            if (history.canRedo()) history.redo();
-            return false;
-        });
-        graph.bindKey(['ctrl+c', 'meta+c'], () => {
-            if (isEditing()) return true; // 正在编辑时使用浏览器默认复制
-            const cells = graph.getSelectedCells();
-            if (cells.length) {
-                graph.copy(cells);
-                message.success('已复制');
-            }
-            return false;
-        });
-        graph.bindKey(['ctrl+v', 'meta+v'], () => {
-            if (isEditing()) return true; // 正在编辑时使用浏览器默认粘贴
-            if (!graph.isClipboardEmpty()) {
-                const cells = graph.paste({ offset: 32 });
-                graph.cleanSelection();
-                graph.select(cells);
-                message.success('已粘贴');
-            }
-            return false;
-        });
-        graph.bindKey(['backspace', 'delete'], handleKeyboardDelete);
+        if (!isReadonlySnapshot) {
+            graph.bindKey(['ctrl+z', 'meta+z'], () => {
+                if (isEditing()) return true; // 正在编辑时使用输入框自身的撤销
+                if (history.canUndo()) history.undo();
+                return false;
+            });
+            graph.bindKey(['ctrl+shift+z', 'meta+shift+z'], () => {
+                if (isEditing()) return true; // 正在编辑时使用输入框自身的重做
+                if (history.canRedo()) history.redo();
+                return false;
+            });
+            graph.bindKey(['ctrl+c', 'meta+c'], () => {
+                if (isEditing()) return true; // 正在编辑时使用浏览器默认复制
+                const cells = graph.getSelectedCells();
+                if (cells.length) {
+                    graph.copy(cells);
+                    message.success('已复制');
+                }
+                return false;
+            });
+            graph.bindKey(['ctrl+v', 'meta+v'], () => {
+                if (isEditing()) return true; // 正在编辑时使用浏览器默认粘贴
+                if (!graph.isClipboardEmpty()) {
+                    const cells = graph.paste({ offset: 32 });
+                    graph.cleanSelection();
+                    graph.select(cells);
+                    message.success('已粘贴');
+                }
+                return false;
+            });
+            graph.bindKey(['backspace', 'delete'], handleKeyboardDelete);
+        }
 
         // MiniMap 插件
         if (minimapRef.current) {
@@ -765,13 +793,17 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         }
 
         graphRef.current = graph;
+        // 供节点组件识别快照只读（保留平移/缩放，禁用内容编辑与改线）
+        (graph as any).__readonlySnapshot = isReadonlySnapshot;
         dndRef.current = new Dnd({ target: graph, scaled: false });
 
         // ── 事件监听 ──
 
         graph.on('node:click', handleNodeClick);
-        graph.on('blank:mousedown', handleBlankMousedown);
-        graph.on('cell:mousedown', handleCellMousedown);
+        if (!isReadonlySnapshot) {
+            graph.on('blank:mousedown', handleBlankMousedown);
+            graph.on('cell:mousedown', handleCellMousedown);
+        }
         graph.on('node:toggle-breakpoint', ({ node }: any) => {
             setBreakpoints(prev => {
                 if (prev.includes(node.id)) {
@@ -797,16 +829,18 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         graph.on('cell:change:data', schedule);
         graph.on('history:change', () => updateHistoryState());
 
-        // ── 连线交互：点击显示删除按钮，悬停高亮 ──
-        graph.on('edge:click', ({ edge }) => {
-            // 先清除其他连线的工具
-            graph.getEdges().forEach((e) => {
-                if (e !== edge) e.removeTools();
+        // ── 连线交互：点击显示删除按钮，悬停高亮（快照模式仅高亮，不挂删除工具）──
+        if (!isReadonlySnapshot) {
+            graph.on('edge:click', ({ edge }) => {
+                // 先清除其他连线的工具
+                graph.getEdges().forEach((e) => {
+                    if (e !== edge) e.removeTools();
+                });
+                edge.addTools([
+                    { name: 'button-remove', args: { distance: '50%' } },
+                ]);
             });
-            edge.addTools([
-                { name: 'button-remove', args: { distance: '50%' } },
-            ]);
-        });
+        }
         graph.on('edge:mouseenter', ({ edge }) => {
             edge.setAttrs({ line: { stroke: '#1677ff', strokeWidth: 2.5 } });
         });
@@ -814,7 +848,9 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             edge.setAttrs({ line: { stroke: '#A2B1C3', strokeWidth: 2 } });
         });
         graph.on('blank:click', () => {
-            graph.getEdges().forEach((e) => e.removeTools());
+            if (!isReadonlySnapshot) {
+                graph.getEdges().forEach((e) => e.removeTools());
+            }
             // 关闭快捷添加菜单
             setQuickAddMenu(null);
         });
@@ -823,6 +859,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         // X6 v3 中，edge:connected 对空白目标不一定触发，
         // 因此使用 edge:connected + edge:mouseup 双重检测策略。
         const handleBlankEdge = (edge: any) => {
+            if (isReadonlySnapshot) return;
             const targetCell = edge.getTargetCell();
             // 目标不是节点 → 用户把线拖到了空白画布上
             if (!targetCell) {
@@ -836,7 +873,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 const sourcePortId: string = edge.getSourcePortId?.() || '';
                 // 输出端口白名单：从这些端口拉线 → 正向 (forward)
                 const outputPortIds = ['out', 'true', 'false', 'item', 'done', 'default',
-                    'headers', 'params', 'body', 'list', 'finish'];
+                    'headers', 'params', 'body', 'list', 'finish', 'success', 'fail'];
                 const isOutputPort =
                     outputPortIds.includes(sourcePortId)
                     || sourcePortId.startsWith('out:')
@@ -1392,7 +1429,12 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 canRedo={canRedo}
                                 onRun={async (payload) => {
                                     const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
-                                    const result = await debugRunAutoApiConfig({ ...payload, dslContent: currentDslStr });
+                                    const result = await debugRunAutoApiConfig({
+                                        ...payload,
+                                        dslContent: currentDslStr,
+                                        sourceRef: apiId,
+                                        sourceName: apiName,
+                                    });
                                     if (result?.code === 0 && result.data) {
                                         return result.data;
                                     } else if (result?.data) {
@@ -1404,7 +1446,12 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 }}
                                 onDebugStart={async (payload) => {
                                     const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
-                                    const result = await startDebugSession({ ...payload, dslContent: currentDslStr });
+                                    const result = await startDebugSession({
+                                        ...payload,
+                                        dslContent: currentDslStr,
+                                        sourceRef: apiId,
+                                        sourceName: apiName,
+                                    });
                                     if (result?.code === 0 && result.data) return result.data;
                                     if (result?.data) return result.data;
                                     if (result?.sessionId) return result;
@@ -1421,7 +1468,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                     await cancelDebugSession(sessionId);
                                 }}
                                 breakpoints={breakpoints}
-                                onConsoleOpenChange={(open) => setConsoleHeight(open ? 300 : 0)}
+                                onConsoleOpenChange={handleConsoleOpenChange}
                                 onExecutionLogsChange={setExecutionLogs}
                                 onSelectedLogChange={setDebuggerSelectedNodeId}
                                 playbackTrace={isReadonlySnapshot ? readonlyTrace : undefined}

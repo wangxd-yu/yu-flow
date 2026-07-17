@@ -82,10 +82,17 @@ export async function runTaskNow(id: string) {
   return request(`/flow-api/task/${id}/run`, { method: 'POST' });
 }
 
-export async function debugRunTask(dslContent: string) {
+export async function debugRunTask(
+  dslContent: string,
+  source?: { sourceRef?: string; sourceName?: string },
+) {
   return request<any>('/flow-api/task/debug/run', {
     method: 'POST',
-    data: { dslContent },
+    data: {
+      dslContent,
+      sourceRef: source?.sourceRef,
+      sourceName: source?.sourceName,
+    },
   });
 }
 

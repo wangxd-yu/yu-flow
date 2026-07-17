@@ -94,9 +94,26 @@ export interface ForNodeData {
   timeoutMs?: number;
 }
 
+export type RecordValueType = 'string' | 'number' | 'boolean' | 'null';
+export type RecordFieldSource = 'wire' | 'literal' | 'placeholder';
+
+export interface RecordFieldItem {
+  id: string;
+  key: string;
+  value: string;
+  /** wire=传入连线；literal=固定值；placeholder=底部可连线占位 */
+  source: RecordFieldSource;
+  valueType?: RecordValueType;
+}
+
 export interface RecordNodeData {
   inputs?: InputsMap;
-  schema: Record<string, string>;
+  /** 输出对象 schema：key → 字面量(含 number/bool/null) / JsonPath / ${ref} */
+  schema: Record<string, string | number | boolean | null | { id?: string; extractPath?: string }>;
+  /** UI 有序列表（与 schema 同步） */
+  __fields?: RecordFieldItem[];
+  themeColor?: string;
+  __label?: string;
 }
 
 export interface ResponseNodeData {
@@ -305,10 +322,10 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     type: 'record',
     label: '数据构造 (Record)',
     category: '数据节点',
-    color: '#2f54eb',
+    color: '#1677ff',
     defaultPorts: [
-      { id: 'in', group: 'left' },
-      { id: 'out', group: 'right' },
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'out', group: 'absolute-out-solid' },
     ],
   },
   response: {

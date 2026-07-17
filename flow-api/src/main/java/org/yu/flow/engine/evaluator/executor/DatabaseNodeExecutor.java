@@ -14,7 +14,9 @@ import org.yu.flow.engine.service.SqlExecutorService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
@@ -43,43 +45,43 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
             // 1. 准备参数 (从 inputs 提取)
             Map<String, Object> mergeParams = prepareParams(step, context, flow);
 
-            // 2. 准备 SQL 和 参数
             String sql = step.getSql();
-            // 解析动态 SQL (根据 FlowApiServiceImpl 逻辑)
-            SqlAndParams sqlAndParams = DynamicSqlParser.parseDynamicSqlToPrepared(sql, mergeParams);
+            Object result = null;
+            String sqlType = step.getSqlType();
+            if (sqlType == null) {
+                throw new FlowException("CONFIG_ERROR", "sqlType 不能为空");
+            }
+            sqlType = sqlType.toUpperCase();
+
+            // 约定：INSERT + inputs.rows=List<Map> → JDBC 批量插入（跳过用 rows 整体去解析单行模板）
+            List<Map<String, Object>> batchRows = null;
+            if ("INSERT".equals(sqlType) || "BATCH_INSERT".equals(sqlType)) {
+                batchRows = extractBatchRows(mergeParams.get("rows"));
+            }
+            boolean useBatchInsert = "BATCH_INSERT".equals(sqlType) || batchRows != null;
+
+            // 2. 准备 SQL 和 参数（批量模式按行解析，这里只记模板）
+            SqlAndParams sqlAndParams = null;
+            if (!useBatchInsert) {
+                sqlAndParams = DynamicSqlParser.parseDynamicSqlToPrepared(sql, mergeParams);
+            }
 
             if (context.isTraceEnabled()) {
-                String displaySql = buildDisplaySql(sqlAndParams.getSql(), sqlAndParams.getParams());
                 FlowTrace trace = context.getFlowTrace();
                 if (trace != null && trace.getStepLogs() != null && !trace.getStepLogs().isEmpty()) {
                     ExecutionLog currentLog = trace.getStepLogs().get(trace.getStepLogs().size() - 1);
                     if (currentLog.getInputs() == null) {
                         currentLog.setInputs(new HashMap<>());
                     }
-                    currentLog.getInputs().put("actualSql", displaySql);
+                    if (useBatchInsert) {
+                        currentLog.getInputs().put("actualSql", sql);
+                        currentLog.getInputs().put("batchSize", batchRows != null ? batchRows.size() : 0);
+                    } else if (sqlAndParams != null) {
+                        currentLog.getInputs().put("actualSql",
+                                buildDisplaySql(sqlAndParams.getSql(), sqlAndParams.getParams()));
+                    }
                 }
             }
-
-            // 3. 执行操作
-            Object result = null;
-            String sqlType = step.getSqlType();
-            if (sqlType == null) {
-                // 如果为空，尝试兼容旧逻辑或抛出异常；这里直接假定必须有
-                throw new FlowException("CONFIG_ERROR", "sqlType 不能为空");
-            }
-            sqlType = sqlType.toUpperCase();
-
-            // 智能容错：根据 SQL 实际内容的首个关键字判定类型，防止前端 sqlType 配置（如下拉框未切换）与实际 SQL 相矛盾
-            //String cleanSql = sql.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("--.*", "").trim().toUpperCase();
-            /*if (cleanSql.startsWith("INSERT")) {
-                sqlType = "INSERT";
-            } else if (cleanSql.startsWith("UPDATE")) {
-                sqlType = "UPDATE";
-            } else if (cleanSql.startsWith("DELETE")) {
-                sqlType = "DELETE";
-            } else if (cleanSql.startsWith("SELECT")) {
-                sqlType = "SELECT";
-            }*/
 
             String datasourceId = step.getDatasourceId();
             if (sqlExecutorService == null) {
@@ -96,7 +98,13 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
 
             switch (sqlType) {
                 case "INSERT":
-                    result = sqlExecutorService.executeInsert(datasourceId, sqlAndParams);
+                case "BATCH_INSERT":
+                    if (useBatchInsert) {
+                        result = sqlExecutorService.executeBatchInsert(
+                                datasourceId, sql, batchRows != null ? batchRows : new ArrayList<>());
+                    } else {
+                        result = sqlExecutorService.executeInsert(datasourceId, sqlAndParams);
+                    }
                     break;
                 case "UPDATE":
                 case "DELETE":
@@ -168,6 +176,28 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
 
     private Map<String, Object> prepareParams(DatabaseStep step, ExecutionContext context, FlowDefinition flow) {
         return this.prepareInputs(step, context, flow);
+    }
+
+    /**
+     * 识别批量插入行集：非空或空的 List&lt;Map&gt; 均视为批量模式；其他类型返回 null（走单条 INSERT）。
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractBatchRows(Object rowsObj) {
+        if (!(rowsObj instanceof List)) {
+            return null;
+        }
+        List<?> raw = (List<?>) rowsObj;
+        if (raw.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>(raw.size());
+        for (Object item : raw) {
+            if (!(item instanceof Map)) {
+                return null;
+            }
+            rows.add((Map<String, Object>) item);
+        }
+        return rows;
     }
 
     private String buildDisplaySql(String preparedSql, java.util.List<Object> params) {

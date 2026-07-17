@@ -20,8 +20,6 @@ const LANGUAGE_OPTIONS = [
     { value: 'Groovy', label: 'Java / Groovy' },
 ];
 
-const editorLanguage = (lang: string) => (lang === 'JavaScript' || lang === 'js') ? 'javascript' : 'text';
-
 // ── 属性面板编辑器 ──
 function IfEditor({ data, onChange }: PropertyEditorProps) {
     return (

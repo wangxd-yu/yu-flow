@@ -85,7 +85,8 @@ public class DebugController {
                 try {
                     // 创建开启 Trace 的执行上下文，并关联调试会话
                     FlowTrace trace = flowEngine.executeWithDebugSession(
-                            requestDTO.getDslContent(), args, session);
+                            requestDTO.getDslContent(), args, session,
+                            requestDTO.getSourceRef(), requestDTO.getSourceName());
                     session.markCompleted(trace);
                 } catch (Exception e) {
                     log.error("[DebugController] 调试执行异常: sessionId={}", session.getSessionId(), e);

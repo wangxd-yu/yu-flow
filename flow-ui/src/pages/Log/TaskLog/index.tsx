@@ -6,137 +6,111 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import {
-  Badge, Button, Drawer, message, Popconfirm, Space, Tag,
+  Badge, Button, Drawer, message, Popconfirm, Tag, Typography,
 } from 'antd';
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ClockCircleOutlined,
+  EyeOutlined,
+  SyncOutlined,
+} from '@ant-design/icons';
+import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
+import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
 import {
   queryTaskLogPage,
   getTaskLog,
+  getTask,
   clearTaskLog,
   FlowTaskLog,
 } from '../../flow/task/services/taskService';
 
-// 状态颜色映射
+const { Text } = Typography;
+
 const STATUS_MAP: Record<string, { status: any; text: string }> = {
   SUCCESS: { status: 'success', text: '成功' },
   FAILED: { status: 'error', text: '失败' },
   RUNNING: { status: 'processing', text: '运行中' },
 };
 
-// ── 日志详情 Drawer ──
-const TaskLogDetailDrawer: React.FC<{
-  visible: boolean;
-  logId: string | null;
-  onClose: () => void;
-}> = ({ visible, logId, onClose }) => {
-  const [log, setLog] = useState<FlowTaskLog | null>(null);
-
-  React.useEffect(() => {
-    if (visible && logId) {
-      getTaskLog(logId)
-        .then((data: any) => setLog(data?.data || data))
-        .catch(() => message.error('加载日志详情失败'));
-    } else {
-      setLog(null);
-    }
-  }, [visible, logId]);
-
-  let parsedTrace: any = null;
-  if (log?.traceData) {
-    try {
-      parsedTrace = JSON.parse(log.traceData);
-    } catch {
-      parsedTrace = log.traceData;
-    }
-  }
-
-  return (
-    <Drawer
-      title={`任务日志详情 — ${log?.taskName || ''}`}
-      width={800}
-      open={visible}
-      onClose={onClose}
-      destroyOnClose
-    >
-      {log && (
-        <Space direction="vertical" style={{ width: '100%' }} size={8}>
-          <div><b>任务ID：</b><code>{log.taskId}</code></div>
-          <div>
-            <b>触发类型：</b>
-            <Tag color={log.triggerType === 'MANUAL' ? 'blue' : 'purple'}>
-              {log.triggerType}
-            </Tag>
-          </div>
-          <div>
-            <b>执行状态：</b>
-            <Badge
-              status={STATUS_MAP[log.status || '']?.status || 'default'}
-              text={STATUS_MAP[log.status || '']?.text || log.status}
-            />
-          </div>
-          <div><b>耗时：</b>{log.costTimeMs != null ? `${log.costTimeMs} ms` : '-'}</div>
-          <div><b>执行时间：</b>{log.createTime}</div>
-          {log.errorMsg && (
-            <div>
-              <b>错误信息：</b>
-              <pre style={{
-                background: '#fff2f0',
-                border: '1px solid #ffccc7',
-                padding: 8,
-                borderRadius: 4,
-                fontSize: 12,
-                marginTop: 4,
-                whiteSpace: 'pre-wrap',
-              }}>
-                {log.errorMsg}
-              </pre>
-            </div>
-          )}
-          {parsedTrace && (
-            <div>
-              <b>FlowTrace 快照：</b>
-              <pre style={{
-                background: '#f6ffed',
-                border: '1px solid #b7eb8f',
-                padding: 8,
-                borderRadius: 4,
-                fontSize: 11,
-                marginTop: 4,
-                maxHeight: 500,
-                overflow: 'auto',
-              }}>
-                {typeof parsedTrace === 'string'
-                  ? parsedTrace
-                  : JSON.stringify(parsedTrace, null, 2)}
-              </pre>
-            </div>
-          )}
-        </Space>
-      )}
-    </Drawer>
-  );
+const formatDuration = (ms?: number) => {
+  if (ms == null) return '-';
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
 };
-
-// ── 主组件 ──
 
 const TaskLogPage: React.FC = () => {
   const actionRef = useRef<ActionType>();
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [currentLog, setCurrentLog] = useState<FlowTaskLog | null>(null);
+  const [currentDsl, setCurrentDsl] = useState('');
+  const [currentTrace, setCurrentTrace] = useState<FlowTrace | null>(null);
 
-  // URL 参数：从任务列表页跳转时带入 taskId
   const urlParams = new URLSearchParams(window.location.search);
   const initialTaskId = urlParams.get('taskId') || undefined;
 
+  const handleViewTrace = async (record: FlowTaskLog) => {
+    if (!record.hasTrace) {
+      message.warning('该任务日志没有关联的追踪快照数据');
+      return;
+    }
+
+    try {
+      const detail = await getTaskLog(record.id);
+      const log: FlowTaskLog = (detail as any)?.data || detail;
+      if (!log?.traceData) {
+        message.warning('未找到该任务日志的追踪快照数据');
+        return;
+      }
+
+      const trace: FlowTrace & { dslSnapshot?: string } = JSON.parse(log.traceData);
+      let dslContent = trace.dslSnapshot || '';
+      if (!dslContent && log.taskId) {
+        try {
+          const taskInfo = await getTask(log.taskId);
+          dslContent = taskInfo?.dslContent || '';
+        } catch (e) {
+          console.error('getTask failed:', e);
+        }
+      }
+      if (!dslContent) {
+        message.warning('无法加载任务 DSL，画布将显示为空');
+      }
+
+      setCurrentLog(log);
+      setCurrentTrace(trace);
+      setCurrentDsl(dslContent);
+      setDrawerVisible(true);
+    } catch (e) {
+      message.error('解析执行快照失败');
+      console.error(e);
+    }
+  };
+
   const columns: ProColumns<FlowTaskLog>[] = [
+    {
+      title: '序号',
+      valueType: 'index',
+      width: 60,
+      fixed: 'left',
+      search: false,
+    },
     {
       title: '任务名称',
       dataIndex: 'taskName',
+      width: 160,
+      fixed: 'left',
       ellipsis: true,
+      render: (_, record) => (
+        <Text strong style={{ color: '#1677ff' }}>
+          {record.taskName || '未命名'}
+        </Text>
+      ),
     },
     {
       title: '触发类型',
       dataIndex: 'triggerType',
-      width: 100,
+      width: 110,
       valueEnum: {
         CRON: { text: 'CRON' },
         MANUAL: { text: 'MANUAL' },
@@ -150,13 +124,49 @@ const TaskLogPage: React.FC = () => {
     {
       title: '执行状态',
       dataIndex: 'status',
-      width: 100,
+      width: 120,
       valueEnum: {
         SUCCESS: { text: '成功', status: 'Success' },
         FAILED: { text: '失败', status: 'Error' },
         RUNNING: { text: '运行中', status: 'Processing' },
       },
       render: (_, record) => {
+        if (record.status === 'SUCCESS') {
+          return (
+            <Badge
+              status="success"
+              text={
+                <Tag icon={<CheckCircleOutlined />} color="success" style={{ marginInlineEnd: 0 }}>
+                  执行成功
+                </Tag>
+              }
+            />
+          );
+        }
+        if (record.status === 'FAILED') {
+          return (
+            <Badge
+              status="error"
+              text={
+                <Tag icon={<CloseCircleOutlined />} color="error" style={{ marginInlineEnd: 0 }}>
+                  执行失败
+                </Tag>
+              }
+            />
+          );
+        }
+        if (record.status === 'RUNNING') {
+          return (
+            <Badge
+              status="processing"
+              text={
+                <Tag icon={<SyncOutlined spin />} color="processing" style={{ marginInlineEnd: 0 }}>
+                  运行中
+                </Tag>
+              }
+            />
+          );
+        }
         const s = STATUS_MAP[record.status || ''];
         return <Badge status={s?.status || 'default'} text={s?.text || record.status} />;
       },
@@ -165,53 +175,68 @@ const TaskLogPage: React.FC = () => {
       title: '耗时',
       dataIndex: 'costTimeMs',
       width: 100,
-      hideInSearch: true,
-      render: (_, record) =>
-        record.costTimeMs != null
-          ? record.costTimeMs < 1000
-            ? `${record.costTimeMs} ms`
-            : `${(record.costTimeMs / 1000).toFixed(2)} s`
-          : '-',
-    },
-    {
-      title: '有 Trace',
-      dataIndex: 'hasTrace',
-      width: 80,
-      hideInSearch: true,
-      render: (_, record) =>
-        record.hasTrace ? <Tag color="green">有</Tag> : <Tag color="default">无</Tag>,
+      search: false,
+      render: (_, record) => {
+        const ms = record.costTimeMs;
+        if (ms == null) return '-';
+        let color = '#52c41a';
+        if (ms >= 1000) color = '#ff4d4f';
+        else if (ms >= 200) color = '#faad14';
+        return (
+          <span style={{ color }}>
+            <ClockCircleOutlined style={{ marginRight: 4 }} />
+            {formatDuration(ms)}
+          </span>
+        );
+      },
     },
     {
       title: '执行时间',
       dataIndex: 'createTime',
-      width: 160,
-      hideInSearch: true,
+      width: 180,
+      search: false,
+      render: (_, record) => record.createTime || '-',
     },
     {
       title: '操作',
-      dataIndex: 'option',
       valueType: 'option',
       width: 120,
+      fixed: 'right',
       render: (_, record) => [
-        <a
-          key="detail"
-          onClick={() => {
-            setSelectedLogId(record.id);
-            setDetailVisible(true);
-          }}
+        <Button
+          key="view"
+          type="link"
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => handleViewTrace(record)}
+          disabled={!record.hasTrace}
         >
-          查看详情
-        </a>,
+          查看快照
+        </Button>,
       ],
     },
   ];
 
   return (
-    <PageContainer header={{ title: '任务日志' }}>
+    <PageContainer
+      className="fh-container"
+      style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
+      header={{
+        title: '任务日志',
+        subTitle: '监控与追溯定时/手动任务的执行状态、耗时及流程编排快照',
+      }}
+    >
       <ProTable<FlowTaskLog>
+        className="fh-table"
         rowKey="id"
         actionRef={actionRef}
         headerTitle={initialTaskId ? `任务日志（taskId=${initialTaskId}）` : '全部任务日志'}
+        tableLayout="fixed"
+        scroll={{ x: 900, y: 100000 }}
+        search={{
+          labelWidth: 'auto',
+          defaultCollapsed: false,
+        }}
         toolBarRender={() => [
           initialTaskId && (
             <Popconfirm
@@ -235,7 +260,7 @@ const TaskLogPage: React.FC = () => {
             status: params.status,
             triggerType: params.triggerType,
             page: (params.current || 1) - 1,
-            size: params.pageSize || 10,
+            size: params.pageSize || 20,
           });
           const data = (result as any)?.data || result;
           return {
@@ -245,14 +270,138 @@ const TaskLogPage: React.FC = () => {
           };
         }}
         columns={columns}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        rowClassName={(record) =>
+          record.status === 'FAILED' ? 'task-log-row-fail' : ''
+        }
+        pagination={{
+          defaultPageSize: 20,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+        }}
+        options={{
+          density: true,
+          fullScreen: true,
+          reload: true,
+          setting: true,
+        }}
       />
 
-      <TaskLogDetailDrawer
-        visible={detailVisible}
-        logId={selectedLogId}
-        onClose={() => setDetailVisible(false)}
-      />
+      {drawerVisible && (
+        <Drawer
+          title={`任务快照复原 - ${currentLog?.taskName || ''}`}
+          width="100%"
+          open={drawerVisible}
+          onClose={() => setDrawerVisible(false)}
+          styles={{ body: { padding: 0 } }}
+          destroyOnClose
+        >
+          {currentTrace ? (
+            <FlowEditor
+              value={currentDsl}
+              isEdit={false}
+              readonlyTrace={currentTrace}
+            />
+          ) : null}
+        </Drawer>
+      )}
+
+      <style>{`
+        .fh-container.ant-pro-page-container {
+          display: flex !important;
+          flex-direction: column !important;
+        }
+        .fh-container.ant-pro-page-container > .ant-pro-grid-content,
+        .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+        .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          height: auto !important;
+          padding-block-end: 0 !important;
+        }
+        .fh-table.ant-pro-table {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          overflow: hidden;
+        }
+        .fh-table .ant-pro-table-search {
+          flex-shrink: 0;
+        }
+        .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
+          flex: 1;
+          min-height: 0;
+          display: flex !important;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .fh-table .ant-pro-table-list-toolbar {
+          flex-shrink: 0;
+        }
+        .fh-table .ant-table-wrapper {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .fh-table .ant-spin-nested-loading {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .fh-table .ant-spin-container {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .fh-table .ant-table {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .fh-table .ant-table-container {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .fh-table .ant-table-header {
+          flex-shrink: 0;
+          overflow: hidden !important;
+        }
+        .fh-table .ant-table-body {
+          flex: 1;
+          min-height: 0;
+          max-height: none !important;
+          overflow-y: scroll !important;
+        }
+        .fh-table .ant-table-pagination {
+          flex-shrink: 0;
+          padding: 6px 0;
+          margin: 0 !important;
+        }
+        .task-log-row-fail td {
+          background-color: #fff2f0 !important;
+        }
+        .task-log-row-fail:hover td {
+          background-color: #ffebe8 !important;
+        }
+      `}</style>
     </PageContainer>
   );
 };

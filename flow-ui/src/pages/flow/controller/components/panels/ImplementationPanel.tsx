@@ -53,6 +53,8 @@ export interface ImplementationPanelProps {
   onCancel: () => void;
   apiUrl?: string;
   apiMethod?: string;
+  apiId?: string;
+  apiName?: string;
 }
 
 const ENGINE_MODE_OPTIONS: { label: string; value: EngineMode; icon: React.ReactNode }[] = [
@@ -74,7 +76,7 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
   textContent, onTextContentChange,
   dbDatasource, onDbDatasourceChange,
   responseType, onResponseTypeChange,
-  form, isEdit, onSave, onCancel, apiUrl, apiMethod,
+  form, isEdit, onSave, onCancel, apiUrl, apiMethod, apiId, apiName,
 }) => {
   // ─── 全屏状态 ──────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -197,6 +199,8 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
               height={'100%' as any}
               apiUrl={apiUrl}
               apiMethod={apiMethod}
+              apiId={apiId}
+              apiName={apiName}
             />
           </div>
         )}

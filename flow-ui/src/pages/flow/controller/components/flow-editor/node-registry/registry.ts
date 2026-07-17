@@ -173,10 +173,10 @@ export function getPropertyEditor(type: DslNodeType): React.ComponentType<any> |
 
 /**
  * 将所有已注册的节点形状注册到 AntV X6。
- * 保证只注册一次（幂等）。
+ * 默认只注册一次；force=true 时强制覆盖（用于 HMR / 修复端口默认值后热更新）。
  */
-export function registerAllShapes(): void {
-    if (_shapesRegistered) return;
+export function registerAllShapes(force = false): void {
+    if (_shapesRegistered && !force) return;
 
     // ── 注入全局端口动画样式 ──
     if (typeof document !== 'undefined') {
@@ -225,6 +225,10 @@ export function registerAllShapes(): void {
                 true,
             );
         } else if (shape.kind === 'react' && shape.component) {
+            // 只注册 port groups，不把 reactPorts.items 写进形状默认值。
+            // 否则 import / addNode 再传同名 ports.items 时，X6 会合并出
+            // "Duplicated port id"（如 out / in / in:payload）。
+            // 实例端口一律由 adapter.buildPortItems / 组件 useEffect 提供。
             register({
                 shape: shape.shapeName,
                 width: reg.defaults.size.width,
@@ -234,7 +238,7 @@ export function registerAllShapes(): void {
                 component: shape.component as any,
                 ports: {
                     groups: PORT_GROUPS,
-                    ...(shape.reactPorts || {})
+                    items: [],
                 },
             });
         }

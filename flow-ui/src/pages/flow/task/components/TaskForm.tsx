@@ -118,7 +118,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
     const hide = message.loading('正在调试运行...');
     try {
-      const trace = await debugRunTask(dslContent);
+      const trace = await debugRunTask(dslContent, {
+        sourceRef: initialValues.id,
+        sourceName: name || initialValues.name,
+      });
       hide();
       if (trace?.status === 'error') {
         message.error(`执行失败: ${trace.errorMsg}`);
@@ -129,7 +132,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
       hide();
       message.error('调试失败: ' + (e?.message || '未知错误'));
     }
-  }, [dslContent]);
+  }, [dslContent, initialValues.id, initialValues.name, name]);
 
   // ── Header ──
   const headerTitle = (

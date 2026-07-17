@@ -341,18 +341,29 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>(playbackTrace?.stepLogs || []);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
 
-  // 当外部传入 playbackTrace 时，强制同步内部状态（监听外部选中节点或整个 trace 的变化）
+  // 同步回放 trace 的日志/状态。
+  // 仅在「新的一条回放」时自动展开控制台；不要依赖 onConsoleOpenChange 引用，
+  // 否则父组件重渲染会导致用户刚收起的控制台立刻被重新打开。
+  const playbackInitKeyRef = useRef<string | null>(null);
+  const onConsoleOpenChangeRef = useRef(onConsoleOpenChange);
+  onConsoleOpenChangeRef.current = onConsoleOpenChange;
   useEffect(() => {
-    if (playbackTrace) {
-      setExecutionLogs(playbackTrace.stepLogs || []);
-      setRunningStatus(playbackTrace.status);
-      setIsConsoleOpen(true);
-      onConsoleOpenChange?.(true);
-      if (playbackTrace.startTime) {
-        setRunTimestamp(new Date(playbackTrace.startTime).toLocaleTimeString());
-      }
+    if (!playbackTrace) {
+      playbackInitKeyRef.current = null;
+      return;
     }
-  }, [playbackTrace, onConsoleOpenChange]);
+    setExecutionLogs(playbackTrace.stepLogs || []);
+    setRunningStatus(playbackTrace.status);
+    if (playbackTrace.startTime) {
+      setRunTimestamp(new Date(playbackTrace.startTime).toLocaleTimeString());
+    }
+    const initKey = `${playbackTrace.startTime ?? ''}|${playbackTrace.stepLogs?.length ?? 0}|${playbackTrace.status ?? ''}`;
+    if (playbackInitKeyRef.current !== initKey) {
+      playbackInitKeyRef.current = initKey;
+      setIsConsoleOpen(true);
+      onConsoleOpenChangeRef.current?.(true);
+    }
+  }, [playbackTrace]);
 
   // 提取为统一的方法以触发外部回调
   const updateLogs = useCallback((logs: ExecutionLog[]) => {
@@ -681,28 +692,31 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
           bottom: isConsoleOpen ? consoleHeight + 24 : shouldShowCollapsedConsole ? 82 : 24,
         }}
       >
-        {/* 左侧：画布操作按钮 */}
+        {/* 左侧：画布操作按钮（快照模式保留缩放/适配，隐藏撤销重做） */}
         <div className="pfd-toolbar-left">
-          <Tooltip title="撤销">
-            <button
-              className="pfd-tool-btn"
-              disabled={!canUndo}
-              onClick={onUndo}
-            >
-              <UndoOutlined />
-            </button>
-          </Tooltip>
-          <Tooltip title="重做">
-            <button
-              className="pfd-tool-btn"
-              disabled={!canRedo}
-              onClick={onRedo}
-            >
-              <RedoOutlined />
-            </button>
-          </Tooltip>
-
-          <div className="pfd-toolbar-divider" />
+          {!playbackTrace && (
+            <>
+              <Tooltip title="撤销">
+                <button
+                  className="pfd-tool-btn"
+                  disabled={!canUndo}
+                  onClick={onUndo}
+                >
+                  <UndoOutlined />
+                </button>
+              </Tooltip>
+              <Tooltip title="重做">
+                <button
+                  className="pfd-tool-btn"
+                  disabled={!canRedo}
+                  onClick={onRedo}
+                >
+                  <RedoOutlined />
+                </button>
+              </Tooltip>
+              <div className="pfd-toolbar-divider" />
+            </>
+          )}
 
           <Tooltip title="放大">
             <button className="pfd-tool-btn" onClick={onZoomIn}>

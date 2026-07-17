@@ -154,6 +154,8 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
             final Object item = items.get(i);
             final String branchStartId = itemStartStepId;
 
+            final boolean noCollect = collectStepId == null || collectStepId.isBlank();
+
             executorService.submit(() -> {
                 try {
                     // ---- a) 复制上下文（barrier 引用被共享） ----
@@ -178,6 +180,14 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
                     engine.runBranchFlow(branchStartId, branchCtx, flow);
 
                     log.debug("ForStep [{}]: 分支[{}] runBranchFlow 已退出", step.getId(), index);
+
+                    // ---- d) 无 Collect 模式：分支跑完即计数，避免主线程永久等待屏障 ----
+                    if (noCollect) {
+                        int count = barrier.counter.incrementAndGet();
+                        if (count >= totalCount && !barrier.completionFuture.isDone()) {
+                            barrier.completionFuture.complete(null);
+                        }
+                    }
 
                 } catch (Exception e) {
                     // ---- 分支异常补偿（特殊情况 B）----

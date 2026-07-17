@@ -31,23 +31,40 @@ public class FlowExecutionLogListDTO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date createTime;
 
-    /**
-     * 从 DO 转换（不加载 LONGTEXT 字段）
-     */
+    public FlowExecutionLogListDTO() {
+    }
+
+    /** JPA Criteria {@code cb.construct} 专用构造器（勿传入 LOB 字段） */
+    public FlowExecutionLogListDTO(String id, String apiId, String apiName, String url,
+                                   String serviceType, String method, String status,
+                                   Long costTimeMs, Boolean hasTrace, Date createTime) {
+        this.id = id;
+        this.apiId = apiId;
+        this.apiName = apiName;
+        this.url = url;
+        this.serviceType = serviceType;
+        this.method = method;
+        this.status = status;
+        this.costTimeMs = costTimeMs;
+        this.hasTrace = hasTrace;
+        this.createTime = createTime;
+    }
+
+    /** @deprecated 列表查询请走投影，避免加载 LONGTEXT */
+    @Deprecated
     public static FlowExecutionLogListDTO fromDO(FlowExecutionLogDO entity) {
         if (entity == null) return null;
-        FlowExecutionLogListDTO dto = new FlowExecutionLogListDTO();
-        dto.setId(entity.getId());
-        dto.setApiId(entity.getApiId());
-        dto.setApiName(entity.getApiName());
-        dto.setUrl(entity.getUrl());
-        dto.setServiceType(entity.getServiceType());
-        dto.setMethod(entity.getMethod());
-        dto.setStatus(entity.getStatus());
-        dto.setCostTimeMs(entity.getCostTimeMs());
-        // 有 traceData 才允许前端打开"查看快照"
-        dto.setHasTrace(entity.getTraceData() != null && !entity.getTraceData().isEmpty());
-        dto.setCreateTime(entity.getCreateTime());
-        return dto;
+        return new FlowExecutionLogListDTO(
+                entity.getId(),
+                entity.getApiId(),
+                entity.getApiName(),
+                entity.getUrl(),
+                entity.getServiceType(),
+                entity.getMethod(),
+                entity.getStatus(),
+                entity.getCostTimeMs(),
+                entity.getTraceData() != null && !entity.getTraceData().isEmpty(),
+                entity.getCreateTime()
+        );
     }
 }

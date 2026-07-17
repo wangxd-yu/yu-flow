@@ -154,9 +154,12 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
         const y = dslNode.y ?? autoY;
         if (!dslNode.y) autoY += autoGap;
 
-        // ── 规范契约：如果原始数据无 ports 或为空数组，预先推导 ──
-        if (!dslNode.ports || dslNode.ports.length === 0) {
-            const defaults = getDefaultPorts(nodeType) ? [...getDefaultPorts(nodeType)] : [];
+        // ── 规范契约：补全默认端口 + inputs 动态桩（即使 DSL 已带部分 ports）──
+        {
+            const defaults = [...(dslNode.ports || [])];
+            if (defaults.length === 0) {
+                defaults.push(...(getDefaultPorts(nodeType) || []));
+            }
 
             // 1. 基于 inputs 等业务数据动态补全输入桩
             if (dslNode.data && dslNode.data.inputs && typeof dslNode.data.inputs === 'object') {
@@ -182,7 +185,13 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
                 });
             }
 
-            dslNode.ports = defaults;
+            // 端口 ID 去重（防御脏 DSL / 默认端口与动态端口重叠）
+            const seenPortIds = new Set<string>();
+            dslNode.ports = defaults.filter((p) => {
+                if (!p?.id || seenPortIds.has(p.id)) return false;
+                seenPortIds.add(p.id);
+                return true;
+            });
         }
 
         // 节点尺寸

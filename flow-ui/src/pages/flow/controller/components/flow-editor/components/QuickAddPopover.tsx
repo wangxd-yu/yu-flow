@@ -95,7 +95,7 @@ const REVERSE_PREFERRED_TYPES: DslNodeType[] = [
 
 const OUTPUT_PORT_IDS = new Set([
     'out', 'true', 'false', 'item', 'done', 'default',
-    'headers', 'params', 'body', 'list', 'finish',
+    'headers', 'params', 'body', 'list', 'finish', 'success', 'fail',
 ]);
 
 function isOutputPort(portId: string): boolean {

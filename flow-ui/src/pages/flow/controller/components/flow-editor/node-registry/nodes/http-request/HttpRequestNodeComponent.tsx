@@ -6,7 +6,7 @@
 // ============================================================================
 
 import React, { useEffect, useState } from 'react';
-import { Typography, Select, Input, Button, Space, Dropdown } from 'antd';
+import { Typography, Select, Input, Button, Space, Dropdown, Switch } from 'antd';
 import { Node } from '@antv/x6';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
@@ -16,6 +16,15 @@ import {
     getNodeTheme,
     ResizeHandle,
 } from '../../shared/useNodeSelection';
+import {
+    PAYLOAD_PORT_ID,
+    PAYLOAD_PORT_Y,
+    ensurePayloadPort,
+    usePayloadEntryConnection,
+    hasPayloadInput,
+    PayloadEntryChrome,
+    PayloadBadge,
+} from '../../shared/usePayloadEntryPort';
 import { createId } from '../../../utils/id';
 
 const { Text } = Typography;
@@ -44,14 +53,12 @@ const FOOTER_HEIGHT = 56;
 const PADDING_TOP = 10;
 const PADDING_BOTTOM = 8;
 
-/** URL 行中心 Y（相对节点顶部）= Header + paddingTop + ROW/2 */
-export const HTTP_REQUEST_IN_PORT_Y = HEADER_HEIGHT + PADDING_TOP + ROW_HEIGHT / 2;
-
 export const HTTP_REQUEST_LAYOUT = {
     width: MIN_WIDTH,
     headerHeight: HEADER_HEIGHT,
     footerHeight: FOOTER_HEIGHT,
-    inPortY: HTTP_REQUEST_IN_PORT_Y,
+    /** 总入口 in:payload（Header 左侧中线） */
+    payloadPortY: PAYLOAD_PORT_Y,
 };
 
 const METHOD_OPTIONS = [
@@ -136,6 +143,18 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             changed = true;
         }
 
+        // 历史节点无 logEnabled 时默认开启
+        if (d.logEnabled === undefined) {
+            updates.logEnabled = true;
+            changed = true;
+        }
+
+        // 历史节点无 ignoreSsl 时默认开启（自签名内网 HTTPS）
+        if (d.ignoreSsl === undefined) {
+            updates.ignoreSsl = true;
+            changed = true;
+        }
+
         if (changed) node.setData({ ...d, ...updates }, { overwrite: true });
     }, [node]);
 
@@ -204,12 +223,47 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
         onClick: ({ key }: any) => updateData('method', key),
     };
 
+    usePayloadEntryConnection(node);
+    const hasPayload = hasPayloadInput(data);
+
     // 端口与高度
     useEffect(() => {
         if (node.hasPort('out')) node.removePort('out');
 
+        // 历史 URL 行控制流 in → 迁到总入口 in:payload 后移除
+        let migratedIn = false;
+        try {
+            const graph = node.model?.graph;
+            if (graph) {
+                graph.getConnectedEdges(node).forEach((edge: any) => {
+                    if (edge.getTargetCellId?.() !== node.id) return;
+                    if (String(edge.getTargetPortId?.()) !== 'in') return;
+                    edge.setTarget({ cell: node.id, port: PAYLOAD_PORT_ID });
+                    migratedIn = true;
+                });
+            }
+        } catch {
+            /* ignore */
+        }
+        if (migratedIn) {
+            const prev = node.getData() as any;
+            if (!prev?.inputs?.payload) {
+                node.setData(
+                    {
+                        ...prev,
+                        inputs: {
+                            ...(prev?.inputs || {}),
+                            payload: { extractPath: '$' },
+                        },
+                    },
+                    { overwrite: true },
+                );
+            }
+        }
+        if (node.hasPort('in')) node.removePort('in');
+        ensurePayloadPort(node, PAYLOAD_PORT_Y);
+
         let currentY = HEADER_HEIGHT + PADDING_TOP;
-        const methodRowCenterY = HEADER_HEIGHT + PADDING_TOP + ROW_HEIGHT / 2;
         currentY += ROW_HEIGHT + GAP;
 
         const headersListStartY = currentY + SECTION_HEADER_HEIGHT;
@@ -292,8 +346,6 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             }
         };
 
-        setAbsoluteInPort('in', methodRowCenterY);
-
         headers.forEach((item, idx) => {
             setAbsoluteInPort(`in:header:${item.id}`, headersListStartY + idx * (ROW_HEIGHT + 4) + ROW_HEIGHT / 2);
         });
@@ -361,25 +413,30 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             outlineCss={outlineCss}
             backgroundColor={themeObj.bodyBg}
         >
-            <NodeHeader
-                icon={ICONS.globe}
-                title={nodeLabel}
-                theme={themeObj}
-                height={HEADER_HEIGHT}
-                onTitleChange={handleTitleChange}
-                extra={
-                    <Dropdown menu={methodMenu} trigger={['click']}>
-                        <div
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                        >
-                            <Text style={{ fontSize: 11, color: themeObj.primary }}>{method}</Text>
-                            <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
-                        </div>
-                    </Dropdown>
-                }
-            />
+            <PayloadEntryChrome hasPayload={hasPayload} primaryColor={themeObj.primary}>
+                <NodeHeader
+                    icon={ICONS.globe}
+                    title={nodeLabel}
+                    theme={themeObj}
+                    height={HEADER_HEIGHT}
+                    onTitleChange={handleTitleChange}
+                    extra={
+                        <Space size={8}>
+                            {hasPayload && <PayloadBadge color={themeObj.primary} />}
+                            <Dropdown menu={methodMenu} trigger={['click']}>
+                                <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                                >
+                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{method}</Text>
+                                    <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                                </div>
+                            </Dropdown>
+                        </Space>
+                    }
+                />
+            </PayloadEntryChrome>
 
             <div
                 style={{
@@ -391,7 +448,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     minHeight: 0,
                 }}
             >
-                {/* URL 行：左侧对齐控制流口 in */}
+                {/* URL 行（入口统一用 Header 总入口 in:payload） */}
                 <div
                     style={{
                         display: 'flex',
@@ -399,19 +456,14 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                         marginBottom: GAP,
                         flexShrink: 0,
                         alignItems: 'center',
-                        position: 'relative',
                     }}
                 >
-                    <div style={{
-                        position: 'absolute', left: -6, top: '50%', marginTop: -3,
-                        width: 6, height: 6, borderRadius: '50%', background: themeObj.primary,
-                    }} />
                     <Input
                         value={data.url}
                         onChange={(e) => updateData('url', e.target.value)}
                         placeholder="https://api.example.com"
                         size="small"
-                        style={{ flex: 1, marginLeft: 8 }}
+                        style={{ flex: 1 }}
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -481,6 +533,50 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* 日志开关 + 接口标识（节点内配置，非右侧属性面板） */}
+            <div
+                style={{
+                    borderTop: '1px solid #f0f0f0',
+                    padding: '6px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    pointerEvents: 'auto',
+                    flexShrink: 0,
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <Text style={{ fontSize: 11, color: '#8c8c8c' }}>开启日志</Text>
+                    <Switch
+                        size="small"
+                        checked={data.logEnabled !== false}
+                        onChange={(checked) => updateData('logEnabled', checked)}
+                    />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <Text style={{ fontSize: 11, color: '#8c8c8c' }} title="自签名/内网 HTTPS：默认开启；公网正式环境请关闭">
+                        忽略SSL
+                    </Text>
+                    <Switch
+                        size="small"
+                        checked={data.ignoreSsl !== false}
+                        onChange={(checked) => {
+                            node.setData({ ...node.getData(), ignoreSsl: checked }, { overwrite: true });
+                            setData({ ...node.getData(), ignoreSsl: checked });
+                        }}
+                    />
+                </div>
+                <Input
+                    size="small"
+                    placeholder="接口标识（可选，默认节点ID）"
+                    value={data.apiType || ''}
+                    onChange={(e) => updateData('apiType', e.target.value)}
+                    style={{ flex: 1, fontSize: 12 }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                />
             </div>
 
             {/* Footer — 对齐 Evaluate Result 区风格 */}

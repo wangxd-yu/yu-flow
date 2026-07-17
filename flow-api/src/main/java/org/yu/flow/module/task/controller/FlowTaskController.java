@@ -123,7 +123,8 @@ public class FlowTaskController {
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
         try {
             FlowTrace trace = flowEngine.execute(requestDTO.getDslContent(),
-                    Collections.emptyMap(), true);
+                    Collections.emptyMap(), true, "DEBUG",
+                    requestDTO.getSourceRef(), requestDTO.getSourceName());
             return R.ok(trace != null ? trace : new FlowTrace());
         } catch (Exception e) {
             log.error("Task debug run failed", e);

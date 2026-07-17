@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Form, Input, Select, InputNumber, Tabs, Button, Radio, Typography } from 'antd';
+import { Form, Input, Select, InputNumber, Tabs, Button, Radio, Switch } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { Node } from '@antv/x6';
 import { createId } from '../../utils/id';
@@ -32,10 +32,15 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
             method: 'GET',
             bodyType: 'json',
             timeout: 30000,
+            logEnabled: true,
+            ignoreSsl: true,
+            apiType: '',
             params: [],
             headers: [],
             formData: [],
             ...d,
+            logEnabled: d.logEnabled !== false,
+            ignoreSsl: d.ignoreSsl !== false,
             body: typeof d.body === 'object' ? JSON.stringify(d.body, null, 2) : (d.body || '')
         });
     }, [data, form]);
@@ -127,6 +132,29 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
                     >
                         <Input placeholder="status == 200 && body.code == 0" />
                     </Form.Item>
+                    <Form.Item
+                        label="接口标识"
+                        name="apiType"
+                        tooltip="写入三方日志的 apiType；留空则使用节点 ID"
+                    >
+                        <Input placeholder="如 GET_TOKEN / START_TASK" />
+                    </Form.Item>
+                    <Form.Item
+                        label="开启日志"
+                        name="logEnabled"
+                        valuePropName="checked"
+                        tooltip="关闭后该节点的第三方 HTTP 调用不会写入三方日志"
+                    >
+                        <Switch />
+                    </Form.Item>
+                    <Form.Item
+                        label="忽略 SSL"
+                        name="ignoreSsl"
+                        valuePropName="checked"
+                        tooltip="自签名/内网 HTTPS 时开启：跳过证书与主机名校验（不安全，仅受控环境使用）"
+                    >
+                        <Switch />
+                    </Form.Item>
                 </div>
             )
         },
@@ -196,7 +224,7 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
                 layout="vertical"
                 onValuesChange={handleValuesChange}
                 style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-                initialValues={{ method: 'GET', bodyType: 'json', timeout: 30000 }}
+                initialValues={{ method: 'GET', bodyType: 'json', timeout: 30000, logEnabled: true }}
             >
                 <Tabs
                     items={items}

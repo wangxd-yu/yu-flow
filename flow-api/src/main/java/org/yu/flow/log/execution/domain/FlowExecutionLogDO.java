@@ -32,9 +32,11 @@ public class FlowExecutionLogDO {
     private String serviceType;
     private String method;
 
+    @Basic(fetch = FetchType.LAZY)
     @Column(columnDefinition = "LONGTEXT")
     private String requestParams;
 
+    @Basic(fetch = FetchType.LAZY)
     @Column(columnDefinition = "LONGTEXT")
     private String responseBody;
 
@@ -45,6 +47,7 @@ public class FlowExecutionLogDO {
 
     private Long costTimeMs;
 
+    @Basic(fetch = FetchType.LAZY)
     @Column(columnDefinition = "LONGTEXT")
     private String traceData;
 

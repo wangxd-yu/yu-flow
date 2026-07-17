@@ -8,9 +8,13 @@ import CodeMirror from '@uiw/react-codemirror';
 import { sql } from '@codemirror/lang-sql';
 import { json } from '@codemirror/lang-json';
 import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
+import { java } from '@codemirror/lang-java';
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { createMacroCompletionExtension } from './MacroCompletion';
+
+export type CodeEditorLanguage = 'json' | 'sql' | 'javascript' | 'python' | 'java' | 'text';
 
 export interface CodeEditorProps {
     /** 编辑器内容 */
@@ -18,7 +22,7 @@ export interface CodeEditorProps {
     /** 内容变化回调 */
     onChange: (val: string) => void;
     /** 语言类型，决定语法高亮扩展 */
-    language?: 'json' | 'sql' | 'javascript' | 'text';
+    language?: CodeEditorLanguage;
     /** 固定高度，例如 '200px'、'100%' */
     height?: string;
     /** 最大高度（内嵌画布时使用），例如 '300px' */
@@ -56,6 +60,11 @@ function getLanguageExtension(language?: string): Extension[] {
             return [json()];
         case 'javascript':
             return [javascript()];
+        case 'python':
+            return [python()];
+        case 'java':
+            // Groovy / Aviator / SpEL 等类 Java 语法共用
+            return [java()];
         case 'text':
         default:
             return [];
@@ -63,10 +72,22 @@ function getLanguageExtension(language?: string): Extension[] {
 }
 
 /**
+ * 将 Evaluate / If 节点的语言名映射为 CodeEditor language。
+ * JavaScript → javascript；Python → python；Groovy/Aviator/SpEL → java。
+ */
+export function mapExpressionLanguage(lang?: string): CodeEditorLanguage {
+    const key = (lang || '').trim().toLowerCase();
+    if (key === 'javascript' || key === 'js') return 'javascript';
+    if (key === 'python' || key === 'py') return 'python';
+    if (key === 'groovy' || key === 'java' || key === 'aviator' || key === 'spel') return 'java';
+    return 'text';
+}
+
+/**
  * 通用 CodeEditor 组件
  *
  * 功能：
- * - 动态语言高亮 (sql / json / javascript / text)
+ * - 动态语言高亮 (sql / json / javascript / python / java / text)
  * - 亮/暗主题切换
  * - 边框样式与 Ant Design Input 对齐
  * - 支持固定高度或 maxHeight 滚动

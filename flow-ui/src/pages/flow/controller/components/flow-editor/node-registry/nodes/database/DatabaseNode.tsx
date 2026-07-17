@@ -12,9 +12,16 @@ import { useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme }
 import { useNodeVariables, NodeVariable } from '../../shared/useNodeVariables';
 import { DynamicVariableList } from '../../shared/DynamicVariableList';
 import {
-    BaseExpressionNode,
     HEADER_HEIGHT, ROW_HEIGHT, VAR_PADDING, COND_PADDING, MIN_WIDTH, MIN_QUERY_HEIGHT,
 } from '../../shared/BaseExpressionNode';
+import {
+    PAYLOAD_PORT_Y,
+    ensurePayloadPort,
+    usePayloadEntryConnection,
+    hasPayloadInput,
+    PayloadEntryChrome,
+    PayloadBadge,
+} from '../../shared/usePayloadEntryPort';
 
 const { Text } = Typography;
 
@@ -37,6 +44,7 @@ const FT_RESULT_Y = 12;
 
 export const DATABASE_LAYOUT = {
     headerHeight: HEADER_HEIGHT, footerHeight: FOOTER_HEIGHT, width: MIN_WIDTH,
+    payloadPortY: PAYLOAD_PORT_Y,
     get totalHeight() { return HEADER_HEIGHT + DATASOURCE_ROW_HEIGHT + ROW_HEIGHT + VAR_PADDING + MIN_QUERY_HEIGHT + COND_PADDING + FOOTER_HEIGHT; },
     get footerTop() { return this.totalHeight - FOOTER_HEIGHT; },
     get outPortY() { return this.footerTop + FT_RESULT_Y; },
@@ -115,17 +123,20 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
         handleDragStart,
     } = useNodeVariables(node, { varPortY, rowHeight: ROW_HEIGHT });
 
-    // ── 端口同步 (out) ──
+    usePayloadEntryConnection(node);
+    const hasPayload = hasPayloadInput(data);
+
+    // ── 端口同步 (in:payload + out) ──
     React.useEffect(() => {
         const ports = node.getPorts();
         const existing = new Set(ports.map((p) => p.id));
 
-        // 移除旧的 in 端口 (如果存在)
+        // 历史控制流 in 移除；总入口用 in:payload
         if (existing.has('in')) {
             node.removePort('in');
         }
+        ensurePayloadPort(node, PAYLOAD_PORT_Y);
 
-        // 2. 确保 out 端口存在 (放到右下角)
         const s = node.getSize();
         const ft = s.height - FOOTER_HEIGHT;
         const outY = ft + FT_RESULT_Y;
@@ -199,28 +210,30 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
 
     return (
         <NodeWrapper node={node} selected={selected} themeColor={borderColor} outlineCss={outlineCss} backgroundColor={themeObj.bodyBg}>
-            {/* Header */}
-            <NodeHeader icon={ICONS.database} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
-                onTitleChange={handleTitleChange}
-                extra={
-                    <Space size={8}>
-                        {sqlType === 'SELECT' && (
-                            <Dropdown menu={returnTypeMenu} trigger={['click']}>
+            <PayloadEntryChrome hasPayload={hasPayload} primaryColor={themeObj.primary}>
+                <NodeHeader icon={ICONS.database} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
+                    onTitleChange={handleTitleChange}
+                    extra={
+                        <Space size={8}>
+                            {hasPayload && <PayloadBadge color={themeObj.primary} />}
+                            {sqlType === 'SELECT' && (
+                                <Dropdown menu={returnTypeMenu} trigger={['click']}>
+                                    <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <Text style={{ fontSize: 11, color: themeObj.primary }}>{returnType}</Text>
+                                        <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                                    </div>
+                                </Dropdown>
+                            )}
+                            <Dropdown menu={sqlTypeMenu} trigger={['click']}>
                                 <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{returnType}</Text>
+                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{sqlType}</Text>
                                     <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
                                 </div>
                             </Dropdown>
-                        )}
-                        <Dropdown menu={sqlTypeMenu} trigger={['click']}>
-                            <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Text style={{ fontSize: 11, color: themeObj.primary }}>{sqlType}</Text>
-                                <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
-                            </div>
-                        </Dropdown>
-                    </Space>
-                }
-            />
+                        </Space>
+                    }
+                />
+            </PayloadEntryChrome>
 
             {/* Data Source Selector */}
             <div style={{

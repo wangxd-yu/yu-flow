@@ -156,7 +156,29 @@ public class FlowEngine {
      */
     @SuppressWarnings("unchecked")
     public <T> T execute(String flowJson, Map<String, Object> args, boolean traceEnabled) throws JsonProcessingException {
-        return execute(flowJson, args, traceEnabled, null);
+        return execute(flowJson, args, traceEnabled, null, null, null, null);
+    }
+
+    /**
+     * 执行流程（支持全链路追踪 + 调用来源标记，供三方日志使用）
+     *
+     * @param invokeSource 调用来源：API / TASK / DEBUG
+     * @param sourceRef    来源关联 ID（apiId / taskId）
+     * @param sourceName   来源名称（接口名 / 任务名）
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T execute(String flowJson, Map<String, Object> args, boolean traceEnabled,
+                         String invokeSource, String sourceRef, String sourceName) throws JsonProcessingException {
+        return execute(flowJson, args, traceEnabled, null, invokeSource, sourceRef, sourceName);
+    }
+
+    /**
+     * 兼容旧调用：仅传 sourceRef
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T execute(String flowJson, Map<String, Object> args, boolean traceEnabled,
+                         String invokeSource, String sourceRef) throws JsonProcessingException {
+        return execute(flowJson, args, traceEnabled, null, invokeSource, sourceRef, null);
     }
 
     /**
@@ -173,7 +195,17 @@ public class FlowEngine {
     @SuppressWarnings("unchecked")
     public <T> T executeWithDebugSession(String flowJson, Map<String, Object> args,
                                           DebugSession debugSession) throws JsonProcessingException {
-        return execute(flowJson, args, true, debugSession);
+        return executeWithDebugSession(flowJson, args, debugSession, null, null);
+    }
+
+    /**
+     * 交互式调试，并带上来源关联信息（便于三方日志定位具体接口/任务）
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T executeWithDebugSession(String flowJson, Map<String, Object> args,
+                                          DebugSession debugSession,
+                                          String sourceRef, String sourceName) throws JsonProcessingException {
+        return execute(flowJson, args, true, debugSession, "DEBUG", sourceRef, sourceName);
     }
 
     /**
@@ -181,7 +213,8 @@ public class FlowEngine {
      */
     @SuppressWarnings("unchecked")
     private <T> T execute(String flowJson, Map<String, Object> args,
-                          boolean traceEnabled, DebugSession debugSession) throws JsonProcessingException {
+                          boolean traceEnabled, DebugSession debugSession,
+                          String invokeSource, String sourceRef, String sourceName) throws JsonProcessingException {
         FlowDefinition flowDefinition = parser.parse(flowJson); // 解析时保存流程定义
 
         // 传递 traceEnabled 标记到上下文
@@ -192,9 +225,18 @@ public class FlowEngine {
             context.setMaxSteps(maxSteps);
         }
 
-        // [交互式调试] 将调试会话关联到执行上下文
+        // [交互式调试] 将调试会话关联到执行上下文；调试模式强制标记 DEBUG
         if (debugSession != null) {
             context.setDebugSession(debugSession);
+            context.setInvokeSource("DEBUG");
+        } else if (invokeSource != null && !invokeSource.isBlank()) {
+            context.setInvokeSource(invokeSource);
+        }
+        if (sourceRef != null && !sourceRef.isBlank()) {
+            context.setSourceRef(sourceRef);
+        }
+        if (sourceName != null && !sourceName.isBlank()) {
+            context.setSourceName(sourceName);
         }
 
         // 构建父节点映射（用于多父节点汇聚）
@@ -280,7 +322,7 @@ public class FlowEngine {
                     FlowTrace trace = context.getFlowTrace();
                     trace.setEndTime(System.currentTimeMillis());
                     trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
-                    trace.setStatus("success");
+                    applyTraceStatusFromStepLogs(trace);
                     trace.setGlobalOutputs(rr);
                     return (T) trace;
                 }
@@ -291,7 +333,7 @@ public class FlowEngine {
                 FlowTrace trace = context.getFlowTrace();
                 trace.setEndTime(System.currentTimeMillis());
                 trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
-                trace.setStatus("success");
+                applyTraceStatusFromStepLogs(trace);
                 trace.setGlobalOutputs(context.getOutput());
                 return (T) trace;
             }
@@ -451,8 +493,8 @@ public class FlowEngine {
         // 在节点业务逻辑执行前检查断点，若命中则挂起引擎线程等待前端指令。
         DebugSession debugSession = context.getDebugSession();
         if (debugSession != null && debugSession.getStatus() != DebugSession.Status.CANCELLED) {
-            // 传入当前变量的深拷贝快照，供前端查看和修改
-            Map<String, Object> varSnapshot = context.copy(true).getVar();
+            // 传入可序列化变量快照（剥离 LoopBarrier），供前端查看和修改
+            Map<String, Object> varSnapshot = context.snapshotVarsForTrace();
             Map<String, Object> variableUpdates = debugSession.checkAndSuspend(
                     step.getId(), step.getName(), varSnapshot);
 
@@ -479,8 +521,8 @@ public class FlowEngine {
                 .setNodeType(step.getType())
                 .setStartTime(new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new Date(startTime)))
                 .setStatus("running")
-                // 快照：节点执行前的上下文变量
-                .setInputs(context.copy(true).getVar());
+                // 快照：节点执行前的上下文变量（可 JSON 序列化）
+                .setInputs(context.snapshotVarsForTrace());
             context.addExecutionLog(traceLog);
         }
 
@@ -499,9 +541,15 @@ public class FlowEngine {
             nextPort = result;
 
             if (traceLog != null) {
-                traceLog.setStatus("success");
-                // 快照：节点执行后的上下文变量（也可以只记录该节点产生的变量，但全量更方便调试器回溯）
-                traceLog.setOutputs(context.copy(true).getVar());
+                // HttpRequest 等节点走 fail 口时并不抛异常，但业务上应记为 error
+                if (PortNames.FAIL.equals(nextPort)) {
+                    traceLog.setStatus("error");
+                    traceLog.setError(resolveFailPortError(step, context));
+                } else {
+                    traceLog.setStatus("success");
+                }
+                // 快照：节点执行后的上下文变量（可 JSON 序列化，剔除 Barrier）
+                traceLog.setOutputs(context.snapshotVarsForTrace());
             }
         } catch (RetryStepException e) {
             Step retryStep = findStepById(e.getStepId(), flowDefinition);
@@ -528,6 +576,57 @@ public class FlowEngine {
 
         log.info("步骤后变量: {}", context.getVar());
         return nextPort;
+    }
+
+    /**
+     * 从节点输出中提取 fail 口错误信息（如 HttpRequest 的 error / status）。
+     */
+    @SuppressWarnings("unchecked")
+    private String resolveFailPortError(Step step, ExecutionContext context) {
+        if (step == null || context == null || context.getVar() == null) {
+            return "节点走 fail 分支";
+        }
+        Object nodeOut = context.getVar().get(step.getId());
+        if (nodeOut instanceof Map) {
+            Map<String, Object> map = (Map<String, Object>) nodeOut;
+            Object err = map.get("error");
+            if (err != null && !String.valueOf(err).isBlank()) {
+                return String.valueOf(err);
+            }
+            Object status = map.get("status");
+            if (status != null) {
+                return "HTTP " + status;
+            }
+        }
+        return "节点走 fail 分支";
+    }
+
+    /** 若任一步骤日志为 error，则整条 Trace 记为 error */
+    private void applyTraceStatusFromStepLogs(FlowTrace trace) {
+        if (trace == null) {
+            return;
+        }
+        List<ExecutionLog> logs = trace.getStepLogs();
+        if (logs == null || logs.isEmpty()) {
+            if (trace.getStatus() == null) {
+                trace.setStatus("success");
+            }
+            return;
+        }
+        for (ExecutionLog stepLog : logs) {
+            if (stepLog != null && "error".equalsIgnoreCase(stepLog.getStatus())) {
+                trace.setStatus("error");
+                if (trace.getErrorMsg() == null || trace.getErrorMsg().isBlank()) {
+                    trace.setErrorMsg(stepLog.getError() != null
+                            ? stepLog.getError()
+                            : ("节点失败: " + stepLog.getNodeId()));
+                }
+                return;
+            }
+        }
+        if (trace.getStatus() == null || "success".equalsIgnoreCase(trace.getStatus())) {
+            trace.setStatus("success");
+        }
     }
 
     /**

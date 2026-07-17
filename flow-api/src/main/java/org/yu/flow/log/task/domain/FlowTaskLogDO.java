@@ -52,7 +52,8 @@ public class FlowTaskLogDO {
     @Column(columnDefinition = "TEXT")
     private String errorMsg;
 
-    /** FlowTrace JSON 快照（logEnabled=true 时记录） */
+    /** FlowTrace JSON 快照（logEnabled=true 时记录）；列表查询勿 SELECT 此字段 */
+    @Basic(fetch = FetchType.LAZY)
     @Column(columnDefinition = "LONGTEXT")
     private String traceData;
 

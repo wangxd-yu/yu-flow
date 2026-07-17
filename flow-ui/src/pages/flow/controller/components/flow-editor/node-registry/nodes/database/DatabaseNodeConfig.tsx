@@ -129,6 +129,15 @@ const DatabaseNodeConfig: React.FC<DatabaseNodeConfigProps> = ({ node }) => {
                             <Radio.Button value="DELETE">DELETE</Radio.Button>
                         </Radio.Group>
                     </Form.Item>
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.sqlType !== curr.sqlType}>
+                        {({ getFieldValue }) =>
+                            getFieldValue('sqlType') === 'INSERT' ? (
+                                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
+                                    {'批量插入：inputs 增加名为 rows 的 List<Map>，SQL 写单行模板，如 VALUES (${col1}, ${col2})'}
+                                </Text>
+                            ) : null
+                        }
+                    </Form.Item>
 
                     <Form.Item noStyle shouldUpdate={(prev, curr) => prev.sqlType !== curr.sqlType}>
                         {({ getFieldValue }) =>

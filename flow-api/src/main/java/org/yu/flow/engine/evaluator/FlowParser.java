@@ -251,7 +251,59 @@ public class FlowParser {
                 }
                 if (varName != null && !varName.isEmpty()) {
                     autoFillExtractPath(inputsNode, varName, sourceCell, sourcePort);
+                    // Record：同步 schema / __fields，与 Evaluate inputs 回填保持一致
+                    if ("record".equals(
+                            targetNode.has("type") ? targetNode.get("type").asText() : "")) {
+                        JsonNode filled = inputsNode.get(varName);
+                        String path = null;
+                        if (filled != null && filled.isObject() && filled.has("extractPath")) {
+                            path = filled.get("extractPath").asText(null);
+                        } else if (filled != null && filled.isTextual()) {
+                            path = filled.asText();
+                        }
+                        if (path != null) {
+                            JsonNode schemaNode = targetNode.get("schema");
+                            if (schemaNode == null || !schemaNode.isObject()) {
+                                schemaNode = objectMapper.createObjectNode();
+                                targetNode.set("schema", schemaNode);
+                            }
+                            ((ObjectNode) schemaNode).put(varName, path);
+                            syncRecordFieldValue(targetNode, varId, ((ObjectNode) schemaNode).get(varName));
+                        }
+                    }
                 }
+            }
+
+        } else if (targetPort.startsWith("in:field:")) {
+            // ── in:field:xxx Record 字段端口：按 __fields[].id 匹配 key，回填 schema ──
+            String fieldId = targetPort.substring("in:field:".length());
+            ObjectNode targetNode = nodeMap.get(targetCell);
+            if (targetNode != null && "record".equals(
+                    targetNode.has("type") ? targetNode.get("type").asText() : "")) {
+                String fieldKey = findRecordFieldKey(targetNode, fieldId);
+                if (fieldKey != null && !fieldKey.isEmpty()) {
+                    JsonNode schemaNode = targetNode.get("schema");
+                    if (schemaNode == null || !schemaNode.isObject()) {
+                        schemaNode = objectMapper.createObjectNode();
+                        targetNode.set("schema", schemaNode);
+                    }
+                    autoFillSchemaValue((ObjectNode) schemaNode, fieldKey, sourceCell, sourcePort, nodeMap);
+                    // 同步 __fields 中对应行的 value，便于前端回显
+                    syncRecordFieldValue(targetNode, fieldId, ((ObjectNode) schemaNode).get(fieldKey));
+                }
+            }
+
+        } else if ("in:payload".equals(targetPort)) {
+            // ── 总入口：整包写入 inputs.payload（Record / Evaluate / Database / HttpRequest / If 等）──
+            // 无命名传参时连线标明上下游数据流；Record 字段还可相对 payload 解析
+            ObjectNode targetNode = nodeMap.get(targetCell);
+            if (targetNode != null) {
+                JsonNode inputsNode = targetNode.get("inputs");
+                if (inputsNode == null || !inputsNode.isObject()) {
+                    inputsNode = objectMapper.createObjectNode();
+                    targetNode.set("inputs", inputsNode);
+                }
+                autoFillExtractPath(inputsNode, "payload", sourceCell, sourcePort, nodeMap);
             }
 
         } else if (targetPort.startsWith("in:arg:")) {
@@ -365,6 +417,92 @@ public class FlowParser {
                 ((ObjectNode) inputDef).put("extractPath", userPath);
             } else {
                 ((ObjectNode) inputsNode).put(fieldKey, userPath);
+            }
+        }
+    }
+
+    /**
+     * 从 Record 节点的 __fields 或 schema 中，按字段 id 解析出 schema key。
+     */
+    private String findRecordFieldKey(ObjectNode recordNode, String fieldId) {
+        JsonNode fieldsNode = recordNode.get("__fields");
+        if (fieldsNode != null && fieldsNode.isArray()) {
+            for (JsonNode field : fieldsNode) {
+                if (field != null && field.isObject()
+                        && field.has("id") && fieldId.equals(field.get("id").asText())) {
+                    if (field.has("key") && !field.get("key").asText().trim().isEmpty()) {
+                        return field.get("key").asText().trim();
+                    }
+                }
+            }
+        }
+        // 兜底：schema 值为带 id 的对象
+        JsonNode schemaNode = recordNode.get("schema");
+        if (schemaNode != null && schemaNode.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> it = schemaNode.fields();
+            while (it.hasNext()) {
+                Map.Entry<String, JsonNode> e = it.next();
+                JsonNode val = e.getValue();
+                if (val != null && val.isObject() && val.has("id")
+                        && fieldId.equals(val.get("id").asText())) {
+                    return e.getKey();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 回填 Record.schema[fieldKey]：规则对齐 autoFillExtractPath。
+     */
+    private void autoFillSchemaValue(ObjectNode schemaNode, String fieldKey,
+                                     String sourceCell, String sourcePort,
+                                     Map<String, ObjectNode> nodeMap) {
+        JsonNode existing = schemaNode.get(fieldKey);
+        String userPath = "";
+        if (existing != null) {
+            if (existing.isTextual()) {
+                userPath = existing.asText().trim();
+            } else if (existing.isObject() && existing.has("extractPath")) {
+                userPath = existing.get("extractPath").asText("").trim();
+            } else {
+                return; // 非路径配置（对象字面量等）不覆盖
+            }
+        }
+
+        String prefix = "$." + sourceCell + "." + sourcePort;
+        String resolved = userPath;
+
+        if (userPath.startsWith("$.")) {
+            String afterDollarDot = userPath.substring(2);
+            String firstSegment = afterDollarDot.contains(".")
+                    ? afterDollarDot.substring(0, afterDollarDot.indexOf('.'))
+                    : afterDollarDot;
+            boolean isAbsolute = nodeMap != null && nodeMap.containsKey(firstSegment);
+            if (!isAbsolute) {
+                resolved = prefix + "." + afterDollarDot;
+            }
+        } else if (userPath.isEmpty() || "$".equals(userPath)) {
+            resolved = prefix;
+        } else {
+            return; // 已有字面量，不覆盖
+        }
+
+        if (!resolved.equals(userPath) || existing == null) {
+            schemaNode.put(fieldKey, resolved);
+        }
+    }
+
+    /** 同步 __fields 行的 value，与 schema 保持一致 */
+    private void syncRecordFieldValue(ObjectNode recordNode, String fieldId, JsonNode schemaValue) {
+        if (schemaValue == null || !schemaValue.isTextual()) return;
+        JsonNode fieldsNode = recordNode.get("__fields");
+        if (fieldsNode == null || !fieldsNode.isArray()) return;
+        for (JsonNode field : fieldsNode) {
+            if (field != null && field.isObject()
+                    && field.has("id") && fieldId.equals(field.get("id").asText())) {
+                ((ObjectNode) field).put("value", schemaValue.asText());
+                break;
             }
         }
     }

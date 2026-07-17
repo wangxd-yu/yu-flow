@@ -30,17 +30,38 @@ public class FlowTaskLogListDTO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date createTime;
 
+    public FlowTaskLogListDTO() {
+    }
+
+    /**
+     * JPA Criteria {@code cb.construct} 专用构造器。
+     * hasTrace 由 SQL {@code CASE WHEN trace_data IS NOT NULL} 计算，勿加载 LOB。
+     */
+    public FlowTaskLogListDTO(String id, String taskId, String taskName, String triggerType,
+                              String status, Long costTimeMs, Boolean hasTrace, Date createTime) {
+        this.id = id;
+        this.taskId = taskId;
+        this.taskName = taskName;
+        this.triggerType = triggerType;
+        this.status = status;
+        this.costTimeMs = costTimeMs;
+        this.hasTrace = hasTrace;
+        this.createTime = createTime;
+    }
+
+    /** @deprecated 列表查询请走投影，避免加载 LONGTEXT */
+    @Deprecated
     public static FlowTaskLogListDTO fromDO(FlowTaskLogDO entity) {
         if (entity == null) return null;
-        FlowTaskLogListDTO dto = new FlowTaskLogListDTO();
-        dto.setId(entity.getId());
-        dto.setTaskId(entity.getTaskId());
-        dto.setTaskName(entity.getTaskName());
-        dto.setTriggerType(entity.getTriggerType());
-        dto.setStatus(entity.getStatus());
-        dto.setCostTimeMs(entity.getCostTimeMs());
-        dto.setHasTrace(entity.getTraceData() != null && !entity.getTraceData().isEmpty());
-        dto.setCreateTime(entity.getCreateTime());
-        return dto;
+        return new FlowTaskLogListDTO(
+                entity.getId(),
+                entity.getTaskId(),
+                entity.getTaskName(),
+                entity.getTriggerType(),
+                entity.getStatus(),
+                entity.getCostTimeMs(),
+                entity.getTraceData() != null && !entity.getTraceData().isEmpty(),
+                entity.getCreateTime()
+        );
     }
 }

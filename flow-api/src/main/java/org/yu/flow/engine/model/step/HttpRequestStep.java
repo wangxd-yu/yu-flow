@@ -23,8 +23,10 @@ import java.util.Map;
  *   headers: 请求头
  *   body: 请求体
  *   timeout: 超时时间 (毫秒)
+ *   ignoreSsl: 是否忽略 SSL 证书校验（自签名 HTTPS）
  *
  * 输出 Map: { "status": 200, "body": {...}, "headers": {...} }
+ * 失败时: { "status": -1, "error": "...", "timeMs": n }，出口为 fail
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -42,6 +44,26 @@ public class HttpRequestStep extends Step {
      * 示例：status == 200、status == 200 && body.code == 0
      */
     private String successCondition;
+
+    /**
+     * 是否记录三方调用日志。null 视为 true（默认开启）。
+     */
+    private Boolean logEnabled;
+
+    /**
+     * 接口标识（写入三方日志 apiType）；为空时回退节点 ID。
+     */
+    private String apiType;
+
+    /**
+     * 是否忽略 SSL 证书校验（自签名 / 内网 HTTPS）。
+     * <ul>
+     *   <li>null（未配置）→ 执行器按 true 处理，便于内网自签名</li>
+     *   <li>true → 信任全部证书并跳过主机名校验</li>
+     *   <li>false → 严格校验证书（公网正式环境请显式关闭）</li>
+     * </ul>
+     */
+    private Boolean ignoreSsl;
 
     /**
      * 兼容前端历史脏数据：headers/params 可能是 [{key,value}] 数组或 Map。

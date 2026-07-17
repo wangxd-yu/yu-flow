@@ -6,11 +6,19 @@
 
 import React from 'react';
 import { Typography, Dropdown } from 'antd';
-import CodeEditor from '../../components/CodeEditor';
+import CodeEditor, { mapExpressionLanguage } from '../../components/CodeEditor';
 import { Node } from '@antv/x6';
 import { useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme } from './useNodeSelection';
 import { useNodeVariables } from './useNodeVariables';
 import { DynamicVariableList } from './DynamicVariableList';
+import {
+    PAYLOAD_PORT_Y,
+    ensurePayloadPort,
+    usePayloadEntryConnection,
+    hasPayloadInput,
+    PayloadEntryChrome,
+    PayloadBadge,
+} from './usePayloadEntryPort';
 
 const { Text } = Typography;
 
@@ -106,8 +114,13 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
         handleDragStart,
     } = useNodeVariables(node, { varPortY, rowHeight: ROW_HEIGHT });
 
+    // ── 总入口 in:payload（Header 左侧）──
+    usePayloadEntryConnection(node);
+    const hasPayload = hasPayloadInput(data);
+
     // ── 端口同步 (委托给消费方) ──
     React.useEffect(() => {
+        ensurePayloadPort(node, PAYLOAD_PORT_Y);
         onPortSync?.(node, node.getSize(), variables);
     }, [variables, node, size]);
 
@@ -144,23 +157,27 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
         onClick: ({ key }: any) => node.setData({ ...node.getData(), language: key }, { overwrite: true }),
     };
 
-    /** 将节点 language 映射为 CodeEditor 的 language prop */
-    const editorLanguage = (language === 'JavaScript' || language === 'js') ? 'javascript' : 'text';
+    const editorLanguage = mapExpressionLanguage(language);
 
     return (
         <NodeWrapper node={node} selected={selected} themeColor={borderColor} outlineCss={outlineCss} backgroundColor={themeObj.bodyBg}>
-            {/* Header */}
-            <NodeHeader icon={titleIcon} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
-                onTitleChange={handleTitleChange}
-                extra={
-                    <Dropdown menu={langMenu} trigger={['click']}>
-                        <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Text style={{ fontSize: 11, color: themeObj.primary }}>{language}</Text>
-                            <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+            {/* Header + 总入口视觉凸起 */}
+            <PayloadEntryChrome hasPayload={hasPayload} primaryColor={themeObj.primary}>
+                <NodeHeader icon={titleIcon} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
+                    onTitleChange={handleTitleChange}
+                    extra={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {hasPayload && <PayloadBadge color={themeObj.primary} />}
+                            <Dropdown menu={langMenu} trigger={['click']}>
+                                <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{language}</Text>
+                                    <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                                </div>
+                            </Dropdown>
                         </div>
-                    </Dropdown>
-                }
-            />
+                    }
+                />
+            </PayloadEntryChrome>
 
             {/* Variables — 使用共享组件 */}
             <DynamicVariableList

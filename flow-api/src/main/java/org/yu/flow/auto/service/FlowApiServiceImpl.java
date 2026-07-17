@@ -123,7 +123,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             flowArgs.put("request", requestMap);
             flowArgs.put("pageable", allInputs.get("pageable"));
             
-            return flowEngine.execute(content, flowArgs, isLogEnabled(apiDO));
+            return flowEngine.execute(content, flowArgs, isLogEnabled(apiDO), "API",
+                    apiDO.getId(), apiDO.getName());
         });
 
         serviceStrategyMap.put("STRING", (apiDO, content, params, pageable, response, flowInputSupplier, runtimeLogContext) -> {
@@ -842,6 +843,62 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                 sqlAndParams.getSql(),
                 sqlAndParams.getParams().toArray()
         ));
+    }
+
+    @Override
+    public int executeBatchInsert(String datasource, String sqlTemplate,
+                                  List<Map<String, Object>> rows) {
+        demoModeGuard.checkSqlWrite("INSERT");
+        if (rows == null || rows.isEmpty()) {
+            return 0;
+        }
+        if (StrUtil.isBlank(sqlTemplate)) {
+            throw new IllegalArgumentException("batch insert sqlTemplate 不能为空");
+        }
+
+        final int chunkSize = 500;
+        return dynamicDataSourceService.executeInTransaction(datasource, jt -> {
+            int total = 0;
+            String preparedSql = null;
+            List<Object[]> batchArgs = new ArrayList<>(Math.min(rows.size(), chunkSize));
+
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, Object> row = rows.get(i);
+                if (row == null) {
+                    row = Collections.emptyMap();
+                }
+                SqlAndParams sp = DynamicSqlParser.parseDynamicSqlToPrepared(sqlTemplate, row);
+                if (preparedSql == null) {
+                    preparedSql = sp.getSql();
+                } else if (!preparedSql.equals(sp.getSql())) {
+                    // 参数缺失会导致动态 SQL 变形；先刷掉已攒批次再换 SQL
+                    if (!batchArgs.isEmpty()) {
+                        total += sumBatchUpdate(jt.batchUpdate(preparedSql, batchArgs));
+                        batchArgs = new ArrayList<>(chunkSize);
+                    }
+                    preparedSql = sp.getSql();
+                }
+                batchArgs.add(sp.getParams().toArray());
+
+                if (batchArgs.size() >= chunkSize || i == rows.size() - 1) {
+                    total += sumBatchUpdate(jt.batchUpdate(preparedSql, batchArgs));
+                    batchArgs = new ArrayList<>(chunkSize);
+                }
+            }
+            return total;
+        });
+    }
+
+    private static int sumBatchUpdate(int[] counts) {
+        if (counts == null || counts.length == 0) {
+            return 0;
+        }
+        int sum = 0;
+        for (int c : counts) {
+            // SUCCESS_NO_INFO = -2：多数驱动表示执行成功但行数未知
+            sum += (c >= 0) ? c : 1;
+        }
+        return sum;
     }
 
     @Override

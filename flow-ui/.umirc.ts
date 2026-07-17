@@ -111,7 +111,7 @@ export default defineConfig({
           component: './Log/LoginLog',
         },
         {
-          name: '调用大盘',
+          name: '接口日志',
           path: '/log/execution',
           component: './Log/ExecutionLog',
         },
@@ -119,6 +119,11 @@ export default defineConfig({
           name: '任务日志',
           path: '/log/task',
           component: './Log/TaskLog',
+        },
+        {
+          name: '三方日志',
+          path: '/log/third',
+          component: './Log/ThirdLog',
         },
       ],
     },

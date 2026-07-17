@@ -7,7 +7,9 @@ import React from 'react';
 import { Divider, Input, Select, Typography } from 'antd';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { EvaluateNodeComponent, EVALUATE_LAYOUT } from './EvaluateNodeComponent';
-import CodeEditor from '../../../components/CodeEditor';
+import CodeEditor, { mapExpressionLanguage } from '../../../components/CodeEditor';
+import { PAYLOAD_PORT_ID, PAYLOAD_PORT_Y } from '../../shared/usePayloadEntryPort';
+import type { DslPort } from '../../../types';
 
 const { Text } = Typography;
 
@@ -22,7 +24,7 @@ const LANGUAGE_OPTIONS = [
 // ── 属性面板编辑器 ──
 function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
     const lang = data.language || 'JavaScript';
-    const editorLanguage = (lang === 'JavaScript' || lang === 'js') ? 'javascript' : 'text';
+    const editorLanguage = mapExpressionLanguage(lang);
 
     return (
         <div style={{ marginTop: 12 }}>
@@ -72,6 +74,34 @@ function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
     );
 }
 
+const buildEvaluatePortItems = (ports: DslPort[]) => {
+    const seen = new Set<string>();
+    const items: any[] = [];
+    for (const p of ports) {
+        if (seen.has(p.id) || p.id === 'in') continue;
+        seen.add(p.id);
+        const isOut = p.id === 'out' || p.id.startsWith('out');
+        const item: any = {
+            id: p.id,
+            group: p.group || (isOut ? 'absolute-out-solid' : 'absolute-in-solid'),
+        };
+        if (p.id === 'out') {
+            item.args = { x: EVALUATE_LAYOUT.width, y: EVALUATE_LAYOUT.outPortY, dx: 0 };
+        } else if (p.id === PAYLOAD_PORT_ID) {
+            item.args = { x: 0, y: PAYLOAD_PORT_Y, dx: 0 };
+        }
+        items.push(item);
+    }
+    if (!seen.has(PAYLOAD_PORT_ID)) {
+        items.push({
+            id: PAYLOAD_PORT_ID,
+            group: 'absolute-in-solid',
+            args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
+        });
+    }
+    return items;
+};
+
 // ── 注册配置 ──
 export const evaluateNodeRegistration: NodeRegistration = {
     type: 'evaluate',
@@ -88,6 +118,11 @@ export const evaluateNodeRegistration: NodeRegistration = {
         reactPorts: {
             items: [
                 {
+                    id: PAYLOAD_PORT_ID,
+                    group: 'absolute-in-solid',
+                    args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
+                },
+                {
                     id: 'out',
                     group: 'absolute-out-solid',
                     args: { x: EVALUATE_LAYOUT.width, y: EVALUATE_LAYOUT.outPortY, dx: 0 },
@@ -97,13 +132,17 @@ export const evaluateNodeRegistration: NodeRegistration = {
     },
 
     defaults: {
-        ports: [{ id: 'out' }],
+        ports: [
+            { id: PAYLOAD_PORT_ID, group: 'absolute-in-solid' },
+            { id: 'out' },
+        ],
         data: { expression: '', language: 'JavaScript', inputs: {} },
         size: { width: EVALUATE_LAYOUT.width, height: EVALUATE_LAYOUT.totalHeight },
     },
 
     importConfig: {
-        portMode: 'standard',
+        portMode: 'manual',
+        buildPortItems: buildEvaluatePortItems,
     },
 
     buildLabel: (data) =>

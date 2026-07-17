@@ -2,10 +2,12 @@ package org.yu.flow.engine.evaluator;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.yu.flow.exception.FlowException;
 import org.yu.flow.engine.debug.DebugSession;
-import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.evaluator.executor.ForStepExecutor;
+import org.yu.flow.engine.model.ContextKeys;
 import org.yu.flow.engine.model.ExecutionLog;
+import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.exception.FlowException;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -49,6 +51,21 @@ public class ExecutionContext {
      * 使得并行分支中的断点检测仍然有效。</p>
      */
     private DebugSession debugSession;
+
+    /**
+     * 调用来源：API / TASK / DEBUG / OTHER
+     */
+    private String invokeSource;
+
+    /**
+     * 来源关联 ID（apiId / taskId 等）
+     */
+    private String sourceRef;
+
+    /**
+     * 来源名称（接口名 / 任务名）
+     */
+    private String sourceName;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -124,6 +141,83 @@ public class ExecutionContext {
         return var;
     }
 
+    /**
+     * 生成可安全 JSON 序列化的变量快照（供 Trace / Debug 面板使用）。
+     * <p>会剥离 {@link ForStepExecutor.LoopBarrier} 等内部运行时对象，
+     * 避免 {@code LoopBarrier.mainContext → var → barrier} 循环引用导致 StackOverflow。</p>
+     * <p>注意：分支执行仍应使用 {@link #copy(boolean)}，其中 Barrier 保持引用共享；
+     * 本方法仅用于对外输出，不可替代 copy。</p>
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> snapshotVarsForTrace() {
+        Object snap = snapshotValueForTrace(var);
+        if (snap instanceof Map) {
+            return (Map<String, Object>) snap;
+        }
+        return new LinkedHashMap<>();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object snapshotValueForTrace(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof ForStepExecutor.LoopBarrier) {
+            return summarizeBarrier((ForStepExecutor.LoopBarrier) value);
+        }
+        if (value instanceof Map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) value).entrySet()) {
+                String key = e.getKey() == null ? "null" : e.getKey().toString();
+                Object v = e.getValue();
+                if (key.startsWith(ContextKeys.BARRIER_PREFIX) || v instanceof ForStepExecutor.LoopBarrier) {
+                    out.put(key, v instanceof ForStepExecutor.LoopBarrier
+                            ? summarizeBarrier((ForStepExecutor.LoopBarrier) v)
+                            : String.valueOf(v));
+                } else {
+                    out.put(key, snapshotValueForTrace(v));
+                }
+            }
+            return out;
+        }
+        if (value instanceof Collection) {
+            List<Object> list = new ArrayList<>();
+            for (Object item : (Collection<?>) value) {
+                list.add(snapshotValueForTrace(item));
+            }
+            return list;
+        }
+        if (value instanceof Object[]) {
+            List<Object> list = new ArrayList<>();
+            for (Object item : (Object[]) value) {
+                list.add(snapshotValueForTrace(item));
+            }
+            return list;
+        }
+        // AtomicInteger / CompletableFuture 等不宜直接序列化
+        if (value instanceof AtomicInteger) {
+            return ((AtomicInteger) value).get();
+        }
+        String cn = value.getClass().getName();
+        if (cn.startsWith("java.util.concurrent.")
+                || cn.startsWith("org.yu.flow.engine.evaluator.ExecutionContext")) {
+            return value.getClass().getSimpleName() + "@" + Integer.toHexString(System.identityHashCode(value));
+        }
+        return value;
+    }
+
+    private static Map<String, Object> summarizeBarrier(ForStepExecutor.LoopBarrier barrier) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("_type", "LoopBarrier");
+        summary.put("forStepId", barrier.forStepId);
+        summary.put("collectStepId", barrier.collectStepId);
+        summary.put("totalCount", barrier.totalCount);
+        summary.put("arrived", barrier.counter.get());
+        summary.put("hasError", barrier.hasError);
+        summary.put("completed", barrier.completionFuture.isDone());
+        return summary;
+    }
+
     // ========== 缓存操作 (Transient Cache) ==========
     public void putCache(String key, Object value) {
         if (!isReadOnly) {
@@ -184,6 +278,9 @@ public class ExecutionContext {
         copy.maxSteps = this.maxSteps;
         // 共享同一个调试会话（并行分支的断点检测仍然有效）
         copy.debugSession = this.debugSession;
+        copy.invokeSource = this.invokeSource;
+        copy.sourceRef = this.sourceRef;
+        copy.sourceName = this.sourceName;
         return copy;
     }
 
@@ -193,7 +290,34 @@ public class ExecutionContext {
         if (this.traceEnabled) {
             readOnlyCtx.flowTrace = this.flowTrace;
         }
+        readOnlyCtx.invokeSource = this.invokeSource;
+        readOnlyCtx.sourceRef = this.sourceRef;
+        readOnlyCtx.sourceName = this.sourceName;
         return readOnlyCtx;
+    }
+
+    public String getInvokeSource() {
+        return invokeSource;
+    }
+
+    public void setInvokeSource(String invokeSource) {
+        this.invokeSource = invokeSource;
+    }
+
+    public String getSourceRef() {
+        return sourceRef;
+    }
+
+    public void setSourceRef(String sourceRef) {
+        this.sourceRef = sourceRef;
+    }
+
+    public String getSourceName() {
+        return sourceName;
+    }
+
+    public void setSourceName(String sourceName) {
+        this.sourceName = sourceName;
     }
 
     public boolean hasVariable(String k) {

@@ -101,9 +101,10 @@ let _shapesReady = false;
  * 节点数据在模块导入时已自动注册，此函数只处理 X6 形状层面。
  */
 export function initNodeRegistry(): void {
-    if (_shapesReady) return;
     try {
-        registerAllShapes();
+        // force：覆盖已注册形状的 ports 默认值，避免 HMR/旧缓存仍带 reactPorts.items
+        // 导致导入时出现 Duplicated port id
+        registerAllShapes(true);
         _shapesReady = true;
     } catch (e) {
         console.error('[initNodeRegistry] 形状注册失败', e);

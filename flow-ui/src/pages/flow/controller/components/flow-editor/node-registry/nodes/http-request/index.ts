@@ -8,15 +8,16 @@ import type { NodeRegistration } from '../../types';
 import {
     HttpRequestNodeComponent,
     HTTP_REQUEST_LAYOUT,
-    HTTP_REQUEST_IN_PORT_Y,
 } from './HttpRequestNodeComponent';
+import { PAYLOAD_PORT_ID, PAYLOAD_PORT_Y } from '../../shared/usePayloadEntryPort';
 
 /** 导入时不挂 X6 端口文字（文案由 React 节点内绘制，避免 IN / success / fail 重影） */
 const buildHttpRequestPortItems = (ports: DslPort[]) => {
     const seen = new Set<string>();
     const items: any[] = [];
     for (const p of ports) {
-        if (seen.has(p.id)) continue;
+        // 历史控制流 in 丢弃，统一用 in:payload
+        if (seen.has(p.id) || p.id === 'in') continue;
         seen.add(p.id);
         const isOut = p.id === 'success' || p.id === 'fail' || p.id.startsWith('out');
         const item: any = {
@@ -24,10 +25,17 @@ const buildHttpRequestPortItems = (ports: DslPort[]) => {
             group: p.group
                 || (p.id === 'fail' ? 'absolute-out-hollow' : isOut ? 'absolute-out-solid' : 'absolute-in-solid'),
         };
-        if (p.id === 'in') {
-            item.args = { x: 0, y: HTTP_REQUEST_IN_PORT_Y, dx: 0 };
+        if (p.id === PAYLOAD_PORT_ID) {
+            item.args = { x: 0, y: PAYLOAD_PORT_Y, dx: 0 };
         }
         items.push(item);
+    }
+    if (!seen.has(PAYLOAD_PORT_ID)) {
+        items.push({
+            id: PAYLOAD_PORT_ID,
+            group: 'absolute-in-solid',
+            args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
+        });
     }
     return items;
 };
@@ -47,9 +55,9 @@ export const httpRequestNodeRegistration: NodeRegistration = {
         reactPorts: {
             items: [
                 {
-                    id: 'in',
+                    id: PAYLOAD_PORT_ID,
                     group: 'absolute-in-solid',
-                    args: { x: 0, y: HTTP_REQUEST_IN_PORT_Y, dx: 0 },
+                    args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
                 },
             ],
         },
@@ -57,7 +65,7 @@ export const httpRequestNodeRegistration: NodeRegistration = {
 
     defaults: {
         ports: [
-            { id: 'in', group: 'absolute-in-solid' },
+            { id: PAYLOAD_PORT_ID, group: 'absolute-in-solid' },
             { id: 'success', group: 'absolute-out-solid' },
             { id: 'fail', group: 'absolute-out-hollow' },
         ],
@@ -67,8 +75,12 @@ export const httpRequestNodeRegistration: NodeRegistration = {
             timeout: 10000,
             bodyType: 'json',
             successCondition: 'status == 200',
+            logEnabled: true,
+            apiType: '',
+            ignoreSsl: true,
+            inputs: {},
         },
-        size: { width: HTTP_REQUEST_LAYOUT.width, height: 280 },
+        size: { width: HTTP_REQUEST_LAYOUT.width, height: 320 },
     },
 
     importConfig: {

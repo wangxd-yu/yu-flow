@@ -64,8 +64,9 @@ public class FlowApiController {
             requestMap.put("body", parsedBody);
             args.put("request", requestMap);
 
-            // Execute flow engine in trace mode
-            FlowTrace trace = flowEngine.execute(requestDTO.getDslContent(), args, true);
+            // Execute flow engine in trace mode（调试运行标记 DEBUG，并带上来源接口信息）
+            FlowTrace trace = flowEngine.execute(requestDTO.getDslContent(), args, true, "DEBUG",
+                    requestDTO.getSourceRef(), requestDTO.getSourceName());
 
             return R.ok(trace != null ? trace : new FlowTrace());
         } catch (Exception e) {

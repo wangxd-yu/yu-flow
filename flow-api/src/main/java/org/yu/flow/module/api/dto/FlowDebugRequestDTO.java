@@ -20,5 +20,15 @@ public class FlowDebugRequestDTO {
      * <p>为空或 null 时退化为非交互式一次性运行模式（即现有的 /debug/run 行为）。</p>
      */
     private Set<String> breakpoints;
+
+    /**
+     * 调试来源关联 ID（接口 ID 或任务 ID，写入三方日志 sourceRef）
+     */
+    private String sourceRef;
+
+    /**
+     * 调试来源名称（接口名或任务名，写入三方日志 sourceName）
+     */
+    private String sourceName;
 }
 

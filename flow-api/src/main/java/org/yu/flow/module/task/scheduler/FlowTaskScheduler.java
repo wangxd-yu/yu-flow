@@ -179,7 +179,8 @@ public class FlowTaskScheduler {
             args.put("cron", latestTask.getCron());
 
             boolean logEnabled = Boolean.TRUE.equals(latestTask.getLogEnabled());
-            Object result = flowEngine.execute(latestTask.getDslContent(), args, logEnabled);
+            Object result = flowEngine.execute(latestTask.getDslContent(), args, logEnabled,
+                    "TASK", latestTask.getId(), latestTask.getName());
 
             if (logEnabled) {
                 FlowTrace trace = (result instanceof FlowTrace) ? (FlowTrace) result : null;

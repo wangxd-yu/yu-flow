@@ -115,7 +115,7 @@ export const NODE_THEMES: Record<string, NodeTheme> = {
 };
 
 export const PALETTE_MAP: Record<string, string> = {
-    '#1f1f1f': 'dark', '#1677ff': 'blue', '#52c41a': 'green', '#fa8c16': 'orange',
+    '#1f1f1f': 'dark', '#1677ff': 'blue', '#2f54eb': 'blue', '#52c41a': 'green', '#fa8c16': 'orange',
     '#f5222d': 'red', '#722ed1': 'purple', '#eb2f96': 'magenta', '#13c2c2': 'cyan',
 };
 
@@ -243,9 +243,13 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
     node, selected, themeColor, outlineCss, backgroundColor, extraStyle, children, addon,
 }) => {
     const [hovered, setHovered] = React.useState(false);
-    const isReadonly = node.model?.graph?.options?.interacting === false;
+    const graph = node.model?.graph as any;
+    // 快照回放：__readonlySnapshot；旧逻辑 interacting===false 仍兼容
+    const isReadonly =
+        !!graph?.__readonlySnapshot || graph?.options?.interacting === false;
 
     return React.createElement('div', {
+        className: isReadonly ? 'yf-snapshot-readonly' : undefined,
         onMouseEnter: () => setHovered(true),
         onMouseLeave: () => setHovered(false),
         style: {
@@ -253,7 +257,8 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
             width: '100%',
             height: '100%',
             overflow: 'visible',
-            pointerEvents: 'auto' as const, // 关键：允许捕获 hover 事件
+            // 快照模式整卡不接收指针，交给 X6 处理选中；空白处可平移/缩放
+            pointerEvents: (isReadonly ? 'none' : 'auto') as const,
         },
     },
         React.createElement(NodeToolbar, { node, selected, themeColor, visible: hovered && selected && !isReadonly }),
@@ -273,18 +278,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
                 userSelect: 'none' as const,
                 ...extraStyle,
             },
-        }, 
-            children,
-            isReadonly && React.createElement('div', {
-                style: {
-                    position: 'absolute' as const,
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    zIndex: 9999,
-                    cursor: 'not-allowed',
-                    pointerEvents: 'auto' as const,
-                }
-            })
-        ),
+        }, children),
     );
 };
 
@@ -353,6 +347,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
     }, [node, minWidth, minHeight, onResize, onResizeStart, onResizeEnd]);
 
     return React.createElement('div', {
+        className: 'yf-resize-handle',
         onMouseDown: handleMouseDown,
         style: {
             position: 'absolute' as const,

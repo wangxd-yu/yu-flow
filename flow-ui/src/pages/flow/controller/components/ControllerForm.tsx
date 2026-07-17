@@ -645,6 +645,8 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             onCancel={onCancel}
             apiUrl={url}
             apiMethod={method}
+            apiId={values?.id}
+            apiName={name}
           />
         );
       case 'req-schema':

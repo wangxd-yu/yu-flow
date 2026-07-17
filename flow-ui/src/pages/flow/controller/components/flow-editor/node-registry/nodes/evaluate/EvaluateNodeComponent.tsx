@@ -47,7 +47,7 @@ const handlePortSync = (node: Node, size: { width: number; height: number }, var
         if (p?.group !== 'absolute-out-solid') node.setPortProp('out', 'group', 'absolute-out-solid');
     }
 
-    // Evaluate 节点不需要 'in' 端口
+    // 历史控制流 in 移除；总入口用 in:payload（由 BaseExpressionNode 确保）
     if (existing.has('in')) node.removePort('in');
 };
 

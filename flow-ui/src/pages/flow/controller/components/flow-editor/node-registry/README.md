@@ -41,7 +41,7 @@ flow-editor/
 │       ├── service-call.tsx      ← ServiceCall 节点
 │       ├── http-request.ts       ← HTTP Request 节点（React 组件）
 │       ├── for-each.tsx          ← ForEach 节点
-│       ├── record.tsx            ← Record 节点
+│       ├── record/               ← Record 节点（Postman 风格 KV）
 │       ├── response.tsx          ← Response 节点
 │       ├── request.tsx           ← Request 节点（manual port + 共用编辑器）
 │       ├── template.tsx          ← Template 节点
