@@ -38,6 +38,16 @@ public class HttpRequestStep extends Step {
     private Map<String, String> params; // Query Params
     private Object body;
     private int timeout = 30000; // 默认 30 秒
+
+    /**
+     * 网络异常 / 超时时的额外重试次数（不含首次）。0 = 不重试。
+     * HTTP 业务失败（走 fail 口）不重试。
+     */
+    private Integer retryCount;
+
+    /** 两次尝试之间的间隔（毫秒） */
+    private Integer retryIntervalMs;
+
     /**
      * 成功条件（Aviator 表达式）。为空时回退 HTTP 2xx。
      * 求值上下文为响应结果：status / body / headers / timeMs

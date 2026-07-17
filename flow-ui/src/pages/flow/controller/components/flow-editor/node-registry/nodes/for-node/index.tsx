@@ -4,10 +4,11 @@
 // ============================================================================
 
 import React from 'react';
-import { Divider, InputNumber, Tag, Typography } from 'antd';
+import { InputNumber, Tag, Typography } from 'antd';
 import type { DslPort } from '../../../types';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { ForNodeComponent, FOR_LAYOUT, FOR_COLOR } from './ForNodeComponent';
+import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
 
 const { Text } = Typography;
 const PORT_POS = FOR_LAYOUT.portY;
@@ -15,41 +16,28 @@ const PORT_POS = FOR_LAYOUT.portY;
 // ── 属性面板编辑器 ────────────────────────────────────────────────────────────
 function ForEditor({ data, onChange }: PropertyEditorProps) {
     return (
-        <div style={{ marginTop: 12 }}>
-            <Divider orientation="left" style={{ fontSize: 12, margin: '8px 0' }}>
-                Scatter (分发) 配置
-            </Divider>
-
-            {/* 数组来源说明：通过连线指向 in 端口来传入，无需手动填写 */}
-            <div style={{ marginBottom: 12, padding: '8px 10px', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                <Text style={{ fontSize: 11, color: '#6b7280' }}>
-                    💡 数组来源由上游连线自动传入（连接到 <code>in</code> 端口），无需手动配置。
-                </Text>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>超时 (毫秒)</Text>
+        <PropertySection title="Scatter 配置" tip="数组由上游连线传入 in 端口">
+            <PropertyHint>
+                数组来源由上游连线自动传入（连接到 <code>in</code> 端口），无需手动配置。
+            </PropertyHint>
+            <PropertyField label="超时" tip="等待分支完成的最长时间" extra="ms">
                 <InputNumber
                     size="small"
                     min={1000}
                     max={300000}
                     step={1000}
                     value={data.timeoutMs ?? 30000}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
                     onChange={(val) => onChange({ timeoutMs: val })}
                 />
-            </div>
-
-            <div style={{ background: '#faf5ff', borderRadius: 6, padding: '8px 10px', border: '1px solid #ede9fe' }}>
-                <Text style={{ fontSize: 11, color: '#6d28d9', fontWeight: 500 }}>配对 Collect 节点（画布自动识别）</Text>
-                <div style={{ marginTop: 4 }}>
-                    {data.collectStepId
-                        ? <Tag color="purple" style={{ fontSize: 10 }}>{String(data.collectStepId)}</Tag>
-                        : <Text type="secondary" style={{ fontSize: 11 }}>保存时自动检测（发后即忘模式则为空）</Text>
-                    }
-                </div>
-            </div>
-        </div>
+            </PropertyField>
+            <PropertyField label="Collect">
+                {data.collectStepId
+                    ? <Tag color="purple" style={{ fontSize: 11, margin: 0 }}>{String(data.collectStepId)}</Tag>
+                    : <Text type="secondary" style={{ fontSize: 12 }}>保存时自动检测</Text>
+                }
+            </PropertyField>
+        </PropertySection>
     );
 }
 

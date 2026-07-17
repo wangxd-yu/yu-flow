@@ -237,7 +237,7 @@ export default function QuickAddPopover({
                     y: canvasPosition.y - nodeSize.height / 2,
                 };
             }
-            const dslNode = createDefaultDslNode(type, nodePosition);
+            const dslNode = createDefaultDslNode(type, nodePosition, graph);
             const newNode = addSingleNodeToGraph(graph, dslNode);
 
             // 3. 先通知外层关闭弹窗，使体验连贯
@@ -355,7 +355,7 @@ export default function QuickAddPopover({
                             attrs: EDGE_CONFIG.attrs,
                             router: EDGE_CONFIG.router,
                             connector: EDGE_CONFIG.connector,
-                            zIndex: 0,
+                            zIndex: EDGE_CONFIG.zIndex,
                         });
 
                         // 手动触发 edge:connected 事件，驱动占位符端口等逻辑

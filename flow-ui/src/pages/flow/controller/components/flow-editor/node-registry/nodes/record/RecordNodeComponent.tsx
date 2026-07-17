@@ -16,7 +16,11 @@ import {
     NodeWrapper,
     useNodeSelection,
     getNodeTheme,
+    ResizeHandle,
+    NODE_HEADER_WITH_ID_HEIGHT,
 } from '../../shared/useNodeSelection';
+import { relativizeExtractPath } from '../../shared/extractPathUtils';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import { createId } from '../../../utils/id';
 
 const { Text } = Typography;
@@ -32,7 +36,7 @@ export interface RecordField {
     valueType?: RecordValueType;
 }
 
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = NODE_HEADER_WITH_ID_HEIGHT;
 const ROW_HEIGHT = 40;
 const PADDING_Y = 8;
 const FOOTER_HEIGHT = 44;
@@ -563,6 +567,69 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
         };
     }, [node]);
 
+    // 加载已保存绝对路径时，按入边压回 $ / $.field
+    useEffect(() => {
+        let cancelled = false;
+        const run = () => {
+            if (cancelled) return;
+            const graph = node.model?.graph;
+            if (!graph) {
+                requestAnimationFrame(run);
+                return;
+            }
+            const cur: RecordField[] =
+                fieldsRef.current.length
+                    ? fieldsRef.current
+                    : ((node.getData() as any)?.__fields as RecordField[]) || [];
+            let changed = false;
+            const updated = cur.map((f) => {
+                if (f.source !== 'wire') return f;
+                const edge = graph.getConnectedEdges(node).find((e: any) => {
+                    if (e.getTargetCellId?.() !== node.id) return false;
+                    return String(e.getTargetPortId?.()) === `in:var:${f.id}`;
+                });
+                if (!edge) return f;
+                const srcId = edge.getSourceCellId?.();
+                const srcPort = edge.getSourcePortId?.() || 'out';
+                if (!srcId) return f;
+                const next = relativizeExtractPath(f.value, srcId, srcPort);
+                if (next === f.value) return f;
+                changed = true;
+                return { ...f, value: next };
+            });
+            if (changed) syncRef.current(updated);
+
+            // payload 总入口同样压回 $
+            const payloadEdge = graph.getConnectedEdges(node).find((e: any) => {
+                if (e.getTargetCellId?.() !== node.id) return false;
+                return String(e.getTargetPortId?.()) === 'in:payload';
+            });
+            if (payloadEdge) {
+                const srcId = payloadEdge.getSourceCellId?.();
+                const srcPort = payloadEdge.getSourcePortId?.() || 'out';
+                if (srcId) {
+                    const prev = node.getData() as any;
+                    const curPath = prev?.inputs?.payload?.extractPath;
+                    const nextPath = relativizeExtractPath(curPath || '$', srcId, srcPort);
+                    if (nextPath !== (curPath || '').trim()) {
+                        node.setData(
+                            {
+                                ...prev,
+                                inputs: {
+                                    ...(prev?.inputs || {}),
+                                    payload: { extractPath: nextPath || '$' },
+                                },
+                            },
+                            { overwrite: true },
+                        );
+                    }
+                }
+            }
+        };
+        run();
+        return () => { cancelled = true; };
+    }, [node]);
+
     useEffect(() => {
         const graph = node.model?.graph;
         if (!graph) return;
@@ -887,12 +954,9 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={HEADER_HEIGHT}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
-                    extra={
-                        hasPayload ? (
-                            <Text style={{ fontSize: 10, color: themeObj.primary }}>payload</Text>
-                        ) : undefined
-                    }
                 />
             </div>
 
@@ -1076,6 +1140,23 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                 </div>
             </div>
 
+            <ResizeHandle
+                node={node}
+                minWidth={MIN_WIDTH}
+                minHeight={calcRecordHeight(Math.max(fields.length, 1))}
+                axes="x"
+                color={themeObj.primary}
+                onResize={(nw) => {
+                    if (node.hasPort('out')) {
+                        const h = node.getSize().height;
+                        node.setPortProp('out', 'args', {
+                            x: nw,
+                            y: h - FOOTER_HEIGHT + FT_RESULT_Y,
+                            dx: 0,
+                        });
+                    }
+                }}
+            />
         </NodeWrapper>
     );
 };

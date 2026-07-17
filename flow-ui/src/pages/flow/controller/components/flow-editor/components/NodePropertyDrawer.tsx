@@ -1,17 +1,15 @@
 // ============================================================================
 // NodePropertyDrawer.tsx
-// V3.2 配置面板 —— 通过 node-registry 动态渲染表单，无需 switch-case
+// 右侧配置面板 —— 统一视觉 + node-registry 动态编辑器
 // ============================================================================
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Alert,
     AutoComplete,
     Button,
     Collapse,
-    Divider,
     Input,
-    Space,
     Tag,
     Tooltip,
     Typography,
@@ -19,8 +17,6 @@ import {
 import {
     PlusOutlined,
     DeleteOutlined,
-    InfoCircleOutlined,
-    QuestionCircleOutlined,
 } from '@ant-design/icons';
 import {
     ProForm,
@@ -37,18 +33,20 @@ import {
     hasInputsField,
     getPropertyEditor,
 } from '../node-registry';
-import { queryDataSourceList } from '@/pages/flow/dataSource/services/dataSource';
+import {
+    PropertyField,
+    PropertyHint,
+    PropertySection,
+} from '../node-registry/shared/PropertyPanel';
 
 const { Text, Paragraph } = Typography;
 
-// ── JSONPath 自动补全建议 ────────────────────────────────────────
 const JSONPATH_SUGGESTIONS = [
-    { value: '$.start.args.', label: '$.start.args.<param>' },
-    { value: '$.', label: '$.<nodeId>.result' },
-    { value: "$['", label: "$['<nodeId>']['<field>']" },
+    { value: '$.', label: '$.<nodeId>.out' },
+    { value: '$.cfg.out.', label: '$.cfg.out.<field>' },
+    { value: '$', label: '$（相对上游）' },
 ];
 
-// ── Props ────────────────────────────────────────────────────────
 type NodePropertyDrawerProps = {
     node: Node | null;
     onDataChange: (node: Node, data: Record<string, any>) => void;
@@ -58,10 +56,6 @@ type NodePropertyDrawerProps = {
     onToggleBreakpoint?: (nodeId: string) => void;
 };
 
-// ============================================================================
-// 主组件
-// ============================================================================
-
 export default function NodePropertyDrawer({
     node,
     onDataChange,
@@ -70,19 +64,28 @@ export default function NodePropertyDrawer({
     isBreakpoint,
     onToggleBreakpoint,
 }: NodePropertyDrawerProps) {
+    const [, setDataTick] = useState(0);
+
+    useEffect(() => {
+        if (!node) return;
+        const onData = () => setDataTick((t) => t + 1);
+        node.on('change:data', onData);
+        return () => {
+            node.off('change:data', onData);
+        };
+    }, [node]);
+
     if (!node) {
         return (
-            <div style={{ height: '100%', overflowY: 'auto' }}>
-                <GlobalConfigEditor
-                    form={globalForm}
-                    isEdit={isEdit}
-                />
+            <div style={{ height: '100%', overflowY: 'auto', background: '#fafafa' }}>
+                <GlobalConfigEditor form={globalForm} isEdit={isEdit} />
             </div>
         );
     }
 
     const rawData = node.getData() as Record<string, any>;
     const nodeType = rawData?.__dslType as DslNodeType | undefined;
+    const nodeLabel = rawData?.__label || nodeType || '节点';
 
     if (!nodeType) {
         return (
@@ -92,36 +95,73 @@ export default function NodePropertyDrawer({
         );
     }
 
-    // 从注册表获取属性编辑器组件
     const PropertyEditor = getPropertyEditor(nodeType);
 
     return (
-        <div style={{ padding: 16 }}>
-            {/* ── 节点标题 ── */}
-            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                    <Tag color={getNodeTagColor(nodeType)}>{nodeType.toUpperCase()}</Tag>
-                    <Text strong style={{ marginLeft: 4 }}>
-                        {node.id}
-                    </Text>
+        <div
+            style={{
+                height: '100%',
+                overflowY: 'auto',
+                background: '#fafafa',
+                padding: '12px 14px 24px',
+            }}
+        >
+            <div
+                style={{
+                    marginBottom: 14,
+                    padding: '12px 12px 10px',
+                    background: '#fff',
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 8,
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <Tag color={getNodeTagColor(nodeType)} style={{ margin: 0 }}>
+                                {nodeType}
+                            </Tag>
+                        </div>
+                        <Text strong style={{ fontSize: 14, color: '#262626' }} ellipsis>
+                            {nodeLabel}
+                        </Text>
+                        <div style={{ marginTop: 2 }}>
+                            <Text
+                                style={{
+                                    fontSize: 11,
+                                    color: '#8c8c8c',
+                                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                }}
+                            >
+                                {node.id}
+                            </Text>
+                        </div>
+                    </div>
+                    {onToggleBreakpoint && (
+                        <Tooltip title={isBreakpoint ? '取消断点' : '设置断点'}>
+                            <Button
+                                type={isBreakpoint ? 'primary' : 'default'}
+                                danger={isBreakpoint}
+                                shape="circle"
+                                size="small"
+                                icon={
+                                    <span
+                                        style={{
+                                            display: 'inline-block',
+                                            width: 12,
+                                            height: 12,
+                                            borderRadius: '50%',
+                                            background: isBreakpoint ? '#fff' : '#ff4d4f',
+                                        }}
+                                    />
+                                }
+                                onClick={() => onToggleBreakpoint(node.id)}
+                            />
+                        </Tooltip>
+                    )}
                 </div>
-                {onToggleBreakpoint && (
-                    <Tooltip title={isBreakpoint ? '取消断点' : '设置断点'}>
-                        <Button
-                            type={isBreakpoint ? 'primary' : 'default'}
-                            danger={isBreakpoint}
-                            shape="circle"
-                            icon={<span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: isBreakpoint ? '#fff' : '#ff4d4f' }} />}
-                            onClick={() => onToggleBreakpoint(node.id)}
-                            size="small"
-                        />
-                    </Tooltip>
-                )}
             </div>
 
-            <Divider style={{ margin: '8px 0 16px 0' }} />
-
-            {/* ── Inputs 配置区（通用 JSONPath 映射） ── */}
             {hasInputsField(nodeType) && (
                 <InputsEditor
                     inputs={(rawData.inputs as InputsMap) || {}}
@@ -129,7 +169,6 @@ export default function NodePropertyDrawer({
                 />
             )}
 
-            {/* ── 业务配置区（从注册表动态获取编辑器） ── */}
             {PropertyEditor ? (
                 <PropertyEditor
                     node={node}
@@ -137,17 +176,11 @@ export default function NodePropertyDrawer({
                     onChange={(changes: Record<string, any>) => onDataChange(node, changes)}
                 />
             ) : (
-                <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                    该节点类型（{nodeType}）暂无专用配置项
-                </Paragraph>
+                <PropertyHint>该节点类型暂无额外配置项，可在画布节点内直接编辑。</PropertyHint>
             )}
         </div>
     );
 }
-
-// ============================================================================
-// Inputs 配置器 (Key-Value + JSONPath) —— 通用，所有节点共用
-// ============================================================================
 
 export function InputsEditor({
     inputs,
@@ -200,94 +233,70 @@ export function InputsEditor({
     );
 
     return (
-        <Collapse
-            ghost
-            defaultActiveKey={['inputs']}
-            items={[
-                {
-                    key: 'inputs',
-                    label: (
-                        <Space>
-                            <Text strong style={{ fontSize: 13 }}>
-                                数据映射 (Inputs)
-                            </Text>
-                            <Tooltip title="使用 JSONPath 映射上游节点数据到当前节点变量">
-                                <QuestionCircleOutlined style={{ color: '#8c8c8c', fontSize: 12 }} />
-                            </Tooltip>
-                        </Space>
-                    ),
-                    children: (
-                        <div>
-                            {entries.map((entry) => (
-                                <div
-                                    key={entry.key}
-                                    style={{
-                                        display: 'flex',
-                                        gap: 6,
-                                        marginBottom: 8,
-                                        alignItems: 'center',
-                                    }}
-                                >
-                                    <Input
-                                        size="small"
-                                        placeholder="变量名"
-                                        defaultValue={entry.key}
-                                        style={{ width: 90, fontFamily: 'monospace' }}
-                                        onBlur={(e) => handleKeyChange(entry.key, e.target.value)}
-                                    />
-                                    <span style={{ color: '#8c8c8c' }}>←</span>
-                                    <AutoComplete
-                                        size="small"
-                                        options={JSONPATH_SUGGESTIONS}
-                                        defaultValue={entry.extractPath}
-                                        placeholder="$.nodeId.field"
-                                        style={{ flex: 1, fontFamily: 'monospace' }}
-                                        onChange={(val) => handlePathChange(entry.key, val)}
-                                        filterOption={(input, option) =>
-                                            (option?.value?.toString() || '').includes(input)
-                                        }
-                                    />
-                                    <Button
-                                        type="text"
-                                        danger
-                                        size="small"
-                                        icon={<DeleteOutlined />}
-                                        onClick={() => handleRemove(entry.key)}
-                                    />
-                                </div>
-                            ))}
-
-                            <Button
-                                type="dashed"
-                                size="small"
-                                block
-                                icon={<PlusOutlined />}
-                                onClick={handleAdd}
-                                style={{ marginTop: 4 }}
-                            >
-                                添加输入映射
-                            </Button>
-
-                            <Paragraph
-                                type="secondary"
-                                style={{ fontSize: 11, lineHeight: 1.4, marginTop: 8 }}
-                            >
-                                <InfoCircleOutlined /> 格式说明：
-                                <br />• <code>$.start.args.name</code> — 引用 start 节点的参数
-                                <br />• <code>$.nodeId.result</code> — 引用某节点的执行结果
-                                <br />• <code>{'$[\'nodeId\'][\'field\']'}</code> — 括号路径语法
-                            </Paragraph>
-                        </div>
-                    ),
-                },
-            ]}
-        />
+        <PropertySection
+            title="数据映射"
+            tip="将上游数据映射到当前节点变量；画布连线也会写入 inputs"
+        >
+            {entries.length === 0 && (
+                <PropertyHint>暂无映射。可添加变量，或在画布上连线到节点入口。</PropertyHint>
+            )}
+            {entries.map((entry) => (
+                <div
+                    key={entry.key}
+                    style={{
+                        display: 'flex',
+                        gap: 6,
+                        marginBottom: 8,
+                        alignItems: 'center',
+                    }}
+                >
+                    <Input
+                        size="small"
+                        placeholder="变量名"
+                        defaultValue={entry.key}
+                        style={{
+                            width: 96,
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                        }}
+                        onBlur={(e) => handleKeyChange(entry.key, e.target.value)}
+                    />
+                    <span style={{ color: '#bfbfbf', fontSize: 12 }}>←</span>
+                    <AutoComplete
+                        size="small"
+                        options={JSONPATH_SUGGESTIONS}
+                        value={entry.extractPath}
+                        placeholder="$ 或 $.field"
+                        style={{
+                            flex: 1,
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                        }}
+                        onChange={(val) => handlePathChange(entry.key, val)}
+                        filterOption={(input, option) =>
+                            (option?.value?.toString() || '').includes(input)
+                        }
+                    />
+                    <Button
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleRemove(entry.key)}
+                    />
+                </div>
+            ))}
+            <Button
+                type="dashed"
+                size="small"
+                block
+                icon={<PlusOutlined />}
+                onClick={handleAdd}
+                style={{ marginTop: 2 }}
+            >
+                添加映射
+            </Button>
+        </PropertySection>
     );
 }
-
-// ============================================================================
-// 全局配置编辑器 (表单无提交按钮，自动保存)
-// ============================================================================
 
 export function GlobalConfigEditor({
     form,
@@ -297,77 +306,78 @@ export function GlobalConfigEditor({
     isEdit?: boolean;
 }) {
     return (
-        <div style={{ padding: 16 }}>
-            <div style={{ marginBottom: 16 }}>
-                <Text strong style={{ fontSize: 16 }}>API 全局配置</Text>
-            </div>
-            <ProForm
-                form={form}
-                submitter={false}
-                layout="horizontal"
-                labelCol={{ span: 6 }}
-                wrapperCol={{ span: 18 }}
-            >
-                {/* 确保在“逻辑编排”界面的全局表单中，能够正确收集到 type 为 FLOW 以及带有默认值 */}
-                <ProFormText name={['flowService', 'type']} hidden initialValue="FLOW" />
-                <Collapse
-                    defaultActiveKey={['basic', 'config']}
-                    ghost
-                    items={[
-                        {
-                            key: 'basic',
-                            label: <Text strong>基础设置</Text>,
-                            children: (
-                                <>
-                                    <ProFormText name="name" label="名称" placeholder="请输入名称" rules={[{ required: true }]} />
-                                    <ProFormSelect
-                                        name="method"
-                                        label="方法"
-                                        valueEnum={{ GET: 'GET', POST: 'POST', PUT: 'PUT', DELETE: 'DELETE' }}
-                                        rules={[{ required: true }]}
-                                    />
-                                    <ProFormText name="url" label="URL" placeholder="请输入URL" rules={[{ required: true }]} disabled={isEdit} />
-                                </>
-                            ),
-                        },
-                        {
-                            key: 'info',
-                            label: <Text strong>基本信息</Text>,
-                            children: (
-                                <>
-                                    <ProFormText name="module" label="模块" placeholder="请输入模块" />
-                                    <ProFormText name="version" label="版本" placeholder="请输入版本" />
-                                    <ProFormSelect
-                                        name="publishStatus"
-                                        label="发布状态"
-                                        options={[{ value: 0, label: '未发布' }, { value: 1, label: '已发布' }]}
-                                        rules={[{ required: true }]}
-                                    />
-                                    <ProFormDigit name="level" label="优先级" min={1} max={10} fieldProps={{ style: { width: '100%' } }} />
-                                    <ProFormSelect
-                                        name="tags"
-                                        label="标签"
-                                        mode="tags"
-                                        placeholder="最多5个标签"
-                                        fieldProps={{ maxTagCount: 5, tokenSeparators: [','] }}
-                                    />
-                                    <ProFormText name="info" label="描述" placeholder="请输入描述" />
-                                </>
-                            ),
-                        },
-                        {
-                            key: 'response',
-                            label: <Text strong>返回值</Text>,
-                            children: (
-                                <>
-                                    <ProFormTextArea name="wrapSuccess" label="成功返回包装" fieldProps={{ rows: 3 }} />
-                                    <ProFormTextArea name="wrapError" label="失败返回包装" fieldProps={{ rows: 3 }} />
-                                </>
-                            ),
-                        },
-                    ]}
-                />
-            </ProForm>
+        <div style={{ padding: '12px 14px 24px' }}>
+            <PropertySection title="API 全局配置">
+                <ProForm
+                    form={form}
+                    submitter={false}
+                    layout="vertical"
+                    style={{ marginTop: 4 }}
+                >
+                    <ProFormText name={['flowService', 'type']} hidden initialValue="FLOW" />
+                    <Collapse
+                        defaultActiveKey={['basic']}
+                        ghost
+                        style={{ background: 'transparent' }}
+                        items={[
+                            {
+                                key: 'basic',
+                                label: <Text strong style={{ fontSize: 12 }}>基础设置</Text>,
+                                children: (
+                                    <>
+                                        <ProFormText name="name" label="名称" placeholder="请输入名称" rules={[{ required: true }]} />
+                                        <ProFormSelect
+                                            name="method"
+                                            label="方法"
+                                            valueEnum={{ GET: 'GET', POST: 'POST', PUT: 'PUT', DELETE: 'DELETE' }}
+                                            rules={[{ required: true }]}
+                                        />
+                                        <ProFormText name="url" label="URL" placeholder="请输入URL" rules={[{ required: true }]} disabled={isEdit} />
+                                    </>
+                                ),
+                            },
+                            {
+                                key: 'info',
+                                label: <Text strong style={{ fontSize: 12 }}>基本信息</Text>,
+                                children: (
+                                    <>
+                                        <ProFormText name="module" label="模块" placeholder="请输入模块" />
+                                        <ProFormText name="version" label="版本" placeholder="请输入版本" />
+                                        <ProFormSelect
+                                            name="publishStatus"
+                                            label="发布状态"
+                                            options={[{ value: 0, label: '未发布' }, { value: 1, label: '已发布' }]}
+                                            rules={[{ required: true }]}
+                                        />
+                                        <ProFormDigit name="level" label="优先级" min={1} max={10} fieldProps={{ style: { width: '100%' } }} />
+                                        <ProFormSelect
+                                            name="tags"
+                                            label="标签"
+                                            mode="tags"
+                                            placeholder="最多5个标签"
+                                            fieldProps={{ maxTagCount: 5, tokenSeparators: [','] }}
+                                        />
+                                        <ProFormText name="info" label="描述" placeholder="请输入描述" />
+                                    </>
+                                ),
+                            },
+                            {
+                                key: 'response',
+                                label: <Text strong style={{ fontSize: 12 }}>返回值</Text>,
+                                children: (
+                                    <>
+                                        <ProFormTextArea name="wrapSuccess" label="成功返回包装" fieldProps={{ rows: 3 }} />
+                                        <ProFormTextArea name="wrapError" label="失败返回包装" fieldProps={{ rows: 3 }} />
+                                    </>
+                                ),
+                            },
+                        ]}
+                    />
+                </ProForm>
+            </PropertySection>
+            <Paragraph type="secondary" style={{ fontSize: 11, margin: 0 }}>
+                选中画布节点后，可在此编辑该节点的映射与策略配置。
+            </Paragraph>
         </div>
     );
 }

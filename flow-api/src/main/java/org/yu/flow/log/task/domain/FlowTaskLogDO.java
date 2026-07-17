@@ -41,7 +41,7 @@ public class FlowTaskLogDO {
     @Column(length = 16)
     private String triggerType;
 
-    /** 执行状态：SUCCESS / FAILED / RUNNING */
+    /** 执行状态：SUCCESS / FAILED / RUNNING / SKIPPED */
     @Column(length = 16)
     private String status;
 

@@ -99,18 +99,45 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
             // 4. 定制超时 / SSL Client
             OkHttpClient stepClient = buildClient(step, ignoreSsl);
 
-            // 5. 执行请求并处理响应；证书失败时自动 insecure 重试一次
-            try {
-                return executeRequestAndParseResponse(step, request, stepClient, startTime, context, logDO);
-            } catch (Exception first) {
-                if (!ignoreSsl && isCertificateProblem(first)) {
-                    log.warn("HttpRequest [{}] SSL 证书校验失败，自动忽略证书重试。建议在节点开启「忽略SSL」。err={}",
-                            step.getId(), first.getMessage());
-                    OkHttpClient insecureClient = buildClient(step, true);
-                    return executeRequestAndParseResponse(step, request, insecureClient, startTime, context, logDO);
+            // 5. 执行请求；网络异常可按 retryCount 重试；证书失败时自动 insecure 再试一次
+            int extraRetries = step.getRetryCount() == null ? 0 : Math.max(0, step.getRetryCount());
+            long retryIntervalMs = step.getRetryIntervalMs() == null
+                    ? 1000L
+                    : Math.max(0L, step.getRetryIntervalMs().longValue());
+            int maxAttempts = 1 + extraRetries;
+            Exception lastError = null;
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    return executeRequestAndParseResponse(step, request, stepClient, startTime, context, logDO);
+                } catch (Exception first) {
+                    if (!ignoreSsl && isCertificateProblem(first)) {
+                        log.warn("HttpRequest [{}] SSL 证书校验失败，自动忽略证书重试。建议在节点开启「忽略SSL」。err={}",
+                                step.getId(), first.getMessage());
+                        OkHttpClient insecureClient = buildClient(step, true);
+                        return executeRequestAndParseResponse(step, request, insecureClient, startTime, context, logDO);
+                    }
+                    lastError = first;
+                    if (attempt < maxAttempts) {
+                        log.warn("HttpRequest [{}] 第 {}/{} 次失败，{}ms 后重试: {}",
+                                step.getId(), attempt, maxAttempts, retryIntervalMs, first.getMessage());
+                        if (retryIntervalMs > 0) {
+                            try {
+                                Thread.sleep(retryIntervalMs);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                throw first;
+                            }
+                        }
+                        continue;
+                    }
+                    throw first;
                 }
-                throw first;
             }
+            if (lastError != null) {
+                throw lastError;
+            }
+            return PortNames.FAIL;
 
         } catch (Exception e) {
             log.error("HTTP Request failed: {}", e.getMessage(), e);

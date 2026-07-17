@@ -12,7 +12,10 @@ import {
     NodeHeader,
     NodeWrapper,
     getNodeTheme,
+    ResizeHandle,
+    NODE_HEADER_WITH_ID_HEIGHT,
 } from '../../shared/useNodeSelection';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 
 // 时钟图标
 const SCHEDULE_ICON = (
@@ -23,16 +26,15 @@ const SCHEDULE_ICON = (
 
 // ── 布局常量（与端口定位共享） ──
 export const SCHEDULE_LAYOUT = {
-    headerHeight: 40,
+    headerHeight: NODE_HEADER_WITH_ID_HEIGHT,
     paddingTop: 10,
     rowHeight: 20,
     rowGap: 2,
     paddingBottom: 10,
     width: 240,
-    rowCenterY: (index: number) => 40 + 10 + index * (20 + 2) + 10,
-    // Header + 2 行上下文变量
+    rowCenterY: (index: number) => NODE_HEADER_WITH_ID_HEIGHT + 10 + index * (20 + 2) + 10,
     get totalHeight() {
-        return 40 + 10 + 2 * 22 + 10;
+        return NODE_HEADER_WITH_ID_HEIGHT + 10 + 2 * 22 + 10;
     },
 };
 
@@ -119,6 +121,8 @@ export const ScheduleNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={SCHEDULE_LAYOUT.headerHeight}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={<CronBadge />}
                 />
@@ -168,6 +172,14 @@ export const ScheduleNodeComponent = ({ node }: { node: Node }) => {
                     ))}
                 </div>
             </div>
+
+            <ResizeHandle
+                node={node}
+                minWidth={SCHEDULE_LAYOUT.width}
+                minHeight={SCHEDULE_LAYOUT.totalHeight}
+                axes="x"
+                color={themeObj.primary}
+            />
         </NodeWrapper>
     );
 };

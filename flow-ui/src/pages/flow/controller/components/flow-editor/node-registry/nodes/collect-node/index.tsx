@@ -4,41 +4,33 @@
 // ============================================================================
 
 import React from 'react';
-import { Divider, InputNumber, Typography } from 'antd';
+import { InputNumber } from 'antd';
 import type { DslPort } from '../../../types';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { CollectNodeComponent, COLLECT_LAYOUT, COLLECT_COLOR } from './CollectNodeComponent';
+import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
 
-const { Text } = Typography;
 const PORT_POS = COLLECT_LAYOUT.portY;
 
 // ── 属性面板编辑器 ────────────────────────────────────────────────────────────
 function CollectEditor({ data, onChange }: PropertyEditorProps) {
     return (
-        <div style={{ marginTop: 12 }}>
-            <Divider orientation="left" style={{ fontSize: 12, margin: '8px 0' }}>
-                Gather (汇聚屏障) 配置
-            </Divider>
-
-            <div style={{ marginBottom: 12, padding: '8px', background: '#f0f9ff', borderRadius: 6, border: '1px solid #bae0ff' }}>
-                <Text style={{ fontSize: 11, color: '#0369a1' }}>
-                    🔒 并发屏障：所有分支到达后，最后一条线程汇聚结果并接管流程。
-                </Text>
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>超时 (毫秒)</Text>
+        <PropertySection title="Gather 配置" tip="并发屏障：全部分支到达后汇聚">
+            <PropertyHint>
+                所有分支到达后，最后一条线程汇聚结果并接管流程。
+            </PropertyHint>
+            <PropertyField label="超时" extra="ms">
                 <InputNumber
                     size="small"
                     min={1000}
                     max={600000}
                     step={1000}
                     value={data.timeoutMs ?? 30000}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
                     onChange={(val) => onChange({ timeoutMs: val })}
                 />
-            </div>
-        </div>
+            </PropertyField>
+        </PropertySection>
     );
 }
 

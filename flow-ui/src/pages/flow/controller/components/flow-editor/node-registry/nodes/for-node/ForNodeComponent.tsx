@@ -16,8 +16,11 @@ import {
     getNodeTheme,
     NodeHeader,
     NodeWrapper,
+    ResizeHandle,
+    NODE_HEADER_WITH_ID_HEIGHT,
     type NodeTheme,
 } from '../../shared/useNodeSelection';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 
 export const FOR_COLOR = '#7c3aed';
 
@@ -30,12 +33,12 @@ const PAIR_COLORS = [
 // ── 布局常量 —— 严格两行，每行高 30px ─────────────────────────────────────
 export const FOR_LAYOUT = {
     width: 160,
-    height: 100,   // 40(header) + 60(body: row1=30 + row2=30)
-    headerHeight: 40,
+    height: 112,   // 52(header) + 60(body: row1=30 + row2=30)
+    headerHeight: NODE_HEADER_WITH_ID_HEIGHT,
     portY: {
-        list: 55,   // 行1 中心：header(40) + 15
-        item: 55,   // 行1 中心
-        start: 85,  // 行2 中心：header(40) + 30 + 15
+        list: 67,   // 行1 中心：header(52) + 15
+        item: 67,   // 行1 中心
+        start: 97,  // 行2 中心：header(52) + 30 + 15
     },
 } as const;
 
@@ -196,6 +199,30 @@ export const ForNodeComponent = ({ node }: { node: Node }) => {
 
     const nodeLabel = data?.__label || 'For';
 
+    // ── 高度对齐双行 Header（历史 DSL 可能仍是 100）+ 端口 Y ──
+    React.useEffect(() => {
+        const s = node.getSize();
+        const targetH = FOR_LAYOUT.height;
+        const targetW = Math.max(s.width, FOR_LAYOUT.width);
+        if (Math.abs(s.height - targetH) > 1 || s.width < FOR_LAYOUT.width) {
+            node.resize(targetW, targetH);
+        }
+        const w = node.getSize().width;
+        const py = FOR_LAYOUT.portY;
+        const sync = (id: string, x: number, y: number, group: string) => {
+            if (!node.hasPort(id)) {
+                node.addPort({ id, group, args: { x, y, dx: 0 }, zIndex: 10 });
+            } else {
+                const p = node.getPort(id);
+                if (p?.group !== group) node.setPortProp(id, 'group', group);
+                node.setPortProp(id, 'args', { x, y, dx: 0 });
+            }
+        };
+        sync('in', 0, py.list, 'absolute-in-solid');
+        sync('start', 0, py.start, 'absolute-in-hollow');
+        sync('item', w, py.item, 'absolute-out-solid');
+    }, [node]);
+
     // ── 悬停联动 ────────────────────────────────────────────────────────
     const handleMouseEnter = React.useCallback(() => {
         if (!collectNodeId) return;
@@ -282,6 +309,8 @@ export const ForNodeComponent = ({ node }: { node: Node }) => {
                 title={nodeLabel}
                 theme={theme}
                 height={FOR_LAYOUT.headerHeight}
+                nodeId={node.id}
+                onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 extra={inlineTag}
                 onTitleChange={(t) => node.setData({ ...node.getData(), __label: t })}
             />
@@ -319,6 +348,20 @@ export const ForNodeComponent = ({ node }: { node: Node }) => {
                     <span />
                 </div>
             </div>
+
+            <ResizeHandle
+                node={node}
+                minWidth={FOR_LAYOUT.width}
+                minHeight={FOR_LAYOUT.height}
+                axes="x"
+                color={theme.primary}
+                onResize={(nw) => {
+                    const py = FOR_LAYOUT.portY;
+                    if (node.hasPort('item')) {
+                        node.setPortProp('item', 'args', { x: nw, y: py.item, dx: 0 });
+                    }
+                }}
+            />
         </NodeWrapper>
     );
 };

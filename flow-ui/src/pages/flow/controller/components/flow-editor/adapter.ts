@@ -18,33 +18,101 @@ import {
     PORT_GROUPS,
 } from './node-registry';
 
-// ── 统一的连线样式配置（全局唯一，确保视觉一致） ──────────────────
-export const EDGE_CONFIG = {
-    /**
-     * 路由器：er 正交路由
-     * - offset: 'center' → 拐弯竖直段精确位于两节点的中间位置
-     * - direction: 'H'   → 强制水平方向路由（匹配左右端口模型）
-     * - min: 16           → 节点重叠时，拐弯点与节点至少保持 16px 距离
-     */
-    router: {
-        name: 'er',
-        args: {
-            offset: 'center',
-            direction: 'H',
-            min: 16,
-        },
-    },
-    /** 连接器：圆角拐弯过渡 */
-    connector: { name: 'rounded', args: { radius: 10 } },
-    /** 线条样式 */
-    attrs: {
-        line: {
-            stroke: '#A2B1C3',
-            strokeWidth: 2,
-            targetMarker: { name: 'block', width: 10, height: 6 },
-        },
+// ── 统一的连线样式配置 ──────────────────────────────────────────
+
+export type EdgeRouteStyleKey = 'er' | 'manhattan';
+
+/** 线条外观（与路由无关） */
+export const EDGE_ATTRS = {
+    line: {
+        stroke: '#A2B1C3',
+        strokeWidth: 2,
+        targetMarker: { name: 'block', width: 10, height: 6 },
     },
 };
+
+/**
+ * 连线路由预设
+ * - er：简洁折线（当前默认，可能穿过卡片）
+ * - manhattan：正交绕行，避开节点遮挡
+ */
+export const EDGE_ROUTE_PRESETS: Record<
+    EdgeRouteStyleKey,
+    {
+        label: string;
+        router: { name: string; args?: Record<string, any> };
+        connector: { name: string; args?: Record<string, any> };
+        zIndex: number;
+    }
+> = {
+    er: {
+        label: '简洁折线',
+        router: {
+            name: 'er',
+            args: {
+                offset: 'center',
+                direction: 'H',
+                min: 16,
+            },
+        },
+        connector: { name: 'rounded', args: { radius: 10 } },
+        zIndex: 0,
+    },
+    manhattan: {
+        label: '绕行避障',
+        router: {
+            name: 'manhattan',
+            args: {
+                padding: 24,
+                startDirections: ['right', 'top', 'bottom'],
+                endDirections: ['left', 'top', 'bottom'],
+            },
+        },
+        connector: { name: 'rounded', args: { radius: 8 } },
+        zIndex: 20,
+    },
+};
+
+let activeEdgeRouteStyle: EdgeRouteStyleKey = 'er';
+
+export function getActiveEdgeRouteStyle(): EdgeRouteStyleKey {
+    return activeEdgeRouteStyle;
+}
+
+/** 可变的全局 EDGE_CONFIG（connecting / 新建边读取最新路由） */
+export const EDGE_CONFIG = {
+    get router() {
+        return EDGE_ROUTE_PRESETS[activeEdgeRouteStyle].router;
+    },
+    get connector() {
+        return EDGE_ROUTE_PRESETS[activeEdgeRouteStyle].connector;
+    },
+    get attrs() {
+        return EDGE_ATTRS;
+    },
+    get zIndex() {
+        return EDGE_ROUTE_PRESETS[activeEdgeRouteStyle].zIndex;
+    },
+};
+
+/** 切换连线路由，并应用到画布上已有边 + connecting 默认值 */
+export function applyEdgeRouteStyle(graph: Graph, style: EdgeRouteStyleKey) {
+    if (!EDGE_ROUTE_PRESETS[style]) return;
+    activeEdgeRouteStyle = style;
+    const preset = EDGE_ROUTE_PRESETS[style];
+
+    graph.getEdges().forEach((edge) => {
+        edge.setRouter(preset.router as any);
+        edge.setConnector(preset.connector as any);
+        edge.setZIndex(preset.zIndex);
+    });
+
+    const connecting = (graph as any).options?.connecting;
+    if (connecting) {
+        connecting.router = preset.router;
+        connecting.connector = preset.connector;
+    }
+}
 
 // ── DSL 内部字段白名单（导出时只保留这些） ──────────────────────
 const DSL_NODE_FIELDS = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'ports', 'data', 'label']);
@@ -143,6 +211,10 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
     let autoY = 100;
     const autoGap = 140;
 
+    /** DSL 内重复 id → 重映射，保证画布唯一 */
+    const idRemap = new Map<string, string>();
+    const usedIds = new Set<string>();
+
     // ── 创建 X6 节点 ──
     for (const dslNode of dsl.nodes) {
         const nodeType = dslNode.type;
@@ -154,6 +226,14 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
         const y = dslNode.y ?? autoY;
         if (!dslNode.y) autoY += autoGap;
 
+        let nodeId = dslNode.id;
+        if (!nodeId || usedIds.has(nodeId)) {
+            const unique = createUniqueDslNodeId(nodeType || 'node', graph);
+            if (nodeId) idRemap.set(nodeId, unique);
+            nodeId = unique;
+        }
+        usedIds.add(nodeId);
+
         // ── 规范契约：补全默认端口 + inputs 动态桩（即使 DSL 已带部分 ports）──
         {
             const defaults = [...(dslNode.ports || [])];
@@ -162,8 +242,16 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
             }
 
             // 1. 基于 inputs 等业务数据动态补全输入桩
-            if (dslNode.data && dslNode.data.inputs && typeof dslNode.data.inputs === 'object') {
+            //    payload 是总入口 in:payload，禁止生成 in:var:payload（会落到 (0,0) 成左上角幽灵白圈）
+            //    HttpRequest 的 url/body 变量只走 extractPath，不挂可视 in:var 桩
+            if (
+                nodeType !== 'httpRequest'
+                && dslNode.data
+                && dslNode.data.inputs
+                && typeof dslNode.data.inputs === 'object'
+            ) {
                 Object.keys(dslNode.data.inputs).forEach((key) => {
+                    if (key === 'payload') return;
                     const val = dslNode.data!.inputs![key];
                     const vId = (val && typeof val === 'object' && val.id) ? val.id : key;
                     const portId = `in:var:${vId}`;
@@ -217,8 +305,15 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
         // ── 形状名 ──
         const shape = reg?.shape.shapeName || 'rect';
 
+        // 重写 data 内对旧 id 的引用（如 collectStepId）
+        if (idRemap.size > 0) {
+            idRemap.forEach((newId, oldId) => {
+                if (cellData.collectStepId === oldId) cellData.collectStepId = newId;
+            });
+        }
+
         graph.addNode({
-            id: dslNode.id,
+            id: nodeId,
             shape,
             x,
             y,
@@ -233,6 +328,8 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
         });
     }
 
+    const mapCellId = (id: string) => idRemap.get(id) || id;
+
     // ── 创建 X6 边 ──
     // 延迟添加连线，因为使用 @antv/x6-react-shape 时，节点内部 DOM（含 Port 位置）
     // 由 React 异步渲染。若立刻添加连线，X6 找不到真实的 Port DOM 坐标，
@@ -246,12 +343,12 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
         const edgeDefs = dsl.edges; // 保存原始 DSL 定义，用于重连时恢复
 
         const edgeCells = edgeDefs.map(dslEdge => graph.createEdge({
-            source: { cell: dslEdge.source.cell, port: dslEdge.source.port },
-            target: { cell: dslEdge.target.cell, port: dslEdge.target.port },
+            source: { cell: mapCellId(dslEdge.source.cell), port: dslEdge.source.port },
+            target: { cell: mapCellId(dslEdge.target.cell), port: dslEdge.target.port },
             attrs: EDGE_CONFIG.attrs,
             router: EDGE_CONFIG.router,
             connector: EDGE_CONFIG.connector,
-            zIndex: 0,
+            zIndex: EDGE_CONFIG.zIndex,
         }));
 
         // 批量添加连线
@@ -375,13 +472,36 @@ export function createDslNodeId(prefix: string): string {
 }
 
 /**
+ * 生成图内唯一的节点 ID（可选传入 Graph 做占用检测）。
+ */
+export function createUniqueDslNodeId(prefix: string, graph?: Graph | null): string {
+    let id = createDslNodeId(prefix);
+    if (!graph) return id;
+    let guard = 0;
+    while (graph.getCellById(id) && guard < 50) {
+        id = createDslNodeId(prefix);
+        guard += 1;
+    }
+    if (graph.getCellById(id)) {
+        // 极端碰撞：强制后缀
+        let n = 2;
+        const base = id;
+        while (graph.getCellById(`${base}_${n}`)) n += 1;
+        id = `${base}_${n}`;
+    }
+    return id;
+}
+
+/**
  * 根据节点类型创建一个默认的 DslNode（含默认端口）。
+ * 传入 graph 时保证 id 在画布内唯一。
  */
 export function createDefaultDslNode(
     type: DslNodeType,
     position?: { x: number; y: number },
+    graph?: Graph | null,
 ): DslNode {
-    const id = createDslNodeId(type);
+    const id = createUniqueDslNodeId(type, graph);
     const defaultPorts = getDefaultPorts(type);
     const defaultData = getDefaultNodeData(type);
 
@@ -425,8 +545,14 @@ export function addSingleNodeToGraph(graph: Graph, dslNode: DslNode): Node {
     const attrs = buildNodeAttrs(nodeType, color, displayLabel, reg);
     const shape = reg?.shape.shapeName || 'rect';
 
+    // 冲突时自动换唯一 ID，避免 X6 静默失败或覆盖
+    let nodeId = dslNode.id;
+    if (graph.getCellById(nodeId)) {
+        nodeId = createUniqueDslNodeId(nodeType, graph);
+    }
+
     return graph.addNode({
-        id: dslNode.id,
+        id: nodeId,
         shape,
         x,
         y,

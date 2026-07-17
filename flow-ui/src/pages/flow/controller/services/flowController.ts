@@ -91,10 +91,14 @@ export async function batchMoveAutoApiConfig(ids: string[], targetDirectoryId?: 
   });
 }
 
+/** 调试运行可能包含 HttpRequest 等长耗时节点，需高于全局 10s */
+const DEBUG_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+
 export async function debugRunAutoApiConfig(data: any) {
   return request<any>('/flow-api/api/debug/run', {
     method: 'POST',
     data,
+    timeout: DEBUG_REQUEST_TIMEOUT_MS,
   });
 }
 
@@ -102,6 +106,7 @@ export async function startDebugSession(data: any) {
   return request<any>('/flow-api/debug/session/start', {
     method: 'POST',
     data,
+    timeout: DEBUG_REQUEST_TIMEOUT_MS,
   });
 }
 
@@ -115,6 +120,7 @@ export async function resumeDebugSession(sessionId: string, data: any) {
   return request<any>(`/flow-api/debug/session/${sessionId}/resume`, {
     method: 'POST',
     data,
+    timeout: DEBUG_REQUEST_TIMEOUT_MS,
   });
 }
 

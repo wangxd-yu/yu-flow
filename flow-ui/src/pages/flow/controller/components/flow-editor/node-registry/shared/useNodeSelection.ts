@@ -133,6 +133,9 @@ export function getNodeTheme(colorOrKey?: string): NodeTheme {
 // 3. NodeHeader 组件
 // ═══════════════════════════════════════════════════════════════════
 
+/** 带可编辑 nodeId 时的 Header 高度（标题 + 下方 ID） */
+export const NODE_HEADER_WITH_ID_HEIGHT = 52;
+
 export interface NodeHeaderProps {
     icon: React.ReactNode;
     title: string;
@@ -141,16 +144,37 @@ export interface NodeHeaderProps {
     extra?: React.ReactNode;
     /** 传入此回调后，标题支持双击编辑 */
     onTitleChange?: (newTitle: string) => void;
+    /**
+     * 节点 ID（DSL cell.id），展示在标题下方；配合 onNodeIdChange 可双击编辑
+     */
+    nodeId?: string;
+    /** 提交新节点 ID（校验/重写引用由调用方或 renameFlowNodeId 完成） */
+    onNodeIdChange?: (newId: string) => void;
 }
 
-export const NodeHeader: React.FC<NodeHeaderProps> = ({ icon, title, theme, height = 40, extra, onTitleChange }) => {
+export const NodeHeader: React.FC<NodeHeaderProps> = ({
+    icon,
+    title,
+    theme,
+    height,
+    extra,
+    onTitleChange,
+    nodeId,
+    onNodeIdChange,
+}) => {
     const t: NodeTheme = typeof theme === 'string' ? (NODE_THEMES[theme] || NODE_THEMES.gray) : theme;
+    const resolvedHeight = height ?? (nodeId != null ? NODE_HEADER_WITH_ID_HEIGHT : 40);
+
     const [editing, setEditing] = React.useState(false);
     const [draft, setDraft] = React.useState(title);
     const inputRef = React.useRef<HTMLInputElement | null>(null);
 
-    // 同步外部 title 变化
+    const [editingId, setEditingId] = React.useState(false);
+    const [idDraft, setIdDraft] = React.useState(nodeId || '');
+    const idInputRef = React.useRef<HTMLInputElement | null>(null);
+
     React.useEffect(() => { if (!editing) setDraft(title); }, [title, editing]);
+    React.useEffect(() => { if (!editingId) setIdDraft(nodeId || ''); }, [nodeId, editingId]);
 
     const commitEdit = () => {
         const trimmed = draft.trim();
@@ -164,23 +188,43 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({ icon, title, theme, heig
         if (!onTitleChange) return;
         setDraft(title);
         setEditing(true);
-        // 下一帧聚焦
         setTimeout(() => inputRef.current?.focus(), 0);
     };
 
-    // 标题元素：可编辑 or 静态
+    const commitIdEdit = () => {
+        const trimmed = idDraft.trim();
+        setEditingId(false);
+        if (!trimmed || trimmed === nodeId || !onNodeIdChange) {
+            setIdDraft(nodeId || '');
+            return;
+        }
+        onNodeIdChange(trimmed);
+    };
+
+    const startIdEdit = () => {
+        if (!onNodeIdChange || !nodeId) return;
+        setIdDraft(nodeId);
+        setEditingId(true);
+        setTimeout(() => {
+            idInputRef.current?.focus();
+            idInputRef.current?.select();
+        }, 0);
+    };
+
     const titleEl = editing
         ? React.createElement('input', {
             ref: inputRef,
             value: draft,
             onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value),
             onBlur: commitEdit,
-            onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') { setDraft(title); setEditing(false); } },
+            onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === 'Enter') commitEdit();
+                if (e.key === 'Escape') { setDraft(title); setEditing(false); }
+            },
             onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
             style: {
                 fontSize: 12,
                 fontWeight: 600,
-                flex: 1,
                 border: 'none',
                 outline: 'none',
                 background: 'transparent',
@@ -188,6 +232,7 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({ icon, title, theme, heig
                 padding: 0,
                 width: '100%',
                 fontFamily: 'inherit',
+                lineHeight: '16px',
             },
         })
         : React.createElement('span', {
@@ -195,18 +240,80 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({ icon, title, theme, heig
             style: {
                 fontSize: 12,
                 fontWeight: 600,
-                flex: 1,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap' as const,
                 color: t.titleColor,
                 cursor: onTitleChange ? 'text' : 'default',
+                lineHeight: '16px',
             },
         }, title);
 
+    const idEl = nodeId != null
+        ? (editingId
+            ? React.createElement('input', {
+                ref: idInputRef,
+                value: idDraft,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => setIdDraft(e.target.value),
+                onBlur: commitIdEdit,
+                onKeyDown: (e: React.KeyboardEvent) => {
+                    if (e.key === 'Enter') commitIdEdit();
+                    if (e.key === 'Escape') { setIdDraft(nodeId); setEditingId(false); }
+                },
+                onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
+                onClick: (e: React.MouseEvent) => e.stopPropagation(),
+                spellCheck: false,
+                style: {
+                    fontSize: 10,
+                    border: 'none',
+                    outline: 'none',
+                    background: 'rgba(0,0,0,0.04)',
+                    borderRadius: 2,
+                    color: '#595959',
+                    padding: '0 4px',
+                    width: '100%',
+                    maxWidth: 160,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    lineHeight: '14px',
+                    marginTop: 2,
+                },
+            })
+            : React.createElement('span', {
+                title: onNodeIdChange
+                    ? `节点 ID（双击编辑）· JsonPath: $.${nodeId}.out`
+                    : `JsonPath: $.${nodeId}.out`,
+                onDoubleClick: startIdEdit,
+                onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
+                style: {
+                    fontSize: 10,
+                    color: '#8c8c8c',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap' as const,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    lineHeight: '14px',
+                    marginTop: 2,
+                    cursor: onNodeIdChange ? 'text' : 'default',
+                    maxWidth: '100%',
+                    display: 'block',
+                },
+            }, nodeId))
+        : null;
+
+    const titleBlock = React.createElement('div', {
+        style: {
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column' as const,
+            justifyContent: 'center',
+            overflow: 'hidden',
+        },
+    }, titleEl, idEl);
+
     return React.createElement('div', {
         style: {
-            height,
+            height: resolvedHeight,
             background: t.headerBg,
             display: 'flex',
             alignItems: 'center',
@@ -217,9 +324,9 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({ icon, title, theme, heig
         },
     },
         React.createElement('div', {
-            style: { color: t.primary, marginRight: 8, display: 'flex', alignItems: 'center' },
+            style: { color: t.primary, marginRight: 8, display: 'flex', alignItems: 'center', flexShrink: 0 },
         }, icon),
-        titleEl,
+        titleBlock,
         extra || null,
     );
 };
@@ -312,6 +419,11 @@ export interface ResizeHandleProps {
     node: Node;
     minWidth: number;
     minHeight: number;
+    /**
+     * both：宽高可调（含 CodeEditor / TextArea 的节点）
+     * x：仅左右拉宽（无大文本编辑区的节点）
+     */
+    axes?: 'both' | 'x';
     /** 缩放过程中的回调（用于实时更新端口位置等） */
     onResize?: (width: number, height: number) => void;
     /** 缩放开始 */
@@ -323,7 +435,14 @@ export interface ResizeHandleProps {
 }
 
 export const ResizeHandle: React.FC<ResizeHandleProps> = ({
-    node, minWidth, minHeight, onResize, onResizeStart, onResizeEnd, color = '#1677ff',
+    node,
+    minWidth,
+    minHeight,
+    axes = 'both',
+    onResize,
+    onResizeStart,
+    onResizeEnd,
+    color = '#1677ff',
 }) => {
     const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
@@ -333,7 +452,9 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
         const sx = e.clientX, sy = e.clientY, ss = node.getSize();
         const onMove = (ev: MouseEvent) => {
             const nw = Math.max(minWidth, ss.width + ev.clientX - sx);
-            const nh = Math.max(minHeight, ss.height + ev.clientY - sy);
+            const nh = axes === 'x'
+                ? ss.height
+                : Math.max(minHeight, ss.height + ev.clientY - sy);
             node.resize(nw, nh);
             onResize?.(nw, nh);
         };
@@ -344,7 +465,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
         };
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
-    }, [node, minWidth, minHeight, onResize, onResizeStart, onResizeEnd]);
+    }, [node, minWidth, minHeight, axes, onResize, onResizeStart, onResizeEnd]);
 
     return React.createElement('div', {
         className: 'yf-resize-handle',
@@ -355,7 +476,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
             right: 2,
             width: 25,
             height: 25,
-            cursor: 'nwse-resize',
+            cursor: axes === 'x' ? 'ew-resize' : 'nwse-resize',
             pointerEvents: 'auto' as const,
             zIndex: 10,
             display: 'flex',

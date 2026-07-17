@@ -15,7 +15,7 @@ public class FlowTaskLogQueryDTO {
     private String taskId;
     /** 任务名称（模糊搜索） */
     private String taskName;
-    /** 执行状态：SUCCESS / FAILED / RUNNING */
+    /** 执行状态：SUCCESS / FAILED / RUNNING / SKIPPED */
     private String status;
     /** 触发类型：CRON / MANUAL */
     private String triggerType;

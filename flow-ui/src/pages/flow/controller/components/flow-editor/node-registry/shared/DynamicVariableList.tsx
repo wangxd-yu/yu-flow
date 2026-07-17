@@ -128,7 +128,7 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
                             size="small"
                             bordered={false}
                             prefix={<div style={{ color: '#bfbfbf', display: 'flex' }}>{ICONS.path}</div>}
-                            placeholder="$"
+                            placeholder="$ 或 $.字段"
                             value={v.extractPath}
                             onChange={(e) => onUpdateVar(v.id, { extractPath: e.target.value })}
                             onMouseDown={(e) => e.stopPropagation()}

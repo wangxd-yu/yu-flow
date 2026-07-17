@@ -7,7 +7,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { Node } from '@antv/x6';
-import { useNodeSelection, NodeHeader, NodeWrapper, NodeToolbar, getNodeTheme } from '../../shared/useNodeSelection';
+import {
+    useNodeSelection, NodeHeader, NodeWrapper, NodeToolbar, getNodeTheme, ResizeHandle, NODE_HEADER_WITH_ID_HEIGHT,
+} from '../../shared/useNodeSelection';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 
 const ICONS = {
     request: (
@@ -34,15 +37,15 @@ export function methodHasBody(method?: string): boolean {
 
 // ── 布局常量，与端口定位共享 ──
 export const REQUEST_LAYOUT = {
-    headerHeight: 40,
+    headerHeight: NODE_HEADER_WITH_ID_HEIGHT,
     paddingTop: 10,
     rowHeight: 20,
     rowGap: 2,
     paddingBottom: 10,
     width: 260,
-    rowCenterY: (index: number) => 40 + 10 + index * (20 + 2) + 10,
-    get totalHeight2() { return 40 + 10 + 2 * 22 + 10; },  // 2 rows (no body)
-    get totalHeight3() { return 40 + 10 + 3 * 22 + 10; },  // 3 rows (with body)
+    rowCenterY: (index: number) => NODE_HEADER_WITH_ID_HEIGHT + 10 + index * (20 + 2) + 10,
+    get totalHeight2() { return NODE_HEADER_WITH_ID_HEIGHT + 10 + 2 * 22 + 10; },
+    get totalHeight3() { return NODE_HEADER_WITH_ID_HEIGHT + 10 + 3 * 22 + 10; },
     totalHeight: 40 + 10 + 3 * 22 + 10,                     // default (3 rows)
 };
 
@@ -232,7 +235,16 @@ export const RequestNodeComponent = ({ node }: { node: Node }) => {
             <div style={{ width: 12, height: '100%', background: themeObj.primary, pointerEvents: 'auto' }} />
             {/* Content */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <NodeHeader icon={ICONS.request} title={nodeLabel} theme={themeObj} height={REQUEST_LAYOUT.headerHeight} onTitleChange={handleTitleChange} extra={methodExtra} />
+                <NodeHeader
+                    icon={ICONS.request}
+                    title={nodeLabel}
+                    theme={themeObj}
+                    height={REQUEST_LAYOUT.headerHeight}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
+                    onTitleChange={handleTitleChange}
+                    extra={methodExtra}
+                />
 
                 {/* Port Rows */}
                 <div style={{ paddingTop: REQUEST_LAYOUT.paddingTop, paddingBottom: REQUEST_LAYOUT.paddingBottom, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: REQUEST_LAYOUT.rowGap, pointerEvents: 'auto' }}>
@@ -243,6 +255,14 @@ export const RequestNodeComponent = ({ node }: { node: Node }) => {
                     ))}
                 </div>
             </div>
+
+            <ResizeHandle
+                node={node}
+                minWidth={REQUEST_LAYOUT.width}
+                minHeight={hasBody ? REQUEST_LAYOUT.totalHeight3 : REQUEST_LAYOUT.totalHeight2}
+                axes="x"
+                color={themeObj.primary}
+            />
         </NodeWrapper>
     );
 };

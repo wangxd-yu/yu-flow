@@ -8,6 +8,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
+import org.yu.flow.cache.FlowRedisUtil;
+import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowTrace;
@@ -20,8 +22,10 @@ import jakarta.annotation.Resource;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 动态定时任务调度器
@@ -29,11 +33,20 @@ import java.util.concurrent.ScheduledFuture;
  * <p>使用 Spring {@link TaskScheduler} 实现任务的运行时动态注册与取消，
  * 无需重启应用即可生效。应用启动后自动加载所有 enabled=true 的任务。
  *
+ * <p>多节点部署时，Cron 触发通过 Redis 分布式锁保证同一任务全局只执行一次；
+ * 手动触发（MANUAL）与 debug 不走锁。
+ *
  * @author yu-flow
  */
 @Slf4j
 @Component
 public class FlowTaskScheduler {
+
+    /** Cron 分布式锁 key 前缀 */
+    private static final String TASK_LOCK_KEY_PREFIX = "flow:task:lock:";
+
+    /** 触发类型：Cron 调度（需抢锁） */
+    private static final String TRIGGER_CRON = "CRON";
 
     @Resource
     private TaskScheduler taskScheduler;
@@ -46,6 +59,9 @@ public class FlowTaskScheduler {
 
     @Resource
     private FlowTaskRepository flowTaskRepository;
+
+    @Resource
+    private YuFlowProperties yuFlowProperties;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -96,7 +112,7 @@ public class FlowTaskScheduler {
             // 捕获 taskId，执行时再查库，避免闭包持有过期 dsl
             String taskId = task.getId();
             ScheduledFuture<?> future = taskScheduler.schedule(
-                    () -> executeById(taskId, "CRON"), trigger);
+                    () -> executeById(taskId, TRIGGER_CRON), trigger);
             futures.put(task.getId(), future);
             log.info("[FlowTaskScheduler] 任务已注册: taskId={}, name={}, cron={}",
                     task.getId(), task.getName(), task.getCron());
@@ -134,6 +150,7 @@ public class FlowTaskScheduler {
 
     /**
      * 立即手动触发一次（供 /run 接口调用），异步执行，不阻塞 HTTP 线程。
+     * <p>手动触发不走 Redis 分布式锁。
      *
      * @param task 任务定义
      */
@@ -156,7 +173,42 @@ public class FlowTaskScheduler {
             cancel(taskId);
             return;
         }
-        executeTaskWithTriggerType(latestTask, triggerType);
+
+        // 仅 Cron 抢分布式锁；MANUAL / debug 不走锁
+        String lockKey = null;
+        String lockValue = null;
+        if (TRIGGER_CRON.equals(triggerType)) {
+            lockKey = TASK_LOCK_KEY_PREFIX + taskId;
+            lockValue = UUID.randomUUID().toString();
+            int ttlMinutes = Math.max(1, yuFlowProperties.getTask().getLockTtlMinutes());
+            try {
+                boolean acquired = FlowRedisUtil.setIfAbsent(lockKey, lockValue, ttlMinutes, TimeUnit.MINUTES);
+                if (!acquired) {
+                    log.info("[FlowTaskScheduler] 未抢到执行锁，跳过: taskId={}, name={}, lockKey={}",
+                            latestTask.getId(), latestTask.getName(), lockKey);
+                    saveSkippedLog(latestTask, triggerType, "未抢到分布式执行锁，其他节点正在执行或刚执行完成");
+                    return;
+                }
+            } catch (Exception e) {
+                // fail-closed：Redis 不可用时不执行，避免多节点重复跑
+                log.error("[FlowTaskScheduler] Redis 不可用，fail-closed 跳过执行: taskId={}, name={}, error={}",
+                        latestTask.getId(), latestTask.getName(), e.getMessage());
+                saveSkippedLog(latestTask, triggerType, "Redis 不可用，fail-closed 跳过执行: " + e.getMessage());
+                return;
+            }
+        }
+
+        try {
+            executeTaskWithTriggerType(latestTask, triggerType);
+        } finally {
+            if (lockKey != null && lockValue != null) {
+                boolean unlocked = FlowRedisUtil.unlock(lockKey, lockValue);
+                if (!unlocked) {
+                    log.warn("[FlowTaskScheduler] 释放执行锁失败或锁已过期: taskId={}, lockKey={}",
+                            latestTask.getId(), lockKey);
+                }
+            }
+        }
     }
 
     private void executeTaskWithTriggerType(FlowTaskDO latestTask, String triggerType) {
@@ -228,5 +280,22 @@ public class FlowTaskScheduler {
 
         log.info("[FlowTaskScheduler] 任务执行完成: taskId={}, status={}, costTimeMs={}",
                 latestTask.getId(), status, costTimeMs);
+    }
+
+    private void saveSkippedLog(FlowTaskDO task, String triggerType, String reason) {
+        try {
+            FlowTaskLogDO logDO = FlowTaskLogDO.builder()
+                    .taskId(task.getId())
+                    .taskName(task.getName())
+                    .triggerType(triggerType)
+                    .status("SKIPPED")
+                    .costTimeMs(0L)
+                    .errorMsg(reason)
+                    .build();
+            flowTaskLogService.save(logDO);
+        } catch (Exception e) {
+            log.error("[FlowTaskScheduler] SKIPPED 日志写入失败: taskId={}, error={}",
+                    task.getId(), e.getMessage());
+        }
     }
 }

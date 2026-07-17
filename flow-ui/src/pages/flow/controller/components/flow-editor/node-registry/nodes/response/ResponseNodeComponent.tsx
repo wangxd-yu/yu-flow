@@ -4,10 +4,11 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Node } from '@antv/x6';
 import CodeEditor from '../../../components/CodeEditor';
 import {
-    useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme,
+    useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme, NODE_HEADER_WITH_ID_HEIGHT,
 } from '../../shared/useNodeSelection';
 import { useNodeVariables, NodeVariable } from '../../shared/useNodeVariables';
 import { DynamicVariableList } from '../../shared/DynamicVariableList';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import { createId } from '../../../utils/id';
 
 const { Text } = Typography;
@@ -25,7 +26,7 @@ const ICONS = {
 };
 
 // ── 布局常量 ──
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = NODE_HEADER_WITH_ID_HEIGHT;
 const STATUS_ROW_HEIGHT = 36;
 const SECTION_HEADER_HEIGHT = 28;
 const VAR_ROW_HEIGHT = 40;
@@ -209,6 +210,8 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={HEADER_HEIGHT}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                 />
 

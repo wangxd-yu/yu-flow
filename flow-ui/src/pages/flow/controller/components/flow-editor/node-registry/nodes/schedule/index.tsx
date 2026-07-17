@@ -1,50 +1,52 @@
 // ============================================================================
 // node-registry/nodes/schedule/index.tsx
 // Schedule（定时调度入口）节点 —— 自包含注册模块
-//
-// 作为任务管理流程的唯一入口节点，类似 request 节点但无任何入参端口，
-// 仅有一个右侧 out 输出端口。
 // ============================================================================
 
 import React from 'react';
-import { Divider, Typography } from 'antd';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { ScheduleNodeComponent, SCHEDULE_LAYOUT } from './ScheduleNodeComponent';
+import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
 
-const { Paragraph } = Typography;
-
-// ── 属性面板编辑器 ──
-const SchedulePropertyEditor = ({ data, onChange }: PropertyEditorProps) => {
+const SchedulePropertyEditor = ({ data }: PropertyEditorProps) => {
     return (
-        <div style={{ marginTop: 12 }}>
-            <Divider orientation="left" style={{ fontSize: 12, margin: '8px 0' }}>
-                调度入口节点
-            </Divider>
-            <Paragraph type="secondary" style={{ fontSize: 11 }}>
-                Schedule 节点为任务流程入口，每次调度触发时自动将以下变量注入上下文：
-            </Paragraph>
-            <div style={{
-                background: 'linear-gradient(180deg, #f9f0ff 0%, #ffffff 100%)',
-                border: '1px solid #efdbff',
-                borderRadius: 8,
-                padding: '10px 12px',
-                fontSize: 11,
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                lineHeight: 1.9,
-                color: '#531dab',
-            }}>
+        <PropertySection title="调度入口" tip="Cron 在任务管理页配置，此处只读展示">
+            <PropertyHint>
+                每次调度触发时自动注入上下文变量，供下游通过路径引用。
+            </PropertyHint>
+            <PropertyField label="任务名称">
+                <code style={codeStyle}>{data.taskName || '（运行时注入）'}</code>
+            </PropertyField>
+            <PropertyField label="Cron">
+                <code style={codeStyle}>{data.cron || '（任务管理配置）'}</code>
+            </PropertyField>
+            <div
+                style={{
+                    marginTop: 4,
+                    padding: '8px 10px',
+                    background: '#f7f8fa',
+                    border: '1px solid #eef0f3',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    lineHeight: 1.85,
+                    color: '#595959',
+                }}
+            >
                 <div><code>$.schedule.taskName</code> — 任务名称</div>
                 <div><code>$.schedule.cron</code> — Cron 表达式</div>
                 <div><code>$.schedule.triggerTime</code> — 触发时间戳（ms）</div>
             </div>
-            <Paragraph type="secondary" style={{ fontSize: 11, marginTop: 8 }}>
-                Cron 表达式在「任务管理」页面中配置，此处仅为只读展示。
-            </Paragraph>
-        </div>
+        </PropertySection>
     );
 };
 
-// ── 注册配置 ──
+const codeStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: '#595959',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+};
+
 export const scheduleNodeRegistration: NodeRegistration = {
     type: 'schedule',
     label: '调度入口 (Schedule)',
@@ -60,7 +62,6 @@ export const scheduleNodeRegistration: NodeRegistration = {
         component: ScheduleNodeComponent,
         reactPorts: {
             items: [
-                // 唯一输出端口：对齐第二行（triggerTime）
                 {
                     id: 'out',
                     group: 'absolute-out-solid',
@@ -82,23 +83,39 @@ export const scheduleNodeRegistration: NodeRegistration = {
 
     importConfig: {
         portMode: 'manual',
-        buildPortItems: () => [
-            {
-                id: 'out',
-                group: 'absolute-out-solid',
-                args: {
-                    x: SCHEDULE_LAYOUT.width,
-                    y: SCHEDULE_LAYOUT.rowCenterY(1),
-                    dx: 0,
-                },
-            },
-        ],
-        buildAttrs: () => ({
-            body: { stroke: '#d3adf7', strokeWidth: 1, fill: '#ffffff' },
-        }),
+        buildPortItems: (ports) => {
+            const items: any[] = [];
+            const seen = new Set<string>();
+            for (const p of ports) {
+                if (!p.id || seen.has(p.id)) continue;
+                seen.add(p.id);
+                items.push({
+                    id: p.id,
+                    group: 'absolute-out-solid',
+                    args: {
+                        x: SCHEDULE_LAYOUT.width,
+                        y: SCHEDULE_LAYOUT.rowCenterY(1),
+                        dx: 0,
+                    },
+                });
+            }
+            if (!seen.has('out')) {
+                items.push({
+                    id: 'out',
+                    group: 'absolute-out-solid',
+                    args: {
+                        x: SCHEDULE_LAYOUT.width,
+                        y: SCHEDULE_LAYOUT.rowCenterY(1),
+                        dx: 0,
+                    },
+                });
+            }
+            return items;
+        },
     },
 
     buildLabel: () => 'Schedule',
-
     PropertyEditor: SchedulePropertyEditor,
 };
+
+export default scheduleNodeRegistration;

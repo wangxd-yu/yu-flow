@@ -4,14 +4,13 @@
 // ============================================================================
 
 import React from 'react';
-import { Divider, Input, Select, Typography } from 'antd';
+import { Select } from 'antd';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { EvaluateNodeComponent, EVALUATE_LAYOUT } from './EvaluateNodeComponent';
 import CodeEditor, { mapExpressionLanguage } from '../../../components/CodeEditor';
 import { PAYLOAD_PORT_ID, PAYLOAD_PORT_Y } from '../../shared/usePayloadEntryPort';
+import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
 import type { DslPort } from '../../../types';
-
-const { Text } = Typography;
 
 const LANGUAGE_OPTIONS = [
     { value: 'Aviator', label: 'Aviator' },
@@ -27,50 +26,39 @@ function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
     const editorLanguage = mapExpressionLanguage(lang);
 
     return (
-        <div style={{ marginTop: 12 }}>
-            <Divider orientation="left" style={{ fontSize: 12, margin: '8px 0' }}>
-                表达式配置
-            </Divider>
-            <div style={{ marginBottom: 12 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>表达式语言</Text>
+        <PropertySection title="表达式配置" tip="也可在画布节点内直接编辑表达式">
+            <PropertyField label="表达式语言">
                 <Select
                     size="small"
                     value={lang}
                     options={LANGUAGE_OPTIONS}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
                     onChange={(val) => onChange({ language: val })}
                 />
-            </div>
-            <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>表达式</Text>
-                {(lang === 'Python' || lang === 'python' || lang === 'py') && (
-                    <div>
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                            可选能力：需部署机安装 GraalPy。多行脚本请 return，或赋给 result；未安装时返回 null
-                        </Text>
-                    </div>
-                )}
-                {(lang === 'Groovy' || lang === 'groovy') && (
-                    <div>
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                            支持多行脚本，最后一个表达式作为结果；Spring Bean 仅限服务端白名单
-                        </Text>
-                    </div>
-                )}
-                <div style={{ marginTop: 4 }}>
-                    <CodeEditor
-                        value={data.expression || ''}
-                        onChange={(val) => onChange({ expression: val })}
-                        language={editorLanguage}
-                        height="120px"
-                        maxHeight="300px"
-                        fontSize={12}
-                        lineNumbers={true}
-                        theme="light"
-                    />
-                </div>
-            </div>
-        </div>
+            </PropertyField>
+            {(lang === 'Python' || lang === 'python' || lang === 'py') && (
+                <PropertyHint>
+                    可选能力：需部署机安装 GraalPy。多行脚本请 return，或赋给 result；未安装时返回 null。
+                </PropertyHint>
+            )}
+            {(lang === 'Groovy' || lang === 'groovy') && (
+                <PropertyHint>
+                    支持多行脚本，最后一个表达式作为结果；Spring Bean 仅限服务端白名单。
+                </PropertyHint>
+            )}
+            <PropertyField label="表达式" layout="vertical">
+                <CodeEditor
+                    value={data.expression || ''}
+                    onChange={(val) => onChange({ expression: val })}
+                    language={editorLanguage}
+                    height="120px"
+                    maxHeight="300px"
+                    fontSize={12}
+                    lineNumbers={true}
+                    theme="light"
+                />
+            </PropertyField>
+        </PropertySection>
     );
 }
 
@@ -78,7 +66,8 @@ const buildEvaluatePortItems = (ports: DslPort[]) => {
     const seen = new Set<string>();
     const items: any[] = [];
     for (const p of ports) {
-        if (seen.has(p.id) || p.id === 'in') continue;
+        // in:var 由组件动态管理；禁止无 args 的 absolute 口落到 (0,0)
+        if (seen.has(p.id) || p.id === 'in' || p.id.startsWith('in:var:')) continue;
         seen.add(p.id);
         const isOut = p.id === 'out' || p.id.startsWith('out');
         const item: any = {
@@ -89,6 +78,8 @@ const buildEvaluatePortItems = (ports: DslPort[]) => {
             item.args = { x: EVALUATE_LAYOUT.width, y: EVALUATE_LAYOUT.outPortY, dx: 0 };
         } else if (p.id === PAYLOAD_PORT_ID) {
             item.args = { x: 0, y: PAYLOAD_PORT_Y, dx: 0 };
+        } else {
+            continue; // 未知口留给组件，避免幽灵端口
         }
         items.push(item);
     }
@@ -97,6 +88,13 @@ const buildEvaluatePortItems = (ports: DslPort[]) => {
             id: PAYLOAD_PORT_ID,
             group: 'absolute-in-solid',
             args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
+        });
+    }
+    if (!seen.has('out')) {
+        items.push({
+            id: 'out',
+            group: 'absolute-out-solid',
+            args: { x: EVALUATE_LAYOUT.width, y: EVALUATE_LAYOUT.outPortY, dx: 0 },
         });
     }
     return items;

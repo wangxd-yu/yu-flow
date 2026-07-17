@@ -4,12 +4,12 @@
 // ============================================================================
 
 import React from 'react';
-import { Divider, Input, Select, Typography } from 'antd';
+import { Input, Select } from 'antd';
 import type { DslPort } from '../../../types';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { IfNodeComponent, IF_LAYOUT } from './IfNodeComponent';
+import { PropertyField, PropertySection } from '../../shared/PropertyPanel';
 
-const { Text } = Typography;
 const { TextArea } = Input;
 
 const LANGUAGE_OPTIONS = [
@@ -23,32 +23,27 @@ const LANGUAGE_OPTIONS = [
 // ── 属性面板编辑器 ──
 function IfEditor({ data, onChange }: PropertyEditorProps) {
     return (
-        <div style={{ marginTop: 12 }}>
-            <Divider orientation="left" style={{ fontSize: 12, margin: '8px 0' }}>
-                条件配置
-            </Divider>
-            <div style={{ marginBottom: 12 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>表达式语言</Text>
+        <PropertySection title="条件配置" tip="也可在画布节点内直接编辑">
+            <PropertyField label="表达式语言">
                 <Select
                     size="small"
                     value={data.language || 'JavaScript'}
                     options={LANGUAGE_OPTIONS}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
                     onChange={(val) => onChange({ language: val })}
                 />
-            </div>
-            <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>条件表达式</Text>
+            </PropertyField>
+            <PropertyField label="条件表达式" layout="vertical">
                 <TextArea
                     size="small"
                     value={data.condition || ''}
                     autoSize={{ minRows: 2, maxRows: 6 }}
                     placeholder="例如: age >= 18"
-                    style={{ marginTop: 4, fontFamily: 'monospace' }}
+                    style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
                     onChange={(e) => onChange({ condition: e.target.value })}
                 />
-            </div>
-        </div>
+            </PropertyField>
+        </PropertySection>
     );
 }
 
@@ -84,20 +79,22 @@ export const ifNodeRegistration: NodeRegistration = {
     importConfig: {
         portMode: 'manual',
         buildPortItems: (ports: DslPort[]) => {
-            const posMap: Record<string, { x: number; y: number }> = {
-                in: { x: 0, y: IF_LAYOUT.inPortY },
-                true: { x: IF_LAYOUT.width, y: IF_LAYOUT.truePortY },
-                false: { x: IF_LAYOUT.width, y: IF_LAYOUT.falsePortY },
+            const posMap: Record<string, { x: number; y: number; group: string }> = {
+                in: { x: 0, y: IF_LAYOUT.inPortY, group: 'absolute-in-solid' },
+                true: { x: IF_LAYOUT.width, y: IF_LAYOUT.truePortY, group: 'absolute-out-solid' },
+                false: { x: IF_LAYOUT.width, y: IF_LAYOUT.falsePortY, group: 'absolute-out-hollow' },
             };
             const seenIds = new Set<string>();
             const items: any[] = [];
             for (const p of ports) {
-                if (seenIds.has(p.id)) continue;
+                if (seenIds.has(p.id) || p.id.startsWith('in:var:')) continue;
                 seenIds.add(p.id);
+                const m = posMap[p.id];
+                if (!m) continue; // 未知口留给组件，避免 (0,0) 幽灵端口
                 items.push({
                     id: p.id,
-                    group: p.id === 'in' ? 'absolute-in-solid' : p.id === 'false' ? 'absolute-out-hollow' : 'absolute-out-solid',
-                    args: { ...(posMap[p.id] || { x: 0, y: 0 }), dx: 0 },
+                    group: m.group,
+                    args: { x: m.x, y: m.y, dx: 0 },
                 });
             }
             return items;

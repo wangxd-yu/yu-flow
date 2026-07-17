@@ -7,6 +7,7 @@
 import React from 'react';
 import { Node } from '@antv/x6';
 import { createId } from '../../utils/id';
+import { relativizeExtractPath } from './extractPathUtils';
 
 // ── 数据类型 ──
 export interface NodeVariable {
@@ -14,6 +15,9 @@ export interface NodeVariable {
     name: string;
     extractPath: string;
 }
+
+/** 总入口 in:payload 写入的 key，不占变量行 */
+const PAYLOAD_INPUT_KEY = 'payload';
 
 // ── 配置接口 ──
 export interface UseNodeVariablesOptions {
@@ -35,11 +39,13 @@ function defaultInputsToVars(inputs?: Record<string, any>, existingPorts?: strin
         .filter((p) => p.startsWith('in:var:'))
         .map((p) => p.replace('in:var:', ''));
 
-    return Object.entries(inputs).map(([key, val], i) => ({
-        id: (val as any)?.id || varIds[i] || createId('var'),
-        name: key,
-        extractPath: typeof val === 'string' ? val : (val as any)?.extractPath || '',
-    }));
+    return Object.entries(inputs)
+        .filter(([key]) => key !== PAYLOAD_INPUT_KEY)
+        .map(([key, val], i) => ({
+            id: (val as any)?.id || varIds[i] || createId('var'),
+            name: key,
+            extractPath: typeof val === 'string' ? val : (val as any)?.extractPath || '',
+        }));
 }
 
 function defaultVarsToInputs(vars: NodeVariable[]): Record<string, any> | undefined {
@@ -63,7 +69,10 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
     const [variables, setVariables] = React.useState<NodeVariable[]>(() => {
         const data = node.getData() as any;
         const saved = data?.__variables;
-        if (saved && saved.length > 0) return saved;
+        // payload 为总入口保留字，不占变量行（历史脏数据一并过滤）
+        if (saved && saved.length > 0) {
+            return saved.filter((v: NodeVariable) => v.name !== PAYLOAD_INPUT_KEY);
+        }
 
         const existingPorts = node.getPorts().map((p) => p.id!);
         const fr = inputsToVars(data?.inputs, existingPorts);
@@ -75,11 +84,19 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
         return fr;
     });
 
-    // ── 同步到 Node Data ──
+    // ── 同步到 Node Data（保留 inputs.payload 总入口，不被变量行覆盖）──
     const syncToNodeData = React.useCallback(
         (nv: NodeVariable[], extra?: Record<string, any>) => {
             setVariables(nv);
-            node.setData({ ...node.getData(), inputs: varsToInputs(nv), __variables: nv, ...extra }, { overwrite: true });
+            const prev = node.getData() as any;
+            const nextInputs = { ...(varsToInputs(nv) || {}) } as Record<string, any>;
+            if (prev?.inputs?.[PAYLOAD_INPUT_KEY] != null) {
+                nextInputs[PAYLOAD_INPUT_KEY] = prev.inputs[PAYLOAD_INPUT_KEY];
+            }
+            node.setData(
+                { ...prev, inputs: Object.keys(nextInputs).length ? nextInputs : undefined, __variables: nv, ...extra },
+                { overwrite: true },
+            );
         },
         [node, varsToInputs],
     );
@@ -94,9 +111,56 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
     React.useEffect(() => {
         const d = node.getData() as any;
         if (!d?.__variables) {
-            node.setData({ ...d, __variables: variables, inputs: varsToInputs(variables) }, { overwrite: true });
+            const nextInputs = { ...(varsToInputs(variables) || {}) } as Record<string, any>;
+            if (d?.inputs?.[PAYLOAD_INPUT_KEY] != null) {
+                nextInputs[PAYLOAD_INPUT_KEY] = d.inputs[PAYLOAD_INPUT_KEY];
+            }
+            node.setData(
+                { ...d, __variables: variables, inputs: Object.keys(nextInputs).length ? nextInputs : undefined },
+                { overwrite: true },
+            );
         }
     }, []);
+
+    /** 按入边源节点把绝对路径压回 $ / $.field（加载已保存 DSL 时） */
+    const relativizeWiredVars = React.useCallback(() => {
+        const graph = node.model?.graph;
+        if (!graph) return;
+        const curVars: NodeVariable[] =
+            (node.getData() as any)?.__variables || variablesRef.current;
+        let changed = false;
+        const updated = curVars.map((v) => {
+            const portId = `in:var:${v.id}`;
+            const edge = graph.getConnectedEdges(node).find((e: any) => {
+                if (e.getTargetCellId?.() !== node.id) return false;
+                return String(e.getTargetPortId?.()) === portId;
+            });
+            if (!edge) return v;
+            const srcId = edge.getSourceCellId?.();
+            const srcPort = edge.getSourcePortId?.() || 'out';
+            if (!srcId) return v;
+            const nextPath = relativizeExtractPath(v.extractPath, srcId, srcPort);
+            if (nextPath === v.extractPath) return v;
+            changed = true;
+            return { ...v, extractPath: nextPath };
+        });
+        if (changed) syncRef.current(updated);
+    }, [node]);
+
+    // 挂载后 / 图就绪后：压回简写
+    React.useEffect(() => {
+        let cancelled = false;
+        const tryRel = () => {
+            if (cancelled) return;
+            if (!node.model?.graph) {
+                requestAnimationFrame(tryRel);
+                return;
+            }
+            relativizeWiredVars();
+        };
+        tryRel();
+        return () => { cancelled = true; };
+    }, [node, relativizeWiredVars]);
 
     // ── edge:connected 事件: placeholder 连接后升级 ──
     React.useEffect(() => {
@@ -123,9 +187,16 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
             if ((edge as any).__pv) return;
             (edge as any).__pv = true;
 
+            // 连线后 UI 只写简写 $，保存时由 FlowParser 展开
             const updated = [...curVars];
             if (!updated[updated.length - 1].name) {
-                updated[updated.length - 1] = { ...last, name: `var${updated.length}` };
+                updated[updated.length - 1] = {
+                    ...last,
+                    name: `var${updated.length}`,
+                    extractPath: last.extractPath?.trim() ? last.extractPath : '$',
+                };
+            } else if (!updated[updated.length - 1].extractPath?.trim()) {
+                updated[updated.length - 1] = { ...updated[updated.length - 1], extractPath: '$' };
             }
             updated.push({ id: createId('var'), name: '', extractPath: '$' });
             syncRef.current(updated);
@@ -135,13 +206,14 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
                     edge.addTools({ name: 'button-remove', args: { distance: '50%' } });
                 } catch (_) { }
                 delete (edge as any).__pv;
+                relativizeWiredVars();
             }, 50);
         };
         graph.on('edge:connected', onConnected);
         return () => {
             graph.off('edge:connected', onConnected);
         };
-    }, [node]);
+    }, [node, relativizeWiredVars]);
 
     // ── 已有连线加删除按钮 ──
     React.useEffect(() => {
@@ -204,9 +276,11 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
             }
         });
 
-        // 移除多余的变量端口
+        // 移除多余的变量端口（含误生成的 in:var:payload）
         ports.forEach((p) => {
-            if (p.id?.startsWith('in:var:') && !wanted.has(p.id)) node.removePort(p.id);
+            if (p.id?.startsWith('in:var:') && !wanted.has(p.id)) {
+                try { node.removePort(p.id); } catch { /* ignore */ }
+            }
         });
     }, [variables, node, dragState]);
 

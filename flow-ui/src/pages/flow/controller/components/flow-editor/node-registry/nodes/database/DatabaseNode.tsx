@@ -14,13 +14,13 @@ import { DynamicVariableList } from '../../shared/DynamicVariableList';
 import {
     HEADER_HEIGHT, ROW_HEIGHT, VAR_PADDING, COND_PADDING, MIN_WIDTH, MIN_QUERY_HEIGHT,
 } from '../../shared/BaseExpressionNode';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
     PAYLOAD_PORT_Y,
     ensurePayloadPort,
     usePayloadEntryConnection,
     hasPayloadInput,
     PayloadEntryChrome,
-    PayloadBadge,
 } from '../../shared/usePayloadEntryPort';
 
 const { Text } = Typography;
@@ -212,10 +212,11 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
         <NodeWrapper node={node} selected={selected} themeColor={borderColor} outlineCss={outlineCss} backgroundColor={themeObj.bodyBg}>
             <PayloadEntryChrome hasPayload={hasPayload} primaryColor={themeObj.primary}>
                 <NodeHeader icon={ICONS.database} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={
                         <Space size={8}>
-                            {hasPayload && <PayloadBadge color={themeObj.primary} />}
                             {sqlType === 'SELECT' && (
                                 <Dropdown menu={returnTypeMenu} trigger={['click']}>
                                     <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>

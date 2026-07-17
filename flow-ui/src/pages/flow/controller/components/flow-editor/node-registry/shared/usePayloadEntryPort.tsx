@@ -4,18 +4,25 @@
 // ============================================================================
 
 import React, { useEffect } from 'react';
-import { Typography } from 'antd';
 import type { Node } from '@antv/x6';
+import { relativizeExtractPath } from './extractPathUtils';
 
-const { Text } = Typography;
-
-/** Header 垂直中线（与 Record 一致） */
-export const PAYLOAD_PORT_Y = 20; // HEADER_HEIGHT / 2，Header 固定 40
+/** Header 垂直中线（标题+ID 双行 Header，高 52） */
+export const PAYLOAD_PORT_Y = 26;
 
 export const PAYLOAD_PORT_ID = 'in:payload';
 
 /** 确保节点存在 absolute-in-solid 的 in:payload 端口 */
 export function ensurePayloadPort(node: Node, y: number = PAYLOAD_PORT_Y) {
+    // 历史误生成：inputs.payload → in:var:payload，无 args 时贴在左上角
+    if (node.hasPort('in:var:payload')) {
+        try {
+            node.removePort('in:var:payload');
+        } catch {
+            /* ignore */
+        }
+    }
+
     const existing = node.getPort(PAYLOAD_PORT_ID);
     if (existing && existing.group !== 'absolute-in-solid') {
         try {
@@ -38,9 +45,40 @@ export function ensurePayloadPort(node: Node, y: number = PAYLOAD_PORT_Y) {
     }
 }
 
+/** 若已有 in:payload 入边，把绝对路径压回 `$` */
+function relativizePayloadInput(node: Node) {
+    const graph = node.model?.graph;
+    if (!graph) return;
+    const edge = graph.getConnectedEdges(node).find((e: any) => {
+        if (e.getTargetCellId?.() !== node.id) return false;
+        return String(e.getTargetPortId?.()) === PAYLOAD_PORT_ID;
+    });
+    if (!edge) return;
+    const srcId = edge.getSourceCellId?.();
+    const srcPort = edge.getSourcePortId?.() || 'out';
+    if (!srcId) return;
+
+    const prev = node.getData() as any;
+    const cur = prev?.inputs?.payload;
+    const curPath = typeof cur === 'string' ? cur : cur?.extractPath;
+    const nextPath = relativizeExtractPath(curPath || '$', srcId, srcPort);
+    if (nextPath === (curPath || '').trim() && curPath) return;
+
+    node.setData(
+        {
+            ...prev,
+            inputs: {
+                ...(prev?.inputs || {}),
+                payload: { extractPath: nextPath || '$' },
+            },
+        },
+        { overwrite: true },
+    );
+}
+
 /**
  * 连线到 in:payload 时写入 inputs.payload = { extractPath: '$' }。
- * FlowParser 会在导出时展开为 $.source.out。
+ * FlowParser 会在导出/保存时展开为 $.source.out。
  */
 export function usePayloadEntryConnection(node: Node) {
     useEffect(() => {
@@ -92,6 +130,7 @@ export function usePayloadEntryConnection(node: Node) {
                 requestAnimationFrame(bind);
                 return;
             }
+            relativizePayloadInput(node);
             graph.on('edge:connected', onConnected);
         };
         bind();
@@ -138,8 +177,4 @@ export const PayloadEntryChrome: React.FC<{
         />
         {children}
     </div>
-);
-
-export const PayloadBadge: React.FC<{ color: string }> = ({ color }) => (
-    <Text style={{ fontSize: 10, color }}>payload</Text>
 );

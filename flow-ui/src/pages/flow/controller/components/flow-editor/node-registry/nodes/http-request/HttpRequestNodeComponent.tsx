@@ -6,7 +6,7 @@
 // ============================================================================
 
 import React, { useEffect, useState } from 'react';
-import { Typography, Select, Input, Button, Space, Dropdown, Switch } from 'antd';
+import { Typography, Select, Input, Button, Space, Dropdown } from 'antd';
 import { Node } from '@antv/x6';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
@@ -23,8 +23,9 @@ import {
     usePayloadEntryConnection,
     hasPayloadInput,
     PayloadEntryChrome,
-    PayloadBadge,
 } from '../../shared/usePayloadEntryPort';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import { NODE_HEADER_WITH_ID_HEIGHT } from '../../shared/useNodeSelection';
 import { createId } from '../../../utils/id';
 
 const { Text } = Typography;
@@ -44,14 +45,17 @@ const ICONS = {
     ),
 };
 
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = NODE_HEADER_WITH_ID_HEIGHT;
 const SECTION_HEADER_HEIGHT = 26;
 const ROW_HEIGHT = 32;
 const GAP = 8;
 const MIN_WIDTH = 420;
-const FOOTER_HEIGHT = 56;
+const FOOTER_HEIGHT = 82;
 const PADDING_TOP = 10;
 const PADDING_BOTTOM = 8;
+/** JSON Body 编辑区最小高度 */
+const JSON_BODY_MIN_HEIGHT = 64;
+const FORM_ADD_BTN_HEIGHT = 28;
 
 export const HTTP_REQUEST_LAYOUT = {
     width: MIN_WIDTH,
@@ -60,6 +64,32 @@ export const HTTP_REQUEST_LAYOUT = {
     /** 总入口 in:payload（Header 左侧中线） */
     payloadPortY: PAYLOAD_PORT_Y,
 };
+
+/** 按当前 Headers/Params/Body 配置计算节点最小高度 */
+function calcHttpRequestMinHeight(opts: {
+    headerCount: number;
+    paramCount: number;
+    formCount: number;
+    showBody: boolean;
+    bodyType: string;
+}): number {
+    let y = HEADER_HEIGHT + PADDING_TOP;
+    y += ROW_HEIGHT + GAP; // URL
+    y += SECTION_HEADER_HEIGHT + opts.headerCount * (ROW_HEIGHT + 4) + GAP;
+    y += SECTION_HEADER_HEIGHT + opts.paramCount * (ROW_HEIGHT + 4) + GAP;
+    if (opts.showBody) {
+        y += SECTION_HEADER_HEIGHT;
+        if (opts.bodyType === 'json') y += JSON_BODY_MIN_HEIGHT;
+        else if (opts.bodyType === 'form-data') {
+            y += opts.formCount * (ROW_HEIGHT + 4) + FORM_ADD_BTN_HEIGHT + 4;
+        } else {
+            y += 4; // none：仅下拉
+        }
+        y += GAP;
+    }
+    y += PADDING_BOTTOM + FOOTER_HEIGHT;
+    return y;
+}
 
 const METHOD_OPTIONS = [
     { key: 'GET', label: 'GET' },
@@ -155,6 +185,19 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             changed = true;
         }
 
+        if (d.timeout === undefined || d.timeout === null) {
+            updates.timeout = 30000;
+            changed = true;
+        }
+        if (d.retryCount === undefined) {
+            updates.retryCount = 0;
+            changed = true;
+        }
+        if (d.retryIntervalMs === undefined) {
+            updates.retryIntervalMs = 1000;
+            changed = true;
+        }
+
         if (changed) node.setData({ ...d, ...updates }, { overwrite: true });
     }, [node]);
 
@@ -226,6 +269,14 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
     usePayloadEntryConnection(node);
     const hasPayload = hasPayloadInput(data);
 
+    const minTotalHeight = calcHttpRequestMinHeight({
+        headerCount: headers.length,
+        paramCount: params.length,
+        formCount: formData.length,
+        showBody,
+        bodyType,
+    });
+
     // 端口与高度
     useEffect(() => {
         if (node.hasPort('out')) node.removePort('out');
@@ -261,6 +312,17 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             }
         }
         if (node.hasPort('in')) node.removePort('in');
+        // 清掉 adapter/历史 DSL 留下的 in:var / manual 幽灵桩（无坐标时叠在左上角）
+        node.getPorts().forEach((p) => {
+            const id = p.id || '';
+            if (id.startsWith('in:var:') || p.group === 'manual') {
+                try {
+                    node.removePort(id);
+                } catch {
+                    /* ignore */
+                }
+            }
+        });
         ensurePayloadPort(node, PAYLOAD_PORT_Y);
 
         let currentY = HEADER_HEIGHT + PADDING_TOP;
@@ -273,23 +335,25 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
         currentY += SECTION_HEADER_HEIGHT + params.length * (ROW_HEIGHT + 4) + GAP;
 
         let bodyStartY = currentY;
-        let bodyContentHeight = 0;
         if (showBody) {
             bodyStartY += SECTION_HEADER_HEIGHT;
-            if (bodyType === 'json') bodyContentHeight = 90;
-            else if (bodyType === 'form-data') bodyContentHeight = formData.length * (ROW_HEIGHT + 4) + SECTION_HEADER_HEIGHT;
-            else bodyContentHeight = 20;
-            currentY += SECTION_HEADER_HEIGHT + bodyContentHeight + GAP;
         }
-        currentY += PADDING_BOTTOM;
-        const minTotalHeight = currentY + FOOTER_HEIGHT;
 
+        // 切换 Body 类型 / 增删行时：保证高度够用；非 JSON 时收回多余空白，避免与手动 resize 打架
         if (!resizing) {
             const s = node.getSize();
-            if (showBody && bodyType === 'json') {
-                if (s.height < minTotalHeight) node.resize(Math.max(s.width, MIN_WIDTH), minTotalHeight);
-            } else if (Math.abs(s.height - minTotalHeight) > 2) {
-                node.resize(Math.max(s.width, MIN_WIDTH), minTotalHeight);
+            const fitH = calcHttpRequestMinHeight({
+                headerCount: headers.length,
+                paramCount: params.length,
+                formCount: formData.length,
+                showBody,
+                bodyType,
+            });
+            const nextH = bodyType === 'json' && showBody
+                ? Math.max(s.height, fitH) // JSON：只升高，保留用户拉高
+                : fitH; // None / Form：贴合内容
+            if (Math.abs(s.height - nextH) > 2) {
+                node.resize(Math.max(s.width, MIN_WIDTH), nextH);
             }
         }
 
@@ -369,8 +433,8 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
 
         const currentSize = node.getSize();
         const footerY = currentSize.height - FOOTER_HEIGHT;
-        const successY = footerY + 14;
-        const failY = footerY + 36;
+        const successY = footerY + 28;
+        const failY = footerY + 56;
 
         setAbsoluteOutPort('success', 'absolute-out-solid', successY, currentSize.width);
         setAbsoluteOutPort('fail', 'absolute-out-hollow', failY, currentSize.width);
@@ -419,21 +483,20 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={HEADER_HEIGHT}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={
-                        <Space size={8}>
-                            {hasPayload && <PayloadBadge color={themeObj.primary} />}
-                            <Dropdown menu={methodMenu} trigger={['click']}>
-                                <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                                >
-                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{method}</Text>
-                                    <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
-                                </div>
-                            </Dropdown>
-                        </Space>
+                        <Dropdown menu={methodMenu} trigger={['click']}>
+                            <div
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                            >
+                                <Text style={{ fontSize: 11, color: themeObj.primary }}>{method}</Text>
+                                <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                            </div>
+                        </Dropdown>
                     }
                 />
             </PayloadEntryChrome>
@@ -468,7 +531,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     />
                 </div>
 
-                <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
                     <div style={{ marginBottom: GAP, flexShrink: 0 }}>
                         <div style={{ height: SECTION_HEADER_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Headers</Text>
@@ -486,7 +549,16 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     </div>
 
                     {showBody && (
-                        <div style={{ marginBottom: GAP, display: 'flex', flexDirection: 'column', flex: bodyType === 'json' ? 1 : 0, minHeight: 0 }}>
+                        <div
+                            style={{
+                                marginBottom: GAP,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                flex: bodyType === 'json' ? 1 : 0,
+                                flexShrink: bodyType === 'json' ? 1 : 0,
+                                minHeight: bodyType === 'json' ? JSON_BODY_MIN_HEIGHT + SECTION_HEADER_HEIGHT : undefined,
+                            }}
+                        >
                             <div style={{ height: SECTION_HEADER_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                                 <Text style={{ fontSize: 12, color: '#8c8c8c' }}>Body</Text>
                                 <Select
@@ -495,7 +567,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                                     onChange={(v) => updateData('bodyType', v)}
                                     style={{ width: 96 }}
                                     onMouseDown={(e) => e.stopPropagation()}
-                                    getPopupContainer={(t) => t.parentNode as HTMLElement}
+                                    getPopupContainer={() => document.body}
                                 >
                                     <Option value="none">None</Option>
                                     <Option value="json">JSON</Option>
@@ -503,7 +575,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                                 </Select>
                             </div>
                             {bodyType === 'json' && (
-                                <div style={{ position: 'relative', flex: 1, minHeight: 56 }}>
+                                <div style={{ position: 'relative', flex: 1, minHeight: JSON_BODY_MIN_HEIGHT }}>
                                     <div style={{
                                         position: 'absolute', left: -6, top: 14,
                                         width: 6, height: 6, borderRadius: '50%', background: themeObj.primary, zIndex: 1,
@@ -512,7 +584,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                                         value={typeof data.body === 'object' ? JSON.stringify(data.body, null, 2) : data.body}
                                         onChange={(e) => updateData('body', e.target.value)}
                                         style={{
-                                            height: '100%', resize: 'none', fontSize: 12,
+                                            height: '100%', minHeight: JSON_BODY_MIN_HEIGHT, resize: 'none', fontSize: 12,
                                             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                                             marginLeft: 8, width: 'calc(100% - 8px)',
                                             background: '#f5f5f5', borderRadius: 4,
@@ -535,51 +607,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                 </div>
             </div>
 
-            {/* 日志开关 + 接口标识（节点内配置，非右侧属性面板） */}
-            <div
-                style={{
-                    borderTop: '1px solid #f0f0f0',
-                    padding: '6px 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    pointerEvents: 'auto',
-                    flexShrink: 0,
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <Text style={{ fontSize: 11, color: '#8c8c8c' }}>开启日志</Text>
-                    <Switch
-                        size="small"
-                        checked={data.logEnabled !== false}
-                        onChange={(checked) => updateData('logEnabled', checked)}
-                    />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    <Text style={{ fontSize: 11, color: '#8c8c8c' }} title="自签名/内网 HTTPS：默认开启；公网正式环境请关闭">
-                        忽略SSL
-                    </Text>
-                    <Switch
-                        size="small"
-                        checked={data.ignoreSsl !== false}
-                        onChange={(checked) => {
-                            node.setData({ ...node.getData(), ignoreSsl: checked }, { overwrite: true });
-                            setData({ ...node.getData(), ignoreSsl: checked });
-                        }}
-                    />
-                </div>
-                <Input
-                    size="small"
-                    placeholder="接口标识（可选，默认节点ID）"
-                    value={data.apiType || ''}
-                    onChange={(e) => updateData('apiType', e.target.value)}
-                    style={{ flex: 1, fontSize: 12 }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                />
-            </div>
-
-            {/* Footer — 对齐 Evaluate Result 区风格 */}
+            {/* Footer — 成功条件；策略配置在右侧属性面板 */}
             <div
                 style={{
                     height: FOOTER_HEIGHT,
@@ -587,27 +615,39 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     position: 'relative',
                     pointerEvents: 'auto',
                     flexShrink: 0,
-                    padding: '6px 12px',
+                    padding: '8px 12px 8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxSizing: 'border-box',
                 }}
             >
-                <Text style={{ fontSize: 10, color: '#8c8c8c' }}>Success Condition (Aviator)</Text>
-                <Input
+                <Text style={{ fontSize: 11, color: '#8c8c8c', flexShrink: 0, marginBottom: 4 }}>
+                    成功条件
+                </Text>
+                <TextArea
                     placeholder="status == 200  或  status == 200 && body.code == 0"
                     value={data.successCondition}
                     onChange={(e) => updateData('successCondition', e.target.value)}
-                    size="small"
-                    variant="borderless"
-                    style={{ padding: 0, fontSize: 12, width: '70%' }}
+                    autoSize={false}
+                    rows={2}
+                    style={{
+                        fontSize: 12,
+                        width: 'calc(100% - 64px)',
+                        resize: 'none',
+                        lineHeight: '18px',
+                        padding: '4px 8px',
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    }}
                     onMouseDown={(e) => e.stopPropagation()}
                 />
-                <div style={{ position: 'absolute', right: 22, top: 10, fontSize: 11, color: '#52c41a' }}>success</div>
-                <div style={{ position: 'absolute', right: 22, top: 32, fontSize: 11, color: '#ff4d4f' }}>fail</div>
+                <div style={{ position: 'absolute', right: 22, top: 22, fontSize: 11, color: '#52c41a' }}>success</div>
+                <div style={{ position: 'absolute', right: 22, top: 50, fontSize: 11, color: '#ff4d4f' }}>fail</div>
             </div>
 
             <ResizeHandle
                 node={node}
                 minWidth={MIN_WIDTH}
-                minHeight={220}
+                minHeight={minTotalHeight}
                 color={themeObj.primary}
                 onResizeStart={() => setResizing(true)}
                 onResizeEnd={() => setResizing(false)}

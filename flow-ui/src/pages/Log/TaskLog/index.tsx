@@ -13,6 +13,7 @@ import {
   CloseCircleOutlined,
   ClockCircleOutlined,
   EyeOutlined,
+  MinusCircleOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
 import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
@@ -31,6 +32,7 @@ const STATUS_MAP: Record<string, { status: any; text: string }> = {
   SUCCESS: { status: 'success', text: '成功' },
   FAILED: { status: 'error', text: '失败' },
   RUNNING: { status: 'processing', text: '运行中' },
+  SKIPPED: { status: 'default', text: '已跳过' },
 };
 
 const formatDuration = (ms?: number) => {
@@ -129,6 +131,7 @@ const TaskLogPage: React.FC = () => {
         SUCCESS: { text: '成功', status: 'Success' },
         FAILED: { text: '失败', status: 'Error' },
         RUNNING: { text: '运行中', status: 'Processing' },
+        SKIPPED: { text: '已跳过', status: 'Default' },
       },
       render: (_, record) => {
         if (record.status === 'SUCCESS') {
@@ -162,6 +165,18 @@ const TaskLogPage: React.FC = () => {
               text={
                 <Tag icon={<SyncOutlined spin />} color="processing" style={{ marginInlineEnd: 0 }}>
                   运行中
+                </Tag>
+              }
+            />
+          );
+        }
+        if (record.status === 'SKIPPED') {
+          return (
+            <Badge
+              status="default"
+              text={
+                <Tag icon={<MinusCircleOutlined />} color="default" style={{ marginInlineEnd: 0 }}>
+                  已跳过
                 </Tag>
               }
             />

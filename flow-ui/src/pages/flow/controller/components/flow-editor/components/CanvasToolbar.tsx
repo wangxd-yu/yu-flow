@@ -6,8 +6,15 @@ import {
   CompressOutlined,
   AimOutlined,
   ApartmentOutlined,
+  NodeIndexOutlined,
 } from '@ant-design/icons';
-import type { Graph, Node, Edge } from '@antv/x6';
+import type { Graph, Node } from '@antv/x6';
+import {
+  applyEdgeRouteStyle,
+  getActiveEdgeRouteStyle,
+  EDGE_ROUTE_PRESETS,
+  type EdgeRouteStyleKey,
+} from '../adapter';
 
 export type CanvasToolbarProps = {
   graph: Graph | null;
@@ -17,15 +24,24 @@ export type CanvasToolbarProps = {
 // 自动排版算法
 // 基于连线方向的拓扑排序 → 分层 → 瀑布式排列
 // 端口模型：输入在左，输出在右 → 流向从左到右 (LR)
+// style:
+//   normal / compact — 单行 LR（紧凑仅缩小间距）
+//   serpentine — 每行固定列数，满行折到下一行（仍左右连线）
 // ============================================================================
 
 interface LayoutOptions {
   /** 同层节点排列方式: 'flow' = 按原位置排序, 'tree' = 子节点靠近父节点 */
   mode: 'flow' | 'tree';
+  /** 排版样式 */
+  style?: 'normal' | 'compact' | 'serpentine';
   /** 列间距（水平方向，层与层之间） */
   rankSep: number;
   /** 行间距（垂直方向，同层节点之间） */
   nodeSep: number;
+  /** 蛇形换行：每行最多层数（列数） */
+  columns?: number;
+  /** 蛇形换行：行与行之间的额外间距 */
+  rowSep?: number;
 }
 
 interface NodeInfo {
@@ -33,23 +49,21 @@ interface NodeInfo {
   node: Node;
   width: number;
   height: number;
-  /** 所在层级（根据连线方向拓扑排序得出） */
   rank: number;
-  /** 同层内的排列序号 */
   order: number;
-  /** 下游节点 ID（从此节点的输出端口连出去的节点） */
   children: string[];
-  /** 上游节点 ID（连线连入此节点的节点） */
   parents: string[];
+}
+
+function fitGraph(graph: Graph) {
+  setTimeout(() => {
+    graph.zoomToFit({ padding: 40, maxScale: 1 });
+    graph.centerContent();
+  }, 50);
 }
 
 /**
  * 对画布中所有节点进行自动排版（水平方向，从左到右）。
- * 核心算法：
- * 1. 根据连线（edge）的 source→target 建立拓扑关系
- * 2. 用最长路径算法为每个节点分配层级（rank）
- * 3. 没有入边的节点为第 0 层（最左侧），依次向右排列
- * 4. 同层内节点垂直排列，居中对齐
  */
 function autoLayout(graph: Graph, options: LayoutOptions) {
   const nodes = graph.getNodes();
@@ -57,7 +71,14 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
 
   if (nodes.length === 0) return;
 
-  const { rankSep, nodeSep, mode } = options;
+  const {
+    rankSep,
+    nodeSep,
+    mode,
+    style = 'normal',
+    columns = 4,
+    rowSep = 64,
+  } = options;
 
   // ── 1. 构建拓扑关系 ──
   const nodeMap = new Map<string, NodeInfo>();
@@ -75,12 +96,10 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
     });
   }
 
-  // 根据连线建立 parent→child 关系
   for (const edge of edges) {
     const src = (edge.getSource() as any)?.cell;
     const tgt = (edge.getTarget() as any)?.cell;
-    if (!src || !tgt) continue;
-    if (src === tgt) continue; // 跳过自环
+    if (!src || !tgt || src === tgt) continue;
     const srcInfo = nodeMap.get(src);
     const tgtInfo = nodeMap.get(tgt);
     if (srcInfo && tgtInfo) {
@@ -89,20 +108,17 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
     }
   }
 
-  // ── 2. 拓扑分层：最长路径算法 ──
-  // rank = 从根节点到此节点的最长路径长度
-  // 这保证了：如果 A→B→C，则 rank(A) < rank(B) < rank(C)
-  const computing = new Set<string>(); // 防环
+  // ── 2. 拓扑分层：最长路径 ──
+  const computing = new Set<string>();
 
   function assignRank(id: string): number {
     const info = nodeMap.get(id);
     if (!info) return 0;
     if (info.rank >= 0) return info.rank;
-    if (computing.has(id)) return 0; // 检测到环，中断
+    if (computing.has(id)) return 0;
     computing.add(id);
 
     if (info.parents.length === 0) {
-      // 没有上游 → 第 0 层（最左侧）
       info.rank = 0;
     } else {
       let maxParentRank = 0;
@@ -120,7 +136,6 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
     assignRank(id);
   }
 
-  // 孤立节点（无连线）放在最左列
   for (const info of nodeMap.values()) {
     if (info.rank < 0) info.rank = 0;
   }
@@ -141,7 +156,6 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
     if (!group) continue;
 
     if (mode === 'tree' && r > 0) {
-      // 树模式：子节点按其父节点的 order 均值排列，使子节点垂直方向靠近父节点
       group.sort((a, b) => {
         const avgA = a.parents.reduce((sum, pid) => {
           const p = nodeMap.get(pid);
@@ -154,7 +168,6 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
         return avgA - avgB;
       });
     } else {
-      // 流模式：按节点当前 Y 坐标排序（保持用户原有上下顺序）
       group.sort((a, b) => {
         const posA = a.node.getPosition();
         const posB = b.node.getPosition();
@@ -165,18 +178,66 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
     group.forEach((info, idx) => { info.order = idx; });
   }
 
-  // ── 5. 计算位置（从左到右排列） ──
-  // X 轴表示层级（从左到右），Y 轴表示同层内的排列（从上到下）
-
-  // 每层的最大宽度（用于水平间距计算）
+  // 每层最大宽 / 层内总高
   const rankMaxWidth: number[] = [];
+  const rankTotalHeight: number[] = [];
   for (let r = 0; r <= maxRank; r++) {
     const group = rankGroups.get(r) || [];
     rankMaxWidth.push(group.reduce((m, i) => Math.max(m, i.width), 0));
+    let totalH = 0;
+    for (const info of group) totalH += info.height;
+    totalH += Math.max(0, group.length - 1) * nodeSep;
+    rankTotalHeight.push(totalH);
   }
 
-  // 每层的 X 起始位置
   const startX = 60;
+  const startY = 60;
+
+  if (style === 'serpentine') {
+    // ── 蛇形：按 rank 折行，每行仍左→右，保持左右端口语义 ──
+    const cols = Math.max(1, columns);
+    const rowCount = Math.floor(maxRank / cols) + 1;
+    let yCursor = startY;
+
+    for (let row = 0; row < rowCount; row++) {
+      const rankStart = row * cols;
+      const rankEnd = Math.min(maxRank, rankStart + cols - 1);
+      if (rankStart > maxRank) break;
+
+      // 本行各层相对 X
+      const localRankX: number[] = [];
+      let xOffset = startX;
+      for (let r = rankStart; r <= rankEnd; r++) {
+        localRankX[r] = xOffset;
+        xOffset += rankMaxWidth[r] + rankSep;
+      }
+
+      // 本行最大层高（用于行内垂直居中）
+      let rowMaxH = 0;
+      for (let r = rankStart; r <= rankEnd; r++) {
+        rowMaxH = Math.max(rowMaxH, rankTotalHeight[r]);
+      }
+
+      for (let r = rankStart; r <= rankEnd; r++) {
+        const group = rankGroups.get(r) || [];
+        if (group.length === 0) continue;
+
+        let yOffset = yCursor + (rowMaxH - rankTotalHeight[r]) / 2;
+        for (const info of group) {
+          const x = localRankX[r] + (rankMaxWidth[r] - info.width) / 2;
+          info.node.setPosition(x, yOffset);
+          yOffset += info.height + nodeSep;
+        }
+      }
+
+      yCursor += rowMaxH + rowSep;
+    }
+
+    fitGraph(graph);
+    return;
+  }
+
+  // ── 5. 单行 LR（normal / compact 仅间距不同，已在 options 传入） ──
   const rankX: number[] = [];
   let xOffset = startX;
   for (let r = 0; r <= maxRank; r++) {
@@ -184,46 +245,24 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
     xOffset += rankMaxWidth[r] + rankSep;
   }
 
-  // 每层内节点的 Y 位置（居中排列）
-  // 先计算所有层中节点数最多的层的总高度，用于全局垂直居中
   let maxGroupHeight = 0;
   for (let r = 0; r <= maxRank; r++) {
-    const group = rankGroups.get(r) || [];
-    let totalH = 0;
-    for (const info of group) totalH += info.height;
-    totalH += Math.max(0, group.length - 1) * nodeSep;
-    if (totalH > maxGroupHeight) maxGroupHeight = totalH;
+    maxGroupHeight = Math.max(maxGroupHeight, rankTotalHeight[r]);
   }
-
-  const startY = 60;
 
   for (let r = 0; r <= maxRank; r++) {
     const group = rankGroups.get(r) || [];
     if (group.length === 0) continue;
 
-    // 计算本层总高度
-    let totalH = 0;
-    for (const info of group) totalH += info.height;
-    totalH += Math.max(0, group.length - 1) * nodeSep;
-
-    // 垂直居中：相对于最大层高度居中
-    let yOffset = startY + (maxGroupHeight - totalH) / 2;
-
+    let yOffset = startY + (maxGroupHeight - rankTotalHeight[r]) / 2;
     for (const info of group) {
-      // 水平方向：层内居中对齐
       const x = rankX[r] + (rankMaxWidth[r] - info.width) / 2;
-      const y = yOffset;
-
-      info.node.setPosition(x, y);
+      info.node.setPosition(x, yOffset);
       yOffset += info.height + nodeSep;
     }
   }
 
-  // ── 6. 排版完成，适配画布 ──
-  setTimeout(() => {
-    graph.zoomToFit({ padding: 40, maxScale: 1 });
-    graph.centerContent();
-  }, 50);
+  fitGraph(graph);
 }
 
 // ============================================================================
@@ -232,20 +271,61 @@ function autoLayout(graph: Graph, options: LayoutOptions) {
 
 const LAYOUT_ITEMS = [
   {
+    key: 'lr-serpentine',
+    label: '蛇形换行',
+    icon: '↩',
+    options: {
+      mode: 'flow' as const,
+      style: 'serpentine' as const,
+      rankSep: 64,
+      nodeSep: 36,
+      columns: 4,
+      rowSep: 72,
+    },
+  },
+  {
+    key: 'lr-compact',
+    label: '紧凑水平',
+    icon: '⇉',
+    options: {
+      mode: 'flow' as const,
+      style: 'compact' as const,
+      rankSep: 48,
+      nodeSep: 28,
+    },
+  },
+  {
     key: 'lr-flow',
     label: '水平排版',
     icon: '→',
-    options: { mode: 'flow' as const, rankSep: 80, nodeSep: 40 },
+    options: {
+      mode: 'flow' as const,
+      style: 'normal' as const,
+      rankSep: 80,
+      nodeSep: 40,
+    },
   },
   {
     key: 'lr-tree',
     label: '树状排版',
     icon: '🌳',
-    options: { mode: 'tree' as const, rankSep: 80, nodeSep: 40 },
+    options: {
+      mode: 'tree' as const,
+      style: 'normal' as const,
+      rankSep: 80,
+      nodeSep: 40,
+    },
   },
 ];
 
+const EDGE_ROUTE_ITEMS: { key: EdgeRouteStyleKey; icon: string; label: string }[] = [
+  { key: 'er', icon: '┐', label: EDGE_ROUTE_PRESETS.er.label },
+  { key: 'manhattan', icon: '⤴', label: EDGE_ROUTE_PRESETS.manhattan.label },
+];
+
 export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
+  const [edgeStyle, setEdgeStyle] = React.useState<EdgeRouteStyleKey>(getActiveEdgeRouteStyle);
+
   if (!graph) return null;
 
   const handleLayout = React.useCallback(
@@ -257,12 +337,35 @@ export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
     [graph],
   );
 
+  const handleEdgeRoute = React.useCallback(
+    (key: string) => {
+      const style = key as EdgeRouteStyleKey;
+      if (!EDGE_ROUTE_PRESETS[style]) return;
+      applyEdgeRouteStyle(graph, style);
+      setEdgeStyle(style);
+    },
+    [graph],
+  );
+
   const menuItems = LAYOUT_ITEMS.map(item => ({
     key: item.key,
     label: (
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 18, textAlign: 'center' }}>{item.icon}</span>
         <span>{item.label}</span>
+      </span>
+    ),
+  }));
+
+  const edgeMenuItems = EDGE_ROUTE_ITEMS.map(item => ({
+    key: item.key,
+    label: (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 18, textAlign: 'center' }}>{item.icon}</span>
+        <span>{item.label}</span>
+        {edgeStyle === item.key ? (
+          <span style={{ marginLeft: 'auto', color: '#1677ff', fontSize: 11 }}>✓</span>
+        ) : null}
       </span>
     ),
   }));
@@ -312,10 +415,8 @@ export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
         />
       </Tooltip>
 
-      {/* 分隔线 */}
       <div style={{ height: 1, background: '#e8e8e8', margin: '0 4px' }} />
 
-      {/* 自动排版 */}
       <Dropdown
         menu={{
           items: menuItems,
@@ -327,6 +428,23 @@ export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
         <Tooltip title="自动排版" placement="left">
           <Button
             icon={<ApartmentOutlined />}
+            type="text"
+          />
+        </Tooltip>
+      </Dropdown>
+
+      <Dropdown
+        menu={{
+          items: edgeMenuItems,
+          onClick: ({ key }) => handleEdgeRoute(key),
+          selectedKeys: [edgeStyle],
+        }}
+        placement="bottomRight"
+        trigger={['click']}
+      >
+        <Tooltip title="连线样式" placement="left">
+          <Button
+            icon={<NodeIndexOutlined />}
             type="text"
           />
         </Tooltip>

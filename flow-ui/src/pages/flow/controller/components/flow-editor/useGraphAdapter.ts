@@ -76,7 +76,7 @@ export function useGraphAdapter(): UseGraphAdapterReturn {
 
     const addNode = useCallback(
         (graph: Graph, type: DslNodeType, position?: { x: number; y: number }): Node | null => {
-            const dslNode = createDefaultDslNode(type, position);
+            const dslNode = createDefaultDslNode(type, position, graph);
             // Import just this single node by creating a mini DSL
             const miniDsl: FlowDsl = { nodes: [dslNode], edges: [] };
             // We can't use importDslToGraph (it clears), so add the node directly

@@ -30,7 +30,10 @@ import {
     FunctionOutlined, LinkOutlined, CodeOutlined,
 } from '@ant-design/icons';
 import { Node } from '@antv/x6';
-import { useNodeSelection, getNodeTheme, NodeWrapper, NodeHeader } from '../../shared/useNodeSelection';
+import {
+    useNodeSelection, getNodeTheme, NodeWrapper, NodeHeader, ResizeHandle, NODE_HEADER_WITH_ID_HEIGHT,
+} from '../../shared/useNodeSelection';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
     useMacroDictionary,
     parseMacroParams,
@@ -46,7 +49,7 @@ const { Text } = Typography;
 /** 每个参数行高度 */
 const ROW_H = 38;
 /** Header 高度 */
-const HEADER_H = 40;
+const HEADER_H = NODE_HEADER_WITH_ID_HEIGHT;
 /** 底部信息行高度 */
 const FOOTER_H = 40;
 /** 节点宽度（固定） */
@@ -335,6 +338,8 @@ export const SystemMethodNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={HEADER_H}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={newTitle => {
                         node.setData({ ...node.getData(), __label: newTitle });
                     }}
@@ -386,7 +391,7 @@ export const SystemMethodNodeComponent = ({ node }: { node: Node }) => {
                                     <Input
                                         size="small"
                                         variant="filled"
-                                        placeholder="extractPath..."
+                                        placeholder="$ 或 $.字段"
                                         value={extractPath}
                                         onChange={e => handleExtractPathChange(param, e.target.value)}
                                         onMouseDown={e => e.stopPropagation()}
@@ -468,6 +473,20 @@ export const SystemMethodNodeComponent = ({ node }: { node: Node }) => {
                     {/* 右侧留 8px 给 X6 out 端口圆心 */}
                     <div style={{ width: 8, flexShrink: 0 }} />
                 </div>
+
+                <ResizeHandle
+                    node={node}
+                    minWidth={NODE_W}
+                    minHeight={calcNodeH(params.length)}
+                    axes="x"
+                    color={PORT_COLOR}
+                    onResize={(nw) => {
+                        if (node.hasPort('out')) {
+                            const y = calcOutPortY(params.length);
+                            node.setPortProp('out', 'args', { x: nw, y, dx: 0 });
+                        }
+                    }}
+                />
             </NodeWrapper>
 
             {/* ── 方法列表浏览抽屉（只读，不暴露 SpEL）── */}

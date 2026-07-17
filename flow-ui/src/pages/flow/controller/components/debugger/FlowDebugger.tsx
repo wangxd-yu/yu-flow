@@ -584,6 +584,13 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
 
     } catch (err: any) {
       setRunningStatus('error');
+      const raw = err?.message || 'Unknown execution error';
+      // axios 默认 10s：前端先断开时会被误标成 Global Error，并非节点引擎真实归属
+      const isClientWaitTimeout = /timeout of \d+ms exceeded/i.test(raw)
+        || err?.code === 'ECONNABORTED';
+      const errorMsg = isClientWaitTimeout
+        ? `调试请求等待超时（前端断开）：${raw}。节点内 HttpRequest 超时会记在对应节点；请确认调试接口 timeout 已拉长，或检查目标接口是否过慢。`
+        : raw;
       updateLogs([{
         id: 'err_global',
         nodeId: '__global__',
@@ -592,7 +599,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
         status: 'error',
         startTime: new Date().toLocaleTimeString(),
         duration: 0,
-        error: err?.message || 'Unknown execution error',
+        error: errorMsg,
       }]);
       updateSelectedLog('err_global');
     }

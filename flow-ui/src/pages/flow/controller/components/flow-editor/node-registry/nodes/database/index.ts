@@ -13,7 +13,7 @@ const buildDatabasePortItems = (ports: DslPort[]) => {
     const seen = new Set<string>();
     const items: any[] = [];
     for (const p of ports) {
-        if (seen.has(p.id) || p.id === 'in') continue;
+        if (seen.has(p.id) || p.id === 'in' || p.id.startsWith('in:var:')) continue;
         seen.add(p.id);
         const isOut = p.id === 'out' || p.id.startsWith('out');
         const item: any = {
@@ -24,6 +24,8 @@ const buildDatabasePortItems = (ports: DslPort[]) => {
             item.args = { x: DATABASE_LAYOUT.width, y: DATABASE_LAYOUT.outPortY, dx: 0 };
         } else if (p.id === PAYLOAD_PORT_ID) {
             item.args = { x: 0, y: PAYLOAD_PORT_Y, dx: 0 };
+        } else {
+            continue;
         }
         items.push(item);
     }
@@ -32,6 +34,13 @@ const buildDatabasePortItems = (ports: DslPort[]) => {
             id: PAYLOAD_PORT_ID,
             group: 'absolute-in-solid',
             args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
+        });
+    }
+    if (!seen.has('out')) {
+        items.push({
+            id: 'out',
+            group: 'absolute-out-solid',
+            args: { x: DATABASE_LAYOUT.width, y: DATABASE_LAYOUT.outPortY, dx: 0 },
         });
     }
     return items;

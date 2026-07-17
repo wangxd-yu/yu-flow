@@ -25,6 +25,8 @@ import java.util.List;
  *       enable-trace: false
  *     security:
  *       aes-secret-key: flow-secure-keys
+ *     task:
+ *       lock-ttl-minutes: 30
  * </pre>
  *
  * @author yu-flow
@@ -82,6 +84,11 @@ public class YuFlowProperties {
      * <p>仅在 {@code demoMode=true} 时生效。</p>
      */
     private Demo demo = new Demo();
+
+    /**
+     * 定时任务相关配置组。
+     */
+    private Task task = new Task();
 
     // ==================== Getters & Setters ====================
 
@@ -147,6 +154,14 @@ public class YuFlowProperties {
 
     public void setDemo(Demo demo) {
         this.demo = demo;
+    }
+
+    public Task getTask() {
+        return task;
+    }
+
+    public void setTask(Task task) {
+        this.task = task;
     }
 
     // ==================== 内部配置组：Engine ====================
@@ -306,6 +321,36 @@ public class YuFlowProperties {
 
         public void setMaxForLoopItems(int maxForLoopItems) {
             this.maxForLoopItems = maxForLoopItems;
+        }
+    }
+
+    // ==================== 内部配置组：Task ====================
+
+    /**
+     * 定时任务相关配置。
+     *
+     * <p>对应 YAML 路径：{@code yu.flow.task.*}</p>
+     * <pre>
+     * yu:
+     *   flow:
+     *     task:
+     *       lock-ttl-minutes: 30
+     * </pre>
+     */
+    public static class Task {
+
+        /**
+         * 分布式执行锁 TTL（分钟）。
+         * <p>Cron 触发时通过 Redis 抢锁，防止多节点重复执行；超时后锁自动释放。</p>
+         */
+        private int lockTtlMinutes = 30;
+
+        public int getLockTtlMinutes() {
+            return lockTtlMinutes;
+        }
+
+        public void setLockTtlMinutes(int lockTtlMinutes) {
+            this.lockTtlMinutes = lockTtlMinutes;
         }
     }
 }

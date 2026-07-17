@@ -3,7 +3,7 @@
 // 用于替换 Monaco Editor，体积更小、画布内嵌性能优异
 // ============================================================================
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { sql } from '@codemirror/lang-sql';
 import { json } from '@codemirror/lang-json';
@@ -12,7 +12,10 @@ import { python } from '@codemirror/lang-python';
 import { java } from '@codemirror/lang-java';
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
+import { AlignLeftOutlined } from '@ant-design/icons';
+import { message, Tooltip } from 'antd';
 import { createMacroCompletionExtension } from './MacroCompletion';
+import { formatCode } from './formatCode';
 
 export type CodeEditorLanguage = 'json' | 'sql' | 'javascript' | 'python' | 'java' | 'text';
 
@@ -47,6 +50,8 @@ export interface CodeEditorProps {
     bordered?: boolean;
     /** 编辑器挂载回调（可用于拿到 EditorView 实例） */
     onMount?: (view: EditorView) => void;
+    /** 右上角「格式化」按钮，默认非只读时开启 */
+    showFormat?: boolean;
 }
 
 /**
@@ -109,8 +114,25 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
     className,
     bordered = true,
     onMount,
+    showFormat,
 }) => {
     const isFlexHeight = height === '100%' || height === 'auto';
+    const formatEnabled = showFormat ?? !readOnly;
+
+    const handleFormat = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (readOnly) return;
+        try {
+            const next = formatCode(value || '', language);
+            if (next !== (value || '')) {
+                onChange(next);
+            }
+            message.success('格式化完成');
+        } catch (err: any) {
+            message.error(err?.message || '格式化失败，请检查语法');
+        }
+    }, [value, language, onChange, readOnly]);
 
     // 合并扩展
     const extensions = useMemo(() => {
@@ -174,6 +196,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         borderRadius: 6,
         overflow: 'hidden',
         transition: 'border-color 0.2s',
+        position: 'relative',
         // 当 flex 布局时，wrapper 也需要参与 flex
         ...(isFlexHeight ? { flex: 1, display: 'flex', flexDirection: 'column' as const, height: '100%', minHeight: 0 } : {}),
         ...style,
@@ -190,6 +213,37 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
                 if (bordered) (e.currentTarget as HTMLDivElement).style.borderColor = '#d9d9d9';
             }}
         >
+            {formatEnabled && (
+                <Tooltip title="格式化" placement="left">
+                    <button
+                        type="button"
+                        onClick={handleFormat}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 6,
+                            zIndex: 3,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            height: 22,
+                            padding: '0 6px',
+                            border: '1px solid #e8e8e8',
+                            borderRadius: 4,
+                            background: theme === 'dark' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.92)',
+                            color: '#8c8c8c',
+                            fontSize: 11,
+                            lineHeight: 1,
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                        }}
+                    >
+                        <AlignLeftOutlined style={{ fontSize: 11 }} />
+                        格式化
+                    </button>
+                </Tooltip>
+            )}
             <CodeMirror
                 value={value}
                 height={isFlexHeight ? '100%' : height}

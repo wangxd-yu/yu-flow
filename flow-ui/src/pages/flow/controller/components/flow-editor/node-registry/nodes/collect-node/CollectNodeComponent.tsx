@@ -16,8 +16,11 @@ import {
     getNodeTheme,
     NodeHeader,
     NodeWrapper,
+    ResizeHandle,
+    NODE_HEADER_WITH_ID_HEIGHT,
     type NodeTheme,
 } from '../../shared/useNodeSelection';
+import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 
 export const COLLECT_COLOR = '#0ea5e9';
 
@@ -30,12 +33,12 @@ const PAIR_COLORS = [
 // ── 布局常量 —— 严格两行，每行高 30px ─────────────────────────────────────
 export const COLLECT_LAYOUT = {
     width: 150,
-    height: 100,   // 40(header) + 60(body: row1=30 + row2=30)
-    headerHeight: 40,
+    height: NODE_HEADER_WITH_ID_HEIGHT + 60,
+    headerHeight: NODE_HEADER_WITH_ID_HEIGHT,
     portY: {
-        item: 55,   // 行1 中心
-        list: 55,   // 行1 中心
-        finish: 85, // 行2 中心
+        item: NODE_HEADER_WITH_ID_HEIGHT + 15,
+        list: NODE_HEADER_WITH_ID_HEIGHT + 15,
+        finish: NODE_HEADER_WITH_ID_HEIGHT + 30 + 15,
     },
 } as const;
 
@@ -223,6 +226,30 @@ export const CollectNodeComponent = ({ node }: { node: Node }) => {
 
     const nodeLabel = data?.__label || 'Collect';
 
+    // ── 高度对齐双行 Header + 端口 Y ──
+    React.useEffect(() => {
+        const s = node.getSize();
+        const targetH = COLLECT_LAYOUT.height;
+        const targetW = Math.max(s.width, COLLECT_LAYOUT.width);
+        if (Math.abs(s.height - targetH) > 1 || s.width < COLLECT_LAYOUT.width) {
+            node.resize(targetW, targetH);
+        }
+        const w = node.getSize().width;
+        const py = COLLECT_LAYOUT.portY;
+        const sync = (id: string, x: number, y: number, group: string) => {
+            if (!node.hasPort(id)) {
+                node.addPort({ id, group, args: { x, y, dx: 0 }, zIndex: 10 });
+            } else {
+                const p = node.getPort(id);
+                if (p?.group !== group) node.setPortProp(id, 'group', group);
+                node.setPortProp(id, 'args', { x, y, dx: 0 });
+            }
+        };
+        sync('item', 0, py.item, 'absolute-in-solid');
+        sync('list', w, py.list, 'absolute-out-solid');
+        sync('finish', w, py.finish, 'absolute-out-hollow');
+    }, [node]);
+
     // ── 悬停联动 ────────────────────────────────────────────────────────
     const handleMouseEnter = React.useCallback(() => {
         if (!forNodeId) return;
@@ -306,6 +333,8 @@ export const CollectNodeComponent = ({ node }: { node: Node }) => {
                 title={nodeLabel}
                 theme={theme}
                 height={COLLECT_LAYOUT.headerHeight}
+                nodeId={node.id}
+                onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 extra={inlineTag}
                 onTitleChange={(t) => node.setData({ ...node.getData(), __label: t })}
             />
@@ -343,6 +372,23 @@ export const CollectNodeComponent = ({ node }: { node: Node }) => {
                     </span>
                 </div>
             </div>
+
+            <ResizeHandle
+                node={node}
+                minWidth={COLLECT_LAYOUT.width}
+                minHeight={COLLECT_LAYOUT.height}
+                axes="x"
+                color={theme.primary}
+                onResize={(nw) => {
+                    const py = COLLECT_LAYOUT.portY;
+                    if (node.hasPort('list')) {
+                        node.setPortProp('list', 'args', { x: nw, y: py.list, dx: 0 });
+                    }
+                    if (node.hasPort('finish')) {
+                        node.setPortProp('finish', 'args', { x: nw, y: py.finish, dx: 0 });
+                    }
+                }}
+            />
         </NodeWrapper>
     );
 };

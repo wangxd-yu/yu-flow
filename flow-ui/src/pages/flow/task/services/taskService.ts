@@ -82,6 +82,9 @@ export async function runTaskNow(id: string) {
   return request(`/flow-api/task/${id}/run`, { method: 'POST' });
 }
 
+/** 调试运行可能包含 HttpRequest 等长耗时节点，需高于全局 10s */
+const DEBUG_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+
 export async function debugRunTask(
   dslContent: string,
   source?: { sourceRef?: string; sourceName?: string },
@@ -93,6 +96,7 @@ export async function debugRunTask(
       sourceRef: source?.sourceRef,
       sourceName: source?.sourceName,
     },
+    timeout: DEBUG_REQUEST_TIMEOUT_MS,
   });
 }
 

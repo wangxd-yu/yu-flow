@@ -251,7 +251,7 @@ const DatabaseNodeConfig: React.FC<DatabaseNodeConfigProps> = ({ node }) => {
                                                 name={[name, 'extractPath']}
                                                 style={{ marginBottom: 0, flex: 1.5 }}
                                             >
-                                                <Input placeholder="$.body.id" size="small" />
+                                                <Input placeholder="$ 或 $.字段（保存时展开）" size="small" />
                                             </Form.Item>
                                             <Button
                                                 type="text"

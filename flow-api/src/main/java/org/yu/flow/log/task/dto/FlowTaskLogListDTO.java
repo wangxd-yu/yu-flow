@@ -20,7 +20,7 @@ public class FlowTaskLogListDTO {
     private String taskName;
     /** 触发类型：CRON / MANUAL */
     private String triggerType;
-    /** 执行状态：SUCCESS / FAILED / RUNNING */
+    /** 执行状态：SUCCESS / FAILED / RUNNING / SKIPPED */
     private String status;
     /** 耗时（毫秒） */
     private Long costTimeMs;

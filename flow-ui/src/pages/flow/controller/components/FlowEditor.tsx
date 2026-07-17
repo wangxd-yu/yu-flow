@@ -130,8 +130,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const [mode, setMode] = React.useState<'design' | 'code'>('design');
     const [leftPanelCollapsed, setLeftPanelCollapsed] = React.useState(true);
     const [rightPanelCollapsed, setRightPanelCollapsed] = React.useState(true);
-    // TODO: 纯净画布与属性面板模式切换开关
-    const showPropertyPanel = false;
+    /** 右侧属性面板：默认收起，选中节点时自动展开 */
+    const showPropertyPanel = true;
 
     // 调试器状态
     const [executionLogs, setExecutionLogs] = React.useState<ExecutionLog[]>(readonlyTrace?.stepLogs || []);
@@ -576,6 +576,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
 
     const handleNodeClick = useMemoizedFn(({ node }: any) => {
         setSelectedNodeId(node.id);
+        setRightPanelCollapsed(false);
         graphRef.current?.getNodes().forEach(resetNodeStyle);
         highlightNode(node);
         if (wrapperRef.current) {
@@ -679,7 +680,9 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 ...(direction === 'reverse' ? { targetMarker: null, sourceMarker: null } : {}),
                             }
                         },
-                        zIndex: 0,
+                        router: EDGE_CONFIG.router,
+                        connector: EDGE_CONFIG.connector,
+                        zIndex: EDGE_CONFIG.zIndex,
                     });
                 },
                 allowLoop: false,
@@ -811,6 +814,12 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 }
                 return [...prev, node.id];
             });
+        });
+
+        graph.on('node:id-renamed', ({ oldId, newId }: any) => {
+            if (!oldId || !newId || oldId === newId) return;
+            setBreakpoints((prev) => prev.map((id) => (id === oldId ? newId : id)));
+            setSelectedNodeId((prev) => (prev === oldId ? newId : prev));
         });
 
         const schedule = () => {
@@ -1535,7 +1544,10 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                             >
                                 <NodePropertyDrawer
                                     node={selectedNodeId && graphRef.current ? graphRef.current.getCellById(selectedNodeId) as Node : undefined}
-                                    onDataChange={() => {}}
+                                    onDataChange={(node, changes) => {
+                                        const prev = (node.getData?.() as Record<string, any>) || {};
+                                        node.setData({ ...prev, ...changes }, { overwrite: true });
+                                    }}
                                     globalForm={globalForm}
                                     isEdit={isEdit}
                                     isBreakpoint={selectedNodeId ? breakpoints.includes(selectedNodeId) : false}

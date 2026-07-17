@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+
+import java.util.Collections;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +62,44 @@ public class FlowRedisUtil {
             log.error("[FlowRedisUtil] set with TTL 失败: key={}, ttl={} {}", key, time, unit, e);
             return false;
         }
+    }
+
+    /**
+     * 仅当 key 不存在时写入（原子 SET NX EX），用于分布式锁。
+     *
+     * @return true=抢锁成功；false=锁已被占用
+     * @throws IllegalStateException Redis 不可用或执行异常（供调用方 fail-closed）
+     */
+    public static boolean setIfAbsent(String key, Object value, long time, TimeUnit unit) {
+        try {
+            Boolean result = redisUtil.redisTemplate.opsForValue().setIfAbsent(key, value, time, unit);
+            return Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            log.error("[FlowRedisUtil] setIfAbsent 失败: key={}, ttl={} {}", key, time, unit, e);
+            throw new IllegalStateException("Redis setIfAbsent failed: " + key, e);
+        }
+    }
+
+    /**
+     * 安全释放锁：仅当 value 匹配时删除（Lua 原子比较），避免误删他人持有的锁。
+     */
+    public static boolean unlock(String key, Object expectedValue) {
+        try {
+            Long result = redisUtil.redisTemplate.execute(
+                    UNLOCK_SCRIPT, Collections.singletonList(key), expectedValue);
+            return result != null && result > 0;
+        } catch (Exception e) {
+            log.error("[FlowRedisUtil] unlock 失败: key={}", key, e);
+            return false;
+        }
+    }
+
+    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>();
+
+    static {
+        UNLOCK_SCRIPT.setResultType(Long.class);
+        UNLOCK_SCRIPT.setScriptText(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end");
     }
 
     /**
