@@ -5,6 +5,10 @@ import org.yu.flow.annotation.YuFlowApi;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.auto.dto.BatchMoveDTO;
 import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.module.api.cache.ApiCacheContentDTO;
+import org.yu.flow.module.api.cache.ApiCacheContentDTO;
+import org.yu.flow.module.api.cache.ApiCacheEntryDTO;
+import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
@@ -40,6 +44,9 @@ public class FlowApiController {
 
     @Resource
     private FlowApiCrudService flowApiCrudService;
+
+    @Resource
+    private ApiResponseCacheService apiResponseCacheService;
 
     @Resource
     private FlowEngine flowEngine;
@@ -135,10 +142,82 @@ public class FlowApiController {
         return R.ok(flowApiCrudService.updateLogEnabled(id, enabled));
     }
 
+    /**
+     * 更新查询响应缓存配置（即时生效）。
+     * <p>Body 可为完整 cacheConfig JSON 字符串，或 {"cacheConfig":"{...}"} / 直接对象。</p>
+     */
+    @PutMapping("/{id}/cache-config")
+    public R<FlowApiDO> updateCacheConfig(@PathVariable String id, @RequestBody(required = false) Object body) {
+        String cacheConfigJson = resolveCacheConfigBody(body);
+        return R.ok(flowApiCrudService.updateCacheConfig(id, cacheConfigJson));
+    }
+
+    /**
+     * 查询该接口当前生效的响应缓存条目。
+     */
+    @GetMapping("/{id}/cache/entries")
+    public R<List<ApiCacheEntryDTO>> listCacheEntries(@PathVariable String id) {
+        return R.ok(apiResponseCacheService.listEntries(id));
+    }
+
+    /**
+     * 按需查看单条响应缓存内容（不含列表批量返回 body）。
+     */
+    @GetMapping("/{id}/cache/entries/content")
+    public R<ApiCacheContentDTO> getCacheEntryContent(@PathVariable String id, @RequestParam String key) {
+        ApiCacheContentDTO content = apiResponseCacheService.getEntryContent(id, key);
+        if (content == null) {
+            return R.fail("缓存不存在或已过期");
+        }
+        return R.ok(content);
+    }
+
+    /**
+     * 清除该接口全部响应缓存。
+     */
+    @DeleteMapping("/{id}/cache")
+    public R<Long> clearCache(@PathVariable String id) {
+        return R.ok(apiResponseCacheService.evictAll(id));
+    }
+
+    /**
+     * 清除单条响应缓存。
+     */
+    @DeleteMapping("/{id}/cache/entries")
+    public R<Boolean> clearCacheEntry(@PathVariable String id, @RequestParam String key) {
+        return R.ok(apiResponseCacheService.evictOne(id, key));
+    }
+
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable String id) {
         flowApiCrudService.delete(id);
         return R.ok();
+    }
+
+    @SuppressWarnings("unchecked")
+    private String resolveCacheConfigBody(Object body) {
+        if (body == null) {
+            return null;
+        }
+        if (body instanceof String) {
+            return (String) body;
+        }
+        if (body instanceof Map) {
+            Map<String, Object> map = (Map<String, Object>) body;
+            Object nested = map.get("cacheConfig");
+            if (nested instanceof String) {
+                return (String) nested;
+            }
+            if (nested != null) {
+                return cn.hutool.json.JSONUtil.toJsonStr(nested);
+            }
+            // 直接传配置对象
+            if (map.containsKey("enabled") || map.containsKey("keyParams") || map.containsKey("ttlSeconds")) {
+                return cn.hutool.json.JSONUtil.toJsonStr(map);
+            }
+            return null;
+        }
+        return cn.hutool.json.JSONUtil.toJsonStr(body);
     }
 
     @GetMapping("/{id}")

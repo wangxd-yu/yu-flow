@@ -6,15 +6,12 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
-import { Badge, Tag, Drawer, Typography, Button, Space, message } from 'antd';
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  ClockCircleOutlined,
-  EyeOutlined,
-} from '@ant-design/icons';
+import { Tag, Drawer, Typography, Button, Space, message } from 'antd';
+import { EyeOutlined } from '@ant-design/icons';
 import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
 import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
+import { LogStatusTag, LogDuration } from '../shared';
+import '../shared/logPageLayout.css';
 import SimpleTraceViewer from './SimpleTraceViewer';
 
 const { Text } = Typography;
@@ -43,7 +40,7 @@ interface ExecutionLogListDTO {
 // ============================
 const queryExecutionLogPage = async (params: any) => {
   const { current, pageSize, createTime, ...rest } = params;
-  
+
   // 处理时间范围
   let startTime: string | undefined;
   let endTime: string | undefined;
@@ -79,15 +76,6 @@ const getExecutionLogDetail = async (id: string) => {
 };
 
 // ============================
-// 工具函数
-// ============================
-const formatDuration = (ms: number) => {
-  if (ms == null) return '-';
-  if (ms < 1000) return `${ms} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-};
-
-// ============================
 // 主组件
 // ============================
 const ExecutionLog: React.FC = () => {
@@ -106,7 +94,7 @@ const ExecutionLog: React.FC = () => {
       message.warning('该执行日志没有关联的追踪快照数据');
       return;
     }
-    
+
     try {
       // 列表使用的是轻量级 DTO，需调详情接口获取 traceData 大字段
       const detail = await getExecutionLogDetail(record.id);
@@ -202,31 +190,9 @@ const ExecutionLog: React.FC = () => {
       },
       render: (_, record) =>
         record.status === 'SUCCESS' ? (
-          <Badge
-            status="success"
-            text={
-              <Tag
-                icon={<CheckCircleOutlined />}
-                color="success"
-                style={{ marginInlineEnd: 0 }}
-              >
-                执行成功
-              </Tag>
-            }
-          />
+          <LogStatusTag kind="success" text="执行成功" />
         ) : (
-          <Badge
-            status="error"
-            text={
-              <Tag
-                icon={<CloseCircleOutlined />}
-                color="error"
-                style={{ marginInlineEnd: 0 }}
-              >
-                执行失败
-              </Tag>
-            }
-          />
+          <LogStatusTag kind="error" text="执行失败" />
         ),
     },
     {
@@ -234,20 +200,7 @@ const ExecutionLog: React.FC = () => {
       dataIndex: 'costTimeMs',
       width: 100,
       search: false,
-      render: (_, record) => {
-        let color = '#52c41a'; // 绿色 (<200ms)
-        if (record.costTimeMs >= 1000) {
-          color = '#ff4d4f'; // 红色 (>1s)
-        } else if (record.costTimeMs >= 200) {
-          color = '#faad14'; // 橙色 (200ms~1s)
-        }
-        return (
-          <span style={{ color }}>
-            <ClockCircleOutlined style={{ marginRight: 4 }} />
-            {formatDuration(record.costTimeMs)}
-          </span>
-        );
-      },
+      render: (_, record) => <LogDuration ms={record.costTimeMs} />,
     },
     {
       title: '执行时间',
@@ -312,7 +265,7 @@ const ExecutionLog: React.FC = () => {
         request={queryExecutionLogPage}
         columns={columns}
         rowClassName={(record) =>
-          record.status === 'ERROR' ? 'execution-log-row-fail' : ''
+          record.status === 'ERROR' ? 'log-row-fail' : ''
         }
         options={{
           density: true,
@@ -344,104 +297,6 @@ const ExecutionLog: React.FC = () => {
           ) : null}
         </Drawer>
       )}
-
-      <style>{`
-        .fh-container.ant-pro-page-container {
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-        .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          height: auto !important;
-          padding-block-end: 0 !important;
-        }
-        .fh-table.ant-pro-table {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          overflow: hidden;
-        }
-        .fh-table .ant-pro-table-search {
-          flex-shrink: 0;
-        }
-        .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-          flex: 1;
-          min-height: 0;
-          display: flex !important;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .fh-table .ant-pro-table-list-toolbar {
-          flex-shrink: 0;
-        }
-        .fh-table .ant-table-wrapper {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-spin-nested-loading {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-spin-container {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table-container {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table-header {
-          flex-shrink: 0;
-          overflow: hidden !important;
-        }
-        .fh-table .ant-table-body {
-          flex: 1;
-          min-height: 0;
-          max-height: none !important;
-          overflow-y: scroll !important;
-        }
-        .fh-table .ant-table-pagination {
-          flex-shrink: 0;
-          padding: 6px 0;
-          margin: 0 !important;
-        }
-        .execution-log-row-fail td {
-          background-color: #fff2f0 !important;
-        }
-        .execution-log-row-fail:hover td {
-          background-color: #ffebe8 !important;
-        }
-      `}</style>
     </PageContainer>
   );
 };

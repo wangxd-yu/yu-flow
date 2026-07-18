@@ -9,7 +9,7 @@ import {
   ProTable,
   ModalForm,
 } from '@ant-design/pro-components';
-import { Button, Divider, Drawer, message, Tag, Popconfirm, Space, Switch, Tooltip } from 'antd';
+import { Button, Divider, Drawer, Modal, message, Tag, Popconfirm, Space, Switch, Tooltip, Table, Spin } from 'antd';
 import {
   queryAutoApiConfigDetail,
   queryAutoApiConfigList,
@@ -19,12 +19,44 @@ import {
   batchDeleteAutoApiConfig,
   batchMoveAutoApiConfig,
   updateAutoApiLogEnabled,
+  listApiCacheEntries,
+  getApiCacheEntryContent,
+  clearApiCache,
+  clearApiCacheEntry,
   FlowController,
+  ApiCacheEntry,
 } from './services/flowController';
 import ApiConfigForm from './components/ControllerForm';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import CodeEditor from './components/flow-editor/components/CodeEditor';
 
+/** 超过该字符数关闭自动换行，减轻大 JSON 渲染压力 */
+const CACHE_VIEW_WORDWRAP_LIMIT = 200_000;
+/** 超过该字符数跳过 pretty-print，避免主线程卡顿 */
+const CACHE_VIEW_PRETTY_LIMIT = 500_000;
+
+/** 尽量美化 JSON；失败或过大则原样返回 */
+const formatCacheJson = (raw: string): string => {
+  if (!raw || raw.length > CACHE_VIEW_PRETTY_LIMIT) return raw;
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+};
+
+
+/** 解析 cacheConfig，判断是否已开启响应缓存 */
+const isCacheEnabled = (cacheConfig?: string): boolean => {
+  if (!cacheConfig) return false;
+  try {
+    const cfg = typeof cacheConfig === 'string' ? JSON.parse(cacheConfig) : cacheConfig;
+    return !!cfg?.enabled;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * 添加配置
@@ -96,6 +128,19 @@ const AutoApiConfigList: React.FC = () => {
   const [currentRow, setCurrentRow] = useState<Partial<FlowController>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
+  // 响应缓存查看
+  const [cacheDrawerVisible, setCacheDrawerVisible] = useState(false);
+  const [cacheDrawerApi, setCacheDrawerApi] = useState<FlowController | null>(null);
+  const [cacheEntries, setCacheEntries] = useState<ApiCacheEntry[]>([]);
+  const [cacheLoading, setCacheLoading] = useState(false);
+
+  // 单条缓存内容预览
+  const [cacheContentVisible, setCacheContentVisible] = useState(false);
+  const [cacheContentLoading, setCacheContentLoading] = useState(false);
+  const [cacheContentKey, setCacheContentKey] = useState('');
+  const [cacheContentText, setCacheContentText] = useState('');
+  const [cacheContentTruncated, setCacheContentTruncated] = useState(false);
+
   // 新建配置
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
@@ -128,6 +173,67 @@ const AutoApiConfigList: React.FC = () => {
         message.error('更新执行日志开关失败');
       }
       actionRef.current?.reload();
+    }
+  };
+
+  const loadCacheEntries = async (apiId: string) => {
+    setCacheLoading(true);
+    try {
+      const res: any = await listApiCacheEntries(apiId);
+      const list = Array.isArray(res) ? res : (res?.data ?? []);
+      setCacheEntries(list);
+    } catch {
+      message.error('加载缓存列表失败');
+      setCacheEntries([]);
+    } finally {
+      setCacheLoading(false);
+    }
+  };
+
+  const handleViewCache = async (record: FlowController) => {
+    if (!isCacheEnabled(record.cacheConfig)) {
+      message.info('该接口未开启响应缓存');
+      return;
+    }
+    setCacheDrawerApi(record);
+    setCacheDrawerVisible(true);
+    await loadCacheEntries(record.id);
+  };
+
+  const handleClearAllCache = async (record: FlowController) => {
+    try {
+      const res: any = await clearApiCache(record.id);
+      const count = typeof res === 'number' ? res : (res?.data ?? 0);
+      message.success(`已清除 ${count} 条响应缓存`);
+      if (cacheDrawerVisible && cacheDrawerApi?.id === record.id) {
+        await loadCacheEntries(record.id);
+      }
+    } catch {
+      message.error('清除缓存失败');
+    }
+  };
+
+  const handleViewCacheContent = async (entry: ApiCacheEntry) => {
+    if (!cacheDrawerApi) return;
+    setCacheContentKey(entry.key);
+    setCacheContentText('');
+    setCacheContentTruncated(false);
+    setCacheContentVisible(true);
+    setCacheContentLoading(true);
+    try {
+      const res: any = await getApiCacheEntryContent(cacheDrawerApi.id, entry.key);
+      const data = res?.data ?? res;
+      const raw = typeof data?.content === 'string' ? data.content : '';
+      setCacheContentText(data?.truncated ? raw : formatCacheJson(raw));
+      setCacheContentTruncated(!!data?.truncated);
+      if (data?.truncated) {
+        message.warning('内容过大，已截断展示');
+      }
+    } catch {
+      message.error('加载缓存内容失败');
+      setCacheContentVisible(false);
+    } finally {
+      setCacheContentLoading(false);
     }
   };
 
@@ -200,6 +306,7 @@ const AutoApiConfigList: React.FC = () => {
       title: '执行日志',
       dataIndex: 'logEnabled',
       hideInSearch: true,
+      width: 90,
       render: (_, record) => (
         <Switch
           size="small"
@@ -209,6 +316,20 @@ const AutoApiConfigList: React.FC = () => {
           onChange={(checked) => handleLogEnabledChange(record, checked)}
         />
       ),
+    },
+    {
+      title: '响应缓存',
+      dataIndex: 'cacheConfig',
+      hideInSearch: true,
+      width: 100,
+      render: (_, record) => {
+        const on = isCacheEnabled(record.cacheConfig);
+        return (
+          <Tag color={on ? 'processing' : 'default'}>
+            {on ? '已开启' : '未开启'}
+          </Tag>
+        );
+      },
     },
     {
       title: '实现方式',
@@ -263,6 +384,8 @@ const AutoApiConfigList: React.FC = () => {
       render: (_, record) => (
         <>
           <a onClick={() => handleEdit(record)}>编辑</a>
+          <Divider type="vertical" />
+          <a onClick={() => handleViewCache(record)}>查看缓存</a>
           <Divider type="vertical" />
           <Popconfirm
             title="确认删除该配置吗？"
@@ -562,6 +685,134 @@ const AutoApiConfigList: React.FC = () => {
       >
         <DirectoryTreeSelect />
       </ModalForm>
+
+      <Drawer
+        title={`响应缓存 — ${cacheDrawerApi?.name || ''}`}
+        width={720}
+        open={cacheDrawerVisible}
+        onClose={() => {
+          setCacheDrawerVisible(false);
+          setCacheDrawerApi(null);
+          setCacheEntries([]);
+        }}
+        extra={
+          <Space>
+            <Button
+              loading={cacheLoading}
+              onClick={() => cacheDrawerApi && loadCacheEntries(cacheDrawerApi.id)}
+            >
+              刷新
+            </Button>
+            <Popconfirm
+              title="确认清除该接口全部响应缓存？"
+              onConfirm={() => cacheDrawerApi && handleClearAllCache(cacheDrawerApi)}
+            >
+              <Button danger disabled={!cacheEntries.length}>全部清除</Button>
+            </Popconfirm>
+          </Space>
+        }
+      >
+        <Table<ApiCacheEntry>
+          rowKey="key"
+          loading={cacheLoading}
+          dataSource={cacheEntries}
+          size="small"
+          pagination={{ pageSize: 20 }}
+          columns={[
+            {
+              title: '缓存 Key',
+              dataIndex: 'key',
+              ellipsis: true,
+              render: (text: string) => (
+                <Tooltip title={text}>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
+                </Tooltip>
+              ),
+            },
+            {
+              title: '剩余 TTL',
+              dataIndex: 'ttlSeconds',
+              width: 100,
+              render: (ttl: number) => {
+                if (ttl === -1) return '永久';
+                if (ttl < 0) return '-';
+                if (ttl < 60) return `${ttl}s`;
+                return `${Math.floor(ttl / 60)}m ${ttl % 60}s`;
+              },
+            },
+            {
+              title: '大小',
+              dataIndex: 'sizeBytes',
+              width: 90,
+              render: (size: number) => {
+                if (size == null) return '-';
+                if (size < 1024) return `${size} B`;
+                return `${(size / 1024).toFixed(1)} KB`;
+              },
+            },
+            {
+              title: '操作',
+              width: 120,
+              render: (_, entry) => (
+                <Space size="middle">
+                  <a onClick={() => handleViewCacheContent(entry)}>查看</a>
+                  <Popconfirm
+                    title="确认删除该条缓存？"
+                    onConfirm={async () => {
+                      if (!cacheDrawerApi) return;
+                      try {
+                        await clearApiCacheEntry(cacheDrawerApi.id, entry.key);
+                        message.success('已删除');
+                        await loadCacheEntries(cacheDrawerApi.id);
+                      } catch {
+                        message.error('删除失败');
+                      }
+                    }}
+                  >
+                    <a>删除</a>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+          locale={{ emptyText: '暂无生效中的响应缓存' }}
+        />
+      </Drawer>
+
+      <Modal
+        title="缓存内容"
+        open={cacheContentVisible}
+        onCancel={() => {
+          setCacheContentVisible(false);
+          setCacheContentText('');
+          setCacheContentKey('');
+          setCacheContentTruncated(false);
+        }}
+        footer={null}
+        width={860}
+        destroyOnClose
+        styles={{ body: { paddingTop: 12 } }}
+      >
+        <div style={{ marginBottom: 8, fontSize: 12, color: '#8c8c8c', wordBreak: 'break-all' }}>
+          <Tooltip title={cacheContentKey}>
+            <span style={{ fontFamily: 'monospace' }}>{cacheContentKey}</span>
+          </Tooltip>
+          {cacheContentTruncated && (
+            <Tag color="orange" style={{ marginLeft: 8 }}>已截断</Tag>
+          )}
+        </div>
+        <Spin spinning={cacheContentLoading}>
+          <CodeEditor
+            value={cacheContentText}
+            onChange={() => {}}
+            language="json"
+            readOnly
+            height="60vh"
+            wordWrap={cacheContentText.length < CACHE_VIEW_WORDWRAP_LIMIT}
+            showFormat={false}
+          />
+        </Spin>
+      </Modal>
     </PageContainer>
   );
 };

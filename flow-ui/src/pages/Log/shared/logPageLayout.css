@@ -1,0 +1,99 @@
+/* 日志页全高布局：PageContainer + ProTable 填满视口，表格体独立滚动 */
+
+.fh-container.ant-pro-page-container {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.fh-container.ant-pro-page-container > .ant-pro-grid-content,
+.fh-container.ant-pro-page-container .ant-pro-grid-content-children {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  padding-block-end: 0 !important;
+}
+.fh-table.ant-pro-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.fh-table .ant-pro-table-search {
+  flex-shrink: 0;
+}
+.fh-table > .ant-pro-card:not(.ant-pro-table-search) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fh-table .ant-pro-table-list-toolbar {
+  flex-shrink: 0;
+}
+.fh-table .ant-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-spin-nested-loading {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-spin-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-table-header {
+  flex-shrink: 0;
+  overflow: hidden !important;
+}
+.fh-table .ant-table-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: scroll !important;
+}
+.fh-table .ant-table-pagination {
+  flex-shrink: 0;
+  padding: 6px 0;
+  margin: 0 !important;
+}
+
+/* 失败行高亮（各页共用 class） */
+.log-row-fail td {
+  background-color: #fff2f0 !important;
+}
+.log-row-fail:hover td {
+  background-color: #ffebe8 !important;
+}

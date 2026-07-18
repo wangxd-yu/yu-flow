@@ -1,0 +1,127 @@
+/* 日志详情：概览固定，Tabs + 代码区填满剩余高度，滚动落在编辑器内 */
+
+/* Drawer 内 Spin 需透传高度 */
+.ant-drawer-body > .ant-spin-nested-loading,
+.ant-drawer-body > .ant-spin-nested-loading > .ant-spin-container {
+  height: 100%;
+}
+
+.log-detail-shell {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+  padding: 20px 24px;
+  box-sizing: border-box;
+}
+
+.log-detail-shell-overview,
+.log-detail-shell-error {
+  flex-shrink: 0;
+}
+
+.log-detail-shell-tabs-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.log-detail-shell-tabs-card > .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.log-detail-shell-tabs.ant-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px;
+}
+
+.log-detail-shell-tabs .ant-tabs-nav {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.log-detail-shell-tabs .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.log-detail-shell-tabs .ant-tabs-content {
+  height: 100%;
+}
+
+.log-detail-shell-tabs .ant-tabs-tabpane {
+  height: 100%;
+}
+
+/* Tab 内容通用填充容器 */
+.log-detail-tab-pane {
+  height: 100%;
+  min-height: 0;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 表格视图容器：只保留这一层滚动，避免与 Table scroll.y 叠出双滚动条 */
+.log-detail-tab-pane-table {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 嵌套 Tabs（如表格视图 / 原始 JSON）也填满 */
+.log-detail-tab-pane > .ant-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.log-detail-tab-pane > .ant-tabs .ant-tabs-nav {
+  flex-shrink: 0;
+}
+.log-detail-tab-pane > .ant-tabs .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.log-detail-tab-pane > .ant-tabs .ant-tabs-content,
+.log-detail-tab-pane > .ant-tabs .ant-tabs-tabpane {
+  height: 100%;
+}
+
+/* LogResultTable：外层唯一滚动 */
+.log-result-table-wrap {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.log-result-table-meta {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+.log-result-table-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

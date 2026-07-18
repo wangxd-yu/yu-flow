@@ -29,6 +29,8 @@ public class FlowApiDTO {
     private String serviceType;
     private Integer publishStatus;
     private Boolean logEnabled;
+    /** 查询响应 Redis 缓存配置 JSON */
+    private String cacheConfig;
     private Integer level;
     private String contract;
     private String tags;
@@ -71,6 +73,7 @@ public class FlowApiDTO {
         dto.setServiceType(configDO.getServiceType());
         dto.setPublishStatus(configDO.getPublishStatus());
         dto.setLogEnabled(configDO.getLogEnabled() == null || configDO.getLogEnabled());
+        dto.setCacheConfig(configDO.getCacheConfig());
         dto.setLevel(configDO.getLevel());
         dto.setContract(configDO.getContract());
         dto.setTags(configDO.getTags());
@@ -112,6 +115,7 @@ public class FlowApiDTO {
         configDO.setServiceType(this.getServiceType());
         configDO.setPublishStatus(this.getPublishStatus());
         configDO.setLogEnabled(this.getLogEnabled());
+        configDO.setCacheConfig(this.getCacheConfig());
         configDO.setLevel(this.getLevel());
         configDO.setContract(this.getContract());
         configDO.setTags(this.getTags());

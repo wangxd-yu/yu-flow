@@ -18,6 +18,7 @@ import org.springframework.core.Ordered;
 import org.yu.flow.auto.service.FlowApiExecutionService;
 import org.yu.flow.config.response.ResponseStrategyResolver;
 import org.yu.flow.config.response.ResponseTransformer;
+import org.yu.flow.module.api.cache.ApiResponseCacheService;
 
 /**
  * yu-flow 自动装配入口。
@@ -79,10 +80,12 @@ public class FlowAutoConfiguration {
             SchemaValidatorService schemaValidatorService,
             ContractParamTypeConverter contractParamTypeConverter,
             ResponseStrategyResolver responseStrategyResolver,
-            ResponseTransformer responseTransformer) {
+            ResponseTransformer responseTransformer,
+            ApiResponseCacheService apiResponseCacheService) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
-                schemaValidatorService, contractParamTypeConverter, responseStrategyResolver, responseTransformer);
+                schemaValidatorService, contractParamTypeConverter, responseStrategyResolver, responseTransformer,
+                apiResponseCacheService);
 
         FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/*");

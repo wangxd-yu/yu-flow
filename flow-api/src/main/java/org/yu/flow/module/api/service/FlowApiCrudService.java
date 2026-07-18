@@ -39,6 +39,14 @@ public interface FlowApiCrudService {
     /** 更新执行日志开关 */
     FlowApiDO updateLogEnabled(String id, boolean enabled);
 
+    /**
+     * 更新查询响应缓存配置（即时生效，已发布时刷新 L1 路由缓存中的配置）。
+     *
+     * @param id          API ID
+     * @param cacheConfig cache_config JSON，可为 null 表示关闭/清空
+     */
+    FlowApiDO updateCacheConfig(String id, String cacheConfig);
+
     /** 根据 ID 查询 */
     FlowApiDO findById(String id);
 

@@ -74,6 +74,13 @@ public class FlowApiDO implements Serializable {
     private Boolean logEnabled;
 
     /**
+     * 查询响应 Redis 缓存配置（JSON）。
+     * <p>结构示例：{"enabled":true,"ttlSeconds":300,"keyParams":[{"source":"query","name":"userId"}],"includePageable":true}</p>
+     */
+    @Column(columnDefinition = "TEXT")
+    private String cacheConfig;
+
+    /**
      * 优先级，与请求的ss-level比较，大的优先
      */
     private Integer level;

@@ -6,13 +6,10 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
-import { Badge, Tag, Tooltip, Typography } from 'antd';
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  GlobalOutlined,
-  ClockCircleOutlined,
-} from '@ant-design/icons';
+import { Tag, Tooltip, Typography } from 'antd';
+import { GlobalOutlined } from '@ant-design/icons';
+import { LogStatusTag, LogDuration } from '../shared';
+import '../shared/logPageLayout.css';
 
 const { Text } = Typography;
 
@@ -66,16 +63,6 @@ const queryLoginLogPage = async (params: any) => {
   };
 };
 
-// ============================
-// 工具函数
-// ============================
-/** 格式化耗时 */
-const formatDuration = (ms: number) => {
-  if (ms == null) return '-';
-  if (ms < 1000) return `${ms} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-};
-
 /** 简化 User-Agent 展示 */
 const parseUserAgent = (ua: string) => {
   if (!ua) return '未知';
@@ -123,31 +110,9 @@ const LoginLog: React.FC = () => {
       },
       render: (_, record) =>
         record.status === 1 ? (
-          <Badge
-            status="success"
-            text={
-              <Tag
-                icon={<CheckCircleOutlined />}
-                color="success"
-                style={{ marginInlineEnd: 0 }}
-              >
-                登录成功
-              </Tag>
-            }
-          />
+          <LogStatusTag kind="success" text="登录成功" />
         ) : (
-          <Badge
-            status="error"
-            text={
-              <Tag
-                icon={<CloseCircleOutlined />}
-                color="error"
-                style={{ marginInlineEnd: 0 }}
-              >
-                登录失败
-              </Tag>
-            }
-          />
+          <LogStatusTag kind="error" text="登录失败" />
         ),
     },
     {
@@ -196,12 +161,7 @@ const LoginLog: React.FC = () => {
       dataIndex: 'duration',
       width: 100,
       search: false,
-      render: (_, record) => (
-        <span>
-          <ClockCircleOutlined style={{ marginRight: 4, color: '#8c8c8c' }} />
-          {formatDuration(record.duration)}
-        </span>
-      ),
+      render: (_, record) => <LogDuration ms={record.duration} />,
     },
     {
       title: '登录时间',
@@ -248,11 +208,8 @@ const LoginLog: React.FC = () => {
         request={queryLoginLogPage}
         columns={columns}
         rowClassName={(record) =>
-          record.status === 0 ? 'login-log-row-fail' : ''
+          record.status === 0 ? 'log-row-fail' : ''
         }
-        style={{
-          // 失败行高亮
-        }}
         options={{
           density: true,
           fullScreen: true,
@@ -260,104 +217,6 @@ const LoginLog: React.FC = () => {
           setting: true,
         }}
       />
-
-      <style>{`
-        .fh-container.ant-pro-page-container {
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-        .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          height: auto !important;
-          padding-block-end: 0 !important;
-        }
-        .fh-table.ant-pro-table {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          overflow: hidden;
-        }
-        .fh-table .ant-pro-table-search {
-          flex-shrink: 0;
-        }
-        .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-          flex: 1;
-          min-height: 0;
-          display: flex !important;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .fh-table .ant-pro-table-list-toolbar {
-          flex-shrink: 0;
-        }
-        .fh-table .ant-table-wrapper {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-spin-nested-loading {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-spin-container {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table-container {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table-header {
-          flex-shrink: 0;
-          overflow: hidden !important;
-        }
-        .fh-table .ant-table-body {
-          flex: 1;
-          min-height: 0;
-          max-height: none !important;
-          overflow-y: scroll !important;
-        }
-        .fh-table .ant-table-pagination {
-          flex-shrink: 0;
-          padding: 6px 0;
-          margin: 0 !important;
-        }
-        .login-log-row-fail td {
-          background-color: #fff2f0 !important;
-        }
-        .login-log-row-fail:hover td {
-          background-color: #ffebe8 !important;
-        }
-      `}</style>
     </PageContainer>
   );
 };

@@ -22,6 +22,8 @@ import org.yu.flow.config.response.ResponseWrapperContext;
 import org.yu.flow.dto.R;
 import org.yu.flow.dto.ResultCode;
 import org.yu.flow.exception.SchemaValidationException;
+import org.yu.flow.module.api.cache.ApiCacheConfig;
+import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.util.FlowObjectMapperUtil;
 import org.yu.flow.util.ThrowableUtil;
@@ -57,6 +59,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
     private static final String SECURITY_LEVEL_HEADER = "ss-level";
     private static final String JSON_CONTENT_TYPE = "application/json;charset=UTF-8";
+    private static final String CACHE_HEADER = "ss-flow-cache";
     private static final AntPathMatcher ANT_PATH_MATCHER = new AntPathMatcher();
 
     private final YuFlowProperties flowProperties;
@@ -66,6 +69,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     private final ContractParamTypeConverter contractParamTypeConverter;
     private final ResponseStrategyResolver responseStrategyResolver;
     private final ResponseTransformer responseTransformer;
+    private final ApiResponseCacheService apiResponseCacheService;
 
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
     private final UrlPathHelper urlPathHelper = createUrlPathHelper();
@@ -76,7 +80,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 SchemaValidatorService schemaValidatorService,
                                 ContractParamTypeConverter contractParamTypeConverter,
                                 ResponseStrategyResolver responseStrategyResolver,
-                                ResponseTransformer responseTransformer) {
+                                ResponseTransformer responseTransformer,
+                                ApiResponseCacheService apiResponseCacheService) {
         this.flowProperties = flowProperties;
         this.flowApiService = flowApiService;
         this.flowApiCacheManager = flowApiCacheManager;
@@ -84,6 +89,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         this.contractParamTypeConverter = contractParamTypeConverter;
         this.responseStrategyResolver = responseStrategyResolver;
         this.responseTransformer = responseTransformer;
+        this.apiResponseCacheService = apiResponseCacheService;
     }
 
     private UrlPathHelper createUrlPathHelper() {
@@ -244,13 +250,33 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         inputParamsMap.put("params", typedQueryParams);
         inputParamsMap.put("body", typedBodyParams);
 
-        // 4. 执行 API；DB 和 FlowEngine 均接收完成类型转换的参数。
+        // 4. 响应缓存：命中则跳过执行
+        ApiCacheConfig cacheConfig = apiResponseCacheService.parseConfig(flowApiDO.getCacheConfig());
+        String cacheKey = null;
+        boolean cacheEnabled = apiResponseCacheService.isEnabled(cacheConfig);
+        if (cacheEnabled) {
+            cacheKey = apiResponseCacheService.buildCacheKey(
+                    flowApiDO.getId(), cacheConfig,
+                    typedQueryParams, typedBodyParams, typedPathParams, typedHeaders, pageable);
+            String cachedJson = apiResponseCacheService.get(cacheKey);
+            if (cachedJson != null) {
+                response.setContentType(JSON_CONTENT_TYPE);
+                response.setCharacterEncoding("UTF-8");
+                response.setStatus(HttpStatus.OK.value());
+                response.setHeader("ss-flow", "yes");
+                response.setHeader(CACHE_HEADER, "HIT");
+                response.getWriter().write(cachedJson);
+                return;
+            }
+        }
+
+        // 5. 执行 API；DB 和 FlowEngine 均接收完成类型转换的参数。
         Object result = flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response);
 
-        // 5. 获取包装上下文
+        // 6. 获取包装上下文
         ResponseWrapperContext context = responseStrategyResolver.resolve(flowApiDO);
 
-        // 6. 写出响应
+        // 7. 写出响应
         response.setContentType(JSON_CONTENT_TYPE);
         response.setCharacterEncoding("UTF-8");
         response.setStatus(HttpStatus.OK.value());
@@ -260,7 +286,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             writeResponseEntity(response, (ResponseEntity<?>) result);
         } else {
             String templateToUse;
-            if (result instanceof R && !((R) result).getOk()) {
+            boolean businessFail = result instanceof R && !((R) result).getOk();
+            if (businessFail) {
                 templateToUse = context.getFailWrapper();
             } else if (isPageResponse(result) || "PAGE".equalsIgnoreCase(flowApiDO.getResponseType())) {
                 templateToUse = context.getPageWrapper();
@@ -269,6 +296,21 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             }
 
             Object finalResult = responseTransformer.transform(result, templateToUse);
+            if (cacheEnabled && !businessFail) {
+                try {
+                    String json = objectMapper.writeValueAsString(finalResult);
+                    apiResponseCacheService.put(flowApiDO.getId(), cacheKey, json, cacheConfig);
+                    response.setHeader(CACHE_HEADER, "MISS");
+                    response.getWriter().write(json);
+                    return;
+                } catch (Exception e) {
+                    log.warn("[FlowApiGatewayFilter] 写入响应缓存失败(fail-open): apiId={}, error={}",
+                            flowApiDO.getId(), e.getMessage());
+                }
+            }
+            if (cacheEnabled) {
+                response.setHeader(CACHE_HEADER, "MISS");
+            }
             objectMapper.writeValue(response.getWriter(), finalResult);
         }
     }

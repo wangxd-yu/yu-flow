@@ -5,17 +5,8 @@ import {
   ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import {
-  Badge, Button, Drawer, message, Popconfirm, Tag, Typography,
-} from 'antd';
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  ClockCircleOutlined,
-  EyeOutlined,
-  MinusCircleOutlined,
-  SyncOutlined,
-} from '@ant-design/icons';
+import { Button, Drawer, message, Popconfirm, Tag, Typography } from 'antd';
+import { EyeOutlined } from '@ant-design/icons';
 import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
 import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
 import {
@@ -25,20 +16,16 @@ import {
   clearTaskLog,
   FlowTaskLog,
 } from '../../flow/task/services/taskService';
+import { LogStatusTag, LogDuration, type LogStatusKind } from '../shared';
+import '../shared/logPageLayout.css';
 
 const { Text } = Typography;
 
-const STATUS_MAP: Record<string, { status: any; text: string }> = {
-  SUCCESS: { status: 'success', text: '成功' },
-  FAILED: { status: 'error', text: '失败' },
-  RUNNING: { status: 'processing', text: '运行中' },
-  SKIPPED: { status: 'default', text: '已跳过' },
-};
-
-const formatDuration = (ms?: number) => {
-  if (ms == null) return '-';
-  if (ms < 1000) return `${ms} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
+const STATUS_TAG: Record<string, { kind: LogStatusKind; text: string }> = {
+  SUCCESS: { kind: 'success', text: '执行成功' },
+  FAILED: { kind: 'error', text: '执行失败' },
+  RUNNING: { kind: 'processing', text: '运行中' },
+  SKIPPED: { kind: 'skipped', text: '已跳过' },
 };
 
 const TaskLogPage: React.FC = () => {
@@ -134,56 +121,11 @@ const TaskLogPage: React.FC = () => {
         SKIPPED: { text: '已跳过', status: 'Default' },
       },
       render: (_, record) => {
-        if (record.status === 'SUCCESS') {
-          return (
-            <Badge
-              status="success"
-              text={
-                <Tag icon={<CheckCircleOutlined />} color="success" style={{ marginInlineEnd: 0 }}>
-                  执行成功
-                </Tag>
-              }
-            />
-          );
+        const s = STATUS_TAG[record.status || ''];
+        if (s) {
+          return <LogStatusTag kind={s.kind} text={s.text} />;
         }
-        if (record.status === 'FAILED') {
-          return (
-            <Badge
-              status="error"
-              text={
-                <Tag icon={<CloseCircleOutlined />} color="error" style={{ marginInlineEnd: 0 }}>
-                  执行失败
-                </Tag>
-              }
-            />
-          );
-        }
-        if (record.status === 'RUNNING') {
-          return (
-            <Badge
-              status="processing"
-              text={
-                <Tag icon={<SyncOutlined spin />} color="processing" style={{ marginInlineEnd: 0 }}>
-                  运行中
-                </Tag>
-              }
-            />
-          );
-        }
-        if (record.status === 'SKIPPED') {
-          return (
-            <Badge
-              status="default"
-              text={
-                <Tag icon={<MinusCircleOutlined />} color="default" style={{ marginInlineEnd: 0 }}>
-                  已跳过
-                </Tag>
-              }
-            />
-          );
-        }
-        const s = STATUS_MAP[record.status || ''];
-        return <Badge status={s?.status || 'default'} text={s?.text || record.status} />;
+        return record.status || '-';
       },
     },
     {
@@ -191,26 +133,22 @@ const TaskLogPage: React.FC = () => {
       dataIndex: 'costTimeMs',
       width: 100,
       search: false,
-      render: (_, record) => {
-        const ms = record.costTimeMs;
-        if (ms == null) return '-';
-        let color = '#52c41a';
-        if (ms >= 1000) color = '#ff4d4f';
-        else if (ms >= 200) color = '#faad14';
-        return (
-          <span style={{ color }}>
-            <ClockCircleOutlined style={{ marginRight: 4 }} />
-            {formatDuration(ms)}
-          </span>
-        );
-      },
+      render: (_, record) => <LogDuration ms={record.costTimeMs} />,
     },
     {
       title: '执行时间',
       dataIndex: 'createTime',
       width: 180,
-      search: false,
+      valueType: 'dateTimeRange',
+      fieldProps: {
+        placeholder: ['开始时间', '结束时间'],
+      },
       render: (_, record) => record.createTime || '-',
+      search: {
+        transform: (value) => ({
+          createTime: value,
+        }),
+      },
     },
     {
       title: '操作',
@@ -269,13 +207,23 @@ const TaskLogPage: React.FC = () => {
         ]}
         params={{ taskId: initialTaskId }}
         request={async (params) => {
+          const { createTime, ...rest } = params;
+          let startTime: string | undefined;
+          let endTime: string | undefined;
+          if (createTime && Array.isArray(createTime)) {
+            startTime = createTime[0];
+            endTime = createTime[1];
+          }
+
           const result = await queryTaskLogPage({
-            taskId: params.taskId || initialTaskId,
-            taskName: params.taskName,
-            status: params.status,
-            triggerType: params.triggerType,
-            page: (params.current || 1) - 1,
-            size: params.pageSize || 20,
+            taskId: rest.taskId || initialTaskId,
+            taskName: rest.taskName,
+            status: rest.status,
+            triggerType: rest.triggerType,
+            startTime,
+            endTime,
+            page: (rest.current || 1) - 1,
+            size: rest.pageSize || 20,
           });
           const data = (result as any)?.data || result;
           return {
@@ -286,7 +234,7 @@ const TaskLogPage: React.FC = () => {
         }}
         columns={columns}
         rowClassName={(record) =>
-          record.status === 'FAILED' ? 'task-log-row-fail' : ''
+          record.status === 'FAILED' ? 'log-row-fail' : ''
         }
         pagination={{
           defaultPageSize: 20,
@@ -319,104 +267,6 @@ const TaskLogPage: React.FC = () => {
           ) : null}
         </Drawer>
       )}
-
-      <style>{`
-        .fh-container.ant-pro-page-container {
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-        .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          height: auto !important;
-          padding-block-end: 0 !important;
-        }
-        .fh-table.ant-pro-table {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
-          overflow: hidden;
-        }
-        .fh-table .ant-pro-table-search {
-          flex-shrink: 0;
-        }
-        .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-          flex: 1;
-          min-height: 0;
-          display: flex !important;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .fh-table .ant-pro-table-list-toolbar {
-          flex-shrink: 0;
-        }
-        .fh-table .ant-table-wrapper {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-spin-nested-loading {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-spin-container {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table-container {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .fh-table .ant-table-header {
-          flex-shrink: 0;
-          overflow: hidden !important;
-        }
-        .fh-table .ant-table-body {
-          flex: 1;
-          min-height: 0;
-          max-height: none !important;
-          overflow-y: scroll !important;
-        }
-        .fh-table .ant-table-pagination {
-          flex-shrink: 0;
-          padding: 6px 0;
-          margin: 0 !important;
-        }
-        .task-log-row-fail td {
-          background-color: #fff2f0 !important;
-        }
-        .task-log-row-fail:hover td {
-          background-color: #ffebe8 !important;
-        }
-      `}</style>
     </PageContainer>
   );
 };

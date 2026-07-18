@@ -321,11 +321,33 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   useEffect(() => {
     if (modalVisible) {
       form.resetFields();
+
+      // 还原缓存配置
+      let cacheEnabled = false;
+      let cacheTtlSeconds = 300;
+      let cacheIncludePageable = true;
+      let cacheKeyParams: Array<{ source: string; name: string }> = [];
+      if (processedValues.cacheConfig) {
+        try {
+          const cfg = typeof processedValues.cacheConfig === 'string'
+            ? JSON.parse(processedValues.cacheConfig)
+            : processedValues.cacheConfig;
+          cacheEnabled = !!cfg?.enabled;
+          cacheTtlSeconds = cfg?.ttlSeconds ?? 300;
+          cacheIncludePageable = cfg?.includePageable !== false;
+          cacheKeyParams = Array.isArray(cfg?.keyParams) ? cfg.keyParams : [];
+        } catch { /* ignore */ }
+      }
+
       form.setFieldsValue({
         ...processedValues,
         isCustomSuccess: !!processedValues.customSuccessWrapper,
         isCustomPage: !!processedValues.customPageWrapper,
         isCustomFail: !!processedValues.customFailWrapper,
+        cacheEnabled,
+        cacheTtlSeconds,
+        cacheIncludePageable,
+        cacheKeyParams,
       });
       setMethod(processedValues.method || 'GET');
       setUrl(processedValues.url || '');
@@ -448,6 +470,15 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         tags: formValues.tags && Array.isArray(formValues.tags) ? formValues.tags.join(',') : formValues.tags,
         // 将契约数据序列化为 JSON 字符串存入 contract 字段，后端用于入参校验
         contract: JSON.stringify(contractSnapshot),
+        // 查询响应缓存配置
+        cacheConfig: JSON.stringify({
+          enabled: !!formValues.cacheEnabled,
+          ttlSeconds: formValues.cacheTtlSeconds ?? 300,
+          includePageable: formValues.cacheIncludePageable !== false,
+          keyParams: Array.isArray(formValues.cacheKeyParams)
+            ? formValues.cacheKeyParams.filter((p: any) => p?.source && p?.name)
+            : [],
+        }),
       };
 
       hide = message.loading(isEdit ? '正在更新...' : '正在添加...');
@@ -679,8 +710,15 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             onStatusCodeChange={setStatusCode}
           />
         );
-      case 'basic-info':
-        return <BasicInfoPanel form={form} />;
+      case 'basic-info': {
+        const paramSuggestions = [
+          ...queryParams.map((n) => ({ source: 'query', name: n.name })),
+          ...pathParams.map((n) => ({ source: 'path', name: n.name })),
+          ...headers.map((n) => ({ source: 'header', name: n.name })),
+          ...bodyNodes.map((n) => ({ source: 'body', name: n.name })),
+        ].filter((p) => !!p.name);
+        return <BasicInfoPanel form={form} paramSuggestions={paramSuggestions} />;
+      }
       default:
         return null;
     }
@@ -698,22 +736,40 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       onClose={onCancel}
       closable={false}
       styles={{
-        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+        body: {
+          padding: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        },
       }}
       destroyOnClose
     >
-      {/* 注入全局样式，强制 PageContainer 的标题栏撑满可用宽度，仅去除底部的冗余留白 */}
+      {/* 顶部 URL 信息栏 + Tab 固定；滚动落在 .ant-pro-grid-content（当前版无 children-content） */}
       <style>{`
         .controller-form-page-container .ant-page-header-heading-left,
         .controller-form-page-container .ant-page-header-heading-title {
           flex: 1;
           min-width: 0;
         }
-        .controller-form-page-container .ant-pro-page-container-children-content {
+        .controller-form-page-container.ant-pro-page-container {
+          display: flex !important;
+          flex-direction: column !important;
+          height: 100% !important;
+          overflow: hidden !important;
+        }
+        .controller-form-page-container .ant-page-header {
+          flex-shrink: 0;
+        }
+        .controller-form-page-container > .ant-pro-grid-content {
+          flex: 1 !important;
+          min-height: 0 !important;
+          overflow: auto !important;
           padding-bottom: 0 !important;
           margin-bottom: 0 !important;
         }
-        .controller-form-page-container .ant-pro-grid-content {
+        .controller-form-page-container .ant-pro-page-container-children-container {
           padding-bottom: 0 !important;
           margin-bottom: 0 !important;
         }
@@ -732,9 +788,9 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           { tab: '服务实现', key: 'implementation' },
           { tab: 'API 文档定义 · 请求', key: 'req-schema' },
           { tab: 'API 文档定义 · 响应', key: 'res-schema' },
-          { tab: '基础信息', key: 'basic-info' },
+          { tab: '基础信息 / 缓存', key: 'basic-info' },
         ]}
-        style={{ height: '100%', overflow: 'auto' }}
+        style={{ height: '100%', overflow: 'hidden' }}
       >
         {renderTabContent()}
       </PageContainer>

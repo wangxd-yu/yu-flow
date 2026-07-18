@@ -326,10 +326,9 @@ const EDGE_ROUTE_ITEMS: { key: EdgeRouteStyleKey; icon: string; label: string }[
 export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
   const [edgeStyle, setEdgeStyle] = React.useState<EdgeRouteStyleKey>(getActiveEdgeRouteStyle);
 
-  if (!graph) return null;
-
   const handleLayout = React.useCallback(
     (key: string) => {
+      if (!graph) return;
       const item = LAYOUT_ITEMS.find(i => i.key === key);
       if (!item) return;
       autoLayout(graph, item.options);
@@ -339,6 +338,7 @@ export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
 
   const handleEdgeRoute = React.useCallback(
     (key: string) => {
+      if (!graph) return;
       const style = key as EdgeRouteStyleKey;
       if (!EDGE_ROUTE_PRESETS[style]) return;
       applyEdgeRouteStyle(graph, style);
@@ -369,6 +369,8 @@ export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
       </span>
     ),
   }));
+
+  if (!graph) return null;
 
   return (
     <div

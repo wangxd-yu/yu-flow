@@ -19,6 +19,11 @@ export interface FlowController {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   publishStatus?: 0 | 1;
   logEnabled?: boolean;
+  /**
+   * 查询响应 Redis 缓存配置 JSON 字符串
+   * { enabled, ttlSeconds, keyParams:[{source,name}], includePageable }
+   */
+  cacheConfig?: string;
   level?: number;
   rule?: string;
   tags?: string[]; // 标签字段，支持数组格式
@@ -68,6 +73,58 @@ export async function updateAutoApiLogEnabled(id: string, enabled: boolean) {
   return request<FlowController>(`/flow-api/api/${id}/log-enabled`, {
     method: 'PUT',
     params: { enabled },
+  });
+}
+
+/** 更新查询响应缓存配置 */
+export async function updateApiCacheConfig(id: string, cacheConfig: object | string | null) {
+  return request<FlowController>(`/flow-api/api/${id}/cache-config`, {
+    method: 'PUT',
+    data: cacheConfig,
+  });
+}
+
+export interface ApiCacheEntry {
+  key: string;
+  ttlSeconds: number;
+  sizeBytes: number;
+}
+
+export interface ApiCacheContent {
+  key: string;
+  ttlSeconds: number;
+  sizeBytes: number;
+  content: string;
+  truncated: boolean;
+}
+
+/** 查询接口当前生效的响应缓存条目 */
+export async function listApiCacheEntries(id: string) {
+  return request<ApiCacheEntry[]>(`/flow-api/api/${id}/cache/entries`, {
+    method: 'GET',
+  });
+}
+
+/** 按需查看单条响应缓存内容 */
+export async function getApiCacheEntryContent(id: string, key: string) {
+  return request<ApiCacheContent>(`/flow-api/api/${id}/cache/entries/content`, {
+    method: 'GET',
+    params: { key },
+  });
+}
+
+/** 清除接口全部响应缓存 */
+export async function clearApiCache(id: string) {
+  return request<number>(`/flow-api/api/${id}/cache`, {
+    method: 'DELETE',
+  });
+}
+
+/** 清除单条响应缓存 */
+export async function clearApiCacheEntry(id: string, key: string) {
+  return request<boolean>(`/flow-api/api/${id}/cache/entries`, {
+    method: 'DELETE',
+    params: { key },
   });
 }
 

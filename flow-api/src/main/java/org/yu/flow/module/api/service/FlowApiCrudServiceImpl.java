@@ -10,6 +10,7 @@ import cn.hutool.db.Db;
 import cn.hutool.db.Entity;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.config.FlowApiCacheManager;
+import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.domain.FlowServiceDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
@@ -60,6 +61,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Resource
     private DemoModeGuard demoModeGuard;
+
+    @Resource
+    private ApiResponseCacheService apiResponseCacheService;
 
     // ============================= FlowApiDO CRUD =============================
 
@@ -135,13 +139,26 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (flowApiDO.getLogEnabled() == null) {
             flowApiDO.setLogEnabled(dbRecord.getLogEnabled());
         }
+        if (flowApiDO.getCacheConfig() == null) {
+            flowApiDO.setCacheConfig(dbRecord.getCacheConfig());
+        }
+        boolean cacheConfigChanged = !Objects.equals(
+                StrUtil.nullToEmpty(flowApiDO.getCacheConfig()),
+                StrUtil.nullToEmpty(dbRecord.getCacheConfig()));
+        boolean cacheWasEnabled = isResponseCacheEnabled(dbRecord.getCacheConfig());
+        boolean cacheNowEnabled = isResponseCacheEnabled(flowApiDO.getCacheConfig());
 
         flowApiRepository.save(flowApiDO);
 
         // 如果当前是未发布状态，仍然刷新缓存（兑容旧逻辑）
         // 已发布状态下编辑草稿不刷新缓存（快照隔离）
-        if (flowApiDO.getPublishStatus() == null || flowApiDO.getPublishStatus() != 1) {
+        // 例外：cacheConfig 为运行时配置，变更需即时刷新 L1
+        if (flowApiDO.getPublishStatus() == null || flowApiDO.getPublishStatus() != 1 || cacheConfigChanged) {
             flowApiCacheManager.publishRefreshEvent();
+        }
+        // 停用缓存，或缓存配置有变更时，清空该接口已有响应缓存
+        if (cacheConfigChanged && (cacheWasEnabled || cacheNowEnabled)) {
+            apiResponseCacheService.evictAll(flowApiDO.getId());
         }
         return flowApiDO;
     }
@@ -151,6 +168,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // [Demo 模式] 系统预置 API 不可删除
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         flowApiRepository.deleteById(id);
+        apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
     }
 
@@ -161,6 +179,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             // [Demo 模式] 逐一检查，只要有一个受保护的 ID 就整体拒绝
             ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
             flowApiRepository.logicDeleteByIds(ids);
+            ids.forEach(apiResponseCacheService::evictAll);
             flowApiCacheManager.publishRefreshEvent();
         }
     }
@@ -188,6 +207,47 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         FlowApiDO saved = flowApiRepository.save(api);
         if (saved.getPublishStatus() != null && saved.getPublishStatus() == 1) {
             flowApiCacheManager.publishRefreshEvent();
+        }
+        return saved;
+    }
+
+    /** 判断 cache_config JSON 是否启用响应缓存 */
+    private boolean isResponseCacheEnabled(String cacheConfigJson) {
+        if (StrUtil.isBlank(cacheConfigJson)) {
+            return false;
+        }
+        try {
+            var cfg = apiResponseCacheService.parseConfig(cacheConfigJson);
+            return cfg != null && cfg.isEnabled();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO updateCacheConfig(String id, String cacheConfig) {
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+        // 校验 JSON 合法性（空串视为清空）
+        if (StrUtil.isNotBlank(cacheConfig)) {
+            if (apiResponseCacheService.parseConfig(cacheConfig) == null) {
+                throw new IllegalArgumentException("cacheConfig JSON 无效");
+            }
+        } else {
+            cacheConfig = null;
+        }
+        String oldConfig = api.getCacheConfig();
+        api.setCacheConfig(cacheConfig);
+        api.setUpdateTime(LocalDateTime.now());
+        FlowApiDO saved = flowApiRepository.save(api);
+        if (saved.getPublishStatus() != null && saved.getPublishStatus() == 1) {
+            flowApiCacheManager.publishRefreshEvent();
+        }
+        // 配置变更后清掉旧响应缓存，避免 key 规则不一致残留
+        if (!Objects.equals(StrUtil.nullToEmpty(oldConfig), StrUtil.nullToEmpty(cacheConfig))) {
+            apiResponseCacheService.evictAll(id);
         }
         return saved;
     }
@@ -338,6 +398,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         api.setPublishedSnapshot(null);
         flowApiRepository.save(api);
 
+        apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
         return api;
     }
