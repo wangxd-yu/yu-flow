@@ -48,14 +48,18 @@ export {
 import { evaluateNodeRegistration } from './nodes/evaluate';
 import { ifNodeRegistration } from './nodes/if-node';
 import { switchNodeRegistration } from './nodes/switch-node';
-import { serviceCallNodeRegistration } from './nodes/service-call';
 import { httpRequestNodeRegistration } from './nodes/http-request';
+import { apiNodeRegistration } from './nodes/api';
 import { forNodeRegistration } from './nodes/for-node';          // Scatter-Gather For
+import { forEachNodeRegistration } from './nodes/for-each';
+import { parallelNodeRegistration } from './nodes/parallel';
+import { delayNodeRegistration } from './nodes/delay';
+import { errorHandlerNodeRegistration } from './nodes/error-handler';
 import { recordNodeRegistration } from './nodes/record';
 import { responseNodeRegistration } from './nodes/response';
 import { requestNodeRegistration } from './nodes/request';
 import { scheduleNodeRegistration } from './nodes/schedule';
-import { templateNodeRegistration } from './nodes/template';
+import { templateNodeRegistration } from './nodes/template'; // React Shape（{{key}} 长文本）
 import { collectNodeReactRegistration } from './nodes/collect-node'; // Scatter-Gather Collect (React)
 import { databaseNodeRegistration } from './nodes/database';
 import { systemVarNodeRegistration } from './nodes/system-var';
@@ -68,9 +72,13 @@ const BUILTIN_NODES = [
     evaluateNodeRegistration,
     ifNodeRegistration,
     switchNodeRegistration,
-    serviceCallNodeRegistration,
     httpRequestNodeRegistration,
+    apiNodeRegistration,           // 内部 Flow API 编排
     forNodeRegistration,           // Scatter-Gather: 分发台
+    forEachNodeRegistration,       // 串行循环
+    parallelNodeRegistration,      // 并行网关（图扇出）
+    delayNodeRegistration,
+    errorHandlerNodeRegistration,
     recordNodeRegistration,
     responseNodeRegistration,
     requestNodeRegistration,

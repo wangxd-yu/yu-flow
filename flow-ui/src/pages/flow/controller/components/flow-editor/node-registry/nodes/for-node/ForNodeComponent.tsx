@@ -309,6 +309,7 @@ export const ForNodeComponent = ({ node }: { node: Node }) => {
                 title={nodeLabel}
                 theme={theme}
                 height={FOR_LAYOUT.headerHeight}
+                node={node}
                 nodeId={node.id}
                 onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 extra={inlineTag}

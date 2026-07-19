@@ -41,6 +41,11 @@ export const collectNodeReactRegistration: NodeRegistration = {
     category: '循环节点',
     color: COLLECT_COLOR,
     tagColor: 'cyan',
+    description:
+        'Gather：汇聚 For 发出的各项结果。\n\n' +
+        '· item 口接收循环体输出\n' +
+        '· list 口输出聚合数组\n' +
+        '· finish 为收集完成的控制流信号',
     sortOrder: 84,
     hasInputs: true,
 

@@ -34,8 +34,9 @@ import {
     getPropertyEditor,
 } from '../node-registry';
 import {
-    PropertyField,
+    PROPERTY_THEME,
     PropertyHint,
+    PropertyNodeCard,
     PropertySection,
 } from '../node-registry/shared/PropertyPanel';
 
@@ -77,7 +78,7 @@ export default function NodePropertyDrawer({
 
     if (!node) {
         return (
-            <div style={{ height: '100%', overflowY: 'auto', background: '#fafafa' }}>
+            <div style={{ height: '100%', overflowY: 'auto', background: PROPERTY_THEME.pageBg }}>
                 <GlobalConfigEditor form={globalForm} isEdit={isEdit} />
             </div>
         );
@@ -102,19 +103,11 @@ export default function NodePropertyDrawer({
             style={{
                 height: '100%',
                 overflowY: 'auto',
-                background: '#fafafa',
+                background: PROPERTY_THEME.pageBg,
                 padding: '12px 14px 24px',
             }}
         >
-            <div
-                style={{
-                    marginBottom: 14,
-                    padding: '12px 12px 10px',
-                    background: '#fff',
-                    border: '1px solid #f0f0f0',
-                    borderRadius: 8,
-                }}
-            >
+            <PropertyNodeCard>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -122,15 +115,15 @@ export default function NodePropertyDrawer({
                                 {nodeType}
                             </Tag>
                         </div>
-                        <Text strong style={{ fontSize: 14, color: '#262626' }} ellipsis>
+                        <Text strong style={{ fontSize: 14, color: PROPERTY_THEME.text }} ellipsis>
                             {nodeLabel}
                         </Text>
                         <div style={{ marginTop: 2 }}>
                             <Text
                                 style={{
                                     fontSize: 11,
-                                    color: '#8c8c8c',
-                                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                    color: PROPERTY_THEME.muted,
+                                    fontFamily: PROPERTY_THEME.mono,
                                 }}
                             >
                                 {node.id}
@@ -160,7 +153,7 @@ export default function NodePropertyDrawer({
                         </Tooltip>
                     )}
                 </div>
-            </div>
+            </PropertyNodeCard>
 
             {hasInputsField(nodeType) && (
                 <InputsEditor
@@ -248,6 +241,7 @@ export function InputsEditor({
                         gap: 6,
                         marginBottom: 8,
                         alignItems: 'center',
+                        minHeight: PROPERTY_THEME.controlHeight,
                     }}
                 >
                     <Input
@@ -256,7 +250,8 @@ export function InputsEditor({
                         defaultValue={entry.key}
                         style={{
                             width: 96,
-                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            height: PROPERTY_THEME.controlHeight,
+                            fontFamily: PROPERTY_THEME.mono,
                         }}
                         onBlur={(e) => handleKeyChange(entry.key, e.target.value)}
                     />
@@ -268,7 +263,7 @@ export function InputsEditor({
                         placeholder="$ 或 $.field"
                         style={{
                             flex: 1,
-                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            fontFamily: PROPERTY_THEME.mono,
                         }}
                         onChange={(val) => handlePathChange(entry.key, val)}
                         filterOption={(input, option) =>
@@ -281,6 +276,7 @@ export function InputsEditor({
                         size="small"
                         icon={<DeleteOutlined />}
                         onClick={() => handleRemove(entry.key)}
+                        style={{ width: PROPERTY_THEME.controlHeight, height: PROPERTY_THEME.controlHeight }}
                     />
                 </div>
             ))}

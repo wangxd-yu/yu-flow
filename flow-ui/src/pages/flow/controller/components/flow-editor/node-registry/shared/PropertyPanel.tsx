@@ -1,23 +1,45 @@
 // ============================================================================
-// PropertyPanel — 右侧属性面板统一视觉组件（默认紧凑横排）
+// PropertyPanel — 右侧属性面板统一视觉与控件封装
 // ============================================================================
 
 import React from 'react';
 import { Tooltip, Typography } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
+import CodeEditor, {
+    mapExpressionLanguage,
+    type CodeEditorLanguage,
+} from '../../components/CodeEditor';
 
 const { Text } = Typography;
 
-const COLORS = {
+/** 面板视觉 token（归拢风格） */
+export const PROPERTY_THEME = {
     label: '#595959',
     muted: '#8c8c8c',
+    text: '#262626',
     border: '#f0f0f0',
+    cardBg: '#fff',
+    pageBg: '#fafafa',
     hintBg: '#f7f8fa',
     hintBorder: '#eef0f3',
     hintText: '#6b7280',
+    mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    radius: 8,
+    controlHeight: 28,
+    labelWidth: 72,
+    gap: 8,
+    sectionGap: 12,
 };
 
-const LABEL_WIDTH = 72;
+/** 代码编辑器标准高度档位 */
+export const CODE_HEIGHT = {
+    sm: '88px',
+    md: '140px',
+    lg: '200px',
+} as const;
+
+const COLORS = PROPERTY_THEME;
+const LABEL_WIDTH = PROPERTY_THEME.labelWidth;
 
 export function PropertySection({
     title,
@@ -31,7 +53,7 @@ export function PropertySection({
     style?: React.CSSProperties;
 }) {
     return (
-        <div style={{ marginBottom: 12, ...style }}>
+        <div style={{ marginBottom: PROPERTY_THEME.sectionGap, ...style }}>
             <div
                 style={{
                     display: 'flex',
@@ -42,7 +64,7 @@ export function PropertySection({
                     borderBottom: `1px solid ${COLORS.border}`,
                 }}
             >
-                <Text strong style={{ fontSize: 12, color: '#262626', letterSpacing: 0.2 }}>
+                <Text strong style={{ fontSize: 12, color: COLORS.text, letterSpacing: 0.2 }}>
                     {title}
                 </Text>
                 {tip ? (
@@ -78,7 +100,9 @@ export function PropertyField({
 }) {
     const labelNode = (
         <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-            <Text style={{ fontSize: 12, color: COLORS.label, lineHeight: '22px' }}>{label}</Text>
+            <Text style={{ fontSize: 12, color: COLORS.label, lineHeight: `${PROPERTY_THEME.controlHeight}px` }}>
+                {label}
+            </Text>
             {tip ? (
                 <Tooltip title={tip}>
                     <QuestionCircleOutlined style={{ color: COLORS.muted, fontSize: 11 }} />
@@ -111,9 +135,9 @@ export function PropertyField({
             style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: PROPERTY_THEME.gap,
                 marginBottom: 8,
-                minHeight: 28,
+                minHeight: PROPERTY_THEME.controlHeight,
             }}
         >
             <div style={{ width: labelWidth, flexShrink: 0 }}>{labelNode}</div>
@@ -128,12 +152,18 @@ export function PropertyField({
 }
 
 /** 一行并排两个紧凑字段（如 超时 + 重试） */
-export function PropertyFieldRow({ children }: { children: React.ReactNode }) {
+export function PropertyFieldRow({
+    children,
+    columns = 2,
+}: {
+    children: React.ReactNode;
+    columns?: 2 | 3;
+}) {
     return (
         <div
             style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                 gap: '0 10px',
                 marginBottom: 0,
             }}
@@ -195,6 +225,74 @@ export function PropertySwitchRow({
                 ) : null}
             </div>
             <div style={{ flexShrink: 0 }}>{control}</div>
+        </div>
+    );
+}
+
+/**
+ * 属性面板代码区：统一 CodeMirror + 按语言格式化。
+ * expressionLang：传 If/Evaluate/Switch 的 language 字符串时自动映射高亮。
+ */
+export function PropertyCodeField({
+    label,
+    tip,
+    value,
+    onChange,
+    language = 'text',
+    expressionLang,
+    height = 'md',
+    placeholder,
+    lineNumbers = true,
+}: {
+    label: string;
+    tip?: string;
+    value: string;
+    onChange: (val: string) => void;
+    language?: CodeEditorLanguage;
+    /** 若提供，优先用 mapExpressionLanguage 映射 */
+    expressionLang?: string;
+    height?: keyof typeof CODE_HEIGHT | string;
+    placeholder?: string;
+    lineNumbers?: boolean;
+}) {
+    const resolvedLang: CodeEditorLanguage = expressionLang
+        ? mapExpressionLanguage(expressionLang)
+        : language;
+    const h = typeof height === 'string' && height in CODE_HEIGHT
+        ? CODE_HEIGHT[height as keyof typeof CODE_HEIGHT]
+        : height;
+
+    return (
+        <PropertyField label={label} tip={tip} layout="vertical">
+            <CodeEditor
+                value={value}
+                onChange={onChange}
+                language={resolvedLang}
+                height={h}
+                maxHeight="360px"
+                fontSize={12}
+                lineNumbers={lineNumbers}
+                theme="light"
+                showFormat
+                placeholder={placeholder}
+            />
+        </PropertyField>
+    );
+}
+
+/** 节点头卡片外壳（标题区） */
+export function PropertyNodeCard({ children }: { children: React.ReactNode }) {
+    return (
+        <div
+            style={{
+                marginBottom: 14,
+                padding: '12px 12px 10px',
+                background: PROPERTY_THEME.cardBg,
+                border: `1px solid ${PROPERTY_THEME.border}`,
+                borderRadius: PROPERTY_THEME.radius,
+            }}
+        >
+            {children}
         </div>
     );
 }

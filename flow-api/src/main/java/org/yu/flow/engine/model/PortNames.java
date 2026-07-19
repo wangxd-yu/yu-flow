@@ -26,8 +26,10 @@ public final class PortNames {
     public static final String DEFAULT = "default";
     /** 控制流起始触发 (For 节点) */
     public static final String START = "start";
-    /** 控制流完成信号 (Collect / ForEach 节点) */
+    /** 控制流完成信号 (Collect) */
     public static final String FINISH = "finish";
+    /** 串行循环全部完成后的出口 (ForEach) */
+    public static final String DONE = "done";
     /** HTTP 请求成功分支 */
     public static final String SUCCESS = "success";
     /** HTTP 请求失败分支 */

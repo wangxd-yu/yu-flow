@@ -76,6 +76,32 @@ public class HttpRequestStep extends Step {
     private Boolean ignoreSsl;
 
     /**
+     * 鉴权类型：{@code none} / {@code bearer} / {@code basic} / {@code apiKey}。
+     * null 或空视为 none。字段值支持 {@code ${var}} 占位（来自 inputs）。
+     */
+    private String authType;
+
+    /** Bearer Token（不含 "Bearer " 前缀） */
+    private String authToken;
+
+    /** Basic 用户名 */
+    private String authUsername;
+
+    /** Basic 密码 */
+    private String authPassword;
+
+    /**
+     * API Key 放置位置：{@code header}（默认）或 {@code query}。
+     */
+    private String authApiKeyIn;
+
+    /** API Key 名称，默认 {@code X-API-Key}（header）或 {@code api_key}（query） */
+    private String authApiKeyName;
+
+    /** API Key 值 */
+    private String authApiKeyValue;
+
+    /**
      * 兼容前端历史脏数据：headers/params 可能是 [{key,value}] 数组或 Map。
      */
     @JsonSetter("headers")

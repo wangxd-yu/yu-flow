@@ -48,6 +48,11 @@ export const forNodeRegistration: NodeRegistration = {
     category: '循环节点',
     color: FOR_COLOR,
     tagColor: 'purple',
+    description:
+        'Scatter：将数组并发拆成多项处理。\n\n' +
+        '· 输入列表后，对每个元素发出 item\n' +
+        '· 需与 Collect 节点配对汇聚\n' +
+        '· 适合扇出并发，不是串行 forEach',
     sortOrder: 85,
     hasInputs: true,
 

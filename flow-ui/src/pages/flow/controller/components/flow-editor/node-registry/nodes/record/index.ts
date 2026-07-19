@@ -50,6 +50,11 @@ export const recordNodeRegistration: NodeRegistration = {
     category: '数据节点',
     color: '#1677ff',
     tagColor: 'blue',
+    description:
+        '按字段拼装一个对象输出。\n\n' +
+        '· 每行：字段名 + 字面量 / 连线路径\n' +
+        '· 左上角 in:payload 可整包传入，字段可用相对路径\n' +
+        '· 结果从 Result 输出为对象',
     hasInputs: true,
 
     shape: {

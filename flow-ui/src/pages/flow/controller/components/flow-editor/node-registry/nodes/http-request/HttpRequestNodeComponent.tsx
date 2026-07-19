@@ -483,20 +483,31 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={HEADER_HEIGHT}
+                    node={node}
                     nodeId={node.id}
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={
-                        <Dropdown menu={methodMenu} trigger={['click']}>
-                            <div
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                            >
-                                <Text style={{ fontSize: 11, color: themeObj.primary }}>{method}</Text>
-                                <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
-                            </div>
-                        </Dropdown>
+                        <Space size={8}>
+                            {data.authType && data.authType !== 'none' ? (
+                                <Text
+                                    style={{ fontSize: 10, color: '#8c8c8c' }}
+                                    title={`鉴权: ${data.authType}（右侧属性面板可改）`}
+                                >
+                                    {String(data.authType).toUpperCase()}
+                                </Text>
+                            ) : null}
+                            <Dropdown menu={methodMenu} trigger={['click']}>
+                                <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                                >
+                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{method}</Text>
+                                    <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                                </div>
+                            </Dropdown>
+                        </Space>
                     }
                 />
             </PayloadEntryChrome>

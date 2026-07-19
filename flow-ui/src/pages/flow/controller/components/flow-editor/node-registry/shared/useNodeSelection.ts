@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Node } from '@antv/x6';
+import { Popover } from 'antd';
 import {
     BugOutlined,
     SettingOutlined,
@@ -13,6 +14,71 @@ import {
     CopyOutlined,
     DeleteOutlined
 } from '@ant-design/icons';
+import { getNodeRegistration } from '../registry';
+import type { DslNodeType } from '../../types';
+
+/** 从节点 data / 注册表解析说明文案 */
+export function resolveNodeDescription(node: Node, override?: string): string | undefined {
+    if (override?.trim()) return override.trim();
+    const type = (node.getData() as any)?.__dslType as DslNodeType | undefined;
+    if (!type) return undefined;
+    const text = getNodeRegistration(type)?.description;
+    return text?.trim() || undefined;
+}
+
+function NodeInfoPopover({
+    description,
+    title,
+    children,
+    iconColor,
+}: {
+    description: string;
+    title?: string;
+    children: React.ReactElement;
+    iconColor?: string;
+}) {
+    return React.createElement(
+        Popover,
+        {
+            title: title || '节点说明',
+            trigger: 'click',
+            placement: 'rightTop',
+            getPopupContainer: () => document.body,
+            overlayStyle: { maxWidth: 320, zIndex: 10050 },
+            content: React.createElement(
+                'div',
+                {
+                    style: {
+                        fontSize: 12,
+                        lineHeight: 1.6,
+                        color: '#595959',
+                        whiteSpace: 'pre-wrap',
+                        maxWidth: 280,
+                    },
+                    onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
+                    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+                },
+                description,
+            ),
+        },
+        React.createElement(
+            'span',
+            {
+                onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
+                onClick: (e: React.MouseEvent) => e.stopPropagation(),
+                style: {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    color: iconColor || '#8c8c8c',
+                    flexShrink: 0,
+                },
+                title: '查看说明',
+            },
+            children,
+        ),
+    );
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // 1. 选中态 Hook
@@ -150,6 +216,10 @@ export interface NodeHeaderProps {
     nodeId?: string;
     /** 提交新节点 ID（校验/重写引用由调用方或 renameFlowNodeId 完成） */
     onNodeIdChange?: (newId: string) => void;
+    /** 传入后可自动从注册表读取 description，在右上角显示 info */
+    node?: Node;
+    /** 覆盖注册表中的节点说明 */
+    description?: string;
 }
 
 export const NodeHeader: React.FC<NodeHeaderProps> = ({
@@ -161,9 +231,14 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({
     onTitleChange,
     nodeId,
     onNodeIdChange,
+    node,
+    description: descriptionOverride,
 }) => {
     const t: NodeTheme = typeof theme === 'string' ? (NODE_THEMES[theme] || NODE_THEMES.gray) : theme;
     const resolvedHeight = height ?? (nodeId != null ? NODE_HEADER_WITH_ID_HEIGHT : 40);
+    const description = node
+        ? resolveNodeDescription(node, descriptionOverride)
+        : descriptionOverride?.trim() || undefined;
 
     const [editing, setEditing] = React.useState(false);
     const [draft, setDraft] = React.useState(title);
@@ -311,6 +386,18 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({
         },
     }, titleEl, idEl);
 
+    const infoBtn = description
+        ? React.createElement(
+            NodeInfoPopover,
+            {
+                description,
+                title: title || '节点说明',
+                iconColor: t.primary,
+            },
+            React.createElement(InfoCircleOutlined, { style: { fontSize: 14 } }),
+        )
+        : null;
+
     return React.createElement('div', {
         style: {
             height: resolvedHeight,
@@ -321,13 +408,15 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({
             borderBottom: `1px solid ${t.headerBorder}`,
             pointerEvents: 'auto' as const,
             flexShrink: 0,
+            gap: 8,
         },
     },
         React.createElement('div', {
-            style: { color: t.primary, marginRight: 8, display: 'flex', alignItems: 'center', flexShrink: 0 },
+            style: { color: t.primary, marginRight: 0, display: 'flex', alignItems: 'center', flexShrink: 0 },
         }, icon),
         titleBlock,
         extra || null,
+        infoBtn,
     );
 };
 
@@ -408,7 +497,75 @@ export interface NodeRootStyleOpts {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 5. ResizeHandle — 右下角缩放手柄（公共组件）
+// 5. Footer / Resize 安全区（出口文案勿与手柄重叠）
+// ═══════════════════════════════════════════════════════════════════
+
+/** ResizeHandle 热区边长 */
+export const RESIZE_HANDLE_SIZE = 25;
+/** Footer 默认高度（含单出口 Result / Output / out） */
+export const NODE_FOOTER_HEIGHT = 44;
+/**
+ * Footer 右侧内边距：必须 ≥ ResizeHandle 热区，避免「out」文案与缩放点重叠。
+ * 标签用 paddingRight 留白，不要用 absolute right: 10。
+ */
+export const NODE_FOOTER_SAFE_RIGHT = RESIZE_HANDLE_SIZE + 6; // 31
+/** 单出口端口相对 Footer 顶边的 Y 偏移（与标签垂直居中对齐） */
+export const NODE_FOOTER_PORT_OFFSET_Y = 22;
+
+export type NodeOutFooterProps = {
+    /** 右侧出口文案，如 Result / Output / out */
+    label?: string;
+    /** 文案颜色，默认 #595959 */
+    color?: string;
+    height?: number;
+    /** 额外右侧内容（在文案左侧） */
+    children?: React.ReactNode;
+    style?: React.CSSProperties;
+    /** 顶部分割线颜色 */
+    borderColor?: string;
+};
+
+/**
+ * 单出口 Footer：右对齐标签 + 为 ResizeHandle 预留安全区。
+ * 端口 Y = nodeHeight - height + NODE_FOOTER_PORT_OFFSET_Y
+ * 注意：本文件为 .ts，禁止 JSX，统一用 createElement。
+ */
+export const NodeOutFooter: React.FC<NodeOutFooterProps> = ({
+    label = 'Output',
+    color = '#595959',
+    height = NODE_FOOTER_HEIGHT,
+    children,
+    style,
+    borderColor = '#f0f0f0',
+}) => React.createElement(
+    'div',
+    {
+        style: {
+            height,
+            position: 'relative' as const,
+            pointerEvents: 'auto' as const,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 8,
+            paddingLeft: 12,
+            paddingRight: NODE_FOOTER_SAFE_RIGHT,
+            borderTop: `1px solid ${borderColor}`,
+            boxSizing: 'border-box' as const,
+            ...style,
+        },
+    },
+    children,
+    React.createElement(
+        'span',
+        { style: { fontSize: 12, color, lineHeight: 1, userSelect: 'none' as const } },
+        label,
+    ),
+);
+
+// ═══════════════════════════════════════════════════════════════════
+// 6. ResizeHandle — 右下角缩放手柄（公共组件）
 // ═══════════════════════════════════════════════════════════════════
 
 const RESIZE_ICON = React.createElement('svg', { viewBox: '0 0 12 12', width: 20, height: 20, fill: 'currentColor' },
@@ -474,8 +631,8 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
             position: 'absolute' as const,
             bottom: 2,
             right: 2,
-            width: 25,
-            height: 25,
+            width: RESIZE_HANDLE_SIZE,
+            height: RESIZE_HANDLE_SIZE,
             cursor: axes === 'x' ? 'ew-resize' : 'nwse-resize',
             pointerEvents: 'auto' as const,
             zIndex: 10,
@@ -488,7 +645,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// 6. NodeToolbar — 顶部悬浮工具栏 (Refactored)
+// 7. NodeToolbar — 顶部悬浮工具栏 (Refactored)
 // ═══════════════════════════════════════════════════════════════════
 
 // 已弃用自定义 SVG，全部替换为 @ant-design/icons 组件
@@ -666,11 +823,23 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ node, selected, themeC
                 onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; },
                 onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
             }, React.createElement(SettingOutlined)),
-            React.createElement('div', {
-                style: btnStyle, title: '详情',
-                onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; },
-                onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
-            }, React.createElement(InfoCircleOutlined)),
+            (() => {
+                const desc = resolveNodeDescription(node);
+                const infoIcon = React.createElement('div', {
+                    style: btnStyle,
+                    title: desc ? '节点说明' : '暂无说明',
+                    onMouseEnter: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; },
+                    onMouseLeave: (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; },
+                }, React.createElement(InfoCircleOutlined));
+                if (!desc) return infoIcon;
+                const type = (node.getData() as any)?.__dslType as DslNodeType | undefined;
+                const label = type ? getNodeRegistration(type)?.label : undefined;
+                return React.createElement(
+                    NodeInfoPopover,
+                    { description: desc, title: label || '节点说明' },
+                    infoIcon,
+                );
+            })(),
             React.createElement('div', {
                 onClick: handleCopy,
                 style: btnStyle, title: '复制',

@@ -261,14 +261,14 @@ export function importDslToGraph(graph: Graph, dsl: FlowDsl): void {
                 });
             }
 
-            // 2. 特殊节点如 Switch 的动态 outputs
+            // 2. Switch / Condition：每条分支稳定出口 case_<id>
             if (nodeType === 'switch' && Array.isArray(dslNode.data?.cases)) {
-                dslNode.data.cases.forEach((c: any) => {
-                    if (c.value) {
-                        const portId = `case_${c.value}`;
-                        if (!defaults.find((p) => p.id === portId)) {
-                            defaults.push({ id: portId, group: 'right' });
-                        }
+                dslNode.data.cases.forEach((c: any, i: number) => {
+                    if (!c || typeof c !== 'object') return;
+                    const id = c.id || `c${i}`;
+                    const portId = `case_${id}`;
+                    if (!defaults.find((p) => p.id === portId)) {
+                        defaults.push({ id: portId, group: 'absolute-out-solid' });
                     }
                 });
             }
@@ -597,23 +597,19 @@ export function updateNodeDslData(node: Node, partialData: Record<string, any>):
 // Switch 动态端口管理
 // ============================================================================
 
-/** 为 Switch 节点添加一个 Case 端口 */
-export function addSwitchCasePort(node: Node, caseValue: string): void {
-    const portId = `case_${caseValue}`;
+/** 为 Switch 节点添加一个 Case 端口（按稳定 id） */
+export function addSwitchCasePort(node: Node, caseId: string, label?: string): void {
+    const portId = `case_${caseId}`;
     node.addPort({
         id: portId,
-        group: 'right',
+        group: 'absolute-out-solid',
         attrs: {
-            text: { text: caseValue, fill: '#1f1f1f', fontSize: 10 },
+            text: { text: label || caseId, fill: '#1f1f1f', fontSize: 10 },
         },
     });
-    const ports = node.getPorts();
-    node.resize(200, Math.max(80, 50 + ports.length * 28));
 }
 
 /** 移除 Switch 节点的一个 Case 端口 */
-export function removeSwitchCasePort(node: Node, caseValue: string): void {
-    node.removePort(`case_${caseValue}`);
-    const ports = node.getPorts();
-    node.resize(200, Math.max(80, 50 + ports.length * 28));
+export function removeSwitchCasePort(node: Node, caseId: string): void {
+    node.removePort(`case_${caseId}`);
 }

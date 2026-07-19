@@ -1,24 +1,27 @@
 package org.yu.flow.engine.model.step;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.yu.flow.engine.model.PortDefinition;
-import org.yu.flow.engine.model.Step;
-import org.yu.flow.engine.model.PortNames;
 import org.yu.flow.engine.model.NodeType;
+import org.yu.flow.engine.model.PortDefinition;
+import org.yu.flow.engine.model.PortNames;
+import org.yu.flow.engine.model.Step;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * SWITCH 分支 (多路匹配)
+ * Switch 多路值匹配。
+ * <p>每条分支出口为 {@code case_<id>}，未命中走 {@code default}。</p>
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
 public class SwitchStep extends Step {
-    private String expression; // 计算值的表达式，如 r (变量名)
-    private List<String> cases = new ArrayList<>(); // 匹配项列表，如 ["ADMIN", "USER", "GUEST"]
-    private String language;   // 表达式语言: "aviator" (默认) 或 "spel"
+    private String expression;
+    @JsonDeserialize(using = SwitchCasesDeserializer.class)
+    private List<SwitchCase> cases = new ArrayList<>();
+    private String language;
 
     @Override
     public String getType() {
@@ -27,18 +30,16 @@ public class SwitchStep extends Step {
 
     @Override
     public List<PortDefinition> getOutputPorts() {
-        // Switch 节点的输出端口根据 cases 动态生成
         List<PortDefinition> ports = new ArrayList<>();
-
         if (cases != null) {
-            for (String caseValue : cases) {
-                ports.add(PortDefinition.output("case_" + caseValue));
+            for (SwitchCase c : cases) {
+                if (c == null || c.getId() == null || c.getId().isBlank()) {
+                    continue;
+                }
+                ports.add(PortDefinition.output("case_" + c.getId()));
             }
         }
-
-        // 默认分支
         ports.add(PortDefinition.output(PortNames.DEFAULT));
-
         return ports;
     }
 }

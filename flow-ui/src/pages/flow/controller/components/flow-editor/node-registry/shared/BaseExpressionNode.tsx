@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Typography, Dropdown } from 'antd';
-import CodeEditor, { mapExpressionLanguage } from '../../components/CodeEditor';
+import CodeEditor, { mapExpressionLanguage, type CodeEditorLanguage } from '../../components/CodeEditor';
 import { Node } from '@antv/x6';
 import {
     useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme, NODE_HEADER_WITH_ID_HEIGHT,
@@ -62,8 +62,16 @@ export interface BaseExpressionNodeProps {
     titleText: string;
     /** 底部区域高度 (Evaluate = 44, If = 90) */
     footerHeight: number;
-    /** 表达式字段名 (Evaluate 用 "expression", If 用 "condition") */
+    /** 表达式字段名 (Evaluate 用 "expression", If 用 "condition", Template 用 "template") */
     expressionField?: string;
+    /** 隐藏语言下拉（Template 等纯文本场景） */
+    hideLanguage?: boolean;
+    /** 编辑器 placeholder */
+    expressionPlaceholder?: string;
+    /** 强制编辑器语言（覆盖 data.language 映射） */
+    forceEditorLanguage?: CodeEditorLanguage;
+    /** 表达式编辑区最小高度（Switch 等可压到更矮） */
+    minExpressionHeight?: number;
     /** 底部个性化端口区 */
     bottomContent: React.ReactNode | ((props: BottomContentProps) => React.ReactNode);
     /**
@@ -85,6 +93,8 @@ export interface BaseExpressionNodeProps {
 // ============================================================================
 export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
     node, titleIcon, titleText, footerHeight, expressionField = 'expression',
+    hideLanguage = false, expressionPlaceholder, forceEditorLanguage,
+    minExpressionHeight = MIN_QUERY_HEIGHT,
     bottomContent, onResize, onPortSync, onPortPositionSync,
 }) => {
     const [data, setData] = React.useState<any>(node.getData());
@@ -128,8 +138,9 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
 
     // ── 缩放 ──
     const [resizing, setResizing] = React.useState(false);
+    const exprMinH = Math.max(28, minExpressionHeight);
     const contentH = HEADER_HEIGHT + variables.length * ROW_HEIGHT + VAR_PADDING + COND_PADDING + footerHeight;
-    const minH = contentH + MIN_QUERY_HEIGHT;
+    const minH = contentH + exprMinH;
 
     React.useEffect(() => {
         if (!resizing) {
@@ -159,23 +170,26 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
         onClick: ({ key }: any) => node.setData({ ...node.getData(), language: key }, { overwrite: true }),
     };
 
-    const editorLanguage = mapExpressionLanguage(language);
+    const editorLanguage = forceEditorLanguage || mapExpressionLanguage(language);
 
     return (
         <NodeWrapper node={node} selected={selected} themeColor={borderColor} outlineCss={outlineCss} backgroundColor={themeObj.bodyBg}>
-            {/* Header + 总入口视觉凸起 */}
+            {/* Header + 总入口视觉凸起（左上角 in:payload） */}
             <PayloadEntryChrome hasPayload={hasPayload} primaryColor={themeObj.primary}>
                 <NodeHeader icon={titleIcon} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
+                    node={node}
                     nodeId={node.id}
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={
-                        <Dropdown menu={langMenu} trigger={['click']}>
-                            <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Text style={{ fontSize: 11, color: themeObj.primary }}>{language}</Text>
-                                <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
-                            </div>
-                        </Dropdown>
+                        hideLanguage ? undefined : (
+                            <Dropdown menu={langMenu} trigger={['click']}>
+                                <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{language}</Text>
+                                    <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                                </div>
+                            </Dropdown>
+                        )
                     }
                 />
             </PayloadEntryChrome>
@@ -191,11 +205,12 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
                 onAddVar={onAddVar}
                 onUpdateVar={onUpdateVar}
                 onRemoveVar={onRemoveVar}
+                addLabel={expressionField === 'template' ? 'variable' : '输入变量'}
             />
 
             {/* Expression Editor — CodeMirror 代码编辑器 */}
             <div
-                style={{ padding: '8px 12px', pointerEvents: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: MIN_QUERY_HEIGHT }}
+                style={{ padding: '8px 12px', pointerEvents: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: exprMinH }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onMouseUp={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -211,7 +226,8 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
                     lineNumbers={false}
                     bordered={false}
                     theme="light"
-                    style={{ flex: 1, minHeight: MIN_QUERY_HEIGHT, backgroundColor: '#f0f0f0', borderRadius: 4 }}
+                    placeholder={expressionPlaceholder}
+                    style={{ flex: 1, minHeight: exprMinH, backgroundColor: '#f0f0f0', borderRadius: 4 }}
                 />
             </div>
 

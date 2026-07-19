@@ -67,10 +67,10 @@ public class FlowParser {
             }
         }
 
-        // 设置 startStepId (start 、 request 或 schedule 节点作为入口)
+        // 设置 startStepId（request 或 schedule 作为入口）
         for (ObjectNode node : nodeMap.values()) {
             String type = node.get("type").asText();
-            if ("start".equals(type) || "request".equals(type) || "schedule".equals(type)) {
+            if ("request".equals(type) || "schedule".equals(type)) {
                 result.put("startStepId", node.get("id").asText());
                 break;
             }
@@ -319,8 +319,8 @@ public class FlowParser {
             ObjectNode targetNode = nodeMap.get(targetCell);
             if (targetNode != null) {
                 String targetType = targetNode.has("type") ? targetNode.get("type").asText() : "";
-                if ("for".equals(targetType)) {
-                    // ── for 节点的 in 端口，即为循环数组 list ──
+                if ("for".equals(targetType) || "forEach".equals(targetType)) {
+                    // ── for / forEach 的 in 端口，即为循环数组 list ──
                     JsonNode inputsNode = targetNode.get("inputs");
                     if (inputsNode == null || !inputsNode.isObject()) {
                         inputsNode = objectMapper.createObjectNode();

@@ -23,6 +23,7 @@ type PaletteItem = { type: DslNodeType; label: string; color: string };
 const CATEGORY_WEIGHTS: Record<string, number> = {
     '基础节点': 100,
     '逻辑节点': 90,
+    '循环节点': 85,
     '数据节点': 80,
     '调用节点': 70,
     '外部资源': 60,
@@ -37,15 +38,20 @@ const NODE_WEIGHTS: Partial<Record<DslNodeType, number>> = {
     if: 100,
     switch: 90,
     evaluate: 80,
-    forEach: 70,
+    delay: 70,
+    errorHandler: 60,
+    // 循环节点
+    forEach: 100,
+    for: 90,
+    collect: 80,
+    parallel: 70,
     // 数据节点
     record: 100,
     template: 90,
-    collect: 80,
     systemVar: 70,
     // 调用节点
-    serviceCall: 100,
-    httpRequest: 90,
+    httpRequest: 100,
+    api: 95,
     database: 80,
 };
 

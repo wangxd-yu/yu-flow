@@ -116,13 +116,22 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             Map<String, Object> allInputs = flowInputSupplier.get();
             Map<String, Object> requestMap = new HashMap<>();
             requestMap.put("headers", toObjectMap(firstPresent(allInputs, "headers")));
-            requestMap.put("params", toObjectMap(firstPresent(allInputs, "queryParams", "params", "@QP")));
+            // query + path 一并进入 request.params，便于被调流程 $.request.params.xxx 读取
+            Map<String, Object> mergedParams = new HashMap<>(
+                    toObjectMap(firstPresent(allInputs, "queryParams", "params", "@QP")));
+            mergedParams.putAll(toObjectMap(firstPresent(allInputs, "pathParams", "@PP")));
+            requestMap.put("params", mergedParams);
             requestMap.put("body", toObjectMap(firstPresent(allInputs, "bodyParams", "body", "@BP")));
-            
+            // 编排入参：供 DB/表达式风格读取；Request 节点仍以 params/body 为准
+            if (allInputs.get("@FP") instanceof Map<?, ?> fp && !fp.isEmpty()) {
+                requestMap.put("fp", toObjectMap(fp));
+            }
+
             Map<String, Object> flowArgs = new HashMap<>();
             flowArgs.put("request", requestMap);
-            flowArgs.put("pageable", allInputs.get("pageable"));
-            
+            flowArgs.put("pageable", allInputs.get("pageable") != null
+                    ? allInputs.get("pageable") : pageable);
+
             return flowEngine.execute(content, flowArgs, isLogEnabled(apiDO), "API",
                     apiDO.getId(), apiDO.getName());
         });

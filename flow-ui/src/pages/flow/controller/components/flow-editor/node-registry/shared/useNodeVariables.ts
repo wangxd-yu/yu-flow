@@ -14,6 +14,12 @@ export interface NodeVariable {
     id: string;
     name: string;
     extractPath: string;
+    /** API 节点：入参来源（query/path/body/header） */
+    paramSource?: 'query' | 'path' | 'body' | 'header';
+    /** API 节点：契约必填 */
+    required?: boolean;
+    /** API 节点：由目标 API contract 自动带出 */
+    fromContract?: boolean;
 }
 
 /** 总入口 in:payload 写入的 key，不占变量行 */
@@ -41,17 +47,28 @@ function defaultInputsToVars(inputs?: Record<string, any>, existingPorts?: strin
 
     return Object.entries(inputs)
         .filter(([key]) => key !== PAYLOAD_INPUT_KEY)
-        .map(([key, val], i) => ({
-            id: (val as any)?.id || varIds[i] || createId('var'),
-            name: key,
-            extractPath: typeof val === 'string' ? val : (val as any)?.extractPath || '',
-        }));
+        .map(([key, val], i) => {
+            const obj = typeof val === 'string' ? null : (val as any);
+            return {
+                id: obj?.id || varIds[i] || createId('var'),
+                name: key,
+                extractPath: typeof val === 'string' ? val : obj?.extractPath || '',
+                paramSource: obj?.paramSource,
+                required: obj?.required,
+                fromContract: obj?.fromContract,
+            };
+        });
 }
 
 function defaultVarsToInputs(vars: NodeVariable[]): Record<string, any> | undefined {
     const r: Record<string, any> = {};
     for (const v of vars) {
-        if (v.name) r[v.name] = { id: v.id, extractPath: v.extractPath };
+        if (!v.name) continue;
+        const entry: Record<string, any> = { id: v.id, extractPath: v.extractPath };
+        if (v.paramSource) entry.paramSource = v.paramSource;
+        if (v.required != null) entry.required = v.required;
+        if (v.fromContract) entry.fromContract = true;
+        r[v.name] = entry;
     }
     return Object.keys(r).length > 0 ? r : undefined;
 }

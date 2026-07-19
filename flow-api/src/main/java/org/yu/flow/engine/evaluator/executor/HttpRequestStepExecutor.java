@@ -353,11 +353,18 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
         if (resolvedParams != null) {
             resolvedParams.forEach(urlBuilder::addQueryParameter);
         }
+        // API Key → query
+        applyApiKeyQuery(step, inputs, urlBuilder);
         return urlBuilder.build();
     }
 
     private Request buildRequest(HttpRequestStep step, HttpUrl finalUrl, Map<String, Object> inputs) throws Exception {
         Map<String, String> resolvedHeaders = resolveMap(step.getHeaders(), inputs);
+        if (resolvedHeaders == null) {
+            resolvedHeaders = new HashMap<>();
+        }
+        applyAuthHeaders(step, inputs, resolvedHeaders);
+
         RequestBody requestBody = null;
 
         if (requiresBody(step.getMethod())) {
@@ -382,10 +389,105 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
                 .url(finalUrl)
                 .method(step.getMethod().toUpperCase(), requestBody);
 
-        if (resolvedHeaders != null) {
-            resolvedHeaders.forEach(requestBuilder::header);
-        }
+        resolvedHeaders.forEach(requestBuilder::header);
         return requestBuilder.build();
+    }
+
+    /**
+     * 将鉴权写入 Headers（Bearer / Basic / API Key-header）。
+     * 手动配置的同名 Header 优先保留（不覆盖）。
+     */
+    private void applyAuthHeaders(HttpRequestStep step, Map<String, Object> inputs,
+                                  Map<String, String> headers) {
+        String type = normalizeAuthType(step.getAuthType());
+        if ("none".equals(type)) {
+            return;
+        }
+        if ("bearer".equals(type)) {
+            if (hasHeaderIgnoreCase(headers, "Authorization")) {
+                return;
+            }
+            String token = resolveString(step.getAuthToken(), inputs);
+            if (token != null && !token.isBlank()) {
+                String t = token.trim();
+                if (t.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                    headers.put("Authorization", t);
+                } else {
+                    headers.put("Authorization", "Bearer " + t);
+                }
+            }
+            return;
+        }
+        if ("basic".equals(type)) {
+            if (hasHeaderIgnoreCase(headers, "Authorization")) {
+                return;
+            }
+            String user = resolveString(step.getAuthUsername(), inputs);
+            String pass = resolveString(step.getAuthPassword(), inputs);
+            if (user == null) user = "";
+            if (pass == null) pass = "";
+            String raw = user + ":" + pass;
+            String encoded = java.util.Base64.getEncoder()
+                    .encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            headers.put("Authorization", "Basic " + encoded);
+            return;
+        }
+        if ("apikey".equals(type)) {
+            String in = step.getAuthApiKeyIn() == null ? "header" : step.getAuthApiKeyIn().trim().toLowerCase();
+            if (!"header".equals(in)) {
+                return;
+            }
+            String name = resolveString(step.getAuthApiKeyName(), inputs);
+            if (name == null || name.isBlank()) {
+                name = "X-API-Key";
+            }
+            if (hasHeaderIgnoreCase(headers, name)) {
+                return;
+            }
+            String value = resolveString(step.getAuthApiKeyValue(), inputs);
+            if (value != null && !value.isBlank()) {
+                headers.put(name.trim(), value);
+            }
+        }
+    }
+
+    /** API Key → Query（仅 authApiKeyIn=query） */
+    private void applyApiKeyQuery(HttpRequestStep step, Map<String, Object> inputs,
+                                  HttpUrl.Builder urlBuilder) {
+        if (!"apikey".equals(normalizeAuthType(step.getAuthType()))) {
+            return;
+        }
+        String in = step.getAuthApiKeyIn() == null ? "header" : step.getAuthApiKeyIn().trim().toLowerCase();
+        if (!"query".equals(in)) {
+            return;
+        }
+        String name = resolveString(step.getAuthApiKeyName(), inputs);
+        if (name == null || name.isBlank()) {
+            name = "api_key";
+        }
+        String value = resolveString(step.getAuthApiKeyValue(), inputs);
+        if (value != null && !value.isBlank()) {
+            urlBuilder.setQueryParameter(name.trim(), value);
+        }
+    }
+
+    private static String normalizeAuthType(String authType) {
+        if (authType == null || authType.isBlank()) {
+            return "none";
+        }
+        return authType.trim().toLowerCase();
+    }
+
+    private static boolean hasHeaderIgnoreCase(Map<String, String> headers, String name) {
+        if (headers == null || name == null) {
+            return false;
+        }
+        for (String key : headers.keySet()) {
+            if (key != null && key.equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private OkHttpClient buildClient(HttpRequestStep step, boolean ignoreSsl) {

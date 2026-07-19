@@ -10,7 +10,7 @@ import { json } from '@codemirror/lang-json';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { java } from '@codemirror/lang-java';
-import { EditorView } from '@codemirror/view';
+import { EditorView, placeholder as cmPlaceholder } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { AlignLeftOutlined } from '@ant-design/icons';
 import { message, Tooltip } from 'antd';
@@ -52,6 +52,8 @@ export interface CodeEditorProps {
     onMount?: (view: EditorView) => void;
     /** 右上角「格式化」按钮，默认非只读时开启 */
     showFormat?: boolean;
+    /** 空内容时的占位提示 */
+    placeholder?: string;
 }
 
 /**
@@ -115,6 +117,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
     bordered = true,
     onMount,
     showFormat,
+    placeholder,
 }) => {
     const isFlexHeight = height === '100%' || height === 'auto';
     const formatEnabled = showFormat ?? !readOnly;
@@ -183,12 +186,16 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
             exts.push(EditorView.lineWrapping);
         }
 
+        if (placeholder) {
+            exts.push(cmPlaceholder(placeholder));
+        }
+
         if (extraExtensions) {
             exts.push(...extraExtensions);
         }
 
         return exts;
-    }, [language, fontSize, maxHeight, wordWrap, extraExtensions, isFlexHeight]);
+    }, [language, fontSize, maxHeight, wordWrap, extraExtensions, isFlexHeight, placeholder]);
 
     // 容器样式 — 模仿 Ant Design Input 风格
     const wrapperStyle: React.CSSProperties = {

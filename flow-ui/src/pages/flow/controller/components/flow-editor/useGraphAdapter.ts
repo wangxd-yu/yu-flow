@@ -85,8 +85,8 @@ export function useGraphAdapter(): UseGraphAdapterReturn {
             // Add node directly by reusing adapter logic
             const nodeType = dslNode.type;
             const NODE_COLORS: Record<string, string> = {
-                start: '#52c41a', end: '#8c8c8c', evaluate: '#1677ff',
-                if: '#ff4d4f', switch: '#722ed1', serviceCall: '#13c2c2',
+                evaluate: '#1677ff',
+                if: '#ff4d4f', switch: '#722ed1',
                 httpRequest: '#fa8c16', record: '#2f54eb',
                 response: '#8c8c8c', request: '#52c41a', template: '#9254de',
                 for: '#7c3aed', collect: '#0ea5e9',
@@ -158,30 +158,22 @@ export function useGraphAdapter(): UseGraphAdapterReturn {
                 ...(dslNode.data || {}),
             };
 
-            let shape = 'rect';
-            let attrs: any = {
+            const shape = 'rect';
+            const attrs: any = {
                 body: { stroke: color, fill: '#ffffff', rx: 8, ry: 8, strokeWidth: 2 },
                 label: { text: nodeType, fill: '#1f1f1f', fontSize: 12 },
             };
 
-            if ((nodeType as string) === 'start') {
-                shape = 'circle';
-                attrs = {
-                    body: { stroke: color, strokeWidth: 2, fill: '#f6ffed', r: 24 },
-                    label: { text: 'Start', fill: color, fontSize: 11, fontWeight: 600 },
-                };
-            }
-
             const widths: Record<string, number> = {
-                start: 60, end: 160, evaluate: 200, if: 200, switch: 200,
-                serviceCall: 240, httpRequest: 240, record: 200,
+                evaluate: 200, if: 200, switch: 200,
+                httpRequest: 240, record: 200,
                 response: 160, request: 200, template: 200,
                 for: 160, collect: 150,  // 与 FOR_LAYOUT / COLLECT_LAYOUT 对齐
             };
             const heights: Record<string, number> = {
-                start: 60, end: 50, evaluate: 60, if: 80,
+                evaluate: 60, if: 80,
                 switch: Math.max(80, 50 + ports.length * 28),
-                serviceCall: 60, httpRequest: 60, record: 60,
+                httpRequest: 60, record: 60,
                 response: 50, request: 60, template: 60,
                 for: 100, collect: 100,  // 与 FOR_LAYOUT / COLLECT_LAYOUT 对齐
             };

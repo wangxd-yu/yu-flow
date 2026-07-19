@@ -32,9 +32,13 @@ export type DslNodeType =
   | 'evaluate'
   | 'if'
   | 'switch'
-  | 'serviceCall'
+  | 'api'          // 内部 Flow API 编排调用
   | 'httpRequest'
   | 'for'          // Scatter-Gather: 分发节点（Fire-and-Forget 并发发射）
+  | 'forEach'      // 串行循环：item → done
+  | 'parallel'     // 并行网关：图扇出
+  | 'delay'        // 延迟等待
+  | 'errorHandler' // 统一错误处理入口
   | 'record'
   | 'response'
   | 'request'
@@ -61,16 +65,31 @@ export interface IfNodeData {
   language?: ExpressionLanguage;
 }
 
+/** Switch / Condition 单条分支（出口 case_<id>） */
+export interface SwitchCaseData {
+  id: string;
+  name: string;
+  value: string;
+}
+
 export interface SwitchNodeData {
   inputs?: InputsMap;
   expression: string;
+  language?: ExpressionLanguage;
+  cases?: SwitchCaseData[];
 }
 
-export interface ServiceCallNodeData {
+/** 内部 Flow API 编排调用 */
+export interface ApiNodeData {
   inputs?: InputsMap;
-  service: string;
-  method: string;
-  args?: string[];
+  /** 目标 Flow API 实体 ID */
+  serviceId?: string;
+  /** 展示用名称 */
+  __serviceName?: string;
+  __serviceMethod?: string;
+  __serviceUrl?: string;
+  /** 可选：额外写入的上下文变量名 */
+  output?: string;
 }
 
 export interface HttpRequestNodeData {
@@ -81,9 +100,33 @@ export interface HttpRequestNodeData {
   params?: Record<string, string>;
   body?: string;
   timeout?: number;
+  /** none | bearer | basic | apiKey */
+  authType?: string;
+  authToken?: string;
+  authUsername?: string;
+  authPassword?: string;
+  /** header | query */
+  authApiKeyIn?: string;
+  authApiKeyName?: string;
+  authApiKeyValue?: string;
 }
 
-// ForEachNodeData 已删除：旧 forEach 节点已被 ForStep(for) 替代
+/** 串行 ForEach 节点数据契约 */
+export interface ForEachNodeData {
+  inputs?: InputsMap;
+}
+
+/** Delay 节点数据契约 */
+export interface DelayNodeData {
+  inputs?: InputsMap;
+  /** 等待毫秒 */
+  delayMs?: number;
+}
+
+/** Parallel 并行网关 */
+export interface ParallelNodeData {
+  errorMode?: 'FAST_FAIL' | 'CONTINUE';
+}
 
 /** For (Scatter 分发) 节点数据契约 */
 export interface ForNodeData {
@@ -122,8 +165,20 @@ export interface ResponseNodeData {
   body?: string | Record<string, unknown>;
 }
 
+/** 对齐后端 ValidationRule */
+export interface ValidationRuleData {
+  required?: boolean;
+  /** phone | email | regex | range | length */
+  type?: string;
+  pattern?: string;
+  min?: number;
+  max?: number;
+  message?: string;
+}
+
 export interface RequestNodeData {
-  validations?: Record<string, string | number | boolean>;
+  method?: string;
+  validations?: Record<string, ValidationRuleData>;
 }
 
 export interface TemplateNodeData {
@@ -162,7 +217,6 @@ export type DslNodeData =
   | EvaluateNodeData
   | IfNodeData
   | SwitchNodeData
-  | ServiceCallNodeData
   | HttpRequestNodeData
   | ForNodeData
   | RecordNodeData
@@ -278,22 +332,12 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
   },
   switch: {
     type: 'switch',
-    label: '多路选择 (Switch)',
+    label: 'Switch',
     category: '逻辑节点',
     color: '#722ed1',
     defaultPorts: [
-      { id: 'in', group: 'left' },
-      { id: 'default', group: 'right' },
-    ],
-  },
-  serviceCall: {
-    type: 'serviceCall',
-    label: '服务调用 (ServiceCall)',
-    category: '调用节点',
-    color: '#13c2c2',
-    defaultPorts: [
-      { id: 'in', group: 'left' },
-      { id: 'out', group: 'right' },
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'default', group: 'absolute-out-solid' },
     ],
   },
   httpRequest: {
@@ -307,6 +351,16 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
       { id: 'fail', group: 'absolute-out-hollow' },
     ],
   },
+  api: {
+    type: 'api',
+    label: 'API 调用 (API Call)',
+    category: '调用节点',
+    color: '#2f54eb',
+    defaultPorts: [
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'out', group: 'absolute-out-solid' },
+    ],
+  },
   for: {
     type: 'for',
     label: 'For (Loop)',
@@ -316,6 +370,46 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
       { id: 'in', group: 'left' },    // list 数据流输入（圆形）
       { id: 'start', group: 'left' }, // 控制流触发（三角形，可选）
       { id: 'item', group: 'right' }, // 单元素数据流输出（圆形）
+    ],
+  },
+  forEach: {
+    type: 'forEach',
+    label: 'ForEach (串行)',
+    category: '循环节点',
+    color: '#0d9488',
+    defaultPorts: [
+      { id: 'in', group: 'left' },
+      { id: 'item', group: 'right' },
+      { id: 'done', group: 'right' },
+    ],
+  },
+  parallel: {
+    type: 'parallel',
+    label: '并行 (Parallel)',
+    category: '循环节点',
+    color: '#6366f1',
+    defaultPorts: [
+      { id: 'in', group: 'left' },
+      { id: 'out', group: 'right' },
+    ],
+  },
+  delay: {
+    type: 'delay',
+    label: '延迟 (Delay)',
+    category: '逻辑节点',
+    color: '#0891b2',
+    defaultPorts: [
+      { id: 'in', group: 'left' },
+      { id: 'out', group: 'right' },
+    ],
+  },
+  errorHandler: {
+    type: 'errorHandler',
+    label: '错误处理 (ErrorHandler)',
+    category: '逻辑节点',
+    color: '#dc2626',
+    defaultPorts: [
+      { id: 'out', group: 'right' },
     ],
   },
   record: {
@@ -365,8 +459,8 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     category: '数据节点',
     color: '#9254de',
     defaultPorts: [
-      { id: 'in', group: 'left' },
-      { id: 'out', group: 'right' },
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'out', group: 'absolute-out-solid' },
     ],
   },
   collect: {

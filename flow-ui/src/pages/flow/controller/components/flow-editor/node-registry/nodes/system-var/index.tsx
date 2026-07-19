@@ -14,6 +14,10 @@ export const systemVarNodeRegistration: NodeRegistration = {
     category: '数据节点',
     color: '#34d399',
     tagColor: 'green',
+    description:
+        '读取系统宏字典中的变量（如环境、时间等）。\n\n' +
+        '· 从下拉选择已注册的系统变量\n' +
+        '· 无输入口，结果从 out 输出',
     hasInputs: false,
 
     shape: {

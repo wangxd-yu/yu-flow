@@ -24,29 +24,25 @@ import java.util.Map;
         property = "type"
 )
 @JsonSubTypes({
-        @JsonSubTypes.Type(value = ServiceCallStep.class, name = "call"),
-        @JsonSubTypes.Type(value = ServiceCallStep.class, name = "serviceCall"),
-        @JsonSubTypes.Type(value = ConditionStep.class, name = "condition"),
         @JsonSubTypes.Type(value = IfStep.class, name = "if"),
         @JsonSubTypes.Type(value = SwitchStep.class, name = "switch"),
-        @JsonSubTypes.Type(value = ReturnStep.class, name = "return"),
         @JsonSubTypes.Type(value = ParallelStep.class, name = "parallel"),
-        @JsonSubTypes.Type(value = SetVarStep.class, name = "set"),
         @JsonSubTypes.Type(value = ApiServiceCallStep.class, name = "api"),
         @JsonSubTypes.Type(value = EvaluateStep.class, name = "evaluate"),
-        @JsonSubTypes.Type(value = StartStep.class, name = "start"),
-        @JsonSubTypes.Type(value = EndStep.class, name = "end"),
         @JsonSubTypes.Type(value = RequestStep.class, name = "request"),
         @JsonSubTypes.Type(value = ScheduleStep.class, name = "schedule"),
         @JsonSubTypes.Type(value = HttpRequestStep.class, name = "httpRequest"),
         @JsonSubTypes.Type(value = ForStep.class, name = "for"),
+        @JsonSubTypes.Type(value = ForEachStep.class, name = "forEach"),
         @JsonSubTypes.Type(value = CollectStep.class, name = "collect"),
         @JsonSubTypes.Type(value = TemplateStep.class, name = "template"),
         @JsonSubTypes.Type(value = ResponseStep.class, name = "response"),
         @JsonSubTypes.Type(value = RecordStep.class, name = "record"),
         @JsonSubTypes.Type(value = DatabaseStep.class, name = "database"),
         @JsonSubTypes.Type(value = SystemVarStep.class, name = "systemVar"),
-        @JsonSubTypes.Type(value = SystemMethodStep.class, name = "systemMethod")
+        @JsonSubTypes.Type(value = SystemMethodStep.class, name = "systemMethod"),
+        @JsonSubTypes.Type(value = DelayStep.class, name = "delay"),
+        @JsonSubTypes.Type(value = ErrorHandlerStep.class, name = "errorHandler")
 })
 @JsonIgnoreProperties(ignoreUnknown = true)
 public abstract class Step {

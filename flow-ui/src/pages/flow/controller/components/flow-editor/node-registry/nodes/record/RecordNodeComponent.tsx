@@ -954,6 +954,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={HEADER_HEIGHT}
+                    node={node}
                     nodeId={node.id}
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}

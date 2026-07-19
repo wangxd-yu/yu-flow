@@ -121,6 +121,7 @@ export const ScheduleNodeComponent = ({ node }: { node: Node }) => {
                     title={nodeLabel}
                     theme={themeObj}
                     height={SCHEDULE_LAYOUT.headerHeight}
+                    node={node}
                     nodeId={node.id}
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}

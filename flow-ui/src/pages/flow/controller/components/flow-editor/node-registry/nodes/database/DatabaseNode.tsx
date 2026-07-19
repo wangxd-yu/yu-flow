@@ -212,6 +212,7 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
         <NodeWrapper node={node} selected={selected} themeColor={borderColor} outlineCss={outlineCss} backgroundColor={themeObj.bodyBg}>
             <PayloadEntryChrome hasPayload={hasPayload} primaryColor={themeObj.primary}>
                 <NodeHeader icon={ICONS.database} title={nodeLabel} theme={themeObj} height={HEADER_HEIGHT}
+                    node={node}
                     nodeId={node.id}
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}

@@ -33,14 +33,12 @@ flow-editor/
 │   ├── registry.ts               ← 注册表增删查 API + X6 形状注册
 │   ├── index.ts                  ← 统一入口，initNodeRegistry()
 │   └── nodes/                    ← 每个文件 = 一个节点类型
-│       ├── start.ts              ← Start 节点
-│       ├── end.tsx               ← End 节点（含属性编辑器）
 │       ├── evaluate.tsx          ← Evaluate 节点
 │       ├── if-node.tsx           ← If 节点（manual port）
-│       ├── switch-node.tsx       ← Switch 节点
-│       ├── service-call.tsx      ← ServiceCall 节点
+│       ├── switch-node/          ← Switch 节点
 │       ├── http-request.ts       ← HTTP Request 节点（React 组件）
 │       ├── for-each.tsx          ← ForEach 节点
+│       ├── parallel/             ← Parallel 并行网关
 │       ├── record/               ← Record 节点（Postman 风格 KV）
 │       ├── response.tsx          ← Response 节点
 │       ├── request.tsx           ← Request 节点（manual port + 共用编辑器）
@@ -107,8 +105,8 @@ interface NodeRegistration {
 ```typescript
 // types.ts
 export type DslNodeType =
-    | 'start' | 'end' | 'evaluate' | 'if' | 'switch'
-    | 'serviceCall' | 'httpRequest' | 'forEach' | 'record'
+    | 'evaluate' | 'if' | 'switch'
+    | 'httpRequest' | 'forEach' | 'record'
     | 'response' | 'request' | 'template' | 'collect' | 'database'
     | 'email';   // ← 新增
 ```
@@ -377,12 +375,9 @@ type PropertyEditorProps = {
 | `node-registry/types.ts` | 🆕 新建 | NodeRegistration 接口 |
 | `node-registry/registry.ts` | 🆕 新建 | 注册表增删查 + X6 形状注册 |
 | `node-registry/index.ts` | 🆕 新建 | 统一入口 initNodeRegistry() |
-| `node-registry/nodes/start.ts` | 🆕 新建 | Start 节点模块 |
-| `node-registry/nodes/end.tsx` | 🆕 新建 | End 节点模块 |
 | `node-registry/nodes/evaluate.tsx` | 🆕 新建 | Evaluate 节点模块 |
 | `node-registry/nodes/if-node.tsx` | 🆕 新建 | If 节点模块 |
-| `node-registry/nodes/switch-node.tsx` | 🆕 新建 | Switch 节点模块 |
-| `node-registry/nodes/service-call.tsx` | 🆕 新建 | ServiceCall 节点模块 |
+| `node-registry/nodes/switch-node/` | 🆕 新建 | Switch 节点模块 |
 | `node-registry/nodes/http-request.ts` | 🆕 新建 | HttpRequest 节点模块 |
 | `node-registry/nodes/for-each.tsx` | 🆕 新建 | ForEach 节点模块 |
 | `node-registry/nodes/record.tsx` | 🆕 新建 | Record 节点模块 |

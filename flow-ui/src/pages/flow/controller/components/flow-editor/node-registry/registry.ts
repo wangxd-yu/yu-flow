@@ -111,10 +111,12 @@ export function getAllRegistrations(): NodeRegistration[] {
     return Array.from(_registry.values());
 }
 
-/** 获取按 category 分组的注册信息 (用于面板) */
-export function getRegistrationsByCategory(): Array<[string, NodeRegistration[]]> {
+/** 获取按 category 分组的注册信息 (用于面板；默认排除 hidden) */
+export function getRegistrationsByCategory(options?: { includeHidden?: boolean }): Array<[string, NodeRegistration[]]> {
+    const includeHidden = options?.includeHidden === true;
     const map = new Map<string, NodeRegistration[]>();
     _registry.forEach((reg) => {
+        if (!includeHidden && reg.hidden) return;
         const list = map.get(reg.category) || [];
         list.push(reg);
         map.set(reg.category, list);

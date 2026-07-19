@@ -20,7 +20,6 @@ import org.yu.flow.engine.debug.DebugSession;
 import org.yu.flow.engine.model.step.ResponseResult;
 
 import jakarta.annotation.PreDestroy;
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -32,7 +31,6 @@ import java.util.stream.Collectors;
 @Component
 public class FlowEngine {
     private final FlowParser parser = new FlowParser();
-    private final Map<String, Object> serviceMap = new HashMap<>();
     private final ExpressionEvaluator evaluator = new ExpressionEvaluator();
     private final Map<String, StepExecutor<? extends Step>> executors = new HashMap<>();
 
@@ -96,21 +94,15 @@ public class FlowEngine {
     }
 
     private void registerExecutors() {
-        executors.put("call", new ServiceCallStepExecutor(serviceMap, evaluator));
-        executors.put("serviceCall", new ServiceCallStepExecutor(serviceMap, evaluator));
         executors.put("api", new ApiServiceCallStepExecutor());
         executors.put("parallel", new ParallelStepExecutor(this, executorService));
-        executors.put("condition", new ConditionStepExecutor(evaluator));
         executors.put("if", new IfStepExecutor());
         executors.put("switch", new SwitchStepExecutor());
-        executors.put("set", new SetVarStepExecutor(evaluator));
-        executors.put("return", new ReturnStepExecutor(evaluator));
         executors.put("evaluate", new EvaluateStepExecutor());
-        executors.put("start", new StartStepExecutor());
-        executors.put("end", new EndStepExecutor());
         executors.put("request", new RequestStepExecutor());
         executors.put("httpRequest", new HttpRequestStepExecutor());
         executors.put("for", new ForStepExecutor(this, executorService));
+        executors.put("forEach", new ForEachStepExecutor(this));
         executors.put("collect", new CollectStepExecutor(this));
         executors.put("template", new TemplateStepExecutor());
         executors.put("response", new ResponseStepExecutor());
@@ -119,6 +111,8 @@ public class FlowEngine {
         executors.put("systemVar", new SystemVarStepExecutor());
         executors.put("systemMethod", new SystemMethodStepExecutor());
         executors.put("schedule", new ScheduleStepExecutor());
+        executors.put("delay", new DelayStepExecutor());
+        executors.put("errorHandler", new ErrorHandlerStepExecutor());
     }
 
     public void setSqlExecutorService(SqlExecutorService sqlExecutorService) {
@@ -126,18 +120,6 @@ public class FlowEngine {
         if (executor instanceof DatabaseNodeExecutor) {
             ((DatabaseNodeExecutor) executor).setSqlExecutorService(sqlExecutorService);
         }
-    }
-
-    /**
-     * 注册服务到引擎
-     *
-     * @param name    服务名称
-     * @param service 服务实例
-     * @return 当前引擎实例（支持链式调用）
-     */
-    public FlowEngine registerService(String name, Object service) {
-        serviceMap.put(name, service);
-        return this;
     }
 
     /**
@@ -341,6 +323,10 @@ public class FlowEngine {
             return (T) ExecutionResult.success(context.getOutput());
         } catch (FlowException e) {
             log.error("e: ", e);
+            Object recovered = tryRecoverWithErrorHandler(e, context, flowDefinition, parentMap, parallelSiblings, traceEnabled);
+            if (recovered != null) {
+                return (T) recovered;
+            }
             if (traceEnabled) {
                 FlowTrace trace = context.getFlowTrace();
                 trace.setEndTime(System.currentTimeMillis());
@@ -350,13 +336,19 @@ public class FlowEngine {
                 return (T) trace;
             }
             // 处理业务异常
-            ErrorDefinition errorDef = flowDefinition.getErrors().get(e.getErrorCode());
+            ErrorDefinition errorDef = flowDefinition.getErrors() != null
+                    ? flowDefinition.getErrors().get(e.getErrorCode()) : null;
             return (T) ExecutionResult.failure(
                     errorDef != null ? errorDef.getCode() : 500,
                     errorDef != null ? errorDef.getMessage() : e.getMessage()
             );
         } catch (Exception e) {
             log.error(cn.hutool.core.exceptions.ExceptionUtil.stacktraceToString(e));
+            FlowException wrapped = new FlowException("SYSTEM_ERROR", "系统错误: " + e.getMessage(), null, null, e, FlowException.Severity.ERROR);
+            Object recovered = tryRecoverWithErrorHandler(wrapped, context, flowDefinition, parentMap, parallelSiblings, traceEnabled);
+            if (recovered != null) {
+                return (T) recovered;
+            }
             if (traceEnabled) {
                 FlowTrace trace = context.getFlowTrace();
                 trace.setEndTime(System.currentTimeMillis());
@@ -368,6 +360,86 @@ public class FlowEngine {
             // 处理系统异常
             return (T) ExecutionResult.failure(500, "系统错误: " + e.getMessage());
         }
+    }
+
+    /**
+     * 若流程中存在 errorHandler 节点且尚未进入错误处理，则跳转补偿链路。
+     *
+     * @return 恢复成功时的返回值；无法恢复时返回 null
+     */
+    @SuppressWarnings("unchecked")
+    private Object tryRecoverWithErrorHandler(
+            FlowException e,
+            ExecutionContext context,
+            FlowDefinition flowDefinition,
+            Map<String, List<String>> parentMap,
+            Map<String, Set<String>> parallelSiblings,
+            boolean traceEnabled) {
+        if (Boolean.TRUE.equals(context.getVariable("@__errorHandling"))) {
+            return null;
+        }
+        Step errorHandler = findErrorHandlerStep(flowDefinition);
+        if (errorHandler == null) {
+            return null;
+        }
+        context.setVar("@__errorHandling", true);
+        Map<String, Object> err = new LinkedHashMap<>();
+        err.put("message", e.getMessage());
+        err.put("code", e.getErrorCode());
+        err.put("stepId", e.getStepId());
+        context.setVar("error", err);
+        log.info("[errorHandler] 捕获异常，跳转至 [{}]: {}", errorHandler.getId(), e.getMessage());
+        try {
+            runFlow(errorHandler, context, flowDefinition, parentMap, parallelSiblings);
+            if (context.getOutput() instanceof ResponseResult) {
+                ResponseResult rr = (ResponseResult) context.getOutput();
+                org.springframework.http.HttpHeaders httpHeaders = new org.springframework.http.HttpHeaders();
+                if (rr.getHeaders() != null) {
+                    rr.getHeaders().forEach(httpHeaders::add);
+                }
+                int status = Integer.parseInt(String.valueOf(rr.getStatus()));
+                if (traceEnabled) {
+                    FlowTrace trace = context.getFlowTrace();
+                    trace.setEndTime(System.currentTimeMillis());
+                    trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
+                    applyTraceStatusFromStepLogs(trace);
+                    if (trace.getStatus() == null) {
+                        trace.setStatus("success");
+                    }
+                    trace.setGlobalOutputs(rr);
+                    return trace;
+                }
+                return new org.springframework.http.ResponseEntity<>(rr.getBody(), httpHeaders,
+                        org.springframework.http.HttpStatus.valueOf(status));
+            }
+            if (traceEnabled) {
+                FlowTrace trace = context.getFlowTrace();
+                trace.setEndTime(System.currentTimeMillis());
+                trace.setTotalDurationMs(trace.getEndTime() - trace.getStartTime());
+                applyTraceStatusFromStepLogs(trace);
+                if (trace.getStatus() == null) {
+                    trace.setStatus("success");
+                }
+                trace.setGlobalOutputs(context.getOutput());
+                return trace;
+            }
+            return ExecutionResult.success(context.getOutput());
+        } catch (Exception recoverEx) {
+            log.error("[errorHandler] 错误处理链路仍失败", recoverEx);
+            return null;
+        }
+    }
+
+    private Step findErrorHandlerStep(FlowDefinition flowDefinition) {
+        if (flowDefinition == null || flowDefinition.getSteps() == null) {
+            return null;
+        }
+        for (Step step : flowDefinition.getSteps()) {
+            if (step != null && NodeType.ERROR_HANDLER.equals(step.getType())) {
+                return step;
+            }
+        }
+        return null;
     }
 
     /**
@@ -691,120 +763,6 @@ public class FlowEngine {
         throw new FlowException("STEP_NOT_FOUND", "找不到步骤: " + stepId);
     }
 
-    /**
-     * 查找服务方法（基于参数值推导类型）
-     */
-    private Method findMethod(Object service, String methodName, List<String> argExpressions) throws FlowException {
-        try {
-            Class<?> serviceClass = service.getClass();
-
-            // 如果没有参数，直接查找无参方法
-            if (argExpressions == null || argExpressions.isEmpty()) {
-                return serviceClass.getMethod(methodName);
-            }
-
-            // 查找所有同名方法
-            Method[] methods = serviceClass.getMethods();
-            List<Method> candidateMethods = Arrays.stream(methods)
-                    .filter(m -> m.getName().equals(methodName))
-                    .collect(Collectors.toList());
-
-            if (candidateMethods.isEmpty()) {
-                throw new FlowException("METHOD_NOT_FOUND",
-                        String.format("在服务 %s 中找不到方法 %s",
-                                serviceClass.getSimpleName(), methodName));
-            }
-
-            // 如果只有一个匹配方法，直接返回
-            if (candidateMethods.size() == 1) {
-                return candidateMethods.get(0);
-            }
-
-            // 尝试根据参数数量过滤
-            List<Method> byParamCount = candidateMethods.stream()
-                    .filter(m -> m.getParameterCount() == argExpressions.size())
-                    .collect(Collectors.toList());
-
-            if (byParamCount.size() == 1) {
-                return byParamCount.get(0);
-            }
-
-            // 如果仍有多个候选方法，返回第一个（可能需要更复杂的类型匹配）
-            return candidateMethods.get(0);
-
-        } catch (NoSuchMethodException e) {
-            throw new FlowException("METHOD_NOT_FOUND",
-                    String.format("在服务 %s 中找不到方法 %s",
-                            service.getClass().getSimpleName(), methodName), e);
-        }
-    }
-
-    /**
-     * 查找服务方法（支持参数类型匹配）
-     *
-     * @param service    服务实例
-     * @param methodName 方法名称
-     * @param argTypes   参数类型列表（可为null）
-     * @return 匹配的Method对象
-     * @throws FlowException 如果方法找不到或存在歧义
-     */
-    private Method findMethod(Object service, String methodName, Class<?>[] argTypes) throws FlowException {
-        try {
-            if (argTypes != null) {
-                // 精确匹配参数类型
-                return service.getClass().getMethod(methodName, argTypes);
-            } else {
-                // 没有参数类型信息时使用简单匹配
-                return findMethodByNameOnly(service, methodName);
-            }
-        } catch (NoSuchMethodException e) {
-            throw new FlowException("METHOD_NOT_FOUND",
-                    String.format("在服务 %s 中找不到方法 %s(%s)",
-                            service.getClass().getSimpleName(),
-                            methodName,
-                            argTypes != null ? Arrays.toString(argTypes) : ""));
-        }
-    }
-
-    /**
-     * 仅根据方法名查找方法（处理重载情况）
-     */
-    private Method findMethodByNameOnly(Object service, String methodName) throws FlowException {
-        Class<?> serviceClass = service.getClass();
-        Method[] methods = serviceClass.getMethods();
-
-        List<Method> matchedMethods = Arrays.stream(methods)
-                .filter(m -> m.getName().equals(methodName))
-                .collect(Collectors.toList());
-
-        if (matchedMethods.isEmpty()) {
-            throw new FlowException("METHOD_NOT_FOUND",
-                    String.format("在服务 %s 中找不到方法 %s", serviceClass.getSimpleName(), methodName));
-        }
-
-        if (matchedMethods.size() == 1) {
-            return matchedMethods.get(0);
-        }
-
-        // 优先选择无参数方法
-        Optional<Method> noArgMethod = matchedMethods.stream()
-                .filter(m -> m.getParameterCount() == 0)
-                .findFirst();
-
-        if (noArgMethod.isPresent()) {
-            return noArgMethod.get();
-        }
-
-        // 无法解决歧义时抛出异常
-        throw new FlowException("AMBIGUOUS_METHOD",
-                String.format("在服务 %s 中找到多个匹配方法 %s，请指定参数类型",
-                        serviceClass.getSimpleName(), methodName));
-    }
-
-    /**
-     * 判断是否是内部参数
-     * @return 是否是内部参数
-     */
     private Map<String, List<String>> buildParentMapping(FlowDefinition flowDefinition) {
         Map<String, List<String>> parentMap = new HashMap<>();
 

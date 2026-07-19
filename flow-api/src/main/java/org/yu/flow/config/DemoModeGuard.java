@@ -160,6 +160,25 @@ public class DemoModeGuard {
     }
 
     /**
+     * 校验 Delay 节点等待时长，演示模式下禁止过长 sleep。
+     */
+    public void checkDelayMs(long delayMs, String delayStepId) {
+        if (!yuFlowProperties.isDemoMode()) {
+            return;
+        }
+        long limit = yuFlowProperties.getDemo().getMaxDelayMs();
+        if (limit > 0 && delayMs > limit) {
+            log.warn("[DemoModeGuard] 拒绝 DelayStep [{}] 执行，delayMs {} 超出限制 {}。",
+                    delayStepId, delayMs, limit);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：Delay 节点 [" + delayStepId + "] 的等待时间（"
+                            + delayMs + "ms）超出上限（" + limit + "ms），已被安全机制拦截。"
+            );
+        }
+    }
+
+    /**
      * 获取演示模式下的最大步骤数限制。
      * @return 最大步骤数，若非演示模式返回 0（不限制）
      */

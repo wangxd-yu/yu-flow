@@ -4,13 +4,11 @@
 // ============================================================================
 
 import React from 'react';
-import { Input, Select } from 'antd';
+import { Select } from 'antd';
 import type { DslPort } from '../../../types';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { IfNodeComponent, IF_LAYOUT } from './IfNodeComponent';
-import { PropertyField, PropertySection } from '../../shared/PropertyPanel';
-
-const { TextArea } = Input;
+import { PropertyCodeField, PropertyField, PropertySection } from '../../shared/PropertyPanel';
 
 const LANGUAGE_OPTIONS = [
     { value: 'JavaScript', label: 'JavaScript (默认)' },
@@ -22,27 +20,27 @@ const LANGUAGE_OPTIONS = [
 
 // ── 属性面板编辑器 ──
 function IfEditor({ data, onChange }: PropertyEditorProps) {
+    const lang = data.language || 'JavaScript';
     return (
         <PropertySection title="条件配置" tip="也可在画布节点内直接编辑">
             <PropertyField label="表达式语言">
                 <Select
                     size="small"
-                    value={data.language || 'JavaScript'}
+                    value={lang}
                     options={LANGUAGE_OPTIONS}
                     style={{ width: '100%' }}
+                    getPopupContainer={() => document.body}
                     onChange={(val) => onChange({ language: val })}
                 />
             </PropertyField>
-            <PropertyField label="条件表达式" layout="vertical">
-                <TextArea
-                    size="small"
-                    value={data.condition || ''}
-                    autoSize={{ minRows: 2, maxRows: 6 }}
-                    placeholder="例如: age >= 18"
-                    style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-                    onChange={(e) => onChange({ condition: e.target.value })}
-                />
-            </PropertyField>
+            <PropertyCodeField
+                label="条件表达式"
+                expressionLang={lang}
+                value={data.condition || ''}
+                onChange={(val) => onChange({ condition: val })}
+                height="sm"
+                placeholder="例如: age >= 18"
+            />
         </PropertySection>
     );
 }
@@ -54,6 +52,11 @@ export const ifNodeRegistration: NodeRegistration = {
     category: '逻辑节点',
     color: '#1677ff',
     tagColor: 'red',
+    description:
+        '根据条件表达式分支执行。\n\n' +
+        '· 条件为真走 THEN，为假走 ELSE\n' +
+        '· 变量行映射参与判断的数据\n' +
+        '· 表达式语言可在标题栏切换',
     sortOrder: 90,
     hasInputs: true,
 

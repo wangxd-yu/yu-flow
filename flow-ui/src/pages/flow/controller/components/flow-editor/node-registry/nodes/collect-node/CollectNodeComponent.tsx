@@ -333,6 +333,7 @@ export const CollectNodeComponent = ({ node }: { node: Node }) => {
                 title={nodeLabel}
                 theme={theme}
                 height={COLLECT_LAYOUT.headerHeight}
+                node={node}
                 nodeId={node.id}
                 onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 extra={inlineTag}

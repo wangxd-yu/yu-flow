@@ -302,10 +302,15 @@ public class YuFlowProperties {
         private int maxSteps = 200;
 
         /**
-         * For 循环节点允许的最大输入数组元素数。
+         * For / ForEach 循环节点允许的最大输入数组元素数。
          * <p>防止传入巨大数组导致线程池耗尽或内存溢出。</p>
          */
         private int maxForLoopItems = 50;
+
+        /**
+         * Delay 节点允许的最大等待毫秒数（演示模式）。
+         */
+        private long maxDelayMs = 5000L;
 
         public int getMaxSteps() {
             return maxSteps;
@@ -321,6 +326,14 @@ public class YuFlowProperties {
 
         public void setMaxForLoopItems(int maxForLoopItems) {
             this.maxForLoopItems = maxForLoopItems;
+        }
+
+        public long getMaxDelayMs() {
+            return maxDelayMs;
+        }
+
+        public void setMaxDelayMs(long maxDelayMs) {
+            this.maxDelayMs = maxDelayMs;
         }
     }
 

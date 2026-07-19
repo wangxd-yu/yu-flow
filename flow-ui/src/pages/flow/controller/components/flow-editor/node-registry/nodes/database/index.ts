@@ -53,6 +53,12 @@ export const databaseNodeRegistration: NodeRegistration = {
     category: '调用节点',
     color: '#1677ff',
     tagColor: 'blue',
+    description:
+        '执行 SQL 访问数据源。\n\n' +
+        '· 选择数据源与 SQL 类型（SELECT/INSERT/UPDATE/DELETE）\n' +
+        '· 变量行映射到 SQL 中的参数\n' +
+        '· SELECT 可配置返回 LIST / OBJECT / PAGE\n' +
+        '· 结果从 Result 输出，下游用 $.本节点.out 读取',
     hasInputs: true,
 
     shape: {

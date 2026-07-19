@@ -53,6 +53,11 @@ export const scheduleNodeRegistration: NodeRegistration = {
     category: '基础节点',
     color: '#722ed1',
     tagColor: 'purple',
+    description:
+        '定时任务流程的入口（单例）。\n\n' +
+        '· Cron 在任务管理中配置，不在此节点编辑\n' +
+        '· 触发后从 out 口进入后续节点\n' +
+        '· 可读取调度上下文变量（如触发时间）',
     hasInputs: false,
     singleton: true,
 

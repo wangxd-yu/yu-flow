@@ -1,208 +1,785 @@
 ---
-title: Flow DSL 协议规范
+title: Flow DSL 协议规范（生成指南）
 outline: deep
 ---
 
-# Flow DSL 协议规范
+# Flow DSL 协议规范（生成指南）
 
-> **“配置即代码 (Configuration as Code)”的终极形态。**
->
-> Flow DSL (Domain Specific Language) 是 Yu Flow 引擎的“宪法”与唯一基准。它打破了传统硬编码的僵凝，将复杂的业务逻辑抽象为极度灵活、与语言无关的 JSON 状态机模型。无论是通过前端可视化画布的拖拽，还是通过自然语言 (AI) 生成，最终都会被统一翻译为这段结构化的 DSL，由后端的 Spring Boot 执行引擎毫秒级解析与无缝执行。
-
-## 🧬 核心数据结构 (The Anatomy of Flow)
-
-Yu Flow 引擎支持两种 DSL 拓扑形态，但在实际的数据流转中，我们主要暴露对开发者最友好、对前端图形渲染最直观的 **“画布格式 (Canvas Format)”**。引擎内部的 `FlowParser` 会自动在运行时将其转化为包含连接引用的执行态结构。
-
-一份标准的 Flow DSL 由三大核心区块构成：
-
-1. **元数据 (Metadata)**：定义流程的整体状态（例如 `id`, `version`）、全局入参 (`args`) 和异常捕捉策略 (`errors`)。
-2. **节点列表 (`nodes` / `steps`)**：代表所有的业务动作单元（数据计算、API 请求、控制流等）。
-3. **边连接 (`edges` / `next`)**：决定节点执行顺序和数据流转方向的有向图关系。
-
-::: info 💡 设计哲学：模型数据与视图解耦
-在 `nodes` 集合中，您会看到诸如 `x`, `y`, `width` 和 `height` 等坐标属性。这是保留给前端图形化画布的视图基准点。而对于后端执行引擎而言，这些视图元数据会被自动忽略和剥离，确保执行过程极速运行而无多余负担。
-:::
+> **用途**：在不依赖完整源码仓库的前提下，人工或大模型可据此生成可运行的流程编排 JSON。  
+> **权威格式**：画布格式（`nodes` + `edges`）。引擎运行时会经 `FlowParser` 转为内部 `steps` + `next`。
 
 ---
 
-## 🔬 节点 (Node) 的微观解剖
-
-为了保证极智的扩展能力，每一个节点 (Step) 都遵循高度收敛的规范约定。在执行生命周期中，前端传递包裹在 `data` 对象中的业务底层属性，会被后端引擎安全地“铺平 (flatten)”映射到对应 Step 的根级别。
-
-一个标准节点的底层微观结构如下：
-
-* **`id`** *(String)*：全局唯一标识符，作为寻址锚点（例如：`request_1772497969851_2`）。
-* **`type`** *(String)*：节点的物理寻址和引擎调度类型。系统内置了丰富的类型，如 `request`（请求挂载）、`if`（条件分支）、`systemMethod`（内置方法）、`database`（数据库操作）和 `response`（响应终态）。
-* **`ports`** *(Array)*：用于定义节点的微观出入口。`id` 中往往包含语义机制，例如 `"in:arg:date"` 意味着输入方法参数，`"out"` 意味着正常出口。
-* **`data`** *(Object)*：**节点的核心执行载体**。这是每一个节点发挥作用的特征存放区。
-  * **`inputs`** *(Object)*：**(极度重要)** 它定义了从关联端点取值的数据装载规则（ETL）。依托内部强大的规则生成器，经常使用 `extractPath`（JSONPath 语法，如 `$.request.headers`）从历史执行截面和上游任意节点截取数据。
-
-### 代码解剖示例
-
-::: tip 最佳实践：动态提取与注入
-在下方的 `SystemMethod` 节点中，引擎会根据 `extractPath` 提取上游源数据。若路径以 `$.` 开头，会追踪源节点输出；若以直接量呈现，则作为常量入参传递。
-:::
+## 1. 根结构
 
 ```json
 {
-  "id": "systemMethod_1772497971425_3",
-  "type": "systemMethod",
-  "label": "日期格式化",
+  "id": "optional-flow-id",
+  "version": "1.0",
+  "args": {},
+  "nodes": [ /* 见 §3 */ ],
+  "edges": [ /* 见 §2 */ ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `nodes` | ✅ | 节点列表 |
+| `edges` | ✅ | 连线列表（控制流 + 数据流） |
+| `id` / `version` | | 可选元数据 |
+| `args` | | 流程级默认入参（少用；优先用 Request 端口） |
+| `errors` | | 可选错误码表 `{ "CODE": { "code": 400, "message": "..." } }` |
+
+**生成建议**：只写画布格式；`x`/`y`/`width`/`height`/`label`/`ports` 可省略（导入编辑器时会补全）。引擎忽略视图坐标。
+
+---
+
+## 2. 边（edges）
+
+```json
+{
+  "source": { "cell": "<源节点id>", "port": "<源端口id>" },
+  "target": { "cell": "<目标节点id>", "port": "<目标端口id>" }
+}
+```
+
+| 规则 | 说明 |
+| --- | --- |
+| 省略 `source.port` | 默认为 `out` |
+| 省略 `target.port` | 默认为 `in` |
+| 同一源端口多条边 | 并行扇出（`next[port]` 变为目标 id 数组） |
+| 入口节点 | `request` / `schedule` **不能**作为任何边的 `target` |
+
+### 2.1 常用端口
+
+| 方向 | 端口 ID | 含义 |
+| --- | --- | --- |
+| 出 | `out` | 通用成功出口 |
+| 出 | `true` / `false` | If 分支 |
+| 出 | `case_<id>` / `default` | Switch 分支 |
+| 出 | `success` / `fail` | HttpRequest |
+| 出 | `headers` / `params` / `body` | Request 拆分出口 |
+| 出 | `item` / `done` | ForEach |
+| 出 | `item` | For（并发分发） |
+| 出 | `list` / `finish` | Collect |
+| 入 | `in:payload` | 数据总入口（多数节点） |
+| 入 | `in` | 控制流/列表入口（If、Delay、Parallel、For/ForEach） |
+| 入 | `in:var:<varId>` | 绑定到 `data.inputs` 里带相同 `id` 的变量 |
+| 入 | `in:arg:<paramName>` | SystemMethod 参数口（键名 = 参数名） |
+
+### 2.2 连线如何写入 `inputs`（解析期）
+
+画到特殊入端口时，解析器会自动补 `extractPath`：
+
+| 目标端口 | 行为 |
+| --- | --- |
+| `in:payload` | → `inputs.payload.extractPath = $.源节点.源端口` |
+| `in:var:<id>` | → 匹配 `inputs[*].id == id` 的项，写 `extractPath` |
+| `in:arg:<name>` | → `inputs[name].extractPath` |
+| `in` → For / ForEach | → `inputs.list` |
+
+也可**不连线**，直接在 `data.inputs` 里写死路径（见 §4）。
+
+---
+
+## 3. 节点（nodes）通用字段
+
+```json
+{
+  "id": "eval_user_age",
+  "type": "evaluate",
   "data": {
-    "methodCode": "DATE_FORMAT",
-    "inputs": {
-      "date": {
-        // 利用 JSONPath 提取相对环境上下文变量
-        "extractPath": "$.date"
-      },
-      "format": {
-        // 或者作为常量字面量传递
-        "extractPath": "yyyy-mm-dd"
-      }
+    "/* 类型专属字段 */": "...",
+    "inputs": {},
+    "language": "JavaScript"
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | **全局唯一**。下游用 `$.该id.out` 引用。建议语义化：`query_user`、`check_vip` |
+| `type` | 见节点目录；大小写敏感 |
+| `data` | 业务配置；引擎会 flatten 到 Step 根级 |
+| `data.inputs` | 变量装载（§4） |
+| `data.language` | 表达式语言（If / Switch / Evaluate） |
+
+**启动节点**：引擎取第一个 `request` | `schedule`。  
+**API 流程推荐**：`request` → … → `response`（各 0～1 个入口；`request`/`schedule` 互斥场景按产品约定）。
+
+---
+
+## 4. `inputs` 与数据引用
+
+### 4.1 `inputs` 写法
+
+```json
+"inputs": {
+  "age": "$.request_1.params.age",
+  "name": { "id": "var_abc", "extractPath": "$.query_user.out.name" },
+  "fixed": "hello"
+}
+```
+
+| 值形态 | 含义 |
+| --- | --- |
+| `"$.a.b"` | JSONPath，从执行上下文取值 |
+| `{ "id": "...", "extractPath": "$...." }` | 完整形态；`id` 供 `in:var:` 连线 |
+| 非 `$` 开头的字符串 | **字面量** |
+| 其他对象 | 原样放入 |
+
+解析后，键名成为表达式里的局部变量（如 Aviator/JS 里的 `age`）。
+
+### 4.2 上下文路径约定（重要）
+
+| 写法 | 含义 |
+| --- | --- |
+| `$.<nodeId>.out` | **首选**：多数节点输出 |
+| `$.<requestId>.headers` / `.params` / `.body` | Request 三出口对应数据 |
+| `$.<httpId>.out` 或结果字段 | HttpRequest：`status`/`body`/`headers`/`timeMs`（以执行器写入为准，常用挂在节点 id 下） |
+| `$.error` | ErrorHandler 场景下的异常信息 |
+| `$.schedule.*` | Schedule：`taskName`/`cron`/`triggerTime` |
+
+遗留路径 `$.nodeId.result`：仅部分旧节点双写；**新生成请一律用 `.out`**。
+
+### 4.3 表达式语言 `language`
+
+| 值 | 引擎 | 备注 |
+| --- | --- | --- |
+| `JavaScript` / `javascript` / `js` | GraalJS | 前端默认 |
+| `Aviator` / `aviator` | Aviator | **引擎默认**（未指定时） |
+| `SpEL` / `spel` | SpEL | 变量多用 `#name` |
+| `Python` / `python` | GraalPy | |
+| `Groovy` / `groovy` | Groovy | |
+
+### 4.4 模板占位（按节点）
+
+| 节点 | 语法 |
+| --- | --- |
+| Template | `{{varName}}`（对应 `inputs` 键） |
+| Response / HttpRequest URL 等 | `${varName}` 或 `${nodeId.path}` |
+
+---
+
+## 5. 节点目录（生成用）
+
+下列为 **V3 画布主推类型**。字段均写在 `data` 下。
+
+### 5.1 `request` — HTTP API 入口
+
+| | |
+| --- | --- |
+| 入端口 | 无 |
+| 出端口 | `headers`, `params`；方法为 POST/PUT/PATCH 时还有 `body` |
+| 约束 | 流程内建议唯一；不可作为边的 target |
+
+```json
+{
+  "id": "req",
+  "type": "request",
+  "data": {
+    "method": "POST",
+    "validations": {
+      "userId": { "required": true, "type": "regex", "pattern": "^\\d+$", "message": "userId invalid" }
     }
   }
 }
 ```
 
-::: warning ⚠️ 安全注意
-所有的动态数据提取和表达式（如 SpEL / Aviator）运算都严格限制在沙箱容器模型内。引擎会自动拦截非授权的底层反射调用和恶意代码注入，保障企业级私有化与云上使用的绝对数据安全。
-:::
+`validations` 值字段：`required`, `type`(`phone`|`email`|`regex`|`range`), `pattern`, `min`, `max`, `message`。
 
 ---
 
-## 🌉 边与执行流转 (`edges`)
+### 5.2 `schedule` — 定时入口
 
-`edges` 描画了节点与节点之间无缝相连的有界连接体（Jointer）。画布所见的连线代表了代码的本质连接。
+| | |
+| --- | --- |
+| 出端口 | `out` |
+| data | `taskName?`, `cron?`（调度侧也可能外部注入） |
 
-* **`source.cell`**：数据和控制流的源节点 ID。
-* **`source.port`**：源节点的输出端点（常见的有逻辑分支：`true` / `false`，标准输出：`out`，参数引流：`params`）。
-* **`target.cell`**：承接输入的目标节点 ID。
-* **`target.port`**：目标的接收端点。如果绑定到具体的输入上下文，通常遵照 `in:var:`（普通动态变量）或 `in:arg:`（系统方法传参）的命名规范。
+```json
+{ "id": "sched", "type": "schedule", "data": {} }
+```
 
 ---
 
-## 🚀 完整示例 (Full Example)
+### 5.3 `response` — HTTP 终态
 
-以下是一段极简但五脏俱全且具备完整运行能力的业务流程 JSON。
+| | |
+| --- | --- |
+| 入端口 | `in:var:*`（按需） |
+| 出端口 | 无 |
 
-**业务场景语义**：
-定义一个 HTTP 外部挂载触发器（Request） -> 将收到的 `params` 传递给内置函数系统，执行“日期格式化”（SystemMethod） -> 取决于处理后的结果格式，装载至结构体（Response）并携带正确 200 HTTP Status 渲染返回。
+```json
+{
+  "id": "resp",
+  "type": "response",
+  "data": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "${result}",
+    "inputs": {
+      "result": { "id": "v1", "extractPath": "$.eval.out" }
+    }
+  }
+}
+```
+
+---
+
+### 5.4 `evaluate` — 表达式求值
+
+| | |
+| --- | --- |
+| 入 | `in:payload` + 动态 `in:var:*` |
+| 出 | `out` |
+
+```json
+{
+  "id": "eval",
+  "type": "evaluate",
+  "data": {
+    "language": "JavaScript",
+    "expression": "a + b",
+    "inputs": {
+      "a": { "id": "va", "extractPath": "$.req.params.x" },
+      "b": { "id": "vb", "extractPath": "$.req.params.y" }
+    }
+  }
+}
+```
+
+---
+
+### 5.5 `if` — 二分支
+
+| | |
+| --- | --- |
+| 入 | `in`（及变量口） |
+| 出 | `true`, `false` |
+| 字段 | `condition` 或 `expression`（同义），`language` |
+
+```json
+{
+  "id": "gate",
+  "type": "if",
+  "data": {
+    "language": "JavaScript",
+    "condition": "age >= 18",
+    "inputs": {
+      "age": { "extractPath": "$.req.params.age" }
+    }
+  }
+}
+```
+
+---
+
+### 5.6 `switch` — 多路值匹配
+
+| | |
+| --- | --- |
+| 入 | `in:payload` |
+| 出 | `case_<id>`…, `default` |
+| 语义 | 对 `expression` **求值一次**，与 `cases[].value` **相等**则走对应口；否则 `default` |
+
+```json
+{
+  "id": "sw",
+  "type": "switch",
+  "data": {
+    "language": "JavaScript",
+    "expression": "role",
+    "cases": [
+      { "id": "c_admin", "name": "Admin", "value": "ADMIN" },
+      { "id": "c_user", "name": "User", "value": "USER" }
+    ],
+    "inputs": {
+      "role": { "extractPath": "$.req.params.role" }
+    }
+  }
+}
+```
+
+对应边源端口：`case_c_admin`、`case_c_user`、`default`。  
+`cases` **必须**为对象数组；引擎不再接受字符串数组。
+
+---
+
+### 5.7 `httpRequest` — 外部 HTTP
+
+| | |
+| --- | --- |
+| 入 | `in:payload` |
+| 出 | `success`, `fail` |
+| 结果字段 | `status`, `body`, `headers`, `timeMs`（失败时可能有 `error`） |
+
+```json
+{
+  "id": "http1",
+  "type": "httpRequest",
+  "data": {
+    "url": "https://api.example.com/users/${userId}",
+    "method": "GET",
+    "timeout": 30000,
+    "retryCount": 0,
+    "retryIntervalMs": 1000,
+    "successCondition": "status == 200",
+    "logEnabled": true,
+    "ignoreSsl": true,
+    "authType": "bearer",
+    "authToken": "${token}",
+    "headers": { "Accept": "application/json" },
+    "params": {},
+    "body": null,
+    "inputs": {
+      "userId": { "extractPath": "$.req.params.id" },
+      "token": { "extractPath": "$.req.headers.Authorization" }
+    }
+  }
+}
+```
+
+`authType`：`none` | `bearer` | `basic` | `apiKey`。  
+API Key：`authApiKeyIn`=`header`|`query`，`authApiKeyName`，`authApiKeyValue`。  
+`successCondition` 为空时按 HTTP 2xx。
+
+---
+
+### 5.8 `api` — 调用另一条 Flow API
+
+| | |
+| --- | --- |
+| 入 | `in:payload` |
+| 出 | `out` |
+| 必填 | `serviceId`（目标 Flow API id） |
+
+```json
+{
+  "id": "call_inner",
+  "type": "api",
+  "data": {
+    "serviceId": "<target-flow-api-id>",
+    "inputs": {
+      "q": { "extractPath": "$.req.params.q", "paramSource": "query" }
+    }
+  }
+}
+```
+
+`paramSource`（前端契约）：`query` / `path` / `body`，用于自动映射入参；后端以 `inputs` 注入为主。
+
+---
+
+### 5.9 `database` — SQL
+
+| | |
+| --- | --- |
+| 入 | `in:payload` |
+| 出 | `out` |
+
+```json
+{
+  "id": "db1",
+  "type": "database",
+  "data": {
+    "datasourceId": "<ds-id>",
+    "sqlType": "SELECT",
+    "returnType": "LIST",
+    "sql": "SELECT * FROM user WHERE id = #{id}",
+    "inputs": {
+      "id": { "extractPath": "$.req.params.id" }
+    }
+  }
+}
+```
+
+`sqlType`：`SELECT`|`INSERT`|`UPDATE`|`DELETE`。  
+`returnType`（SELECT）：`LIST`|`OBJECT`|`PAGE`。  
+SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数与 `inputs` 键对应）。
+
+---
+
+### 5.10 `record` — 拼装对象
+
+| | |
+| --- | --- |
+| 入 | `in:payload`（及字段变量口） |
+| 出 | `out` |
+| 核心 | `schema`：字段 → 字面量 / `$.path` / `${ref}` |
+
+```json
+{
+  "id": "rec",
+  "type": "record",
+  "data": {
+    "schema": {
+      "userId": "$.req.params.id",
+      "ok": true,
+      "count": 1,
+      "tag": "manual"
+    }
+  }
+}
+```
+
+下游引用：`$.rec.out.userId`。
+
+---
+
+### 5.11 `template` — 文本模板
+
+| | |
+| --- | --- |
+| 入 | `in:payload` + `in:var:*` |
+| 出 | `out` |
+| 占位 | `{{key}}` |
+
+```json
+{
+  "id": "tpl",
+  "type": "template",
+  "data": {
+    "template": "Hello {{name}}, id={{id}}",
+    "inputs": {
+      "name": { "extractPath": "$.req.params.name" },
+      "id": { "extractPath": "$.req.params.id" }
+    }
+  }
+}
+```
+
+---
+
+### 5.12 `systemVar` / `systemMethod`
+
+**systemVar**
+
+```json
+{ "id": "sv", "type": "systemVar", "data": { "variableCode": "<注册表中的变量编码>" } }
+```
+
+出：`out`。无入。
+
+**systemMethod**
+
+```json
+{
+  "id": "sm",
+  "type": "systemMethod",
+  "data": {
+    "methodCode": "DATE_FORMAT",
+    "inputs": {
+      "date": { "extractPath": "$.req.params.d" },
+      "format": "yyyy-MM-dd"
+    }
+  }
+}
+```
+
+入端口习惯：`in:arg:date`。`methodCode` / `variableCode` 必须是环境已注册的宏编码（无法从本 DSL 推断具体清单时，用占位并注明需替换）。
+
+---
+
+### 5.13 `forEach` — 串行循环
+
+| | |
+| --- | --- |
+| 入 | `in`（列表，解析为 `inputs.list`） |
+| 出 | `item`（每轮子流入口）、`done`（全部结束） |
+| 循环内上下文 | 当前项常在 `$.forEachId.item`（及 `index`） |
+
+```json
+{ "id": "loop", "type": "forEach", "data": { "inputs": {} } }
+```
+
+典型边：`listSrc.out → loop.in`；`loop.item → 子节点.in`；子节点处理完需回到循环语义由引擎驱动；全部完成后从 `loop.done` 连下游。
+
+---
+
+### 5.14 `for` + `collect` — 并发 Scatter-Gather
+
+**for**
+
+| | |
+| --- | --- |
+| 入 | `in`（list）、`start` |
+| 出 | `item` |
+| 必填 | `collectStepId`（对应 Collect 节点 id） |
+| 可选 | `timeoutMs`（默认 30000） |
+
+**collect**
+
+| | |
+| --- | --- |
+| 入 | `item` |
+| 出 | `list`, `finish` |
+| 可选 | `timeoutMs` |
+
+```json
+{
+  "nodes": [
+    { "id": "scatter", "type": "for", "data": { "collectStepId": "gather", "timeoutMs": 30000 } },
+    { "id": "gather", "type": "collect", "data": { "timeoutMs": 30000 } }
+  ],
+  "edges": [
+    { "source": { "cell": "listSrc", "port": "out" }, "target": { "cell": "scatter", "port": "in" } },
+    { "source": { "cell": "scatter", "port": "item" }, "target": { "cell": "worker", "port": "in:payload" } },
+    { "source": { "cell": "worker", "port": "out" }, "target": { "cell": "gather", "port": "item" } },
+    { "source": { "cell": "gather", "port": "list" }, "target": { "cell": "resp", "port": "in:var:v1" } }
+  ]
+}
+```
+
+---
+
+### 5.15 `parallel` — 并行网关
+
+| | |
+| --- | --- |
+| 入 | `in` |
+| 出 | `out`（**多条边**即并行扇出） |
+| data | `errorMode`: `FAST_FAIL` \| `CONTINUE` |
+
+```json
+{
+  "id": "par",
+  "type": "parallel",
+  "data": { "errorMode": "FAST_FAIL" }
+}
+```
+
+用图上从 `out` 出发的多条边表示并行（无嵌套子步骤字段）。
+
+---
+
+### 5.16 `delay` — 等待
+
+```json
+{
+  "id": "wait",
+  "type": "delay",
+  "data": {
+    "delayMs": 1000,
+    "inputs": {}
+  }
+}
+```
+
+入 `in`，出 `out`。`delayMs` 也可被 `inputs.delayMs` 覆盖。演示模式可能有上限。
+
+---
+
+### 5.17 `errorHandler` — 异常汇聚（单例）
+
+| | |
+| --- | --- |
+| 入 | **无**（引擎异常跳转，不挂在主路径） |
+| 出 | `out` |
+| 数据 | `$.error` |
+
+```json
+{ "id": "eh", "type": "errorHandler", "data": {} }
+```
+
+从 `out` 连到日志 / Response 即可。
+
+---
+
+## 6. 完整示例
+
+### 6.1 Request → Evaluate → If → Response
 
 ```json
 {
   "nodes": [
     {
-      "id": "request_1772497969851_2",
+      "id": "req",
       "type": "request",
-      "x": -600,
-      "y": -250,
-      "width": 260,
-      "height": 104,
-      "label": "request",
-      "ports": [
-        {
-          "id": "headers",
-          "group": "absolute-out-solid"
-        },
-        {
-          "id": "params",
-          "group": "absolute-out-solid"
-        }
-      ],
-      "data": {
-        "method": "GET"
-      }
+      "data": { "method": "GET" }
     },
     {
-      "id": "systemMethod_1772497971425_3",
-      "type": "systemMethod",
-      "x": -205,
-      "y": -167,
-      "width": 320,
-      "height": 156,
-      "label": "日期格式化",
-      "ports": [
-        {
-          "id": "out",
-          "group": "absolute-out-solid"
-        },
-        {
-          "id": "in:arg:date",
-          "group": "absolute-in-solid"
-        },
-        {
-          "id": "in:arg:format",
-          "group": "absolute-in-solid"
-        }
-      ],
+      "id": "age_num",
+      "type": "evaluate",
       "data": {
-        "methodCode": "DATE_FORMAT",
+        "language": "JavaScript",
+        "expression": "Number(age)",
         "inputs": {
-          "date": {
-            "extractPath": "$.date"
-          },
-          "format": {
-            "extractPath": "yyyy-mm-dd"
-          }
+          "age": { "id": "v_age", "extractPath": "$.req.params.age" }
         }
       }
     },
     {
-      "id": "response_1773382280010_1",
-      "type": "response",
-      "x": 200,
-      "y": -190,
-      "width": 320,
-      "height": 344,
-      "label": "response",
-      "ports": [
-        {
-          "id": "in:var:var_ezqqk4",
-          "group": "absolute-in-solid"
-        },
-        {
-          "id": "in:var:var_cbfecu",
-          "group": "absolute-in-solid"
+      "id": "check",
+      "type": "if",
+      "data": {
+        "language": "JavaScript",
+        "condition": "n >= 18",
+        "inputs": {
+          "n": { "id": "v_n", "extractPath": "$.age_num.out" }
         }
-      ],
+      }
+    },
+    {
+      "id": "ok",
+      "type": "response",
       "data": {
         "status": 200,
-        "headers": {},
-        "body": "${var1}",
-        "inputs": {
-          "var1": {
-            "id": "var_ezqqk4",
-            "extractPath": "$"
-          }
-        }
+        "body": { "pass": true },
+        "inputs": {}
+      }
+    },
+    {
+      "id": "deny",
+      "type": "response",
+      "data": {
+        "status": 403,
+        "body": { "pass": false },
+        "inputs": {}
       }
     }
   ],
   "edges": [
     {
-      "source": {
-        "cell": "systemMethod_1772497971425_3",
-        "port": "out"
-      },
-      "target": {
-        "cell": "response_1773382280010_1",
-        "port": "in:var:var_ezqqk4"
-      }
+      "source": { "cell": "req", "port": "params" },
+      "target": { "cell": "age_num", "port": "in:var:v_age" }
     },
     {
-      "source": {
-        "cell": "request_1772497969851_2",
-        "port": "params"
-      },
-      "target": {
-        "cell": "systemMethod_1772497971425_3",
-        "port": "in:arg:date"
-      }
+      "source": { "cell": "age_num", "port": "out" },
+      "target": { "cell": "check", "port": "in:var:v_n" }
+    },
+    {
+      "source": { "cell": "check", "port": "true" },
+      "target": { "cell": "ok", "port": "in" }
+    },
+    {
+      "source": { "cell": "check", "port": "false" },
+      "target": { "cell": "deny", "port": "in" }
     }
   ]
 }
 ```
 
-::: info 🧠 架构师视角：引擎的接管脉络
-当这份 JSON 画布结构发送到后端 Spring Boot 引擎时，`FlowParser` 会自动构建出 `parentMap` 和边集合映射体系。它剥离所有的视觉包袱，生成具有高度紧缩执行链列的结构体。根据 `request -> systemMethod -> response` 的底层拓扑推导，依托核心 `ThreadPoolExecutor` 的底层无锁并发屏障模型，完成并行、分支和调度的毫秒级生命周期接管，完全脱离传统的硬编码 MVC 反射链。
-:::
+### 6.2 Switch 多路
+
+```json
+{
+  "nodes": [
+    { "id": "req", "type": "request", "data": { "method": "GET" } },
+    {
+      "id": "sw",
+      "type": "switch",
+      "data": {
+        "language": "JavaScript",
+        "expression": "code",
+        "cases": [
+          { "id": "c200", "name": "OK", "value": "200" },
+          { "id": "c404", "name": "Missing", "value": "404" }
+        ],
+        "inputs": {
+          "code": { "extractPath": "$.req.params.code" }
+        }
+      }
+    },
+    {
+      "id": "r_ok",
+      "type": "response",
+      "data": { "status": 200, "body": "ok", "inputs": {} }
+    },
+    {
+      "id": "r_miss",
+      "type": "response",
+      "data": { "status": 404, "body": "missing", "inputs": {} }
+    },
+    {
+      "id": "r_def",
+      "type": "response",
+      "data": { "status": 400, "body": "other", "inputs": {} }
+    }
+  ],
+  "edges": [
+    {
+      "source": { "cell": "req", "port": "params" },
+      "target": { "cell": "sw", "port": "in:payload" }
+    },
+    {
+      "source": { "cell": "sw", "port": "case_c200" },
+      "target": { "cell": "r_ok", "port": "in" }
+    },
+    {
+      "source": { "cell": "sw", "port": "case_c404" },
+      "target": { "cell": "r_miss", "port": "in" }
+    },
+    {
+      "source": { "cell": "sw", "port": "default" },
+      "target": { "cell": "r_def", "port": "in" }
+    }
+  ]
+}
+```
+
+---
+
+## 7. 给大模型的生成检查清单
+
+1. **根对象**只有 `nodes` + `edges`（可加 `id`/`version`）。
+2. **恰好一个入口**：`request` 或 `schedule`；API 场景再配 **至少一个** `response`（或明确的终止语义）。
+3. 每个节点：`id` 唯一、`type` 合法、业务字段在 `data`。
+4. 每条控制流边的 `source.port` 必须是该类型**真实出口**（If 用 `true`/`false`，Switch 用 `case_<id>`/`default`，HttpRequest 用 `success`/`fail`）。
+5. 数据引用统一 `$.节点id.out`（Request 用 `.headers/.params/.body`）。
+6. `inputs` 键名 = 表达式变量名；需要连线时带稳定 `id`，边指向 `in:var:<id>`。
+7. Switch：`cases[].id` 稳定且与边端口 `case_<id>` 一致；匹配看 `value`。
+8. For 必须声明 `collectStepId` 且图上存在对应 `collect`。
+9. **禁止生成**（引擎不再识别）：`condition`、`start`、`end`、`set`、`return`、`serviceCall`、`call`。If 的字段名 `condition` 可以，那是表达式字段不是节点类型。
+10. `systemVar` / `systemMethod` / `api.serviceId` / `database.datasourceId` 用明确占位符，并注明需替换为环境真实 ID。
+11. 坐标与 `ports` 数组可省略；若写出 `ports`，须与所用边端口一致。
+12. Parallel：只用多条从 `out` 出发的边表示并行，**不要**写 `tasks`。
+13. Switch：`cases` 必须是 `[{id,name,value}]`，禁止字符串数组。
+
+---
+
+## 8. 已移除类型（引擎不再识别）
+
+下列 `type` 已从引擎与编辑器彻底清除，生成或导入含这些类型的 JSON 将失败：
+
+`condition` · `start` · `end` · `set` · `return` · `serviceCall` · `call`
+
+替换约定：入口/出口用 `request`/`response`（或 `schedule`）；外部调用用 `httpRequest`；内部编排用 `api`；赋值/计算用 `evaluate` 或 `record`。
+
+---
+
+## 9. 引擎格式对照（可选阅读）
+
+画布经解析后大致变为：
+
+```json
+{
+  "startStepId": "req",
+  "steps": [
+    {
+      "id": "req",
+      "type": "request",
+      "method": "GET",
+      "next": { "params": "eval1" }
+    }
+  ]
+}
+```
+
+- `data.*` 铺平到 Step 根。
+- `edges` → 各节点 `next[sourcePort] = targetId | targetId[]`。
+- **生成时不必手写 `steps`/`next`**，交给引擎即可。
+
+---
+
+## 10. 相关文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [编排画布概念](/api/) | 人机操作与端口直觉 |
+| [Request](/api/nodes/request) | 入口细节 |
+| [If](/api/nodes/if) | 条件表达式 |
+| [Evaluate](/api/nodes/evaluate) | 多语言脚本 |
+| [Database](/api/nodes/database) | SQL 节点 |
+
+本页为 **生成 JSON 的单一完整规格**；节点专页偏产品说明，若与本页冲突，**以本页 + 引擎 Step 模型为准**。

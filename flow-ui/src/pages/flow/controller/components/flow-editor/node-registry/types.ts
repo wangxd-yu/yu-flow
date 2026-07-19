@@ -79,6 +79,11 @@ export interface NodeRegistration {
     type: DslNodeType;
     /** 显示名称 */
     label: string;
+    /**
+     * 节点说明（卡片右上角 info / 工具栏详情）
+     * 支持换行；简短说明用途、端口与关键配置即可
+     */
+    description?: string;
     /** 分类 (用于面板分组) */
     category: string;
     /** 主色调 */
@@ -89,6 +94,11 @@ export interface NodeRegistration {
     sortOrder?: number;
     /** 是否单例 (画布中只允许一个) */
     singleton?: boolean;
+    /**
+     * 为 true 时不出现在组件面板 / QuickAdd（运行时与旧图仍可加载）
+     * 用于开发者专用或已收敛下架的节点
+     */
+    hidden?: boolean;
     /** 是否有 inputs 配置区 (通用 JSONPath 映射) */
     hasInputs: boolean;
 

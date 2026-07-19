@@ -23,6 +23,7 @@ import { initNodeRegistry, getNodeRegistration } from './flow-editor/node-regist
 import DslPalette from './flow-editor/components/DslPalette';
 import QuickAddPopover from './flow-editor/components/QuickAddPopover';
 import NodePropertyDrawer from './flow-editor/components/NodePropertyDrawer';
+import { useResizablePanelWidth } from './flow-editor/components/useResizablePanelWidth';
 import ActionToolbar from './flow-editor/components/ActionToolbar';
 import CanvasToolbar from './flow-editor/components/CanvasToolbar';
 import MiniMapPanel from './flow-editor/components/MiniMapPanel';
@@ -132,6 +133,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const [rightPanelCollapsed, setRightPanelCollapsed] = React.useState(true);
     /** 右侧属性面板：默认收起，选中节点时自动展开 */
     const showPropertyPanel = true;
+    const { width: rightPanelWidth, onResizeStart: onRightPanelResizeStart } =
+        useResizablePanelWidth(rightPanelCollapsed);
 
     // 调试器状态
     const [executionLogs, setExecutionLogs] = React.useState<ExecutionLog[]>(readonlyTrace?.stepLogs || []);
@@ -1533,15 +1536,42 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                             </Tooltip>
                             <div
                                 style={{
-                                    width: rightPanelCollapsed ? 0 : 420,
-                                    minWidth: rightPanelCollapsed ? 0 : 420,
+                                    position: 'relative',
+                                    width: rightPanelCollapsed ? 0 : rightPanelWidth,
+                                    minWidth: rightPanelCollapsed ? 0 : rightPanelWidth,
                                     height: '100%',
                                     overflow: rightPanelCollapsed ? 'hidden' : 'auto',
                                     borderLeft: rightPanelCollapsed ? 'none' : '1px solid #e5e6eb',
                                     background: '#fff',
-                                    transition: 'width 0.25s ease, min-width 0.25s ease',
+                                    transition: rightPanelCollapsed
+                                        ? 'width 0.25s ease, min-width 0.25s ease'
+                                        : undefined,
                                 }}
                             >
+                                {!rightPanelCollapsed && (
+                                    <div
+                                        onMouseDown={onRightPanelResizeStart}
+                                        title="拖拽调整宽度"
+                                        style={{
+                                            position: 'absolute',
+                                            left: 0,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: 5,
+                                            cursor: 'col-resize',
+                                            zIndex: 11,
+                                            background: 'transparent',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            (e.currentTarget as HTMLDivElement).style.background =
+                                                'rgba(22, 119, 255, 0.12)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            (e.currentTarget as HTMLDivElement).style.background =
+                                                'transparent';
+                                        }}
+                                    />
+                                )}
                                 <NodePropertyDrawer
                                     node={selectedNodeId && graphRef.current ? graphRef.current.getCellById(selectedNodeId) as Node : undefined}
                                     onDataChange={(node, changes) => {

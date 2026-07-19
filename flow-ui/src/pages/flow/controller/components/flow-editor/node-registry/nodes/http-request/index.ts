@@ -57,7 +57,14 @@ export const httpRequestNodeRegistration: NodeRegistration = {
     category: '调用节点',
     color: '#fa8c16',
     tagColor: 'orange',
-    /** 右侧展示 inputs 映射（baseUrl / token 等）+ 请求策略 */
+    description:
+        '向外部 HTTP 地址发起请求。\n\n' +
+        '· 配置 Method、URL、Headers、Params、Body\n' +
+        '· 鉴权（Bearer / Basic / API Key）在右侧属性面板\n' +
+        '· 成功走 success，失败走 fail\n' +
+        '· 超时/重试等策略在右侧属性面板配置\n' +
+        '· 与「API 调用」不同：此处可任意指定外部 URL',
+    /** 右侧展示 inputs 映射（baseUrl / token 等）+ 请求策略 / 鉴权 */
     hasInputs: true,
 
     shape: {
@@ -92,6 +99,13 @@ export const httpRequestNodeRegistration: NodeRegistration = {
             logEnabled: true,
             apiType: '',
             ignoreSsl: true,
+            authType: 'none',
+            authToken: '',
+            authUsername: '',
+            authPassword: '',
+            authApiKeyIn: 'header',
+            authApiKeyName: '',
+            authApiKeyValue: '',
             inputs: {},
         },
         size: { width: HTTP_REQUEST_LAYOUT.width, height: 300 },

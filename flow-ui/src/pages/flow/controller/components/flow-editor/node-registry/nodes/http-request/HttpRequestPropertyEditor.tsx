@@ -3,7 +3,7 @@
 // ============================================================================
 
 import React from 'react';
-import { Input, InputNumber, Switch } from 'antd';
+import { Input, InputNumber, Select, Switch } from 'antd';
 import type { PropertyEditorProps } from '../../types';
 import {
     PropertyField,
@@ -13,14 +13,116 @@ import {
     PropertySwitchRow,
 } from '../../shared/PropertyPanel';
 
+const AUTH_OPTIONS = [
+    { value: 'none', label: '无鉴权' },
+    { value: 'bearer', label: 'Bearer Token' },
+    { value: 'basic', label: 'Basic Auth' },
+    { value: 'apiKey', label: 'API Key' },
+];
+
+const API_KEY_IN_OPTIONS = [
+    { value: 'header', label: 'Header' },
+    { value: 'query', label: 'Query' },
+];
+
 export function HttpRequestPropertyEditor({ data, onChange }: PropertyEditorProps) {
     const timeout = typeof data.timeout === 'number' && data.timeout > 0 ? data.timeout : 30000;
     const retryCount = typeof data.retryCount === 'number' ? data.retryCount : 0;
     const retryIntervalMs =
         typeof data.retryIntervalMs === 'number' ? data.retryIntervalMs : 1000;
+    const authType = (data.authType || 'none') as string;
+    const apiKeyIn = (data.authApiKeyIn || 'header') as string;
 
     return (
         <div>
+            <PropertySection
+                title="鉴权"
+                tip="写入请求的 Authorization / API Key；字段支持 ${变量名}（来自 inputs）。手动 Headers 中同名键优先"
+            >
+                <PropertyField label="类型" labelWidth={48}>
+                    <Select
+                        size="small"
+                        value={authType}
+                        options={AUTH_OPTIONS}
+                        style={{ width: '100%' }}
+                        onChange={(val) => onChange({ authType: val })}
+                    />
+                </PropertyField>
+                {authType === 'bearer' && (
+                    <PropertyField label="Token" tip="勿含 Bearer 前缀；可用 ${token}" labelWidth={48}>
+                        <Input.Password
+                            size="small"
+                            allowClear
+                            placeholder="access_token 或 ${token}"
+                            value={data.authToken || ''}
+                            onChange={(e) => onChange({ authToken: e.target.value })}
+                        />
+                    </PropertyField>
+                )}
+                {authType === 'basic' && (
+                    <>
+                        <PropertyField label="用户名" labelWidth={48}>
+                            <Input
+                                size="small"
+                                allowClear
+                                placeholder="username"
+                                value={data.authUsername || ''}
+                                onChange={(e) => onChange({ authUsername: e.target.value })}
+                            />
+                        </PropertyField>
+                        <PropertyField label="密码" labelWidth={48}>
+                            <Input.Password
+                                size="small"
+                                allowClear
+                                placeholder="password"
+                                value={data.authPassword || ''}
+                                onChange={(e) => onChange({ authPassword: e.target.value })}
+                            />
+                        </PropertyField>
+                    </>
+                )}
+                {authType === 'apiKey' && (
+                    <>
+                        <PropertyField label="位置" labelWidth={48}>
+                            <Select
+                                size="small"
+                                value={apiKeyIn}
+                                options={API_KEY_IN_OPTIONS}
+                                style={{ width: '100%' }}
+                                onChange={(val) => onChange({ authApiKeyIn: val })}
+                            />
+                        </PropertyField>
+                        <PropertyField
+                            label="名称"
+                            tip={apiKeyIn === 'query' ? '默认 api_key' : '默认 X-API-Key'}
+                            labelWidth={48}
+                        >
+                            <Input
+                                size="small"
+                                allowClear
+                                placeholder={apiKeyIn === 'query' ? 'api_key' : 'X-API-Key'}
+                                value={data.authApiKeyName || ''}
+                                onChange={(e) => onChange({ authApiKeyName: e.target.value })}
+                            />
+                        </PropertyField>
+                        <PropertyField label="值" tip="可用 ${apiKey}" labelWidth={48}>
+                            <Input.Password
+                                size="small"
+                                allowClear
+                                placeholder="key value"
+                                value={data.authApiKeyValue || ''}
+                                onChange={(e) => onChange({ authApiKeyValue: e.target.value })}
+                            />
+                        </PropertyField>
+                    </>
+                )}
+                {authType !== 'none' && (
+                    <PropertyHint>
+                        Token / 密钥建议用 SystemVar 或上游节点映射到 inputs，再填 {'${varName}'}，避免明文落库。
+                    </PropertyHint>
+                )}
+            </PropertySection>
+
             <PropertySection
                 title="请求策略"
                 tip="超时、重试等执行策略；请求 Method/URL/Body 请在画布节点内编辑"

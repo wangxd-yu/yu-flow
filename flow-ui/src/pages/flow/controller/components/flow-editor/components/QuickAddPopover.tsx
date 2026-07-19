@@ -50,6 +50,7 @@ export interface QuickAddPopoverProps {
 const CATEGORY_WEIGHTS: Record<string, number> = {
     '基础节点': 100,
     '逻辑节点': 90,
+    '循环节点': 85,
     '数据节点': 80,
     '调用节点': 70,
     '外部资源': 60,
@@ -57,9 +58,10 @@ const CATEGORY_WEIGHTS: Record<string, number> = {
 
 const NODE_WEIGHTS: Partial<Record<DslNodeType, number>> = {
     request: 100, response: 90,
-    if: 100, switch: 90, evaluate: 80, forEach: 70,
-    record: 100, template: 90, collect: 80, systemVar: 70,
-    serviceCall: 100, httpRequest: 90, database: 80,
+    if: 100, switch: 90, evaluate: 80, delay: 70, errorHandler: 60,
+    forEach: 100, for: 90, collect: 80, parallel: 70,
+    record: 100, template: 90, systemVar: 70,
+    httpRequest: 100, api: 95, database: 80,
 };
 
 // ── 极性过滤配置 ─────────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ const NODE_WEIGHTS: Partial<Record<DslNodeType, number>> = {
 const OUTPUT_ONLY_TYPES: Set<DslNodeType> = new Set([
     'systemVar',  // 系统变量：只有 out，无 in
     'request',    // 请求入口：只有 headers/params/body 输出端口
+    'errorHandler', // 错误入口：引擎跳转，无控制流 in
 ]);
 
 /**
@@ -87,6 +90,7 @@ const NO_OUTPUT_TYPES: Set<DslNodeType> = new Set([
 const REVERSE_PREFERRED_TYPES: DslNodeType[] = [
     'systemVar',   // 系统变量
     'database',    // 数据库
+    'api',         // 内部 API
     'evaluate',    // 表达式
     'systemMethod', // 系统方法
 ];

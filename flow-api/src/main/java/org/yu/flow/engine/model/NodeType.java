@@ -11,8 +11,6 @@ public final class NodeType {
     private NodeType() { /* 防止实例化 */ }
 
     // ========== 基础出入口 ==========
-    public static final String START = "start";
-    public static final String END = "end";
     public static final String REQUEST = "request";
     public static final String RESPONSE = "response";
     /** 定时调度入口节点（任务管理专用） */
@@ -21,39 +19,38 @@ public final class NodeType {
     // ========== 基础逻辑 ==========
     public static final String EVALUATE = "evaluate";
     public static final String IF = "if";
-    /** @deprecated 使用 {@link #IF} */
-    public static final String CONDITION = "condition";
     public static final String SWITCH = "switch";
 
     // ========== 服务/IO ==========
-    /** 服务调用（兼容测试中的 camelCase） */
-    public static final String SERVICE_CALL = "serviceCall";
-    /** 服务调用简写别名 */
-    public static final String CALL = "call";
-    /** HTTP 外部请求（兼容测试中的 camelCase） */
+    /** HTTP 外部请求 */
     public static final String HTTP_REQUEST = "httpRequest";
-    /** HTTP 外部请求别名 */
+    /** 内部 Flow API 编排调用（调用另一条已配置的 Flow API） */
     public static final String API = "api";
     public static final String DATABASE = "database";
 
     // ========== 循环与并发 ==========
-    /** 串行循环（兼容测试中的 camelCase） */
+    /** 串行循环：按顺序处理列表（item → done） */
     public static final String FOR_EACH = "forEach";
-    /** Scatter 分发 */
+    /** Scatter 分发（并发扇出，需配 Collect） */
     public static final String FOR = "for";
     /** Gather 屏障汇聚 */
     public static final String COLLECT = "collect";
+    /**
+     * 并行网关：图上从 out 拉多条边即并行扇出。
+     */
+    public static final String PARALLEL = "parallel";
 
     // ========== 数据与转换 ==========
     public static final String RECORD = "record";
     public static final String TEMPLATE = "template";
-    /** 系统环境变量（兼容 camelCase） */
+    /** 系统环境变量 */
     public static final String SYSTEM_VAR = "systemVar";
-    /** 系统方法调用（兼容 camelCase） */
+    /** 系统方法调用 */
     public static final String SYSTEM_METHOD = "systemMethod";
 
     // ========== 内部控制 ==========
-    public static final String PARALLEL = "parallel";
-    public static final String SET = "set";
-    public static final String RETURN = "return";
+    /** 延迟 / 等待（毫秒） */
+    public static final String DELAY = "delay";
+    /** 统一错误处理入口（引擎异常时跳转，单例） */
+    public static final String ERROR_HANDLER = "errorHandler";
 }

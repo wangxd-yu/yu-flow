@@ -1,17 +1,14 @@
 // ============================================================================
-// node-registry/nodes/request.tsx
-// Request (请求入口) 节点 —— 自包含注册模块
-// V3.2: 新增 Method 选择 (GET/POST/PUT/DELETE/PATCH)
+// request/index.tsx — Request 入口节点注册
 // ============================================================================
 
 import React from 'react';
-import { Divider, Input, Select, Typography } from 'antd';
+import { Select } from 'antd';
 import type { DslPort } from '../../../types';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
-import { RequestNodeComponent, REQUEST_LAYOUT, methodHasBody } from './RequestNodeComponent';
-
-const { Text, Paragraph } = Typography;
-const { TextArea } = Input;
+import { RequestNodeComponent, REQUEST_LAYOUT } from './RequestNodeComponent';
+import ValidationRulesEditor from './ValidationRulesEditor';
+import { PropertyField, PropertySection } from '../../shared/PropertyPanel';
 
 const METHOD_OPTIONS = [
     { value: 'GET', label: 'GET' },
@@ -21,53 +18,42 @@ const METHOD_OPTIONS = [
     { value: 'PATCH', label: 'PATCH' },
 ];
 
-// ── 属性面板编辑器 (Start/Request 共用，导出供 start.ts 使用) ──
-export function StartRequestEditor({ data, onChange }: PropertyEditorProps) {
+function RequestEditor({ data, onChange }: PropertyEditorProps) {
     return (
-        <div style={{ marginTop: 12 }}>
-            <Divider orientation="left" style={{ fontSize: 12, margin: '8px 0' }}>
-                入口节点
-            </Divider>
-            <div style={{ marginBottom: 12 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>请求方法</Text>
-                <Select
-                    size="small"
-                    value={data.method || 'GET'}
-                    options={METHOD_OPTIONS}
-                    style={{ width: '100%', marginTop: 4 }}
-                    onChange={(val) => onChange({ method: val })}
+        <>
+            <PropertySection title="入口配置">
+                <PropertyField label="请求方法">
+                    <Select
+                        size="small"
+                        value={data.method || 'GET'}
+                        options={METHOD_OPTIONS}
+                        style={{ width: '100%' }}
+                        getPopupContainer={() => document.body}
+                        onChange={(val) => onChange({ method: val })}
+                    />
+                </PropertyField>
+            </PropertySection>
+            <PropertySection title="参数校验" tip="对齐后端 ValidationRule / ParamValidator">
+                <ValidationRulesEditor
+                    value={data.validations || {}}
+                    onChange={(validations) => onChange({ validations })}
                 />
-            </div>
-            <Paragraph type="secondary" style={{ fontSize: 11 }}>
-                Start / Request 节点为流程入口，运行时参数通过{' '}
-                <code>$.start.args.*</code> 路径在下游节点中引用。
-            </Paragraph>
-            <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                    参数校验规则 (JSON, 可选)
-                </Text>
-                <TextArea
-                    size="small"
-                    value={JSON.stringify(data.validations || {}, null, 2)}
-                    autoSize={{ minRows: 3, maxRows: 10 }}
-                    placeholder={'{\n  "username": { "required": true, "message": "用户名不能为空" }\n}'}
-                    style={{ marginTop: 4, fontFamily: 'monospace' }}
-                    onChange={(e) => {
-                        try { onChange({ validations: JSON.parse(e.target.value) }); } catch { /* wait */ }
-                    }}
-                />
-            </div>
-        </div>
+            </PropertySection>
+        </>
     );
 }
 
-// ── 注册配置 ──
 export const requestNodeRegistration: NodeRegistration = {
     type: 'request',
     label: '请求入口 (Request)',
     category: '基础节点',
     color: '#52c41a',
     tagColor: 'green',
+    description:
+        'HTTP API 流程的唯一入口（单例）。\n\n' +
+        '· 右侧输出 headers / params / body\n' +
+        '· 下游用 $.request.params.xxx、$.request.body.xxx 读取\n' +
+        '· 可在属性面板配置参数校验规则',
     hasInputs: false,
     singleton: true,
 
@@ -79,14 +65,13 @@ export const requestNodeRegistration: NodeRegistration = {
             items: [
                 { id: 'headers', group: 'absolute-out-solid', args: { x: REQUEST_LAYOUT.width, y: REQUEST_LAYOUT.rowCenterY(0), dx: 0 } },
                 { id: 'params', group: 'absolute-out-solid', args: { x: REQUEST_LAYOUT.width, y: REQUEST_LAYOUT.rowCenterY(1), dx: 0 } },
-                // body port is NOT included by default — added dynamically when method has body
             ],
         },
     },
 
     defaults: {
         ports: [{ id: 'headers' }, { id: 'params' }],
-        data: { method: 'GET' },
+        data: { method: 'GET', validations: {} },
         size: { width: REQUEST_LAYOUT.width, height: REQUEST_LAYOUT.totalHeight2 },
     },
 
@@ -118,5 +103,5 @@ export const requestNodeRegistration: NodeRegistration = {
         return `Request [${method}]`;
     },
 
-    PropertyEditor: StartRequestEditor,
+    PropertyEditor: RequestEditor,
 };

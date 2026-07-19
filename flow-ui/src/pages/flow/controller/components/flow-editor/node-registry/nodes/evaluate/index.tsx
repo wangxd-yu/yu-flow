@@ -7,9 +7,13 @@ import React from 'react';
 import { Select } from 'antd';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { EvaluateNodeComponent, EVALUATE_LAYOUT } from './EvaluateNodeComponent';
-import CodeEditor, { mapExpressionLanguage } from '../../../components/CodeEditor';
 import { PAYLOAD_PORT_ID, PAYLOAD_PORT_Y } from '../../shared/usePayloadEntryPort';
-import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
+import {
+    PropertyCodeField,
+    PropertyField,
+    PropertyHint,
+    PropertySection,
+} from '../../shared/PropertyPanel';
 import type { DslPort } from '../../../types';
 
 const LANGUAGE_OPTIONS = [
@@ -23,7 +27,6 @@ const LANGUAGE_OPTIONS = [
 // ── 属性面板编辑器 ──
 function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
     const lang = data.language || 'JavaScript';
-    const editorLanguage = mapExpressionLanguage(lang);
 
     return (
         <PropertySection title="表达式配置" tip="也可在画布节点内直接编辑表达式">
@@ -33,6 +36,7 @@ function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
                     value={lang}
                     options={LANGUAGE_OPTIONS}
                     style={{ width: '100%' }}
+                    getPopupContainer={() => document.body}
                     onChange={(val) => onChange({ language: val })}
                 />
             </PropertyField>
@@ -46,18 +50,14 @@ function EvaluateEditor({ data, onChange }: PropertyEditorProps) {
                     支持多行脚本，最后一个表达式作为结果；Spring Bean 仅限服务端白名单。
                 </PropertyHint>
             )}
-            <PropertyField label="表达式" layout="vertical">
-                <CodeEditor
-                    value={data.expression || ''}
-                    onChange={(val) => onChange({ expression: val })}
-                    language={editorLanguage}
-                    height="120px"
-                    maxHeight="300px"
-                    fontSize={12}
-                    lineNumbers={true}
-                    theme="light"
-                />
-            </PropertyField>
+            <PropertyCodeField
+                label="表达式"
+                expressionLang={lang}
+                value={data.expression || ''}
+                onChange={(val) => onChange({ expression: val })}
+                height="md"
+                placeholder="表达式或脚本"
+            />
         </PropertySection>
     );
 }
@@ -107,6 +107,11 @@ export const evaluateNodeRegistration: NodeRegistration = {
     category: '逻辑节点',
     color: '#1677ff',
     tagColor: 'blue',
+    description:
+        '用表达式计算并输出结果。\n\n' +
+        '· 支持 JavaScript / Aviator / SpEL / Python / Groovy\n' +
+        '· 上方变量行映射输入，表达式中直接使用变量名\n' +
+        '· 结果从 Result 输出，下游用 $.本节点.out 读取',
     hasInputs: true,
 
     shape: {

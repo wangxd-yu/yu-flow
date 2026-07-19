@@ -32,19 +32,53 @@ import org.springframework.data.domain.Pageable;
 public class FlowEngineTest {
 
     private FlowEngine engine;
-    private TestService testService;
 
     @BeforeEach
     void setUp() {
         engine = new FlowEngine();
-        testService = new TestService();
-        engine.registerService("testService", testService);
     }
 
-    public static class TestService {
-        public final List<String> logs = new ArrayList<>();
-        public void log(String msg) { synchronized(logs) { logs.add(msg); } }
-        public String greet(String name) { return "Hello, " + name; }
+    /** Build execute args with nested {@code params} map (request-node style). */
+    private Map<String, Object> paramsArgs(Object... kv) {
+        if (kv.length % 2 != 0) {
+            throw new IllegalArgumentException("paramsArgs requires even number of arguments");
+        }
+        Map<String, Object> params = new HashMap<>();
+        for (int i = 0; i < kv.length; i += 2) {
+            params.put(String.valueOf(kv[i]), kv[i + 1]);
+        }
+        Map<String, Object> args = new HashMap<>();
+        args.put("params", params);
+        return args;
+    }
+
+
+    /** Unwrap ResponseEntity body or ExecutionResult data. */
+    private Object resultData(Object result) {
+        if (result instanceof org.springframework.http.ResponseEntity) {
+            return ((org.springframework.http.ResponseEntity<?>) result).getBody();
+        }
+        if (result instanceof ExecutionResult) {
+            return ((ExecutionResult) result).getData();
+        }
+        return result;
+    }
+
+    private boolean resultSuccess(Object result) {
+        if (result instanceof org.springframework.http.ResponseEntity) {
+            return true; // reached a response node
+        }
+        if (result instanceof ExecutionResult) {
+            return ((ExecutionResult) result).isSuccess();
+        }
+        return result != null;
+    }
+
+    private String resultMessage(Object result) {
+        if (result instanceof ExecutionResult) {
+            return ((ExecutionResult) result).getMessage();
+        }
+        return String.valueOf(result);
     }
 
     // ==========================================
@@ -55,8 +89,8 @@ public class FlowEngineTest {
     @DisplayName("01、测试空流程")
     void testEmptyFlow() throws JsonProcessingException {
         String flowJson = "{\"id\":\"empty\",\"nodes\":[],\"edges\":[]}";
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertTrue(result.isSuccess());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertTrue(resultSuccess(result));
     }
 
     @Test
@@ -65,20 +99,20 @@ public class FlowEngineTest {
         // Aviator: 字符串使用单引号
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"node_calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \n" +
                 "      \"data\": { \"expression\": \"'Hello ' + 'World'\" } },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"responseBody\": \"${node_calc.result}\" } }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
+                "      \"data\": { \"body\": \"${node_calc.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_calc\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_calc\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertEquals("Hello World", result.getData());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertEquals("Hello World", resultData(result));
     }
 
     // ==========================================
@@ -89,41 +123,35 @@ public class FlowEngineTest {
     @DisplayName("03、测试 If 节点 - True 分支")
     void testIfStepTrueBranch() throws JsonProcessingException {
         String flowJson = getIfFlowJson();
-        Map<String, Object> args = new HashMap<>();
-        args.put("age", 20);
-
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertEquals("adult", result.getData());
+        Object result = engine.execute(flowJson, paramsArgs("age", 20));
+        assertEquals("adult", resultData(result));
     }
 
     @Test
     @DisplayName("04、测试 If 节点 - False 分支")
     void testIfStepFalseBranch() throws JsonProcessingException {
         String flowJson = getIfFlowJson();
-        Map<String, Object> args = new HashMap<>();
-        args.put("age", 15);
-
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertEquals("minor", result.getData());
+        Object result = engine.execute(flowJson, paramsArgs("age", 15));
+        assertEquals("minor", resultData(result));
     }
 
     private String getIfFlowJson() {
         // Aviator: 变量直接引用，无需 ${}
         return "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"if_node\", \"type\": \"if\", \n" +
                 "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"true\"}, {\"id\":\"false\"}],\n" +
                 "      \"data\": { \n" +
-                "        \"inputs\": { \"age\": {\"extractPath\": \"$.start.args.age\"} },\n" +
+                "        \"inputs\": { \"age\": {\"extractPath\": \"$.start.params.age\"} },\n" +
                 "        \"condition\": \"age >= 18\" \n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end_adult\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"adult\"} },\n" +
-                "    { \"id\": \"end_minor\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"minor\"} }\n" +
+                "    { \"id\": \"end_adult\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"adult\"} },\n" +
+                "    { \"id\": \"end_minor\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"minor\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"if_node\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"if_node\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"if_node\", \"port\": \"true\"}, \"target\": {\"cell\": \"end_adult\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"if_node\", \"port\": \"false\"}, \"target\": {\"cell\": \"end_minor\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
@@ -139,39 +167,36 @@ public class FlowEngineTest {
     void testSwitchStepAdminCase() throws JsonProcessingException {
         // Aviator: 字符串比较直接使用 == (Aviator 重载了操作符)
         String flowJson = getSwitchFlowJson();
-        Map<String, Object> args = new HashMap<>();
-        args.put("role", "ADMIN");
-        assertEquals("Admin Access", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        assertEquals("Admin Access", ((ExecutionResult) engine.execute(flowJson, paramsArgs("role", "ADMIN"))).getData());
     }
 
     @Test
     @DisplayName("06、测试 Switch 节点 - Default 分支")
     void testSwitchStepDefaultCase() throws JsonProcessingException {
         String flowJson = getSwitchFlowJson();
-        Map<String, Object> args = new HashMap<>();
-        args.put("role", "UNKNOWN");
-        assertEquals("Unknown Role", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        assertEquals("Unknown Role", ((ExecutionResult) engine.execute(flowJson, paramsArgs("role", "UNKNOWN"))).getData());
     }
 
     private String getSwitchFlowJson() {
         return "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"sw_node\", \"type\": \"switch\", \n" +
-                "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"case_ADMIN\"}, {\"id\":\"case_USER\"}, {\"id\":\"default\"}],\n" +
+                "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"case_admin\"}, {\"id\":\"case_user\"}, {\"id\":\"default\"}],\n" +
                 "      \"data\": { \n" +
-                "        \"inputs\": { \"r\": {\"extractPath\": \"$.start.args.role\"} },\n" +
-                "        \"expression\": \"r\" \n" +
+                "        \"inputs\": { \"r\": {\"extractPath\": \"$.start.params.role\"} },\n" +
+                "        \"expression\": \"r\",\n" +
+                "        \"cases\": [{\"id\":\"admin\",\"name\":\"Admin\",\"value\":\"ADMIN\"},{\"id\":\"user\",\"name\":\"User\",\"value\":\"USER\"}]\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end_1\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"Admin Access\"} },\n" +
-                "    { \"id\": \"end_2\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"User Access\"} },\n" +
-                "    { \"id\": \"end_3\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"Unknown Role\"} }\n" +
+                "    { \"id\": \"end_1\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"Admin Access\"} },\n" +
+                "    { \"id\": \"end_2\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"User Access\"} },\n" +
+                "    { \"id\": \"end_3\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"Unknown Role\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"sw_node\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"sw_node\", \"port\": \"case_ADMIN\"}, \"target\": {\"cell\": \"end_1\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"sw_node\", \"port\": \"case_USER\"}, \"target\": {\"cell\": \"end_2\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"sw_node\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"sw_node\", \"port\": \"case_admin\"}, \"target\": {\"cell\": \"end_1\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"sw_node\", \"port\": \"case_user\"}, \"target\": {\"cell\": \"end_2\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"sw_node\", \"port\": \"default\"}, \"target\": {\"cell\": \"end_3\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
@@ -183,59 +208,28 @@ public class FlowEngineTest {
         // Aviator 对数字类型处理较好，Input 提取为 Number，Case 也是 Number
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"sw\", \"type\": \"switch\", \n" +
-                "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"case_200\"}, {\"id\":\"case_404\"}, {\"id\":\"default\"}],\n" +
+                "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"case_ok\"}, {\"id\":\"case_not_found\"}, {\"id\":\"default\"}],\n" +
                 "      \"data\": { \n" +
-                "        \"inputs\": { \"code\": {\"extractPath\": \"$.start.args.code\"} },\n" +
-                "        \"expression\": \"code\" \n" +
+                "        \"inputs\": { \"code\": {\"extractPath\": \"$.start.params.code\"} },\n" +
+                "        \"expression\": \"code\",\n" +
+                "        \"cases\": [{\"id\":\"ok\",\"name\":\"OK\",\"value\":200},{\"id\":\"not_found\",\"name\":\"Not Found\",\"value\":404}]\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end_ok\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"OK\"} },\n" +
-                "    { \"id\": \"end_err\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"ERR\"} }\n" +
+                "    { \"id\": \"end_ok\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"OK\"} },\n" +
+                "    { \"id\": \"end_err\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"ERR\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"sw\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"sw\", \"port\": \"case_200\"}, \"target\": {\"cell\": \"end_ok\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"sw\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"sw\", \"port\": \"case_ok\"}, \"target\": {\"cell\": \"end_ok\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"sw\", \"port\": \"default\"}, \"target\": {\"cell\": \"end_err\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("code", 200);
-        assertEquals("OK", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        assertEquals("OK", ((ExecutionResult) engine.execute(flowJson, paramsArgs("code", 200))).getData());
     }
 
-    // ==========================================
-    // 服务调用 (07)
-    // ==========================================
-
-    @Test
-    @DisplayName("12、测试 ServiceCall 节点")
-    void testServiceCallStep() throws JsonProcessingException {
-        String flowJson = "{\n" +
-                "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
-                "    { \"id\": \"call_svc\", \"type\": \"serviceCall\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"out\"}],\n" +
-                "      \"data\": {\n" +
-                "        \"service\": \"testService\", \"method\": \"greet\",\n" +
-                "        \"inputs\": { \"n\": {\"extractPath\": \"$.start.args.name\"} },\n" +
-                "        \"args\": [ \"n\" ]\n" +
-                "      }\n" +
-                "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}],\n" +
-                "      \"data\": { \"responseBody\": \"${call_svc.result}\" } }\n" +
-                "  ],\n" +
-                "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"call_svc\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"call_svc\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
-                "  ]\n" +
-                "}";
-
-        Map<String, Object> args = new HashMap<>();
-        args.put("name", "Aviator");
-        assertEquals("Hello, Aviator", ((ExecutionResult) engine.execute(flowJson, args)).getData());
-    }
 
     // ==========================================
     // 复杂逻辑组合 (08-09)
@@ -247,24 +241,23 @@ public class FlowEngineTest {
         // Start -> If(age>=18) -> Switch(role) -> End
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"if_check\", \"type\": \"if\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"true\"}, {\"id\":\"false\"}],\n" +
-                "      \"data\": { \"inputs\":{\"a\":\"$.start.args.age\"}, \"condition\":\"a >= 18\" } },\n" +
+                "      \"data\": { \"inputs\":{\"a\":\"$.start.params.age\"}, \"condition\":\"a >= 18\" } },\n" +
                 "    { \"id\": \"sw_role\", \"type\": \"switch\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"case_admin\"}, {\"id\":\"default\"}],\n" +
-                "      \"data\": { \"inputs\":{\"r\":\"$.start.args.role\"}, \"expression\":\"r\" } },\n" +
-                "    { \"id\": \"end_final\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\":{\"responseBody\":\"Adult Admin\"} }\n" +
+                "      \"data\": { \"inputs\":{\"r\":\"$.start.params.role\"}, \"expression\":\"r\",\n" +
+                "        \"cases\": [{\"id\":\"admin\",\"name\":\"Admin\",\"value\":\"admin\"}] } },\n" +
+                "    { \"id\": \"end_final\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\":{\"body\":\"Adult Admin\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"if_check\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"if_check\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"if_check\", \"port\": \"true\"}, \"target\": {\"cell\": \"sw_role\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"sw_role\", \"port\": \"case_admin\"}, \"target\": {\"cell\": \"end_final\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("age", 25);
-        args.put("role", "admin");
-        assertEquals("Adult Admin", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        Map<String, Object> args = paramsArgs("age", 25, "role", "admin");
+        assertEquals("Adult Admin", resultData(engine.execute(flowJson, args)));
     }
 
     @Test
@@ -273,23 +266,22 @@ public class FlowEngineTest {
         // Aviator condition: s >= 60
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"if_pass\", \"type\": \"if\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"true\"}],\n" +
-                "      \"data\": { \"inputs\":{\"s\":\"$.start.args.score\"}, \"condition\":\"s >= 60\" } },\n" +
+                "      \"data\": { \"inputs\":{\"s\":\"$.start.params.score\"}, \"condition\":\"s >= 60\" } },\n" +
                 "    { \"id\": \"if_good\", \"type\": \"if\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"true\"}],\n" +
-                "      \"data\": { \"inputs\":{\"s\":\"$.start.args.score\"}, \"condition\":\"s >= 80\" } },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\":{\"responseBody\":\"Excellent\"} }\n" +
+                "      \"data\": { \"inputs\":{\"s\":\"$.start.params.score\"}, \"condition\":\"s >= 80\" } },\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\":{\"body\":\"Excellent\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"if_pass\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"if_pass\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"if_pass\", \"port\": \"true\"}, \"target\": {\"cell\": \"if_good\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"if_good\", \"port\": \"true\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("score", 90);
-        assertEquals("Excellent", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        Map<String, Object> args = paramsArgs("score", 90);
+        assertEquals("Excellent", resultData(engine.execute(flowJson, args)));
     }
 
     // ==========================================
@@ -302,18 +294,17 @@ public class FlowEngineTest {
         // 验证 End 节点通过模板直接引用 Start 参数
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}],\n" +
-                "      \"data\": { \"responseBody\": \"${start.args.name}\" } }\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}],\n" +
+                "      \"data\": { \"body\": \"${start.params.name}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("name", "DirectUser");
-        assertEquals("DirectUser", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        Map<String, Object> args = paramsArgs("name", "DirectUser");
+        assertEquals("DirectUser", resultData(engine.execute(flowJson, args)));
     }
 
     @Test
@@ -322,25 +313,23 @@ public class FlowEngineTest {
         // Aviator: 使用 + 拼接字符串
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": { \n" +
-                "        \"inputs\": { \"g\":{\"extractPath\":\"$.start.args.greeting\"}, \"n\":{\"extractPath\":\"$.start.args.name\"} },\n" +
+                "        \"inputs\": { \"g\":{\"extractPath\":\"$.start.params.greeting\"}, \"n\":{\"extractPath\":\"$.start.params.name\"} },\n" +
                 "        \"expression\": \"g + ', ' + n\" \n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"responseBody\": \"${calc.result}\" } }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"body\": \"${calc.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("greeting", "Welcome");
-        args.put("name", "User");
-        assertEquals("Welcome, User", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        Map<String, Object> args = paramsArgs("greeting", "Welcome", "name", "User");
+        assertEquals("Welcome, User", resultData(engine.execute(flowJson, args)));
     }
 
     // ==========================================
@@ -349,24 +338,41 @@ public class FlowEngineTest {
 
     @Test
     @DisplayName("13、测试并行执行 (Implicit Parallel)")
-    void testParallelNextWithService() throws JsonProcessingException {
+    void testParallelNextWithEvaluate() throws JsonProcessingException {
+        // fan-out from request → two evaluate branches → join via response
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
-                "    { \"id\": \"branch_a\", \"type\": \"serviceCall\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"service\":\"testService\", \"method\":\"log\", \"args\":[\"'A_DONE'\"] } },\n" +
-                "    { \"id\": \"branch_b\", \"type\": \"serviceCall\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"service\":\"testService\", \"method\":\"log\", \"args\":[\"'B_DONE'\"] } }\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
+                "    { \"id\": \"branch_a\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
+                "      \"data\": { \"expression\": \"'A_DONE'\" } },\n" +
+                "    { \"id\": \"branch_b\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
+                "      \"data\": { \"expression\": \"'B_DONE'\" } },\n" +
+                "    { \"id\": \"join\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
+                "      \"data\": {\n" +
+                "        \"inputs\": {\n" +
+                "          \"a\": {\"extractPath\": \"$.branch_a.out\"},\n" +
+                "          \"b\": {\"extractPath\": \"$.branch_b.out\"}\n" +
+                "        },\n" +
+                "        \"expression\": \"a + '_' + b\"\n" +
+                "      }\n" +
+                "    },\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}],\n" +
+                "      \"data\": { \"body\": \"${join.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"branch_a\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"branch_b\", \"port\": \"in\"} }\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"branch_a\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"branch_b\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"branch_a\", \"port\": \"out\"}, \"target\": {\"cell\": \"join\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"branch_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"join\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"join\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        engine.execute(flowJson, new HashMap<>());
-        assertTrue(testService.logs.contains("A_DONE"));
-        assertTrue(testService.logs.contains("B_DONE"));
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertTrue(resultSuccess(result), resultMessage(result));
+        String data = String.valueOf(resultData(result));
+        assertTrue(data.contains("A_DONE"), "should contain A_DONE: " + data);
+        assertTrue(data.contains("B_DONE"), "should contain B_DONE: " + data);
     }
 
     @Test
@@ -375,31 +381,31 @@ public class FlowEngineTest {
         // Aviator expression: bVal + '_' + cVal
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"node_b\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"expression\":\"'B'\"} },\n" +
                 "    { \"id\": \"node_c\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"expression\":\"'C'\"} },\n" +
                 "    { \"id\": \"node_z\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": {\n" +
                 "        \"inputs\": { \n" +
-                "          \"bVal\": {\"extractPath\": \"$.node_b.result\"},\n" +
-                "          \"cVal\": {\"extractPath\": \"$.node_c.result\"}\n" +
+                "          \"bVal\": {\"extractPath\": \"$.node_b.out\"},\n" +
+                "          \"cVal\": {\"extractPath\": \"$.node_c.out\"}\n" +
                 "        },\n" +
                 "        \"expression\": \"bVal + '_' + cVal\"\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\":\"${node_z.result}\"} }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\":\"${node_z.out}\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_c\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_c\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_c\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_z\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertEquals("B_C", result.getData());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertEquals("B_C", resultData(result));
     }
 
     @Test
@@ -408,25 +414,25 @@ public class FlowEngineTest {
         // D = b * 2, Z = d + c
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"node_b\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"expression\":\"2\"} },\n" +
                 "    { \"id\": \"node_c\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"expression\":\"3\"} },\n" +
                 "    { \"id\": \"node_d\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \n" +
-                "      \"data\": { \"inputs\":{\"b\":{\"extractPath\":\"$.node_b.result\"}}, \"expression\":\"b * 2\" } },\n" +
+                "      \"data\": { \"inputs\":{\"b\":{\"extractPath\":\"$.node_b.out\"}}, \"expression\":\"b * 2\" } },\n" +
                 "    { \"id\": \"node_z\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": {\n" +
                 "        \"inputs\": { \n" +
-                "          \"dVal\": {\"extractPath\": \"$.node_d.result\"},\n" +
-                "          \"cVal\": {\"extractPath\": \"$.node_c.result\"}\n" +
+                "          \"dVal\": {\"extractPath\": \"$.node_d.out\"},\n" +
+                "          \"cVal\": {\"extractPath\": \"$.node_c.out\"}\n" +
                 "        },\n" +
                 "        \"expression\": \"dVal + cVal\"\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\":\"${node_z.result}\"} }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\":\"${node_z.out}\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_c\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_c\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_d\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_d\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_c\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
@@ -434,8 +440,8 @@ public class FlowEngineTest {
                 "  ]\n" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertEquals(7L, result.getData()); // 3 + 4 = 7 (Aviator returns Long)
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertEquals(7L, resultData(result)); // 3 + 4 = 7 (Aviator returns Long)
     }
 
     @Test
@@ -443,23 +449,23 @@ public class FlowEngineTest {
     void testJoinWaitsForAncestorAndDownstreamParent() throws JsonProcessingException {
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"node_b\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"language\":\"JavaScript\", \"expression\":\"'B'\"} },\n" +
                 "    { \"id\": \"node_c\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \"data\": {\"language\":\"JavaScript\", \"expression\":\"'C'\"} },\n" +
                 "    { \"id\": \"node_z\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": {\n" +
                 "        \"language\":\"JavaScript\",\n" +
                 "        \"inputs\": { \n" +
-                "          \"bVal\": {\"extractPath\": \"$.node_b.result\"},\n" +
-                "          \"cVal\": {\"extractPath\": \"$.node_c.result\"}\n" +
+                "          \"bVal\": {\"extractPath\": \"$.node_b.out\"},\n" +
+                "          \"cVal\": {\"extractPath\": \"$.node_c.out\"}\n" +
                 "        },\n" +
                 "        \"expression\": \"cVal == null ? 'EARLY_' + bVal : bVal + '_' + cVal\"\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\":\"${node_z.result}\"} }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\":\"${node_z.out}\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_c\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_b\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_c\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_z\", \"port\": \"in\"} },\n" +
@@ -467,9 +473,9 @@ public class FlowEngineTest {
                 "  ]\n" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertTrue(result.isSuccess(), result.getMessage());
-        assertEquals("B_C", result.getData());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertTrue(resultSuccess(result), resultMessage(result));
+        assertEquals("B_C", resultData(result));
     }
 // -----------------------------------------------------------------------
     // 以下为新增的 SpEL 专用测试用例
@@ -483,30 +489,28 @@ public class FlowEngineTest {
         // SpEL 变量使用 # 前缀
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"node_spel\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \n" +
                 "      \"data\": { \n" +
                 "        \"language\": \"spel\", \n" +
-                "        \"inputs\": { \"val1\": {\"extractPath\": \"$.start.args.v1\"}, \"val2\": {\"extractPath\": \"$.start.args.v2\"} },\n" +
+                "        \"inputs\": { \"val1\": {\"extractPath\": \"$.start.params.v1\"}, \"val2\": {\"extractPath\": \"$.start.params.v2\"} },\n" +
                 "        \"expression\": \"#Math.max(#val1, #val2)\" \n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"responseBody\": \"${node_spel.result}\" } }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
+                "      \"data\": { \"body\": \"${node_spel.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"node_spel\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_spel\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"node_spel\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("v1", 10);
-        args.put("v2", 99);
+        Map<String, Object> args = paramsArgs("v1", 10, "v2", 99);
 
-        ExecutionResult result = engine.execute(flowJson, args);
+        Object result = engine.execute(flowJson, args);
         // SpEL 计算结果应为 99.0 (MathHelper 返回 double)
-        assertEquals(99.0, result.getData());
+        assertEquals(99.0, resultData(result));
     }
 
     @Test
@@ -515,12 +519,12 @@ public class FlowEngineTest {
         // 场景：Node A 用 Aviator 计算，Node B 用 SpEL 判断
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"calc_aviator\", \"type\": \"evaluate\", \n" +
                 "      \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": { \n" +
                 "        \"language\": \"aviator\", \n" + // 显式声明 Aviator
-                "        \"inputs\": { \"a\": {\"extractPath\": \"$.start.args.price\"} },\n" +
+                "        \"inputs\": { \"a\": {\"extractPath\": \"$.start.params.price\"} },\n" +
                 "        \"expression\": \"a * 0.8\" \n" + // 打8折
                 "      }\n" +
                 "    },\n" +
@@ -528,30 +532,26 @@ public class FlowEngineTest {
                 "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"true\"}, {\"id\":\"false\"}],\n" +
                 "      \"data\": { \n" +
                 "        \"language\": \"spel\", \n" + // 显式声明 SpEL
-                "        \"inputs\": { \"discountPrice\": {\"extractPath\": \"$.calc_aviator.result\"} },\n" +
+                "        \"inputs\": { \"discountPrice\": {\"extractPath\": \"$.calc_aviator.out\"} },\n" +
                 "        \"condition\": \"#discountPrice < 100.0\" \n" + // SpEL 语法
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end_cheap\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"CHEAP\"} },\n" +
-                "    { \"id\": \"end_expensive\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"EXPENSIVE\"} }\n" +
+                "    { \"id\": \"end_cheap\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"CHEAP\"} },\n" +
+                "    { \"id\": \"end_expensive\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"EXPENSIVE\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"calc_aviator\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc_aviator\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"calc_aviator\", \"port\": \"out\"}, \"target\": {\"cell\": \"check_spel\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"check_spel\", \"port\": \"true\"}, \"target\": {\"cell\": \"end_cheap\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"check_spel\", \"port\": \"false\"}, \"target\": {\"cell\": \"end_expensive\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-
         // Case 1: 100 * 0.8 = 80 (<100) -> CHEAP
-        args.put("price", 100);
-        assertEquals("CHEAP", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        assertEquals("CHEAP", ((ExecutionResult) engine.execute(flowJson, paramsArgs("price", 100))).getData());
 
         // Case 2: 200 * 0.8 = 160 (>100) -> EXPENSIVE
-        args.put("price", 200);
-        assertEquals("EXPENSIVE", ((ExecutionResult) engine.execute(flowJson, args)).getData());
+        assertEquals("EXPENSIVE", ((ExecutionResult) engine.execute(flowJson, paramsArgs("price", 200))).getData());
     }
 
     // =================================================================
@@ -563,21 +563,21 @@ public class FlowEngineTest {
     void testSpELSecurityBlockRuntimeExec() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"hack\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"expression\": \"T(java.lang.Runtime).getRuntime().exec('cmd')\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"hacked\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"hacked\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"hack\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "安全检查应阻止 Runtime.exec() 调用");
-        assertTrue(result.getMessage().contains("安全限制") || result.getMessage().contains("T()"),
-                "错误消息应包含安全限制提示: " + result.getMessage());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "安全检查应阻止 Runtime.exec() 调用");
+        assertTrue(resultMessage(result).contains("安全限制") || resultMessage(result).contains("T()"),
+                "错误消息应包含安全限制提示: " + resultMessage(result));
     }
 
     @Test
@@ -585,21 +585,21 @@ public class FlowEngineTest {
     void testSpELSecurityBlockProcessBuilder() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"hack\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"expression\": \"new java.lang.ProcessBuilder('cmd').start()\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"hacked\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"hacked\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"hack\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "安全检查应阻止 ProcessBuilder 调用");
-        assertTrue(result.getMessage().contains("安全限制") || result.getMessage().contains("new"),
-                "错误消息应包含安全限制提示: " + result.getMessage());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "安全检查应阻止 ProcessBuilder 调用");
+        assertTrue(resultMessage(result).contains("安全限制") || resultMessage(result).contains("new"),
+                "错误消息应包含安全限制提示: " + resultMessage(result));
     }
 
     @Test
@@ -607,21 +607,21 @@ public class FlowEngineTest {
     void testSpELSecurityBlockClassForName() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"hack\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"expression\": \"T(java.lang.Class).forName('java.lang.Runtime').getMethod('getRuntime').invoke(null)\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"hacked\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"hacked\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"hack\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "安全检查应阻止 Class.forName() 调用");
-        assertTrue(result.getMessage().contains("安全限制") || result.getMessage().contains("T()"),
-                "错误消息应包含安全限制提示: " + result.getMessage());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "安全检查应阻止 Class.forName() 调用");
+        assertTrue(resultMessage(result).contains("安全限制") || resultMessage(result).contains("T()"),
+                "错误消息应包含安全限制提示: " + resultMessage(result));
     }
 
     @Test
@@ -630,25 +630,23 @@ public class FlowEngineTest {
         // 测试安全的 Math 函数: max, min, abs 通过 #Math 辅助对象调用
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
-                "      \"inputs\": { \"a\": {\"extractPath\": \"$.start.args.a\"}, \"b\": {\"extractPath\": \"$.start.args.b\"} }," +
+                "      \"inputs\": { \"a\": {\"extractPath\": \"$.start.params.a\"}, \"b\": {\"extractPath\": \"$.start.params.b\"} }," +
                 "      \"expression\": \"#Math.max(#a, #b)\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"${calc.result}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${calc.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("a", 10);
-        args.put("b", 25);
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "安全的 Math 函数应该成功执行: " + result.getMessage());
-        assertEquals(25.0, result.getData());
+        Map<String, Object> args = paramsArgs("a", 10, "b", 25);
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "安全的 Math 函数应该成功执行: " + resultMessage(result));
+        assertEquals(25.0, resultData(result));
     }
 
     @Test
@@ -656,24 +654,23 @@ public class FlowEngineTest {
     void testSpELSecurityAllowBasicOperations() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
-                "      \"inputs\": { \"x\": {\"extractPath\": \"$.start.args.x\"} }," +
+                "      \"inputs\": { \"x\": {\"extractPath\": \"$.start.params.x\"} }," +
                 "      \"expression\": \"#x * 2 + 10\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"${calc.result}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${calc.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("x", 5);
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "基本算术应该成功执行: " + result.getMessage());
-        assertEquals(20, result.getData());
+        Map<String, Object> args = paramsArgs("x", 5);
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "基本算术应该成功执行: " + resultMessage(result));
+        assertEquals(20, resultData(result));
     }
 
     @Test
@@ -681,21 +678,21 @@ public class FlowEngineTest {
     void testSpELSecurityBlockSystemProperties() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"hack\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"expression\": \"T(java.lang.System).getProperty('user.home')\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"${hack.result}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${hack.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"hack\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"hack\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "安全检查应阻止 System.getProperty() 调用");
-        assertTrue(result.getMessage().contains("安全限制") || result.getMessage().contains("System"),
-                "错误消息应包含安全限制提示: " + result.getMessage());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "安全检查应阻止 System.getProperty() 调用");
+        assertTrue(resultMessage(result).contains("安全限制") || resultMessage(result).contains("System"),
+                "错误消息应包含安全限制提示: " + resultMessage(result));
     }
 
     // =================================================================
@@ -707,31 +704,29 @@ public class FlowEngineTest {
     void testParamValidationRequired() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}], " +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}], " +
                 "    \"data\": { \"validations\": { \"username\": { \"required\": true, \"message\": \"用户名不能为空\" } } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"ok\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"ok\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
         // Case 1: 缺少 username -> 失败
-        ExecutionResult result1 = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result1.isSuccess(), "缺少必填参数应失败");
-        assertTrue(result1.getMessage().contains("用户名不能为空"), "错误消息应包含验证信息");
+        Object result1 = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result1), "缺少必填参数应失败");
+        assertTrue(resultMessage(result1).contains("用户名不能为空"), "错误消息应包含验证信息");
 
         // Case 2: username 为空字符串 -> 失败
-        Map<String, Object> args2 = new HashMap<>();
-        args2.put("username", "  ");
-        ExecutionResult result2 = engine.execute(flowJson, args2);
-        assertFalse(result2.isSuccess(), "空字符串参数应失败");
+        Map<String, Object> args2 = paramsArgs("username", "  ");
+        Object result2 = engine.execute(flowJson, args2);
+        assertFalse(resultSuccess(result2), "空字符串参数应失败");
 
         // Case 3: 提供 username -> 成功
-        Map<String, Object> args3 = new HashMap<>();
-        args3.put("username", "test_user");
-        ExecutionResult result3 = engine.execute(flowJson, args3);
-        assertTrue(result3.isSuccess(), "提供必填参数应成功");
+        Map<String, Object> args3 = paramsArgs("username", "test_user");
+        Object result3 = engine.execute(flowJson, args3);
+        assertTrue(resultSuccess(result3), "提供必填参数应成功");
     }
 
     @Test
@@ -739,39 +734,34 @@ public class FlowEngineTest {
     void testParamValidationPhoneAndEmail() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}], " +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}], " +
                 "    \"data\": { \"validations\": { " +
                 "      \"phone\": { \"type\": \"phone\", \"required\": true }, " +
                 "      \"email\": { \"type\": \"email\" } " +
                 "    } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"ok\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"ok\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
         // Case 1: 手机号格式错误
-        Map<String, Object> args1 = new HashMap<>();
-        args1.put("phone", "123456");
-        ExecutionResult result1 = engine.execute(flowJson, args1);
-        assertFalse(result1.isSuccess());
-        assertTrue(result1.getMessage().contains("手机号格式"), "错误消息应包含手机号错误提示");
+        Map<String, Object> args1 = paramsArgs("phone", "123456");
+        Object result1 = engine.execute(flowJson, args1);
+        assertFalse(resultSuccess(result1));
+        assertTrue(resultMessage(result1).contains("手机号格式"), "错误消息应包含手机号错误提示");
 
         // Case 2: 邮箱格式错误
-        Map<String, Object> args2 = new HashMap<>();
-        args2.put("phone", "13800138000");
-        args2.put("email", "invalid-email");
-        ExecutionResult result2 = engine.execute(flowJson, args2);
-        assertFalse(result2.isSuccess());
-        assertTrue(result2.getMessage().contains("邮箱格式"), "错误消息应包含邮箱错误提示");
+        Map<String, Object> args2 = paramsArgs("phone", "13800138000", "email", "invalid-email");
+        Object result2 = engine.execute(flowJson, args2);
+        assertFalse(resultSuccess(result2));
+        assertTrue(resultMessage(result2).contains("邮箱格式"), "错误消息应包含邮箱错误提示");
 
         // Case 3: 全部正确
-        Map<String, Object> args3 = new HashMap<>();
-        args3.put("phone", "13800138000");
-        args3.put("email", "test@example.com");
-        ExecutionResult result3 = engine.execute(flowJson, args3);
-        assertTrue(result3.isSuccess());
+        Map<String, Object> args3 = paramsArgs("phone", "13800138000", "email", "test@example.com");
+        Object result3 = engine.execute(flowJson, args3);
+        assertTrue(resultSuccess(result3));
     }
 
     @Test
@@ -779,39 +769,34 @@ public class FlowEngineTest {
     void testParamValidationRangeAndRegex() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}], " +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}], " +
                 "    \"data\": { \"validations\": { " +
                 "      \"age\": { \"type\": \"range\", \"min\": 18, \"max\": 60, \"message\": \"年龄必须在18-60之间\" }, " +
                 "      \"code\": { \"type\": \"regex\", \"pattern\": \"^[A-Z]{3}\\\\d{3}$\", \"message\": \"编码格式错误\" } " +
                 "    } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"ok\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"ok\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
         // Case 1: 年龄小于 18
-        Map<String, Object> args1 = new HashMap<>();
-        args1.put("age", 16);
-        ExecutionResult result1 = engine.execute(flowJson, args1);
-        assertFalse(result1.isSuccess());
-        assertTrue(result1.getMessage().contains("年龄必须在18-60之间"));
+        Map<String, Object> args1 = paramsArgs("age", 16);
+        Object result1 = engine.execute(flowJson, args1);
+        assertFalse(resultSuccess(result1));
+        assertTrue(resultMessage(result1).contains("年龄必须在18-60之间"));
 
         // Case 2: 编码格式错误
-        Map<String, Object> args2 = new HashMap<>();
-        args2.put("age", 25);
-        args2.put("code", "abc123"); // 小写字母不支持
-        ExecutionResult result2 = engine.execute(flowJson, args2);
-        assertFalse(result2.isSuccess());
-        assertTrue(result2.getMessage().contains("编码格式错误"));
+        Map<String, Object> args2 = paramsArgs("age", 25, "code", "abc123");
+        Object result2 = engine.execute(flowJson, args2);
+        assertFalse(resultSuccess(result2));
+        assertTrue(resultMessage(result2).contains("编码格式错误"));
 
         // Case 3: 全部正确
-        Map<String, Object> args3 = new HashMap<>();
-        args3.put("age", 30);
-        args3.put("code", "ABC123");
-        ExecutionResult result3 = engine.execute(flowJson, args3);
-        assertTrue(result3.isSuccess());
+        Map<String, Object> args3 = paramsArgs("age", 30, "code", "ABC123");
+        Object result3 = engine.execute(flowJson, args3);
+        assertTrue(resultSuccess(result3));
     }
 
     // =================================================================
@@ -824,8 +809,8 @@ public class FlowEngineTest {
         String flowJson = "{" +
                 "\"nodes\": [" +
                 "  { \"id\": \"req\", \"type\": \"request\", \"ports\": [{\"id\":\"headers\"},{\"id\":\"params\"},{\"id\":\"body\"}] }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"responseBody\": \"${req.body.username}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": {\"body\": \"${req.body.username}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"req\", \"port\": \"body\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
@@ -849,8 +834,8 @@ public class FlowEngineTest {
         body.put("email", "test@example.com");
         args.put("body", body);
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "Request 节点应成功执行");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "Request 节点应成功执行");
     }
 
     @Test
@@ -863,7 +848,7 @@ public class FlowEngineTest {
                 "      \"userId\": { \"required\": true, \"message\": \"用户ID必填\" }, " +
                 "      \"phone\": { \"type\": \"phone\", \"required\": true, \"message\": \"请输入正确的手机号\" } " +
                 "    } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"ok\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"ok\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"req\", \"port\": \"body\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
@@ -873,9 +858,9 @@ public class FlowEngineTest {
         // Case 1: 缺少必填参数
         Map<String, Object> args1 = new HashMap<>();
         args1.put("body", new HashMap<>());
-        ExecutionResult result1 = engine.execute(flowJson, args1);
-        assertFalse(result1.isSuccess(), "缺少必填参数应失败");
-        assertTrue(result1.getMessage().contains("用户ID必填"), "错误消息: " + result1.getMessage());
+        Object result1 = engine.execute(flowJson, args1);
+        assertFalse(resultSuccess(result1), "缺少必填参数应失败");
+        assertTrue(resultMessage(result1).contains("用户ID必填"), "错误消息: " + resultMessage(result1));
 
         // Case 2: 手机号格式错误
         Map<String, Object> args2 = new HashMap<>();
@@ -883,9 +868,9 @@ public class FlowEngineTest {
         body2.put("userId", "U001");
         body2.put("phone", "123abc");
         args2.put("body", body2);
-        ExecutionResult result2 = engine.execute(flowJson, args2);
-        assertFalse(result2.isSuccess(), "手机号格式错误应失败");
-        assertTrue(result2.getMessage().contains("手机号"), "错误消息: " + result2.getMessage());
+        Object result2 = engine.execute(flowJson, args2);
+        assertFalse(resultSuccess(result2), "手机号格式错误应失败");
+        assertTrue(resultMessage(result2).contains("手机号"), "错误消息: " + resultMessage(result2));
 
         // Case 3: 全部正确
         Map<String, Object> args3 = new HashMap<>();
@@ -893,8 +878,8 @@ public class FlowEngineTest {
         body3.put("userId", "U001");
         body3.put("phone", "13800138000");
         args3.put("body", body3);
-        ExecutionResult result3 = engine.execute(flowJson, args3);
-        assertTrue(result3.isSuccess(), "参数校验通过应成功");
+        Object result3 = engine.execute(flowJson, args3);
+        assertTrue(resultSuccess(result3), "参数校验通过应成功");
     }
 
     // =================================================================
@@ -906,22 +891,21 @@ public class FlowEngineTest {
     void testHttpRequestNode() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"http\", \"type\": \"httpRequest\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"url\": \"https://httpbin.org/get?name=${username}\", \"method\": \"GET\", \"timeout\": 10000 } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"responseBody\": \"${http.status}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": {\"body\": \"${http.status}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"http\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"http\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"http\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("username", "flowTest");
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "HttpRequest 应成功执行: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("username", "flowTest");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "HttpRequest 应成功执行: " + resultMessage(result));
     }
 
     // =================================================================
@@ -929,40 +913,36 @@ public class FlowEngineTest {
     // =================================================================
 
     @Test
-    @DisplayName("32、For节点 - 并发遍历数组并调用ServiceCall")
+    @DisplayName("32、For节点 - 并发遍历数组并用 evaluate 映射")
     void testForEachNode() throws JsonProcessingException {
-        // 流程: start -> for([1,2,3])
-        //   item端口 -> serviceCall(testService.log) -> collect
-        //   list端口 -> end
+        // 流程: request -> for(items)
+        //   item端口 -> evaluate(identity) -> collect
+        //   list端口 -> response(count)
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"loop\", \"type\": \"for\", \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}], " +
-                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.args.items\"} } } }," +
-                "  { \"id\": \"logStep\", \"type\": \"call\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
-                "    \"data\": { \"service\": \"testService\", \"method\": \"log\", " +
-                "      \"args\": [\"${loop.item}\"] } }," +
+                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.params.items\"} } } }," +
+                "  { \"id\": \"mapStep\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
+                "    \"data\": { \"expression\": \"item\", \"inputs\": { \"item\": \"$.loop.item\" } } }," +
                 "  { \"id\": \"collector\", \"type\": \"collect\", \"ports\": [{\"id\":\"item\"},{\"id\":\"list\"}], " +
-                "    \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.logStep.out\"} } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"responseBody\": \"${collector.count}\"} }" +
+                "    \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.mapStep.out\"} } } }," +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": {\"body\": \"${collector.count}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} }," +
-                "  { \"source\": {\"cell\": \"loop\", \"port\": \"item\"}, \"target\": {\"cell\": \"logStep\", \"port\": \"in\"} }," +
-                "  { \"source\": {\"cell\": \"logStep\", \"port\": \"out\"}, \"target\": {\"cell\": \"collector\", \"port\": \"item\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"loop\", \"port\": \"item\"}, \"target\": {\"cell\": \"mapStep\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"mapStep\", \"port\": \"out\"}, \"target\": {\"cell\": \"collector\", \"port\": \"item\"} }," +
                 "  { \"source\": {\"cell\": \"collector\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("items", Arrays.asList("apple", "banana", "cherry"));
+        Map<String, Object> args = paramsArgs("items", Arrays.asList("apple", "banana", "cherry"));
+        Object result = engine.execute(flowJson, args);
 
-        testService.logs.clear();
-        ExecutionResult result = engine.execute(flowJson, args);
-
-        assertTrue(result.isSuccess(), "For 应成功: " + result.getMessage());
-        assertEquals(3, testService.logs.size(), "Service 应被调用 3 次, 实际: " + testService.logs);
+        assertTrue(resultSuccess(result), "For 应成功: " + resultMessage(result));
+        assertEquals(3, Integer.parseInt(String.valueOf(resultData(result))), "应收集 3 个元素");
     }
 
     // =================================================================
@@ -974,26 +954,24 @@ public class FlowEngineTest {
     void testTemplateNode() throws JsonProcessingException {
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"tmpl\", \"type\": \"template\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"template\": \"User: {{name}}, Score: {{score}}\"," +
                 "      \"inputs\": { \"name\": \"${userName}\", \"score\": \"${userScore}\" }" +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"responseBody\": \"${tmpl.result}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": {\"body\": \"${tmpl.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"tmpl\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"tmpl\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"tmpl\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("userName", "Alice");
-        args.put("userScore", 98);
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "Template 应成功: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("userName", "Alice", "userScore", 98);
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "Template 应成功: " + resultMessage(result));
     }
 
     // =================================================================
@@ -1008,35 +986,34 @@ public class FlowEngineTest {
         //   list -> end (验证 collect.list = [10, 20, 30])
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"loop\", \"type\": \"for\", \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}], " +
-                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.args.numbers\"} } } }," +
+                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.params.numbers\"} } } }," +
                 "  { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"expression\": \"n * 10\"," +
                 "      \"inputs\": { \"n\": \"$['loop']['item']\" }" +
                 "    } }," +
                 "  { \"id\": \"collector\", \"type\": \"collect\", \"ports\": [{\"id\":\"item\"},{\"id\":\"list\"}], " +
-                "    \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.calc.result\"} } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"responseBody\": \"${collector.list}\"} }" +
+                "    \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.calc.out\"} } } }," +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": {\"body\": \"${collector.list}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"loop\", \"port\": \"item\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"collector\", \"port\": \"item\"} }," +
                 "  { \"source\": {\"cell\": \"collector\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("numbers", Arrays.asList(1, 2, 3));
-        ExecutionResult result = engine.execute(flowJson, args);
+        Map<String, Object> args = paramsArgs("numbers", Arrays.asList(1, 2, 3));
+        Object result = engine.execute(flowJson, args);
 
-        assertTrue(result.isSuccess(), "For+Collect 应成功: " + result.getMessage());
-        assertTrue(result.getData() != null && result.getData().toString().contains("10"));
-        assertTrue(result.getData().toString().contains("20"));
-        assertTrue(result.getData().toString().contains("30"));
+        assertTrue(resultSuccess(result), "For+Collect 应成功: " + resultMessage(result));
+        assertTrue(resultData(result) != null && resultData(result).toString().contains("10"));
+        assertTrue(resultData(result).toString().contains("20"));
+        assertTrue(resultData(result).toString().contains("30"));
     }
 
     // =================================================================
@@ -1050,35 +1027,33 @@ public class FlowEngineTest {
         // 流程: start(name="Jack",age=18) -> evaluate(age>=18) -> record -> end
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"expression\": \"age >= 18\", " +
-                "      \"inputs\": { \"age\": \"$['start']['args']['age']\" } } }," +
+                "      \"inputs\": { \"age\": \"$['start']['params']['age']\" } } }," +
                 "  { \"id\": \"rec\", \"type\": \"record\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"schema\": { " +
-                "      \"uName\": \"$['start']['args']['name']\", " +
-                "      \"isAdult\": \"${calc.result}\" " +
+                "      \"uName\": \"$['start']['params']['name']\", " +
+                "      \"isAdult\": \"${calc.out}\" " +
                 "    } } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"responseBody\": \"${rec.result}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": {\"body\": \"${rec.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"rec\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"rec\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("name", "Jack");
-        args.put("age", 18);
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "Record 应成功: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("name", "Jack", "age", 18);
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "Record 应成功: " + resultMessage(result));
 
         // 验证输出是构造好的 Map
-        assertNotNull(result.getData(), "应有输出数据");
-        assertTrue(result.getData() instanceof Map, "输出应为 Map");
-        Map<String, Object> outputMap = (Map<String, Object>) result.getData();
+        assertNotNull(resultData(result), "应有输出数据");
+        assertTrue(resultData(result) instanceof Map, "输出应为 Map");
+        Map<String, Object> outputMap = (Map<String, Object>) resultData(result);
         assertEquals("Jack", outputMap.get("uName"), "uName 应为 Jack");
         assertNotNull(outputMap.get("isAdult"), "isAdult 不应为 null");
     }
@@ -1093,7 +1068,7 @@ public class FlowEngineTest {
         // 流程: start -> response(status=404, headers, body)
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"resp\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
                 "    \"data\": { " +
                 "      \"status\": 404, " +
@@ -1102,7 +1077,7 @@ public class FlowEngineTest {
                 "    } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"resp\", \"port\": \"in\"} }" +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"resp\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
@@ -1134,33 +1109,32 @@ public class FlowEngineTest {
         // 重点验证：变量替换逻辑是否正常执行（不会报错说是无法解析）
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"http_req\", \"type\": \"httpRequest\", \n" +
                 "      \"ports\": [{\"id\":\"in\"}, {\"id\":\"success\"}, {\"id\":\"fail\"}],\n" +
                 "      \"data\": {\n" +
                 "        \"url\": \"http://localhost:54321/api/${uid}\",\n" +
                 "        \"method\": \"GET\",\n" +
-                "        \"inputs\": { \"uid\": {\"extractPath\": \"$.start.args.userId\"} },\n" +
+                "        \"inputs\": { \"uid\": {\"extractPath\": \"$.start.params.userId\"} },\n" +
                 "        \"params\": { \"type\": \"User\" },\n" +
                 "        \"timeout\": 1000\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end_success\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"responseBody\": \"SUCCESS\" } },\n" +
-                "    { \"id\": \"end_fail\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"responseBody\": \"FAIL\" } }\n" +
+                "    { \"id\": \"end_success\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"body\": \"SUCCESS\" } },\n" +
+                "    { \"id\": \"end_fail\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"body\": \"FAIL\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"http_req\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"http_req\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"http_req\", \"port\": \"success\"}, \"target\": {\"cell\": \"end_success\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"http_req\", \"port\": \"fail\"}, \"target\": {\"cell\": \"end_fail\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("userId", 123);
+        Map<String, Object> args = paramsArgs("userId", 123);
 
         // 预期因为连接不上而走 fail 分支，但不会抛出异常
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertEquals("FAIL", result.getData());
+        Object result = engine.execute(flowJson, args);
+        assertEquals("FAIL", resultData(result));
     }
 
     // =================================================================
@@ -1204,36 +1178,35 @@ public class FlowEngineTest {
             // 2. 构建流程
             String flowJson = "{\n" +
                     "  \"nodes\": [\n" +
-                    "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                    "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                     "    { \"id\": \"http_req\", \"type\": \"httpRequest\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"success\"}, {\"id\":\"fail\"}],\n" +
                     "      \"data\": { \n" +
                     "        \"method\": \"POST\", \n" +
                     "        \"url\": \"http://localhost:" + port + "/api/echo\",\n" +
                     "        \"timeout\": 2000,\n" +
-                    "        \"inputs\": { \"uid\": {\"extractPath\": \"$.start.args.userId\"} },\n" +
+                    "        \"inputs\": { \"uid\": {\"extractPath\": \"$.start.params.userId\"} },\n" +
                     "        \"params\": { \"q\": \"${uid}\" }, \n" + // 测试 Query Param
                     "        \"body\": \"data_${uid}\" \n" + // 测试 Body
                     "      }\n" +
                     "    },\n" +
-                    "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \n" +
-                    "      \"data\": { \"responseBody\": \"${http_req.body}\" } }\n" + // 获取解析后的 JSON Body
+                    "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
+                    "      \"data\": { \"body\": \"${http_req.body}\" } }\n" + // 获取解析后的 JSON Body
                     "  ],\n" +
                     "  \"edges\": [\n" +
-                    "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"http_req\", \"port\": \"in\"} },\n" +
+                    "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"http_req\", \"port\": \"in\"} },\n" +
                     "    { \"source\": {\"cell\": \"http_req\", \"port\": \"success\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                     "  ]\n" +
                     "}";
 
-            Map<String, Object> args = new HashMap<>();
-            args.put("userId", "999");
+            Map<String, Object> args = paramsArgs("userId", "999");
 
-            ExecutionResult result = engine.execute(flowJson, args);
+            Object result = engine.execute(flowJson, args);
 
             // 3. 验证
-            assertTrue(result.isSuccess(), "HTTP 流程应成功");
+            assertTrue(resultSuccess(result), "HTTP 流程应成功");
 
             // 验证结果是否为 Map (自动解析 JSON)
-            Object data = result.getData();
+            Object data = resultData(result);
             if (data instanceof Map) {
                 Map<?,?> map = (Map<?,?>) data;
                 assertEquals("POST", map.get("echoMethod"));
@@ -1259,31 +1232,29 @@ public class FlowEngineTest {
     void testTemplateNode2() throws JsonProcessingException {
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"tpl\", \"type\": \"template\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"out\"}],\n" +
                 "      \"data\": { \n" +
                 "        \"template\": \"Hello {{name}}, code is {{code}}\",\n" +
                 "        \"inputs\": { \n" +
-                "           \"name\": {\"extractPath\": \"$.start.args.user\"}, \n" +
-                "           \"code\": {\"extractPath\": \"$.start.args.id\"} \n" +
+                "           \"name\": {\"extractPath\": \"$.start.params.user\"}, \n" +
+                "           \"code\": {\"extractPath\": \"$.start.params.id\"} \n" +
                 "        }\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"responseBody\": \"${tpl.result}\" } }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
+                "      \"data\": { \"body\": \"${tpl.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"tpl\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"tpl\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"tpl\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("user", "Alice");
-        args.put("id", 123);
+        Map<String, Object> args = paramsArgs("user", "Alice", "id", 123);
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertEquals("Hello Alice, code is 123", result.getData());
+        Object result = engine.execute(flowJson, args);
+        assertEquals("Hello Alice, code is 123", resultData(result));
     }
 
     @Test
@@ -1292,31 +1263,29 @@ public class FlowEngineTest {
         // 构造一个 { "info": "Alice", "status": true } 对象
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"rec\", \"type\": \"record\", \"ports\": [{\"id\":\"in\"}, {\"id\":\"out\"}],\n" +
                 "      \"data\": { \n" +
                 "        \"schema\": { \n" +
-                "           \"info\": {\"extractPath\": \"$.start.args.name\"}, \n" +
-                "           \"status\": {\"extractPath\": \"$.start.args.active\"} \n" +
+                "           \"info\": {\"extractPath\": \"$.start.params.name\"}, \n" +
+                "           \"status\": {\"extractPath\": \"$.start.params.active\"} \n" +
                 "        }\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"responseBody\": \"${rec.result}\" } }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
+                "      \"data\": { \"body\": \"${rec.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"rec\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"rec\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"rec\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("name", "Alice");
-        args.put("active", true);
+        Map<String, Object> args = paramsArgs("name", "Alice", "active", true);
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.getData() instanceof Map);
-        Map<?,?> map = (Map<?,?>) result.getData();
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultData(result) instanceof Map);
+        Map<?,?> map = (Map<?,?>) resultData(result);
         assertEquals("Alice", map.get("info"));
         assertEquals(true, map.get("status"));
     }
@@ -1327,33 +1296,32 @@ public class FlowEngineTest {
         // Start([1,2]) -> Loop -> Evaluate(*10) -> Collect -> End(List)
         String flowJson = "{\n" +
                 "  \"nodes\": [\n" +
-                "    { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },\n" +
+                "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"loop\", \"type\": \"for\", \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],\n" +
-                "      \"data\": { \"collectStepId\": \"coll\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.args.list\"} } } },\n" +
+                "      \"data\": { \"collectStepId\": \"coll\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.params.list\"} } } },\n" +
                 "    { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": { \"expression\": \"item * 10\", \"inputs\": {\"item\": \"$.loop.item\"} } },\n" +
                 "    { \"id\": \"coll\", \"type\": \"collect\", \"ports\": [{\"id\":\"item\"},{\"id\":\"list\"}],\n" +
-                "      \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.calc.result\"} } } },\n" +
-                "    { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}],\n" +
-                "      \"data\": { \"responseBody\": \"${coll.list}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.calc.out\"} } } },\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}],\n" +
+                "      \"data\": { \"body\": \"${coll.list}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
-                "    { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} },\n" +
+                "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"loop\", \"port\": \"item\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },\n" +
                 "    { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"coll\", \"port\": \"item\"} },\n" +
                 "    { \"source\": {\"cell\": \"coll\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
                 "  ]\n" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("list", Arrays.asList(1, 2));
+        Map<String, Object> args = paramsArgs("list", Arrays.asList(1, 2));
 
-        ExecutionResult result = engine.execute(flowJson, args);
+        Object result = engine.execute(flowJson, args);
 
-        assertTrue(result.isSuccess());
+        assertTrue(resultSuccess(result));
         // 验证结果为 [10, 20]
-        assertTrue(result.getData() instanceof List);
-        List<?> list = (List<?>) result.getData();
+        assertTrue(resultData(result) instanceof List);
+        List<?> list = (List<?>) resultData(result);
         assertEquals(2, list.size());
         // ForStep executor uses threadpool, so order is not strictly guaranteed right now!
         // but we'll check contains or sort it to assert correctly.
@@ -1386,34 +1354,33 @@ public class FlowEngineTest {
 
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"db_node\", \"type\": \"database\", \"ports\": [{\"id\":\"out\"},{\"id\":\"in\"}], " +
                 "    \"data\": { " +
                 "      \"datasourceId\": \"ds1\", " +
                 "      \"sqlType\": \"SELECT\", " +
                 "      \"returnType\": \"LIST\", " +
                 "      \"sql\": \"SELECT * FROM users WHERE age > ${age}\", " +
-                "      \"inputs\": { \"age\": {\"extractPath\": \"$.start.args.minAge\"} } " +
+                "      \"inputs\": { \"age\": {\"extractPath\": \"$.start.params.minAge\"} } " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"${db_node.result[0].name}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${db_node.out[0].name}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"db_node\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"db_node\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"db_node\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("minAge", 18);
+        Map<String, Object> args = paramsArgs("minAge", 18);
 
-        ExecutionResult result = engine.execute(flowJson, args);
+        Object result = engine.execute(flowJson, args);
 
         // 验证调用
         verify(sqlService, times(1)).executeListQuery(eq("ds1"), any(SqlAndParams.class), any(Pageable.class));
 
         // 验证结果
-        assertTrue(result.isSuccess());
-        assertEquals("Alice", result.getData());
+        assertTrue(resultSuccess(result));
+        assertEquals("Alice", resultData(result));
     }
 
     @Test
@@ -1428,32 +1395,31 @@ public class FlowEngineTest {
 
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"db_update\", \"type\": \"database\", \"ports\": [{\"id\":\"out\"},{\"id\":\"in\"}], " +
                 "    \"data\": { " +
                 "      \"datasourceId\": \"ds1\", " +
                 "      \"sqlType\": \"UPDATE\", " +
                 "      \"sql\": \"UPDATE users SET status = 1 WHERE id IN (${ids})\", " +
-                "      \"inputs\": { \"ids\": {\"extractPath\": \"$.start.args.list\"} } " +
+                "      \"inputs\": { \"ids\": {\"extractPath\": \"$.start.params.list\"} } " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"${db_update.result}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${db_update.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"db_update\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"db_update\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"db_update\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("list", Arrays.asList(1, 2, 3));
+        Map<String, Object> args = paramsArgs("list", Arrays.asList(1, 2, 3));
 
-        ExecutionResult result = engine.execute(flowJson, args);
+        Object result = engine.execute(flowJson, args);
 
         // 验证调用
         verify(sqlService, times(1)).executeUpdate(eq("ds1"), any(SqlAndParams.class));
 
         // 验证结果
-        assertEquals(5, result.getData());
+        assertEquals(5, resultData(result));
     }
 
     // =================================================================
@@ -1538,13 +1504,13 @@ public class FlowEngineTest {
     void testResponseWithComplexETL() throws Exception {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"resp\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], "
                 + "    \"data\": { "
                 + "      \"inputs\": { "
-                + "        \"userName\": { \"extractPath\": \"$.start.args.user.name\" },"
-                + "        \"userAge\": \"$.start.args.user.age\","
-                + "        \"statusCode\": \"$.start.args.status\""
+                + "        \"userName\": { \"extractPath\": \"$.start.params.user.name\" },"
+                + "        \"userAge\": \"$.start.params.user.age\","
+                + "        \"statusCode\": \"$.start.params.status\""
                 + "      },"
                 + "      \"status\": \"${statusCode}\", "
                 + "      \"headers\": { \"X-User-Name\": \"${userName}\", \"Content-Type\": \"application/json\" }, "
@@ -1552,16 +1518,14 @@ public class FlowEngineTest {
                 + "    } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"resp\", \"port\": \"in\"} }"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"resp\", \"port\": \"in\"} }"
                 + "]"
                 + "}";
 
-        Map<String, Object> args = new HashMap<>();
         Map<String, Object> user = new HashMap<>();
         user.put("name", "Bob");
         user.put("age", 25);
-        args.put("user", user);
-        args.put("status", 201);
+        Map<String, Object> args = paramsArgs("user", user, "status", 201);
 
         org.springframework.http.ResponseEntity<?> result = engine.execute(flowJson, args);
 
@@ -1664,12 +1628,12 @@ public class FlowEngineTest {
     void testForStepWithCollect() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"scatter\", \"type\": \"for\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],"
                 + "    \"data\": {"
                 + "      \"collectStepId\": \"gather\","
-                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.args.numbers\" } }"
+                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.params.numbers\" } }"
                 + "    } },"
                 + "  { \"id\": \"calc\", \"type\": \"evaluate\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],"
@@ -1680,28 +1644,27 @@ public class FlowEngineTest {
                 + "  { \"id\": \"gather\", \"type\": \"collect\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"list\"},{\"id\":\"finish\"}],"
                 + "    \"data\": {"
-                + "      \"inputs\": { \"val\": { \"extractPath\": \"$.calc.result\" } }"
+                + "      \"inputs\": { \"val\": { \"extractPath\": \"$.calc.out\" } }"
                 + "    } },"
-                + "  { \"id\": \"end\", \"type\": \"end\","
+                + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"responseBody\": \"${gather.list}\" } }"
+                + "    \"data\": { \"body\": \"${gather.list}\" } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"scatter\", \"port\": \"item\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"gather\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"gather\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }"
                 + "]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("numbers", Arrays.asList(1, 2, 3));
+        Map<String, Object> args = paramsArgs("numbers", Arrays.asList(1, 2, 3));
 
-        ExecutionResult result = engine.execute(flowJson, args);
+        Object result = engine.execute(flowJson, args);
 
-        assertTrue(result.isSuccess(), "ForStep+CollectStep 应成功: " + result.getMessage());
-        assertNotNull(result.getData(), "应有结果数据");
-        assertTrue(result.getData() instanceof List, "结果应为 List，实际: " + result.getData());
-        List<?> resultList = (List<?>) result.getData();
+        assertTrue(resultSuccess(result), "ForStep+CollectStep 应成功: " + resultMessage(result));
+        assertNotNull(resultData(result), "应有结果数据");
+        assertTrue(resultData(result) instanceof List, "结果应为 List，实际: " + resultData(result));
+        List<?> resultList = (List<?>) resultData(result);
         assertEquals(3, resultList.size(), "应收集 3 个元素: " + resultList);
 
         Set<Long> expected = new HashSet<>(Arrays.asList(10L, 20L, 30L));
@@ -1717,12 +1680,12 @@ public class FlowEngineTest {
     void testForStepWithEmptyArray() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"scatter\", \"type\": \"for\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],"
                 + "    \"data\": {"
                 + "      \"collectStepId\": \"gather\","
-                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.args.emptyList\" } }"
+                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.params.emptyList\" } }"
                 + "    } },"
                 + "  { \"id\": \"calc\", \"type\": \"evaluate\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],"
@@ -1730,23 +1693,22 @@ public class FlowEngineTest {
                 + "  { \"id\": \"gather\", \"type\": \"collect\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"list\"},{\"id\":\"finish\"}],"
                 + "    \"data\": {} },"
-                + "  { \"id\": \"end\", \"type\": \"end\","
+                + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"responseBody\": \"${gather.count}\" } }"
+                + "    \"data\": { \"body\": \"${gather.count}\" } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"scatter\", \"port\": \"item\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"gather\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"gather\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }"
                 + "]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("emptyList", Collections.emptyList());
+        Map<String, Object> args = paramsArgs("emptyList", Collections.emptyList());
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "空数组旁路应成功（不死锁）: " + result.getMessage());
-        assertEquals(0, Integer.parseInt(String.valueOf(result.getData())),
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "空数组旁路应成功（不死锁）: " + resultMessage(result));
+        assertEquals(0, Integer.parseInt(String.valueOf(resultData(result))),
                 "空数组场景下 gather.count 应为 0");
     }
 
@@ -1755,27 +1717,27 @@ public class FlowEngineTest {
     void testForStepWithNullArray() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"scatter\", \"type\": \"for\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],"
                 + "    \"data\": {"
                 + "      \"collectStepId\": \"gather\","
-                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.args.nullList\" } }"
+                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.params.nullList\" } }"
                 + "    } },"
                 + "  { \"id\": \"gather\", \"type\": \"collect\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"list\"},{\"id\":\"finish\"}],"
                 + "    \"data\": {} },"
-                + "  { \"id\": \"end\", \"type\": \"end\","
+                + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"responseBody\": \"${gather.count}\" } }"
+                + "    \"data\": { \"body\": \"${gather.count}\" } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"gather\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }"
                 + "]}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertTrue(result.isSuccess(), "null 数组旁路应成功（不死锁）: " + result.getMessage());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertTrue(resultSuccess(result), "null 数组旁路应成功（不死锁）: " + resultMessage(result));
     }
 
     @Test
@@ -1784,37 +1746,36 @@ public class FlowEngineTest {
     void testForStepSingleElement() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"scatter\", \"type\": \"for\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],"
                 + "    \"data\": {"
                 + "      \"collectStepId\": \"gather\","
-                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.args.singleItem\" } }"
+                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.params.singleItem\" } }"
                 + "    } },"
                 + "  { \"id\": \"calc\", \"type\": \"evaluate\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],"
                 + "    \"data\": { \"expression\": \"'processed_' + x\", \"inputs\": { \"x\": \"$.scatter.item\" } } },"
                 + "  { \"id\": \"gather\", \"type\": \"collect\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"list\"},{\"id\":\"finish\"}],"
-                + "    \"data\": { \"inputs\": { \"val\": { \"extractPath\": \"$.calc.result\" } } } },"
-                + "  { \"id\": \"end\", \"type\": \"end\","
+                + "    \"data\": { \"inputs\": { \"val\": { \"extractPath\": \"$.calc.out\" } } } },"
+                + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"responseBody\": \"${gather.list}\" } }"
+                + "    \"data\": { \"body\": \"${gather.list}\" } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"scatter\", \"port\": \"item\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"gather\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"gather\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }"
                 + "]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("singleItem", Collections.singletonList("hello"));
+        Map<String, Object> args = paramsArgs("singleItem", Collections.singletonList("hello"));
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "单元素 ForStep 应成功: " + result.getMessage());
-        assertTrue(result.getData() instanceof List, "结果应为 List");
-        assertEquals(1, ((List<?>) result.getData()).size(), "单元素数组应收集 1 个结果");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "单元素 ForStep 应成功: " + resultMessage(result));
+        assertTrue(resultData(result) instanceof List, "结果应为 List");
+        assertEquals(1, ((List<?>) resultData(result)).size(), "单元素数组应收集 1 个结果");
     }
 
     @Test
@@ -1822,12 +1783,12 @@ public class FlowEngineTest {
     void testForStepFinishPortTrigger() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"scatter\", \"type\": \"for\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],"
                 + "    \"data\": {"
                 + "      \"collectStepId\": \"gather\","
-                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.args.data\" } }"
+                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.params.data\" } }"
                 + "    } },"
                 + "  { \"id\": \"process\", \"type\": \"evaluate\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],"
@@ -1835,23 +1796,22 @@ public class FlowEngineTest {
                 + "  { \"id\": \"gather\", \"type\": \"collect\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"list\"},{\"id\":\"finish\"}],"
                 + "    \"data\": {} },"
-                + "  { \"id\": \"end\", \"type\": \"end\","
+                + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"responseBody\": \"collect_done\" } }"
+                + "    \"data\": { \"body\": \"collect_done\" } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"scatter\", \"port\": \"item\"}, \"target\": {\"cell\": \"process\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"process\", \"port\": \"out\"}, \"target\": {\"cell\": \"gather\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"gather\", \"port\": \"finish\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }"
                 + "]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("data", Arrays.asList(10, 20));
+        Map<String, Object> args = paramsArgs("data", Arrays.asList(10, 20));
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "finish 端口控制流应成功: " + result.getMessage());
-        assertEquals("collect_done", result.getData(), "应触发 finish 端口到 end 节点");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "finish 端口控制流应成功: " + resultMessage(result));
+        assertEquals("collect_done", resultData(result), "应触发 finish 端口到 end 节点");
     }
 
     @Test
@@ -1860,36 +1820,35 @@ public class FlowEngineTest {
     void testForStepFullPipeline() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\": ["
-                + "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] },"
+                + "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },"
                 + "  { \"id\": \"scatter\", \"type\": \"for\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],"
                 + "    \"data\": {"
                 + "      \"collectStepId\": \"gather\","
-                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.args.nums\" } }"
+                + "      \"inputs\": { \"list\": { \"extractPath\": \"$.start.params.nums\" } }"
                 + "    } },"
                 + "  { \"id\": \"double\", \"type\": \"evaluate\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],"
                 + "    \"data\": { \"expression\": \"x * 2\", \"inputs\": { \"x\": \"$.scatter.item\" } } },"
                 + "  { \"id\": \"gather\", \"type\": \"collect\","
                 + "    \"ports\": [{\"id\":\"in\"},{\"id\":\"list\"},{\"id\":\"finish\"}],"
-                + "    \"data\": { \"inputs\": { \"val\": { \"extractPath\": \"$.double.result\" } } } },"
-                + "  { \"id\": \"end\", \"type\": \"end\","
+                + "    \"data\": { \"inputs\": { \"val\": { \"extractPath\": \"$.double.out\" } } } },"
+                + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"responseBody\": \"${gather.count}\" } }"
+                + "    \"data\": { \"body\": \"${gather.count}\" } }"
                 + "],"
                 + "\"edges\": ["
-                + "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
+                + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"scatter\", \"port\": \"item\"}, \"target\": {\"cell\": \"double\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"double\", \"port\": \"out\"}, \"target\": {\"cell\": \"gather\", \"port\": \"in\"} },"
                 + "  { \"source\": {\"cell\": \"gather\", \"port\": \"list\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }"
                 + "]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("nums", Arrays.asList(1, 2, 3, 4, 5));
+        Map<String, Object> args = paramsArgs("nums", Arrays.asList(1, 2, 3, 4, 5));
 
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "完整管道应成功: " + result.getMessage());
-        assertEquals(5, Integer.parseInt(result.getData().toString()), "完整管道应收集 5 个结果");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "完整管道应成功: " + resultMessage(result));
+        assertEquals(5, Integer.parseInt(resultData(result).toString()), "完整管道应收集 5 个结果");
     }
 
     // =================================================================
@@ -1902,29 +1861,27 @@ public class FlowEngineTest {
         // 场景：使用 JS 进行简单的数学计算
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
-                "      \"inputs\": { \"a\": {\"extractPath\": \"$.start.args.a\"}, \"b\": {\"extractPath\": \"$.start.args.b\"} }," +
+                "      \"inputs\": { \"a\": {\"extractPath\": \"$.start.params.a\"}, \"b\": {\"extractPath\": \"$.start.params.b\"} }," +
                 "      \"expression\": \"a * b + 10\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"responseBody\": \"${js_calc.result}\" } }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": { \"body\": \"${js_calc.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_calc\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_calc\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("a", 5);
-        args.put("b", 3);
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "JS 基本计算应成功: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("a", 5, "b", 3);
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "JS 基本计算应成功: " + resultMessage(result));
         // 5 * 3 + 10 = 25
-        assertEquals(25L, result.getData());
+        assertEquals(25L, resultData(result));
     }
 
     @Test
@@ -1934,29 +1891,28 @@ public class FlowEngineTest {
         // 场景：使用 JS 过滤和映射数组 - JS 最擅长的场景
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_filter\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
-                "      \"inputs\": { \"items\": {\"extractPath\": \"$.start.args.items\"} }," +
+                "      \"inputs\": { \"items\": {\"extractPath\": \"$.start.params.items\"} }," +
                 "      \"expression\": \"items.filter(x => x > 50).map(x => x * 2)\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"responseBody\": \"${js_filter.result}\" } }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": { \"body\": \"${js_filter.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_filter\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_filter\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_filter\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("items", Arrays.asList(10, 60, 30, 80, 100));
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "JS 数组操作应成功: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("items", Arrays.asList(10, 60, 30, 80, 100));
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "JS 数组操作应成功: " + resultMessage(result));
 
         // filter(>50): [60, 80, 100] -> map(*2): [120, 160, 200]
-        Object data = result.getData();
+        Object data = resultData(result);
         assertTrue(data instanceof List, "结果应为 List 类型");
         List<Object> list = (List<Object>) data;
         assertEquals(3, list.size(), "过滤后应有 3 个元素");
@@ -1969,29 +1925,27 @@ public class FlowEngineTest {
         // 场景：接收一个对象，进行字段组装和变换
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_transform\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
-                "      \"inputs\": { \"name\": {\"extractPath\": \"$.start.args.name\"}, \"age\": {\"extractPath\": \"$.start.args.age\"} }," +
+                "      \"inputs\": { \"name\": {\"extractPath\": \"$.start.params.name\"}, \"age\": {\"extractPath\": \"$.start.params.age\"} }," +
                 "      \"expression\": \"({fullName: 'User: ' + name, isAdult: age >= 18, doubleAge: age * 2})\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"responseBody\": \"${js_transform.result}\" } }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": { \"body\": \"${js_transform.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_transform\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_transform\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_transform\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("name", "Alice");
-        args.put("age", 25);
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "JS 对象变换应成功: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("name", "Alice", "age", 25);
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "JS 对象变换应成功: " + resultMessage(result));
 
-        Object data = result.getData();
+        Object data = resultData(result);
         assertTrue(data instanceof Map, "结果应为 Map 类型");
         Map<String, Object> map = (Map<String, Object>) data;
         assertEquals("User: Alice", map.get("fullName"));
@@ -2005,28 +1959,26 @@ public class FlowEngineTest {
         // 场景：使用 ES6 模板字符串 (GraalJS 21.3 完整支持)
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_str\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
-                "      \"inputs\": { \"greeting\": {\"extractPath\": \"$.start.args.greeting\"}, \"user\": {\"extractPath\": \"$.start.args.user\"} }," +
+                "      \"inputs\": { \"greeting\": {\"extractPath\": \"$.start.params.greeting\"}, \"user\": {\"extractPath\": \"$.start.params.user\"} }," +
                 "      \"expression\": \"`${greeting}, ${user}!`\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"responseBody\": \"${js_str.result}\" } }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": { \"body\": \"${js_str.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_str\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_str\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_str\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("greeting", "Hello");
-        args.put("user", "World");
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "JS ES6 模板字符串应成功: " + result.getMessage());
-        assertEquals("Hello, World!", result.getData());
+        Map<String, Object> args = paramsArgs("greeting", "Hello", "user", "World");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "JS ES6 模板字符串应成功: " + resultMessage(result));
+        assertEquals("Hello, World!", resultData(result));
     }
 
     @Test
@@ -2035,22 +1987,22 @@ public class FlowEngineTest {
         // 场景：尝试通过 JS 访问 Java 类（应被沙箱阻止）
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_hack\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
                 "      \"expression\": \"Java.type('java.lang.Runtime').getRuntime().exec('cmd')\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"hacked\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"hacked\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_hack\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_hack\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_hack\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "安全检查应阻止 JS 访问 Java 类");
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "安全检查应阻止 JS 访问 Java 类");
     }
 
     @Test
@@ -2059,22 +2011,22 @@ public class FlowEngineTest {
         // 场景：JS 脚本有语法错误，应返回友好的错误消息
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_bad\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
                 "      \"expression\": \"function( { broken syntax\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"responseBody\": \"ok\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"ok\"} }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_bad\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_bad\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_bad\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "JS 语法错误应导致执行失败");
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "JS 语法错误应导致执行失败");
     }
 
     // =================================================================
@@ -2089,11 +2041,11 @@ public class FlowEngineTest {
         // js_step2 的 inputs 使用 "$" 简写，FlowParser 的 autoFillExtractPath 应自动补全
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"js_step1\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"language\": \"js\", " +
-                "      \"inputs\": { \"items\": {\"extractPath\": \"$.start.args.items\"} }," +
+                "      \"inputs\": { \"items\": {\"extractPath\": \"$.start.params.items\"} }," +
                 "      \"expression\": \"items.filter(x => x > 50)\" " +
                 "    } }," +
                 "  { \"id\": \"js_step2\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
@@ -2102,23 +2054,22 @@ public class FlowEngineTest {
                 "      \"inputs\": { \"arr\": {\"extractPath\": \"$\"} }," +
                 "      \"expression\": \"arr.map(x => x * 10)\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"responseBody\": \"${js_step2.result}\" } }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": { \"body\": \"${js_step2.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_step1\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_step1\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_step1\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_step2\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_step2\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("items", Arrays.asList(10, 60, 30, 80, 100));
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "JS $ 简写应成功: " + result.getMessage());
+        Map<String, Object> args = paramsArgs("items", Arrays.asList(10, 60, 30, 80, 100));
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "JS $ 简写应成功: " + resultMessage(result));
 
         // filter(>50): [60, 80, 100] -> map(*10): [600, 800, 1000]
-        Object data = result.getData();
+        Object data = resultData(result);
         assertTrue(data instanceof List, "结果应为 List 类型");
         List<Object> list = (List<Object>) data;
         assertEquals(3, list.size(), "应有 3 个元素");
@@ -2134,7 +2085,7 @@ public class FlowEngineTest {
         // 流程: start -> evaluate(返回对象 {result: ...}) -> js_step(用 $.result 提取子字段)
         String flowJson = "{" +
                 "\"nodes\": [" +
-                "  { \"id\": \"start\", \"type\": \"start\", \"ports\": [{\"id\":\"out\"}] }," +
+                "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"language\": \"js\", \"expression\": \"({ result: 10 + 20 })\" } }," +
                 "  { \"id\": \"js_step\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
@@ -2143,20 +2094,20 @@ public class FlowEngineTest {
                 "      \"inputs\": { \"val\": {\"extractPath\": \"$.result\"} }," +
                 "      \"expression\": \"val * 3\" " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"end\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"responseBody\": \"${js_step.result}\" } }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
+                "    \"data\": { \"body\": \"${js_step.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
-                "  { \"source\": {\"cell\": \"start\", \"port\": \"out\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
+                "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"calc\", \"port\": \"out\"}, \"target\": {\"cell\": \"js_step\", \"port\": \"in\"} }," +
                 "  { \"source\": {\"cell\": \"js_step\", \"port\": \"out\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }" +
                 "]" +
                 "}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertTrue(result.isSuccess(), "JS $.result 简写应成功: " + result.getMessage());
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertTrue(resultSuccess(result), "JS $.result 简写应成功: " + resultMessage(result));
         // (10 + 20) * 3 = 90
-        assertEquals(90L, result.getData());
+        assertEquals(90L, resultData(result));
     }
 
     @Test
@@ -2168,23 +2119,22 @@ public class FlowEngineTest {
                 "当前测试 JVM 未安装 GraalPy，跳过 Python 正向集成测试");
         String flowJson = "{"
                 + "\"nodes\":["
-                + "{\"id\":\"start\",\"type\":\"start\",\"ports\":[{\"id\":\"out\"}]},"
+                + "{\"id\":\"start\",\"type\":\"request\",\"ports\":[{\"id\":\"params\"}]},"
                 + "{\"id\":\"python_calc\",\"type\":\"evaluate\",\"ports\":[{\"id\":\"in\"},{\"id\":\"out\"}],"
                 + "\"data\":{\"language\":\"python\","
-                + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.args.items\"}},"
+                + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.params.items\"}},"
                 + "\"expression\":\"total = sum(input['items'])\\nreturn {'total': total, 'values': [x * 2 for x in items]}\"}},"
-                + "{\"id\":\"end\",\"type\":\"end\",\"ports\":[{\"id\":\"in\"}],"
-                + "\"data\":{\"responseBody\":\"${python_calc.out}\"}}],"
+                + "{\"id\":\"end\",\"type\":\"response\",\"ports\":[{\"id\":\"in\"}],"
+                + "\"data\":{\"body\":\"${python_calc.out}\"}}],"
                 + "\"edges\":["
-                + "{\"source\":{\"cell\":\"start\",\"port\":\"out\"},\"target\":{\"cell\":\"python_calc\",\"port\":\"in\"}},"
+                + "{\"source\":{\"cell\":\"start\",\"port\":\"params\"},\"target\":{\"cell\":\"python_calc\",\"port\":\"in\"}},"
                 + "{\"source\":{\"cell\":\"python_calc\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("items", Arrays.asList(2, 3, 4));
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "Python 多行脚本应成功: " + result.getMessage());
-        assertTrue(result.getData() instanceof Map);
-        Map<String, Object> data = (Map<String, Object>) result.getData();
+        Map<String, Object> args = paramsArgs("items", Arrays.asList(2, 3, 4));
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "Python 多行脚本应成功: " + resultMessage(result));
+        assertTrue(resultData(result) instanceof Map);
+        Map<String, Object> data = (Map<String, Object>) resultData(result);
         assertEquals(9L, data.get("total"));
         assertEquals(Arrays.asList(4L, 6L, 8L), data.get("values"));
     }
@@ -2195,25 +2145,23 @@ public class FlowEngineTest {
     void testGroovyMultiLineScript() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\":["
-                + "{\"id\":\"start\",\"type\":\"start\",\"ports\":[{\"id\":\"out\"}]},"
+                + "{\"id\":\"start\",\"type\":\"request\",\"ports\":[{\"id\":\"params\"}]},"
                 + "{\"id\":\"groovy_calc\",\"type\":\"evaluate\",\"ports\":[{\"id\":\"in\"},{\"id\":\"out\"}],"
                 + "\"data\":{\"language\":\"Groovy\","
-                + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.args.items\"},"
-                + "\"prefix\":{\"extractPath\":\"$.start.args.prefix\"}},"
+                + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.params.items\"},"
+                + "\"prefix\":{\"extractPath\":\"$.start.params.prefix\"}},"
                 + "\"expression\":\"def doubled = items.collect { it * 2 }\\nreturn [label: prefix + doubled.sum(), values: doubled]\"}},"
-                + "{\"id\":\"end\",\"type\":\"end\",\"ports\":[{\"id\":\"in\"}],"
-                + "\"data\":{\"responseBody\":\"${groovy_calc.out}\"}}],"
+                + "{\"id\":\"end\",\"type\":\"response\",\"ports\":[{\"id\":\"in\"}],"
+                + "\"data\":{\"body\":\"${groovy_calc.out}\"}}],"
                 + "\"edges\":["
-                + "{\"source\":{\"cell\":\"start\",\"port\":\"out\"},\"target\":{\"cell\":\"groovy_calc\",\"port\":\"in\"}},"
+                + "{\"source\":{\"cell\":\"start\",\"port\":\"params\"},\"target\":{\"cell\":\"groovy_calc\",\"port\":\"in\"}},"
                 + "{\"source\":{\"cell\":\"groovy_calc\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
 
-        Map<String, Object> args = new HashMap<>();
-        args.put("items", Arrays.asList(1, 2, 3));
-        args.put("prefix", "sum=");
-        ExecutionResult result = engine.execute(flowJson, args);
-        assertTrue(result.isSuccess(), "Groovy 多行脚本应成功: " + result.getMessage());
-        assertTrue(result.getData() instanceof Map);
-        Map<String, Object> data = (Map<String, Object>) result.getData();
+        Map<String, Object> args = paramsArgs("items", Arrays.asList(1, 2, 3), "prefix", "sum=");
+        Object result = engine.execute(flowJson, args);
+        assertTrue(resultSuccess(result), "Groovy 多行脚本应成功: " + resultMessage(result));
+        assertTrue(resultData(result) instanceof Map);
+        Map<String, Object> data = (Map<String, Object>) resultData(result);
         assertEquals("sum=12", data.get("label"));
         assertEquals(Arrays.asList(2, 4, 6), data.get("values"));
     }
@@ -2223,17 +2171,17 @@ public class FlowEngineTest {
     void testGroovySecurityBlocksProcessExecution() throws JsonProcessingException {
         String flowJson = "{"
                 + "\"nodes\":["
-                + "{\"id\":\"start\",\"type\":\"start\",\"ports\":[{\"id\":\"out\"}]},"
+                + "{\"id\":\"start\",\"type\":\"request\",\"ports\":[{\"id\":\"params\"}]},"
                 + "{\"id\":\"groovy_hack\",\"type\":\"evaluate\",\"ports\":[{\"id\":\"in\"},{\"id\":\"out\"}],"
                 + "\"data\":{\"language\":\"groovy\","
                 + "\"expression\":\"java.lang.Runtime.getRuntime().exec('cmd')\"}},"
-                + "{\"id\":\"end\",\"type\":\"end\",\"ports\":[{\"id\":\"in\"}],"
-                + "\"data\":{\"responseBody\":\"unsafe\"}}],"
+                + "{\"id\":\"end\",\"type\":\"response\",\"ports\":[{\"id\":\"in\"}],"
+                + "\"data\":{\"body\":\"unsafe\"}}],"
                 + "\"edges\":["
-                + "{\"source\":{\"cell\":\"start\",\"port\":\"out\"},\"target\":{\"cell\":\"groovy_hack\",\"port\":\"in\"}},"
+                + "{\"source\":{\"cell\":\"start\",\"port\":\"params\"},\"target\":{\"cell\":\"groovy_hack\",\"port\":\"in\"}},"
                 + "{\"source\":{\"cell\":\"groovy_hack\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
 
-        ExecutionResult result = engine.execute(flowJson, new HashMap<>());
-        assertFalse(result.isSuccess(), "Groovy 危险进程调用必须被阻止");
+        Object result = engine.execute(flowJson, new HashMap<>());
+        assertFalse(resultSuccess(result), "Groovy 危险进程调用必须被阻止");
     }
 }

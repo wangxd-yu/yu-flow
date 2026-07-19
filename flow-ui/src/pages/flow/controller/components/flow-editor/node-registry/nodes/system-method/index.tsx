@@ -13,6 +13,10 @@ export const systemMethodNodeRegistration: NodeRegistration = {
     category: '调用节点',
     color: '#a855f7',
     tagColor: 'purple',
+    description:
+        '调用系统宏字典中的方法（如 UUID、加解密等）。\n\n' +
+        '· 选择方法后按需填写参数\n' +
+        '· 结果从 out 输出供下游使用',
     hasInputs: true,
 
     shape: {

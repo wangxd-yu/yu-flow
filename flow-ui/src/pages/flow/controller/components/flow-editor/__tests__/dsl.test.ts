@@ -22,7 +22,6 @@ import type {
     EvaluateNodeData,
     IfNodeData,
     SwitchNodeData,
-    ServiceCallNodeData,
     HttpRequestNodeData,
     ForNodeData,
     CollectNodeData,
@@ -40,8 +39,7 @@ interface MockPort {
 
 interface MockNodeConfig {
     id: string;
-    // 测试中需要支持 start/end 这些不在 DslNodeType 里的2个特殊对象和其他类型
-    type: DslNodeType | 'start' | 'end';
+    type: DslNodeType;
     x: number;
     y: number;
     ports: MockPort[];
@@ -220,20 +218,20 @@ function exportMockGraphToDsl(graph: MockGraph, flowId?: string): FlowDsl {
 }
 
 // ============================================================================
-// 测试 1: DSL 导出测试 — Start → Evaluate → End
+// 测试 1: DSL 导出测试 — Request → Evaluate → Response
 // ============================================================================
 
 describe('DSL V3.1 导出测试', () => {
-    it('应导出符合 V3.1 结构的 JSON (Start → Evaluate → End)', () => {
+    it('应导出符合 V3.1 结构的 JSON (Request → Evaluate → Response)', () => {
         const graph = new MockGraph();
 
-        // Start 节点
+        // Request 节点
         graph.addNode({
-            id: 'start',
-            type: 'start',
+            id: 'req',
+            type: 'request',
             x: 100,
             y: 100,
-            ports: [{ id: 'out' }],
+            ports: [{ id: 'params' }],
             data: {},
         });
 
@@ -246,28 +244,28 @@ describe('DSL V3.1 导出测试', () => {
             ports: [{ id: 'in' }, { id: 'out' }],
             data: {
                 inputs: {
-                    a: { extractPath: '$.start.args.price' },
+                    a: { extractPath: '$.req.params.price' },
                 },
                 expression: 'a * 0.8',
                 language: 'aviator',
             },
         });
 
-        // End 节点
+        // Response 节点
         graph.addNode({
-            id: 'end',
-            type: 'end',
+            id: 'resp',
+            type: 'response',
             x: 500,
             y: 100,
             ports: [{ id: 'in' }],
             data: {
-                responseBody: '${node_calc.result}',
+                body: '${node_calc.result}',
             },
         });
 
         // 连线
-        graph.addEdge({ cell: 'start', port: 'out' }, { cell: 'node_calc', port: 'in' });
-        graph.addEdge({ cell: 'node_calc', port: 'out' }, { cell: 'end', port: 'in' });
+        graph.addEdge({ cell: 'req', port: 'params' }, { cell: 'node_calc', port: 'in' });
+        graph.addEdge({ cell: 'node_calc', port: 'out' }, { cell: 'resp', port: 'in' });
 
         // 导出
         const dsl = exportMockGraphToDsl(graph);
@@ -282,13 +280,13 @@ describe('DSL V3.1 导出测试', () => {
         expect(dsl.nodes).toHaveLength(3);
         expect(dsl.edges).toHaveLength(2);
 
-        // ── 验证 Start 节点 ──
-        const startNode = dsl.nodes.find((n) => n.id === 'start');
-        expect(startNode).toBeDefined();
-        expect(startNode!.type).toBe('start');
-        expect(startNode!.x).toBe(100);
-        expect(startNode!.y).toBe(100);
-        expect(startNode!.ports).toEqual([{ id: 'out' }]);
+        // ── 验证 Request 节点 ──
+        const reqNode = dsl.nodes.find((n) => n.id === 'req');
+        expect(reqNode).toBeDefined();
+        expect(reqNode!.type).toBe('request');
+        expect(reqNode!.x).toBe(100);
+        expect(reqNode!.y).toBe(100);
+        expect(reqNode!.ports).toEqual([{ id: 'params' }]);
 
         // ── 验证 Evaluate 节点 ──
         const evalNode = dsl.nodes.find((n) => n.id === 'node_calc');
@@ -301,24 +299,24 @@ describe('DSL V3.1 导出测试', () => {
         // ── 关键：验证 inputs 和 extractPath ──
         expect(evalNode!.data).toBeDefined();
         expect(evalNode!.data!.inputs).toBeDefined();
-        expect(evalNode!.data!.inputs.a).toEqual({ extractPath: '$.start.args.price' });
+        expect(evalNode!.data!.inputs.a).toEqual({ extractPath: '$.req.params.price' });
         expect(evalNode!.data!.expression).toBe('a * 0.8');
         expect(evalNode!.data!.language).toBe('aviator');
 
-        // ── 验证 End 节点 ──
-        const endNode = dsl.nodes.find((n) => n.id === 'end');
-        expect(endNode).toBeDefined();
-        expect(endNode!.type).toBe('end');
-        expect(endNode!.data!.responseBody).toBe('${node_calc.result}');
+        // ── 验证 Response 节点 ──
+        const respNode = dsl.nodes.find((n) => n.id === 'resp');
+        expect(respNode).toBeDefined();
+        expect(respNode!.type).toBe('response');
+        expect(respNode!.data!.body).toBe('${node_calc.result}');
 
         // ── 验证边格式 ──
         expect(dsl.edges[0]).toEqual({
-            source: { cell: 'start', port: 'out' },
+            source: { cell: 'req', port: 'params' },
             target: { cell: 'node_calc', port: 'in' },
         });
         expect(dsl.edges[1]).toEqual({
             source: { cell: 'node_calc', port: 'out' },
-            target: { cell: 'end', port: 'in' },
+            target: { cell: 'resp', port: 'in' },
         });
 
         // ── 验证不包含 X6 内部属性 ──
@@ -334,11 +332,11 @@ describe('DSL V3.1 导出测试', () => {
     it('应正确处理空 inputs', () => {
         const graph = new MockGraph();
         graph.addNode({
-            id: 'start',
-            type: 'start',
+            id: 'req',
+            type: 'request',
             x: 0,
             y: 0,
-            ports: [{ id: 'out' }],
+            ports: [{ id: 'params' }],
             data: {},
         });
         graph.addNode({
@@ -398,7 +396,7 @@ describe('If 节点端口逻辑', () => {
                 { id: 'false', group: 'right' },
             ],
             data: {
-                inputs: { age: { extractPath: '$.start.args.age' } },
+                inputs: { age: { extractPath: '$.req.params.age' } },
                 condition: 'age >= 18',
             },
         });
@@ -418,18 +416,18 @@ describe('If 节点端口逻辑', () => {
         expect(ifNode.ports).toHaveLength(3);
         expect(ifNode.ports!.map((p) => p.id)).toEqual(['in', 'true', 'false']);
         expect(ifNode.data!.condition).toBe('age >= 18');
-        expect(ifNode.data!.inputs.age).toEqual({ extractPath: '$.start.args.age' });
+        expect(ifNode.data!.inputs.age).toEqual({ extractPath: '$.req.params.age' });
     });
 
     it('If 节点边应正确连接 true/false 端口', () => {
         const graph = new MockGraph();
 
         graph.addNode({
-            id: 'start',
-            type: 'start',
+            id: 'req',
+            type: 'request',
             x: 0,
             y: 0,
-            ports: [{ id: 'out' }],
+            ports: [{ id: 'params' }],
             data: {},
         });
         graph.addNode({
@@ -438,28 +436,31 @@ describe('If 节点端口逻辑', () => {
             x: 200,
             y: 0,
             ports: [{ id: 'in' }, { id: 'true' }, { id: 'false' }],
-            data: { condition: 'age >= 18', inputs: { age: '$.start.args.age' } },
+            data: {
+                condition: 'age >= 18',
+                inputs: { age: { extractPath: '$.req.params.age' } },
+            },
         });
         graph.addNode({
-            id: 'end_adult',
-            type: 'end',
+            id: 'resp_adult',
+            type: 'response',
             x: 400,
             y: -50,
             ports: [{ id: 'in' }],
-            data: { responseBody: 'adult' },
+            data: { body: 'adult' },
         });
         graph.addNode({
-            id: 'end_minor',
-            type: 'end',
+            id: 'resp_minor',
+            type: 'response',
             x: 400,
             y: 50,
             ports: [{ id: 'in' }],
-            data: { responseBody: 'minor' },
+            data: { body: 'minor' },
         });
 
-        graph.addEdge({ cell: 'start', port: 'out' }, { cell: 'if_node', port: 'in' });
-        graph.addEdge({ cell: 'if_node', port: 'true' }, { cell: 'end_adult', port: 'in' });
-        graph.addEdge({ cell: 'if_node', port: 'false' }, { cell: 'end_minor', port: 'in' });
+        graph.addEdge({ cell: 'req', port: 'params' }, { cell: 'if_node', port: 'in' });
+        graph.addEdge({ cell: 'if_node', port: 'true' }, { cell: 'resp_adult', port: 'in' });
+        graph.addEdge({ cell: 'if_node', port: 'false' }, { cell: 'resp_minor', port: 'in' });
 
         const dsl = exportMockGraphToDsl(graph);
 
@@ -468,14 +469,14 @@ describe('If 节点端口逻辑', () => {
             (e) => e.source.cell === 'if_node' && e.source.port === 'true',
         );
         expect(trueEdge).toBeDefined();
-        expect(trueEdge!.target).toEqual({ cell: 'end_adult', port: 'in' });
+        expect(trueEdge!.target).toEqual({ cell: 'resp_adult', port: 'in' });
 
         // 验证false边
         const falseEdge = dsl.edges.find(
             (e) => e.source.cell === 'if_node' && e.source.port === 'false',
         );
         expect(falseEdge).toBeDefined();
-        expect(falseEdge!.target).toEqual({ cell: 'end_minor', port: 'in' });
+        expect(falseEdge!.target).toEqual({ cell: 'resp_minor', port: 'in' });
     });
 });
 
@@ -484,7 +485,7 @@ describe('If 节点端口逻辑', () => {
 // ============================================================================
 
 describe('Switch 节点端口逻辑', () => {
-    it('Switch 节点应支持 case_XXX 动态端口', () => {
+    it('Switch 节点应支持 case_<id> 动态端口', () => {
         const graph = new MockGraph();
         const node = graph.addNode({
             id: 'sw_node',
@@ -493,31 +494,35 @@ describe('Switch 节点端口逻辑', () => {
             y: 100,
             ports: [
                 { id: 'in' },
-                { id: 'case_ADMIN' },
-                { id: 'case_USER' },
+                { id: 'case_c_admin' },
+                { id: 'case_c_user' },
                 { id: 'default' },
             ],
             data: {
-                inputs: { r: { extractPath: '$.start.args.role' } },
+                inputs: { r: { extractPath: '$.req.params.role' } },
                 expression: 'r',
+                cases: [
+                    { id: 'c_admin', name: 'Admin', value: 'ADMIN' },
+                    { id: 'c_user', name: 'User', value: 'USER' },
+                ],
             },
         });
 
         const ports = node.getPorts();
         expect(ports).toHaveLength(4);
-        expect(ports.map((p) => p.id)).toContain('case_ADMIN');
-        expect(ports.map((p) => p.id)).toContain('case_USER');
+        expect(ports.map((p) => p.id)).toContain('case_c_admin');
+        expect(ports.map((p) => p.id)).toContain('case_c_user');
         expect(ports.map((p) => p.id)).toContain('default');
 
         // 动态添加新 Case
-        node.addPort({ id: 'case_MANAGER' });
+        node.addPort({ id: 'case_c_manager' });
         expect(node.getPorts()).toHaveLength(5);
-        expect(node.getPorts().map((p) => p.id)).toContain('case_MANAGER');
+        expect(node.getPorts().map((p) => p.id)).toContain('case_c_manager');
 
         // 移除一个 Case
-        node.removePort('case_USER');
+        node.removePort('case_c_user');
         expect(node.getPorts()).toHaveLength(4);
-        expect(node.getPorts().map((p) => p.id)).not.toContain('case_USER');
+        expect(node.getPorts().map((p) => p.id)).not.toContain('case_c_user');
     });
 });
 
@@ -568,22 +573,39 @@ describe('For + Collect (Scatter-Gather) 节点端口逻辑', () => {
 
     it('For→Collect Scatter-Gather 连线应正确导出 DSL', () => {
         const graph = new MockGraph();
-        graph.addNode({ id: 'start', type: 'start', x: 0, y: 0, ports: [{ id: 'out' }], data: {} });
+        graph.addNode({
+            id: 'req',
+            type: 'request',
+            x: 0,
+            y: 0,
+            ports: [{ id: 'params' }],
+            data: {},
+        });
         graph.addNode({
             id: 'loop', type: 'for', x: 200, y: 0,
             ports: [{ id: 'in' }, { id: 'item' }],
-            data: { collectStepId: 'collector', inputs: { collection: { extractPath: '$.start.args.items' } } },
+            data: {
+                collectStepId: 'collector',
+                inputs: { collection: { extractPath: '$.req.params.items' } },
+            },
         });
         graph.addNode({
             id: 'collector', type: 'collect', x: 400, y: 0,
             ports: [{ id: 'item' }, { id: 'list' }, { id: 'finish' }],
             data: { inputs: {} },
         });
-        graph.addNode({ id: 'end', type: 'end', x: 600, y: 0, ports: [{ id: 'in' }], data: { responseBody: '${collector.list}' } });
+        graph.addNode({
+            id: 'resp',
+            type: 'response',
+            x: 600,
+            y: 0,
+            ports: [{ id: 'in' }],
+            data: { body: '${collector.list}' },
+        });
 
-        graph.addEdge({ cell: 'start', port: 'out' }, { cell: 'loop', port: 'in' });
+        graph.addEdge({ cell: 'req', port: 'params' }, { cell: 'loop', port: 'in' });
         graph.addEdge({ cell: 'loop', port: 'item' }, { cell: 'collector', port: 'item' });
-        graph.addEdge({ cell: 'collector', port: 'list' }, { cell: 'end', port: 'in' });
+        graph.addEdge({ cell: 'collector', port: 'list' }, { cell: 'resp', port: 'in' });
 
         const dsl = exportMockGraphToDsl(graph);
         expect(dsl.nodes).toHaveLength(4);
@@ -672,7 +694,11 @@ describe('多语言表达式', () => {
             x: 0,
             y: 0,
             ports: [{ id: 'in' }, { id: 'out' }],
-            data: { expression: 'a * 0.8', language: 'aviator', inputs: { a: { extractPath: '$.start.args.price' } } },
+            data: {
+                expression: 'a * 0.8',
+                language: 'aviator',
+                inputs: { a: { extractPath: '$.req.params.price' } },
+            },
         });
         graph.addNode({
             id: 'spel_node',
@@ -719,41 +745,39 @@ describe('多语言表达式', () => {
 // ============================================================================
 
 describe('完整流程对标后端', () => {
-    it('应生成与后端测试 07 (ServiceCall) 兼容的 DSL', () => {
+    it('应生成与后端测试兼容的 DSL (Request → Evaluate → Response)', () => {
         const graph = new MockGraph();
 
         graph.addNode({
-            id: 'start',
-            type: 'start',
+            id: 'req',
+            type: 'request',
             x: 0,
             y: 0,
-            ports: [{ id: 'out' }],
+            ports: [{ id: 'params' }],
             data: {},
         });
         graph.addNode({
-            id: 'call_svc',
-            type: 'serviceCall',
+            id: 'greet',
+            type: 'evaluate',
             x: 200,
             y: 0,
             ports: [{ id: 'in' }, { id: 'out' }],
             data: {
-                service: 'testService',
-                method: 'greet',
-                inputs: { n: { extractPath: '$.start.args.name' } },
-                args: ['n'],
+                expression: "'Hello, ' + n",
+                inputs: { n: { extractPath: '$.req.params.name' } },
             },
         });
         graph.addNode({
-            id: 'end',
-            type: 'end',
+            id: 'resp',
+            type: 'response',
             x: 400,
             y: 0,
             ports: [{ id: 'in' }],
-            data: { responseBody: '${call_svc.result}' },
+            data: { body: '${greet.result}' },
         });
 
-        graph.addEdge({ cell: 'start', port: 'out' }, { cell: 'call_svc', port: 'in' });
-        graph.addEdge({ cell: 'call_svc', port: 'out' }, { cell: 'end', port: 'in' });
+        graph.addEdge({ cell: 'req', port: 'params' }, { cell: 'greet', port: 'in' });
+        graph.addEdge({ cell: 'greet', port: 'out' }, { cell: 'resp', port: 'in' });
 
         const dsl = exportMockGraphToDsl(graph);
 
@@ -761,24 +785,22 @@ describe('完整流程对标后端', () => {
         expect(dsl.nodes).toHaveLength(3);
         expect(dsl.edges).toHaveLength(2);
 
-        const svcNode = dsl.nodes.find((n) => n.id === 'call_svc')!;
-        expect(svcNode.type).toBe('serviceCall');
-        expect(svcNode.data!.service).toBe('testService');
-        expect(svcNode.data!.method).toBe('greet');
-        expect(svcNode.data!.inputs.n).toEqual({ extractPath: '$.start.args.name' });
-        expect(svcNode.data!.args).toEqual(['n']);
-        expect(svcNode.ports).toEqual([{ id: 'in' }, { id: 'out' }]);
+        const evalNode = dsl.nodes.find((n) => n.id === 'greet')!;
+        expect(evalNode.type).toBe('evaluate');
+        expect(evalNode.data!.expression).toBe("'Hello, ' + n");
+        expect(evalNode.data!.inputs.n).toEqual({ extractPath: '$.req.params.name' });
+        expect(evalNode.ports).toEqual([{ id: 'in' }, { id: 'out' }]);
     });
 
     it('应生成与后端测试 17 (混合引擎) 兼容的 DSL', () => {
         const graph = new MockGraph();
 
         graph.addNode({
-            id: 'start',
-            type: 'start',
+            id: 'req',
+            type: 'request',
             x: 0,
             y: 0,
-            ports: [{ id: 'out' }],
+            ports: [{ id: 'params' }],
             data: {},
         });
         graph.addNode({
@@ -789,7 +811,7 @@ describe('完整流程对标后端', () => {
             ports: [{ id: 'in' }, { id: 'out' }],
             data: {
                 language: 'aviator',
-                inputs: { a: { extractPath: '$.start.args.price' } },
+                inputs: { a: { extractPath: '$.req.params.price' } },
                 expression: 'a * 0.8',
             },
         });
@@ -806,26 +828,26 @@ describe('完整流程对标后端', () => {
             },
         });
         graph.addNode({
-            id: 'end_cheap',
-            type: 'end',
+            id: 'resp_cheap',
+            type: 'response',
             x: 600,
             y: -50,
             ports: [{ id: 'in' }],
-            data: { responseBody: 'CHEAP' },
+            data: { body: 'CHEAP' },
         });
         graph.addNode({
-            id: 'end_expensive',
-            type: 'end',
+            id: 'resp_expensive',
+            type: 'response',
             x: 600,
             y: 50,
             ports: [{ id: 'in' }],
-            data: { responseBody: 'EXPENSIVE' },
+            data: { body: 'EXPENSIVE' },
         });
 
-        graph.addEdge({ cell: 'start', port: 'out' }, { cell: 'calc_aviator', port: 'in' });
+        graph.addEdge({ cell: 'req', port: 'params' }, { cell: 'calc_aviator', port: 'in' });
         graph.addEdge({ cell: 'calc_aviator', port: 'out' }, { cell: 'check_spel', port: 'in' });
-        graph.addEdge({ cell: 'check_spel', port: 'true' }, { cell: 'end_cheap', port: 'in' });
-        graph.addEdge({ cell: 'check_spel', port: 'false' }, { cell: 'end_expensive', port: 'in' });
+        graph.addEdge({ cell: 'check_spel', port: 'true' }, { cell: 'resp_cheap', port: 'in' });
+        graph.addEdge({ cell: 'check_spel', port: 'false' }, { cell: 'resp_expensive', port: 'in' });
 
         const dsl = exportMockGraphToDsl(graph);
 
@@ -857,14 +879,14 @@ describe('类型定义检查', () => {
                     y: 100,
                     ports: [{ id: 'in', group: 'left' }, { id: 'out', group: 'right' }],
                     data: {
-                        inputs: { a: { extractPath: '$.start.args.price' } },
+                        inputs: { a: { extractPath: '$.req.params.price' } },
                         expression: 'a * 0.8',
                         language: 'aviator',
                     },
                 },
             ],
             edges: [
-                { source: { cell: 'start', port: 'out' }, target: { cell: 'node_1', port: 'in' } },
+                { source: { cell: 'req', port: 'params' }, target: { cell: 'node_1', port: 'in' } },
             ],
         };
 
@@ -876,8 +898,8 @@ describe('类型定义检查', () => {
     });
 
     it('InputMapping 类型应包含 extractPath', () => {
-        const mapping: InputMapping = { extractPath: '$.start.args.name' };
-        expect(mapping.extractPath).toBe('$.start.args.name');
+        const mapping: InputMapping = { extractPath: '$.req.params.name' };
+        expect(mapping.extractPath).toBe('$.req.params.name');
     });
 
     it('ExpressionLanguage 类型应限定为 aviator | spel', () => {
