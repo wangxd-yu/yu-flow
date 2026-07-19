@@ -17,6 +17,11 @@ import {
     NODE_FOOTER_PORT_OFFSET_Y,
 } from '../../shared/useNodeSelection';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 export const DELAY_COLOR = '#0891b2';
 
@@ -46,13 +51,33 @@ export const DelayNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const theme = getNodeTheme(data?.themeColor || 'cyan');
     const { selected, outlineCss } = useNodeSelection(node);
     const delayMs = typeof data.delayMs === 'number' ? data.delayMs : 1000;
+    const [size, setSize] = React.useState(node.getSize());
+    const compactHeight = NODE_HEADER_WITH_ID_HEIGHT + COMPACT_FOOTER_HEIGHT;
+
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: DELAY_LAYOUT.height,
+        compactHeight,
+        minWidth: 160,
+    });
 
     const setDelayMs = (val: number | null) => {
         node.setData({ ...node.getData(), delayMs: val ?? 0 });
     };
 
     React.useEffect(() => {
-        const w = node.getSize().width || DELAY_LAYOUT.width;
+        const onS = () => setSize({ ...node.getSize() });
+        node.on('change:size', onS);
+        return () => { node.off('change:size', onS); };
+    }, [node]);
+
+    React.useEffect(() => {
+        const w = size.width || DELAY_LAYOUT.width;
+        const h = size.height;
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
+        const inY = isCompactMode ? NODE_HEADER_WITH_ID_HEIGHT / 2 : DELAY_LAYOUT.inPortY;
+        const outY = isCompactMode ? h - fh + fh / 2 : h - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
+
         const ensure = (id: string, group: string, x: number, y: number) => {
             if (!node.hasPort(id)) {
                 node.addPort({ id, group, args: { x, y, dx: 0 } });
@@ -61,9 +86,9 @@ export const DelayNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 node.setPortProp(id, 'args', { x, y, dx: 0 });
             }
         };
-        ensure('in', 'absolute-in-solid', 0, DELAY_LAYOUT.inPortY);
-        ensure('out', 'absolute-out-solid', w, DELAY_LAYOUT.outPortY);
-    }, [node]);
+        ensure('in', 'absolute-in-solid', 0, inY);
+        ensure('out', 'absolute-out-solid', w, outY);
+    }, [node, size, isCompact]);
 
     return (
         <NodeWrapper
@@ -83,32 +108,41 @@ export const DelayNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 onTitleChange={(t) => node.setData({ ...node.getData(), __label: t })}
             />
-            <div
-                style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '0 12px',
-                    gap: 8,
-                    fontSize: 12,
-                    color: '#64748b',
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-            >
-                <span>等待</span>
-                <InputNumber
-                    size="small"
-                    min={0}
-                    max={3600000}
-                    step={100}
-                    value={delayMs}
-                    style={{ width: 90 }}
-                    onChange={setDelayMs}
-                />
-                <span>ms</span>
-            </div>
-            <NodeOutFooter label="out" color={theme.primary} borderColor={theme.headerBorder} />
-            <ResizeHandle node={node} axes="x" minWidth={160} minHeight={DELAY_LAYOUT.height} />
+            {!isCompact && (
+                <div
+                    style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0 12px',
+                        gap: 8,
+                        fontSize: 12,
+                        color: '#64748b',
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                >
+                    <span>等待</span>
+                    <InputNumber
+                        size="small"
+                        min={0}
+                        max={3600000}
+                        step={100}
+                        value={delayMs}
+                        style={{ width: 90 }}
+                        onChange={setDelayMs}
+                    />
+                    <span>ms</span>
+                </div>
+            )}
+            <NodeOutFooter
+                label="out"
+                color={theme.primary}
+                borderColor={theme.headerBorder}
+                style={{ height: isCompact ? COMPACT_FOOTER_HEIGHT : undefined }}
+            />
+            {!isCompact && (
+                <ResizeHandle node={node} axes="x" minWidth={160} minHeight={DELAY_LAYOUT.height} />
+            )}
         </NodeWrapper>
     );
 };

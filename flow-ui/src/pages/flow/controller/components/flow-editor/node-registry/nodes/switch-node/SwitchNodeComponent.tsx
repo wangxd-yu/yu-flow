@@ -24,6 +24,13 @@ import {
     createEmptyCase,
     normalizeCases,
 } from './switchCases';
+import {
+    COMPACT_EXIT_ROW,
+    CompactExitLabels,
+    getGraphNodeViewMode,
+    switchCompactFooterHeight,
+    useNodeViewMode,
+} from '../../shared/NodeViewMode';
 
 const { Text } = Typography;
 
@@ -111,6 +118,10 @@ function refreshEdges(node: Node, portId: string) {
     });
 }
 
+function compactExitY(ft: number, idx: number): number {
+    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
+}
+
 function syncSwitchPorts(
     node: Node,
     size: { width: number; height: number },
@@ -120,6 +131,9 @@ function syncSwitchPorts(
     const caseCount = cases.length;
     const w = size.width;
     const h = size.height;
+    const isCompact = getGraphNodeViewMode(node) === 'compact';
+    const fh = isCompact ? switchCompactFooterHeight(caseCount) : switchFooterHeight(caseCount);
+    const ft = h - fh;
     const ports = node.getPorts();
     const existing = new Set(ports.map((p) => p.id));
 
@@ -145,13 +159,23 @@ function syncSwitchPorts(
         }
     }
 
-    ensurePort('default', 'absolute-out-solid', w, SWITCH_LAYOUT.defaultPortY(h, caseCount));
+    if (isCompact) {
+        cases.forEach((c, idx) => {
+            const portId = casePortId(c.id);
+            ensurePort(portId, 'absolute-out-solid', w, compactExitY(ft, idx));
+        });
+        ensurePort('default', 'absolute-out-solid', w, compactExitY(ft, caseCount));
+    } else {
+        ensurePort('default', 'absolute-out-solid', w, SWITCH_LAYOUT.defaultPortY(h, caseCount));
+        cases.forEach((c, idx) => {
+            const portId = casePortId(c.id);
+            ensurePort(portId, 'absolute-out-solid', w, SWITCH_LAYOUT.casePortY(h, idx, caseCount));
+        });
+    }
 
     const wanted = new Set<string>();
-    cases.forEach((c, idx) => {
-        const portId = casePortId(c.id);
-        wanted.add(portId);
-        ensurePort(portId, 'absolute-out-solid', w, SWITCH_LAYOUT.casePortY(h, idx, caseCount));
+    cases.forEach((c) => {
+        wanted.add(casePortId(c.id));
     });
 
     ports.forEach((p) => {
@@ -205,6 +229,8 @@ const SwitchConditions: React.FC<SwitchConditionsProps> = ({
     onUpdateCase,
     onReorderCases,
 }) => {
+    const mode = useNodeViewMode();
+    const compactH = switchCompactFooterHeight(cases.length);
     const [dragState, setDragState] = React.useState<CaseDragState | null>(null);
 
     const handleDragStart = React.useCallback(
@@ -260,6 +286,21 @@ const SwitchConditions: React.FC<SwitchConditionsProps> = ({
             document.removeEventListener('mouseup', onUp);
         };
     }, [dragState, cases, onReorderCases]);
+
+    if (mode === 'compact') {
+        return (
+            <CompactExitLabels
+                height={compactH}
+                exits={[
+                    ...cases.map((c, idx) => ({
+                        id: c.id,
+                        label: c.name || `Case ${idx + 1}`,
+                    })),
+                    { id: 'default', label: 'Default', color: '#722ed1' },
+                ]}
+            />
+        );
+    }
 
     return (
         <div
@@ -500,6 +541,7 @@ export const SwitchNodeComponent = ({ node }: { node: Node }) => {
             titleIcon={ICONS.switch}
             titleText="Switch"
             footerHeight={footerHeight}
+            compactFooterHeight={switchCompactFooterHeight(cases.length)}
             expressionField="expression"
             expressionPlaceholder="匹配表达式，如 status 或 r"
             minExpressionHeight={SWITCH_EXPR_MIN_HEIGHT}

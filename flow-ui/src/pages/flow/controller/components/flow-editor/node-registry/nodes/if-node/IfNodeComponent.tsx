@@ -10,6 +10,13 @@ import {
     BaseExpressionNode, BottomContentProps,
     HEADER_HEIGHT, ROW_HEIGHT, VAR_PADDING, COND_PADDING, MIN_WIDTH, MIN_QUERY_HEIGHT,
 } from '../../shared/BaseExpressionNode';
+import {
+    COMPACT_EXIT_ROW,
+    CompactExitLabels,
+    getGraphNodeViewMode,
+    IF_COMPACT_FOOTER_HEIGHT,
+    useNodeViewMode,
+} from '../../shared/NodeViewMode';
 
 const { Text } = Typography;
 
@@ -33,47 +40,79 @@ export const IF_LAYOUT = {
     get falsePortY() { return this.footerTop + FT_ELSE_Y; },
 };
 
-// ── 端口初始化 ──
-const handlePortSync = (node: Node, size: { width: number; height: number }, _variables: any[]) => {
+function activeFooterHeight(node: Node): number {
+    return getGraphNodeViewMode(node) === 'compact' ? IF_COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+}
+
+function compactExitY(ft: number, idx: number): number {
+    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
+}
+
+function syncIfPorts(
+    node: Node,
+    size: { width: number; height: number },
+    updateEdges: (id: string) => void,
+) {
     const ports = node.getPorts();
     const existing = new Set(ports.map((p) => p.id));
-    const ft = size.height - FOOTER_HEIGHT;
+    const isCompact = getGraphNodeViewMode(node) === 'compact';
+    const fh = activeFooterHeight(node);
+    const ft = size.height - fh;
 
-    if (!existing.has('in')) {
-        node.addPort({ id: 'in', group: 'absolute-in-solid', args: { x: 0, y: ft + FT_DATA_Y }, zIndex: 1 });
+    const ensurePort = (id: string, group: string, x: number, y: number) => {
+        if (!existing.has(id)) {
+            node.addPort({ id, group, args: { x, y }, zIndex: 1 });
+        } else {
+            node.setPortProp(id, 'args', { x, y });
+            updateEdges(id);
+        }
+    };
+
+    if (isCompact) {
+        ensurePort('in', 'absolute-in-solid', 0, HEADER_HEIGHT / 2);
+        ensurePort('true', 'absolute-out-solid', size.width, compactExitY(ft, 0));
+        ensurePort('false', 'absolute-out-solid', size.width, compactExitY(ft, 1));
+    } else {
+        ensurePort('in', 'absolute-in-solid', 0, ft + FT_DATA_Y);
+        ensurePort('true', 'absolute-out-solid', size.width, ft + FT_THEN_Y);
+        ensurePort('false', 'absolute-out-solid', size.width, ft + FT_ELSE_Y);
     }
-    if (!existing.has('true')) {
-        node.addPort({ id: 'true', group: 'absolute-out-solid', args: { x: size.width, y: ft + FT_THEN_Y }, zIndex: 1 });
-    }
-    if (!existing.has('false')) {
-        node.addPort({ id: 'false', group: 'absolute-out-solid', args: { x: size.width, y: ft + FT_ELSE_Y }, zIndex: 1 });
-    }
+}
+
+// ── 端口初始化 ──
+const handlePortSync = (node: Node, size: { width: number; height: number }, _variables: any[]) => {
+    syncIfPorts(node, size, () => {});
 };
 
 // ── 缩放时端口位置同步 ──
 const handleResize = (node: Node, nw: number, nh: number, updateEdges: (id: string) => void) => {
-    const ft = nh - FOOTER_HEIGHT;
-    node.setPortProp('in', 'args', { x: 0, y: ft + FT_DATA_Y });
-    node.setPortProp('true', 'args', { x: nw, y: ft + FT_THEN_Y });
-    node.setPortProp('false', 'args', { x: nw, y: ft + FT_ELSE_Y });
-    updateEdges('in'); updateEdges('true'); updateEdges('false');
+    syncIfPorts(node, { width: nw, height: nh }, updateEdges);
 };
 
 // ── 非缩放时端口位置同步 ──
 const handlePortPositionSync = (node: Node, size: { width: number; height: number }, updateEdges: (id: string) => void) => {
-    const ft = size.height - FOOTER_HEIGHT;
     try {
-        node.setPortProp('in', 'args', { x: 0, y: ft + FT_DATA_Y });
-        node.setPortProp('true', 'args', { x: size.width, y: ft + FT_THEN_Y });
-        node.setPortProp('false', 'args', { x: size.width, y: ft + FT_ELSE_Y });
-        updateEdges('in'); updateEdges('true'); updateEdges('false');
+        syncIfPorts(node, size, updateEdges);
     } catch (_) { }
 };
 
 // ── 底部分叉渲染 ──
 const IfFooter: React.FC<BottomContentProps> = ({ size }) => {
+    const mode = useNodeViewMode();
     const w = size.width;
     const forkX = w / 2 - 10;
+
+    if (mode === 'compact') {
+        return (
+            <CompactExitLabels
+                height={IF_COMPACT_FOOTER_HEIGHT}
+                exits={[
+                    { id: 'true', label: 'THEN' },
+                    { id: 'false', label: 'ELSE', color: '#1677ff' },
+                ]}
+            />
+        );
+    }
 
     return (
         <div style={{ height: FOOTER_HEIGHT, position: 'relative', pointerEvents: 'auto', flexShrink: 0 }}>
@@ -102,6 +141,7 @@ export const IfNodeComponent = ({ node }: { node: Node }) => {
             titleIcon={ICONS.condition}
             titleText="If"
             footerHeight={FOOTER_HEIGHT}
+            compactFooterHeight={IF_COMPACT_FOOTER_HEIGHT}
             expressionField="condition"
             onPortSync={handlePortSync}
             onResize={handleResize}

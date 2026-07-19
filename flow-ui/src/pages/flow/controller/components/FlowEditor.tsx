@@ -27,6 +27,7 @@ import { useResizablePanelWidth } from './flow-editor/components/useResizablePan
 import ActionToolbar from './flow-editor/components/ActionToolbar';
 import CanvasToolbar from './flow-editor/components/CanvasToolbar';
 import MiniMapPanel from './flow-editor/components/MiniMapPanel';
+import { NodeViewModeProvider } from './flow-editor/node-registry/shared/NodeViewMode';
 import { debugRunAutoApiConfig, startDebugSession, getDebugSessionStatus, resumeDebugSession, cancelDebugSession } from '../services/flowController';
 import { setCurrentDebugContext } from './flow-editor/components/MacroCompletion';
 
@@ -113,6 +114,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const wrapperRef = React.useRef<HTMLDivElement | null>(null);
 
     const graphRef = React.useRef<Graph | null>(null);
+    /** 供 Provider / Toolbar 订阅；与 graphRef 同步 */
+    const [graphInstance, setGraphInstance] = React.useState<Graph | null>(null);
     const dndRef = React.useRef<Dnd | null>(null);
     const historyRef = React.useRef<History | null>(null);
 
@@ -799,6 +802,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         }
 
         graphRef.current = graph;
+        setGraphInstance(graph);
         // 供节点组件识别快照只读（保留平移/缩放，禁用内容编辑与改线）
         (graph as any).__readonlySnapshot = isReadonlySnapshot;
         dndRef.current = new Dnd({ target: graph, scaled: false });
@@ -992,6 +996,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             emitChange.cancel();
             graph.dispose();
             graphRef.current = null;
+            setGraphInstance(null);
             dndRef.current = null;
             historyRef.current = null;
         };
@@ -1262,6 +1267,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
     // Render
     // ============================================================================
     return (
+        <NodeViewModeProvider graph={graphInstance}>
         <div
             ref={rootRef}
             style={{
@@ -1393,7 +1399,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                         }}
                     >
                         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-                        <CanvasToolbar graph={graphRef.current} />
+                        <CanvasToolbar graph={graphInstance} />
                         <MiniMapPanel visible={minimapVisible} containerRef={minimapRef} />
 
                         {/* ── 快捷添加弹窗 (Spotlight 风格) ── */}
@@ -1609,5 +1615,6 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 )}
             </div>
         </div>
+        </NodeViewModeProvider>
     );
 }

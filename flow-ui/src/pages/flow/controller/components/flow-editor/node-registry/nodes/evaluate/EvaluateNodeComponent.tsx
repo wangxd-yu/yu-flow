@@ -13,6 +13,10 @@ import {
     NODE_FOOTER_HEIGHT,
     NODE_FOOTER_PORT_OFFSET_Y,
 } from '../../shared/useNodeSelection';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+} from '../../shared/NodeViewMode';
 
 const ICONS = {
     evaluate: (<svg viewBox="0 0 1024 1024" width="14" height="14" fill="currentColor"><path d="M320 256l192 192-192 192M544 640h192" stroke="currentColor" strokeWidth="72" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>),
@@ -33,11 +37,19 @@ export const EVALUATE_LAYOUT = {
     },
 };
 
+function activeFooterHeight(node: Node) {
+    return getGraphNodeViewMode(node) === 'compact' ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
+}
+
+function outPortY(node: Node, height: number) {
+    const fh = activeFooterHeight(node);
+    return height - fh + fh / 2;
+}
+
 const handlePortSync = (node: Node, size: { width: number; height: number }) => {
     const ports = node.getPorts();
     const existing = new Set(ports.map((p) => p.id));
-
-    const outY = size.height - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
+    const outY = outPortY(node, size.height);
     const outX = size.width;
 
     if (!existing.has('out')) {
@@ -49,15 +61,14 @@ const handlePortSync = (node: Node, size: { width: number; height: number }) => 
         const p = ports.find((port) => port.id === 'out');
         if (p?.attrs?.text?.text !== '') node.setPortProp('out', 'attrs/text/text', '');
         if (p?.group !== 'absolute-out-solid') node.setPortProp('out', 'group', 'absolute-out-solid');
+        node.setPortProp('out', 'args', { x: outX, y: outY, dx: 0 });
     }
 
-    // 历史控制流 in 移除；总入口用 in:payload（由 BaseExpressionNode 确保）
     if (existing.has('in')) node.removePort('in');
 };
 
 const handleResize = (node: Node, nw: number, nh: number, updateEdges: (id: string) => void) => {
-    const outY = nh - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
-    node.setPortProp('out', 'args', { x: nw, y: outY });
+    node.setPortProp('out', 'args', { x: nw, y: outPortY(node, nh) });
     updateEdges('out');
 };
 
@@ -66,9 +77,8 @@ const handlePortPositionSync = (
     size: { width: number; height: number },
     updateEdges: (id: string) => void,
 ) => {
-    const outY = size.height - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
     try {
-        node.setPortProp('out', 'args', { x: size.width, y: outY });
+        node.setPortProp('out', 'args', { x: size.width, y: outPortY(node, size.height) });
         updateEdges('out');
     } catch (_) { /* ignore */ }
 };
@@ -80,6 +90,7 @@ export const EvaluateNodeComponent = ({ node }: { node: Node }) => {
             titleIcon={ICONS.evaluate}
             titleText="Evaluate"
             footerHeight={NODE_FOOTER_HEIGHT}
+            compactFooterHeight={COMPACT_FOOTER_HEIGHT}
             expressionField="expression"
             onPortSync={handlePortSync}
             onResize={handleResize}

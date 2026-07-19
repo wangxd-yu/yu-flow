@@ -16,6 +16,11 @@ import {
     NODE_FOOTER_PORT_OFFSET_Y,
 } from '../../shared/useNodeSelection';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 export const PARALLEL_COLOR = '#6366f1';
 
@@ -44,9 +49,29 @@ export const ParallelNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const data = (node.getData() as any) || {};
     const theme = getNodeTheme(data?.themeColor || 'purple');
     const { selected, outlineCss } = useNodeSelection(node);
+    const [size, setSize] = React.useState(node.getSize());
+    const compactHeight = NODE_HEADER_WITH_ID_HEIGHT + COMPACT_FOOTER_HEIGHT;
+
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: PARALLEL_LAYOUT.height,
+        compactHeight,
+        minWidth: 160,
+    });
 
     React.useEffect(() => {
-        const w = node.getSize().width || PARALLEL_LAYOUT.width;
+        const onS = () => setSize({ ...node.getSize() });
+        node.on('change:size', onS);
+        return () => { node.off('change:size', onS); };
+    }, [node]);
+
+    React.useEffect(() => {
+        const w = size.width || PARALLEL_LAYOUT.width;
+        const h = size.height;
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
+        const inY = isCompactMode ? NODE_HEADER_WITH_ID_HEIGHT / 2 : PARALLEL_LAYOUT.inPortY;
+        const outY = isCompactMode ? h - fh + fh / 2 : h - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
+
         const ensure = (id: string, group: string, x: number, y: number) => {
             if (!node.hasPort(id)) {
                 node.addPort({ id, group, args: { x, y, dx: 0 } });
@@ -55,9 +80,9 @@ export const ParallelNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 node.setPortProp(id, 'args', { x, y, dx: 0 });
             }
         };
-        ensure('in', 'absolute-in-solid', 0, PARALLEL_LAYOUT.inPortY);
-        ensure('out', 'absolute-out-solid', w, PARALLEL_LAYOUT.outPortY);
-    }, [node]);
+        ensure('in', 'absolute-in-solid', 0, inY);
+        ensure('out', 'absolute-out-solid', w, outY);
+    }, [node, size, isCompact]);
 
     return (
         <NodeWrapper
@@ -77,11 +102,20 @@ export const ParallelNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 onTitleChange={(t) => node.setData({ ...node.getData(), __label: t })}
             />
-            <div style={{ padding: '8px 12px', fontSize: 11, color: '#64748b', lineHeight: 1.45 }}>
-                从 out 拉多条线到不同下游即并行；汇入同一节点自动 join。
-            </div>
-            <NodeOutFooter label="out × N" color={theme.primary} borderColor={theme.headerBorder} style={{ marginTop: 'auto' }} />
-            <ResizeHandle node={node} axes="x" minWidth={160} minHeight={PARALLEL_LAYOUT.height} />
+            {!isCompact && (
+                <div style={{ padding: '8px 12px', fontSize: 11, color: '#64748b', lineHeight: 1.45 }}>
+                    从 out 拉多条线到不同下游即并行；汇入同一节点自动 join。
+                </div>
+            )}
+            <NodeOutFooter
+                label="out × N"
+                color={theme.primary}
+                borderColor={theme.headerBorder}
+                style={{ marginTop: isCompact ? 0 : 'auto', height: isCompact ? COMPACT_FOOTER_HEIGHT : undefined }}
+            />
+            {!isCompact && (
+                <ResizeHandle node={node} axes="x" minWidth={160} minHeight={PARALLEL_LAYOUT.height} />
+            )}
         </NodeWrapper>
     );
 };

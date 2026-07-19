@@ -22,6 +22,11 @@ import {
     hasPayloadInput,
     PayloadEntryChrome,
 } from '../../shared/usePayloadEntryPort';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 const { Text } = Typography;
 
@@ -138,9 +143,24 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
         ensurePayloadPort(node, PAYLOAD_PORT_Y);
 
         const s = node.getSize();
-        const ft = s.height - FOOTER_HEIGHT;
-        const outY = ft + FT_RESULT_Y;
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+        const ft = s.height - fh;
+        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
         const outX = s.width;
+
+        if (isCompactMode) {
+            variables.forEach((v) => {
+                const pid = `in:var:${v.id}`;
+                if (node.hasPort(pid)) {
+                    try {
+                        node.setPortProp(pid, 'args', { x: 0, y: HEADER_HEIGHT / 2, dx: 0 });
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            });
+        }
 
         if (!existing.has('out')) {
             node.addPort({
@@ -157,6 +177,7 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
             if (p?.group !== 'absolute-out-solid') {
                 node.setPortProp('out', 'group', 'absolute-out-solid');
             }
+            node.setPortProp('out', 'args', { x: outX, y: outY, dx: 0 });
         }
     }, [variables, node, size]);
 
@@ -164,24 +185,44 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
     const [resizing, setResizing] = React.useState(false);
     const contentH = HEADER_HEIGHT + DATASOURCE_ROW_HEIGHT + variables.length * ROW_HEIGHT + VAR_PADDING + COND_PADDING + FOOTER_HEIGHT;
     const minH = contentH + MIN_QUERY_HEIGHT;
+    const compactHeight = HEADER_HEIGHT + COMPACT_FOOTER_HEIGHT;
 
-    React.useEffect(() => { if (!resizing) { const s = node.getSize(); if (s.height < minH) node.resize(Math.max(s.width, MIN_WIDTH), minH); } }, [minH, node, resizing]);
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: minH,
+        compactHeight,
+        minWidth: MIN_WIDTH,
+        resizing,
+    });
+
+    React.useEffect(() => {
+        if (!resizing && !isCompact) {
+            const s = node.getSize();
+            if (s.height < minH) node.resize(Math.max(s.width, MIN_WIDTH), minH);
+        }
+    }, [minH, node, resizing, isCompact]);
 
     const handleResize = React.useCallback((nw: number, nh: number) => {
-        const ft = nh - FOOTER_HEIGHT;
-        node.setPortProp('out', 'args', { x: nw, y: ft + FT_RESULT_Y, dx: 0 });
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+        const ft = nh - fh;
+        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+        node.setPortProp('out', 'args', { x: nw, y: outY, dx: 0 });
         updateEdges('out');
     }, [node, updateEdges]);
 
     // ── 底部端口同步 ──
     React.useEffect(() => {
         if (resizing) return;
-        const s = node.getSize(); const ft = s.height - FOOTER_HEIGHT;
+        const s = node.getSize();
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+        const ft = s.height - fh;
+        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
         try {
-            node.setPortProp('out', 'args', { x: s.width, y: ft + FT_RESULT_Y, dx: 0 });
+            node.setPortProp('out', 'args', { x: s.width, y: outY, dx: 0 });
             updateEdges('out');
         } catch (_) { }
-    }, [size, variables.length, resizing]);
+    }, [size, variables.length, resizing, node, updateEdges, isCompact]);
 
     // ── 标题 ──
     const nodeLabel = (data as any)?.__label || 'Database';

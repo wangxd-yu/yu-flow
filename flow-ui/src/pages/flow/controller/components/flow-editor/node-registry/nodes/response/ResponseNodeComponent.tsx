@@ -9,6 +9,10 @@ import {
 import { useNodeVariables, NodeVariable } from '../../shared/useNodeVariables';
 import { DynamicVariableList } from '../../shared/DynamicVariableList';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import {
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 import { createId } from '../../../utils/id';
 
 const { Text } = Typography;
@@ -143,30 +147,40 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
         + variablesTotalHeight
         + SECTION_HEADER_HEIGHT + BODY_MIN_HEIGHT;
 
+    const compactHeight = HEADER_HEIGHT;
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: contentH,
+        compactHeight,
+        minWidth: MIN_WIDTH,
+        resizing,
+    });
+
     // ── 尺寸自动调整 + Variables 端口位置同步 ──
     useEffect(() => {
         if (resizing) return;
 
-        // 1. 先调整节点大小
-        const s = node.getSize();
-        if (s.height < contentH) {
-            node.resize(Math.max(s.width, MIN_WIDTH), contentH);
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+
+        if (!isCompactMode) {
+            const s = node.getSize();
+            if (s.height < contentH) {
+                node.resize(Math.max(s.width, MIN_WIDTH), contentH);
+            }
         }
 
-        // 同步现有的变量端口位置，由于 headers 的增减可能导致 y 坐标改变
         variables.forEach((v: NodeVariable, idx: number) => {
             const vpid = `in:var:${v.id}`;
             if (node.hasPort(vpid)) {
-                node.setPortProp(vpid, 'args', { x: 0, y: calcVarPortY(idx) });
+                const y = isCompactMode ? HEADER_HEIGHT / 2 : calcVarPortY(idx);
+                node.setPortProp(vpid, 'args', { x: 0, y });
                 updateEdges(vpid);
             }
         });
 
-        // 清理旧端口
         if (node.hasPort('in')) node.removePort('in');
         if (node.hasPort('in:headers')) node.removePort('in:headers');
         if (node.hasPort('in:body')) node.removePort('in:body');
-    }, [contentH, variables.length, headersList.length, node, resizing, variables, calcVarPortY, updateEdges]);
+    }, [contentH, variables.length, headersList.length, node, resizing, variables, calcVarPortY, updateEdges, isCompact]);
 
     // ── Resize 回调 ──
     const handleResize = useCallback((nw: number, _nh: number) => {
@@ -216,6 +230,7 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                     onTitleChange={handleTitleChange}
                 />
 
+                {!isCompact && (<>
                 {/* Status Code Row */}
                 <div
                     style={{
@@ -370,6 +385,7 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                         </div>
                     </div>
                 </div>
+                </>)}
             </div>
 
             {/* Right accent bar — 终止节点视觉标识 */}
@@ -384,16 +400,17 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 }}
             />
 
-            {/* Resize Handle */}
-            <ResizeHandle
-                node={node}
-                minWidth={MIN_WIDTH}
-                minHeight={contentH}
-                color={themeObj.primary}
-                onResize={handleResize}
-                onResizeStart={() => setResizing(true)}
-                onResizeEnd={() => setResizing(false)}
-            />
+            {!isCompact && (
+                <ResizeHandle
+                    node={node}
+                    minWidth={MIN_WIDTH}
+                    minHeight={contentH}
+                    color={themeObj.primary}
+                    onResize={handleResize}
+                    onResizeStart={() => setResizing(true)}
+                    onResizeEnd={() => setResizing(false)}
+                />
+            )}
         </NodeWrapper>
     );
 };

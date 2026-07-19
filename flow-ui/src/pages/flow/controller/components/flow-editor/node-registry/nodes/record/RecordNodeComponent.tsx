@@ -21,6 +21,11 @@ import {
 } from '../../shared/useNodeSelection';
 import { relativizeExtractPath } from '../../shared/extractPathUtils';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 import { createId } from '../../../utils/id';
 
 const { Text } = Typography;
@@ -392,9 +397,18 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
         [node],
     );
 
-    // 高度随属性行自动撑开 + 端口 Y 与行对齐（无 ResizeHandle）
+    const cardMinHeight = calcRecordHeight(Math.max(fields.length, 1));
+    const compactHeight = HEADER_HEIGHT + COMPACT_FOOTER_HEIGHT;
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight,
+        compactHeight,
+        minWidth: MIN_WIDTH,
+    });
+
+    // 高度随属性行自动撑开 + 端口 Y 与行对齐（compact 时矮卡片）
     useEffect(() => {
-        const height = calcRecordHeight(fields.length);
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const height = isCompactMode ? compactHeight : calcRecordHeight(fields.length);
         const width = Math.max(node.getSize().width || MIN_WIDTH, MIN_WIDTH);
         // 始终写成精确高度，避免历史手动缩放导致端口落在节点外、连不上
         if (
@@ -404,7 +418,10 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             node.resize(width, height);
         }
 
-        const outY = height - FOOTER_HEIGHT + FT_RESULT_Y;
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+        const outY = isCompactMode
+            ? height - fh / 2
+            : height - FOOTER_HEIGHT + FT_RESULT_Y;
 
         const ensureVarPort = (id: string, y: number) => {
             const existing = node.getPort(id);
@@ -453,7 +470,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             if (f.source === 'wire' || f.source === 'placeholder') {
                 const pid = `in:var:${f.id}`;
                 wanted.add(pid);
-                ensureVarPort(pid, fieldPortY(idx));
+                ensureVarPort(pid, isCompactMode ? HEADER_HEIGHT / 2 : fieldPortY(idx));
             }
         });
 
@@ -462,7 +479,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             if (p.id.startsWith('in:var:') && !wanted.has(p.id)) node.removePort(p.id);
             if (p.id.startsWith('in:field:')) node.removePort(p.id);
         });
-    }, [fields, node, dragState, updateEdges]);
+    }, [fields, node, dragState, updateEdges, isCompact, compactHeight]);
 
     // ── 连线：in:payload 总入口 / in:var 末行占位升级（原逻辑保留）──
     useEffect(() => {
@@ -961,6 +978,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                 />
             </div>
 
+            {!isCompact && (
             <div
                 style={{
                     height: fields.length * ROW_HEIGHT + PADDING_Y * 2,
@@ -1116,10 +1134,11 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                     );
                 })}
             </div>
+            )}
 
             <div
                 style={{
-                    height: FOOTER_HEIGHT,
+                    height: isCompact ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT,
                     position: 'relative',
                     flexShrink: 0,
                     display: 'flex',
@@ -1133,7 +1152,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                     style={{
                         position: 'absolute',
                         right: 10,
-                        top: FT_RESULT_Y,
+                        top: isCompact ? COMPACT_FOOTER_HEIGHT / 2 : FT_RESULT_Y,
                         transform: 'translateY(-50%)',
                     }}
                 >
@@ -1141,23 +1160,25 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                 </div>
             </div>
 
-            <ResizeHandle
-                node={node}
-                minWidth={MIN_WIDTH}
-                minHeight={calcRecordHeight(Math.max(fields.length, 1))}
-                axes="x"
-                color={themeObj.primary}
-                onResize={(nw) => {
-                    if (node.hasPort('out')) {
-                        const h = node.getSize().height;
-                        node.setPortProp('out', 'args', {
-                            x: nw,
-                            y: h - FOOTER_HEIGHT + FT_RESULT_Y,
-                            dx: 0,
-                        });
-                    }
-                }}
-            />
+            {!isCompact && (
+                <ResizeHandle
+                    node={node}
+                    minWidth={MIN_WIDTH}
+                    minHeight={calcRecordHeight(Math.max(fields.length, 1))}
+                    axes="x"
+                    color={themeObj.primary}
+                    onResize={(nw) => {
+                        if (node.hasPort('out')) {
+                            const h = node.getSize().height;
+                            node.setPortProp('out', 'args', {
+                                x: nw,
+                                y: h - FOOTER_HEIGHT + FT_RESULT_Y,
+                                dx: 0,
+                            });
+                        }
+                    }}
+                />
+            )}
         </NodeWrapper>
     );
 };

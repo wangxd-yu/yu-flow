@@ -16,6 +16,11 @@ import {
     NODE_FOOTER_PORT_OFFSET_Y,
 } from '../../shared/useNodeSelection';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 export const ERROR_HANDLER_COLOR = '#dc2626';
 
@@ -41,20 +46,39 @@ export const ErrorHandlerNodeComponent: React.FC<{ node: Node }> = ({ node }) =>
     const data = (node.getData() as any) || {};
     const theme = getNodeTheme(data?.themeColor || 'red');
     const { selected, outlineCss } = useNodeSelection(node);
+    const [size, setSize] = React.useState(node.getSize());
+    const compactHeight = NODE_HEADER_WITH_ID_HEIGHT + COMPACT_FOOTER_HEIGHT;
+
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: ERROR_HANDLER_LAYOUT.height,
+        compactHeight,
+        minWidth: 160,
+    });
 
     React.useEffect(() => {
-        const w = node.getSize().width || ERROR_HANDLER_LAYOUT.width;
+        const onS = () => setSize({ ...node.getSize() });
+        node.on('change:size', onS);
+        return () => { node.off('change:size', onS); };
+    }, [node]);
+
+    React.useEffect(() => {
+        const w = size.width || ERROR_HANDLER_LAYOUT.width;
+        const h = size.height;
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
+        const outY = isCompactMode ? h - fh + fh / 2 : ERROR_HANDLER_LAYOUT.outPortY;
+
         if (!node.hasPort('out')) {
             node.addPort({
                 id: 'out',
                 group: 'absolute-out-solid',
-                args: { x: w, y: ERROR_HANDLER_LAYOUT.outPortY, dx: 0 },
+                args: { x: w, y: outY, dx: 0 },
             });
         } else {
             node.setPortProp('out', 'group', 'absolute-out-solid');
-            node.setPortProp('out', 'args', { x: w, y: ERROR_HANDLER_LAYOUT.outPortY, dx: 0 });
+            node.setPortProp('out', 'args', { x: w, y: outY, dx: 0 });
         }
-    }, [node]);
+    }, [node, size, isCompact]);
 
     return (
         <NodeWrapper
@@ -74,11 +98,20 @@ export const ErrorHandlerNodeComponent: React.FC<{ node: Node }> = ({ node }) =>
                 onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                 onTitleChange={(t) => node.setData({ ...node.getData(), __label: t })}
             />
-            <div style={{ padding: '8px 12px', fontSize: 11, color: '#64748b', lineHeight: 1.45 }}>
-                引擎异常时跳转至此；用 $.error 读取详情。
-            </div>
-            <NodeOutFooter label="out" color={theme.primary} borderColor={theme.headerBorder} style={{ marginTop: 'auto' }} />
-            <ResizeHandle node={node} axes="x" minWidth={160} minHeight={ERROR_HANDLER_LAYOUT.height} />
+            {!isCompact && (
+                <div style={{ padding: '8px 12px', fontSize: 11, color: '#64748b', lineHeight: 1.45 }}>
+                    引擎异常时跳转至此；用 $.error 读取详情。
+                </div>
+            )}
+            <NodeOutFooter
+                label="out"
+                color={theme.primary}
+                borderColor={theme.headerBorder}
+                style={{ marginTop: isCompact ? 0 : 'auto', height: isCompact ? COMPACT_FOOTER_HEIGHT : undefined }}
+            />
+            {!isCompact && (
+                <ResizeHandle node={node} axes="x" minWidth={160} minHeight={ERROR_HANDLER_LAYOUT.height} />
+            )}
         </NodeWrapper>
     );
 };

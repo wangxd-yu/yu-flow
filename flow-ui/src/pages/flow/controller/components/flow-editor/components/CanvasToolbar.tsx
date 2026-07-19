@@ -7,6 +7,8 @@ import {
   AimOutlined,
   ApartmentOutlined,
   NodeIndexOutlined,
+  AppstoreOutlined,
+  BorderOuterOutlined,
 } from '@ant-design/icons';
 import type { Graph, Node } from '@antv/x6';
 import {
@@ -15,6 +17,10 @@ import {
   EDGE_ROUTE_PRESETS,
   type EdgeRouteStyleKey,
 } from '../adapter';
+import {
+  useNodeViewModeControls,
+  type NodeViewMode,
+} from '../node-registry/shared/NodeViewMode';
 
 export type CanvasToolbarProps = {
   graph: Graph | null;
@@ -325,6 +331,14 @@ const EDGE_ROUTE_ITEMS: { key: EdgeRouteStyleKey; icon: string; label: string }[
 
 export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
   const [edgeStyle, setEdgeStyle] = React.useState<EdgeRouteStyleKey>(getActiveEdgeRouteStyle);
+  const { mode: viewMode, setMode: setViewMode } = useNodeViewModeControls();
+
+  const handleViewMode = React.useCallback(
+    (key: string) => {
+      if (key === 'card' || key === 'compact') setViewMode(key as NodeViewMode);
+    },
+    [setViewMode],
+  );
 
   const handleLayout = React.useCallback(
     (key: string) => {
@@ -418,6 +432,51 @@ export default function CanvasToolbar({ graph }: CanvasToolbarProps) {
       </Tooltip>
 
       <div style={{ height: 1, background: '#e8e8e8', margin: '0 4px' }} />
+
+      <Dropdown
+        menu={{
+          items: [
+            {
+              key: 'card',
+              label: (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <AppstoreOutlined />
+                  <span>完整卡片</span>
+                  {viewMode === 'card' ? (
+                    <span style={{ marginLeft: 'auto', color: '#1677ff', fontSize: 11 }}>✓</span>
+                  ) : null}
+                </span>
+              ),
+            },
+            {
+              key: 'compact',
+              label: (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <BorderOuterOutlined />
+                  <span>极简标题</span>
+                  {viewMode === 'compact' ? (
+                    <span style={{ marginLeft: 'auto', color: '#1677ff', fontSize: 11 }}>✓</span>
+                  ) : null}
+                </span>
+              ),
+            },
+          ],
+          onClick: ({ key }) => handleViewMode(key),
+          selectedKeys: [viewMode],
+        }}
+        placement="bottomRight"
+        trigger={['click']}
+      >
+        <Tooltip
+          title={viewMode === 'compact' ? '节点视图：极简' : '节点视图：完整'}
+          placement="left"
+        >
+          <Button
+            icon={viewMode === 'compact' ? <BorderOuterOutlined /> : <AppstoreOutlined />}
+            type="text"
+          />
+        </Tooltip>
+      </Dropdown>
 
       <Dropdown
         menu={{

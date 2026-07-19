@@ -40,6 +40,11 @@ import {
     extractContractParams,
     mergeContractParamsIntoVariables,
 } from './contractParams';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    getGraphNodeViewMode,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 const { Text } = Typography;
 
@@ -241,9 +246,24 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         ensurePayloadPort(node, PAYLOAD_PORT_Y);
 
         const s = node.getSize();
-        const ft = s.height - FOOTER_HEIGHT;
-        const outY = ft + FT_RESULT_Y;
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+        const ft = s.height - fh;
+        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
         const outX = s.width;
+
+        if (isCompactMode) {
+            variables.forEach((v) => {
+                const pid = `in:var:${v.id}`;
+                if (node.hasPort(pid)) {
+                    try {
+                        node.setPortProp(pid, 'args', { x: 0, y: HEADER_HEIGHT / 2, dx: 0 });
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            });
+        }
 
         if (!existing.has('out')) {
             node.addPort({
@@ -260,6 +280,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
             if (p?.group !== 'absolute-out-solid') {
                 node.setPortProp('out', 'group', 'absolute-out-solid');
             }
+            node.setPortProp('out', 'args', { x: outX, y: outY, dx: 0 });
         }
     }, [variables, node, size]);
 
@@ -271,17 +292,28 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         VAR_PADDING +
         FOOTER_HEIGHT;
 
+    const compactHeight = HEADER_HEIGHT + COMPACT_FOOTER_HEIGHT;
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: minH,
+        compactHeight,
+        minWidth: MIN_WIDTH,
+        resizing,
+    });
+
     React.useEffect(() => {
-        if (!resizing) {
+        if (!resizing && !isCompact) {
             const s = node.getSize();
             if (s.height < minH) node.resize(Math.max(s.width, MIN_WIDTH), minH);
         }
-    }, [minH, node, resizing]);
+    }, [minH, node, resizing, isCompact]);
 
     const handleResize = React.useCallback(
         (nw: number, nh: number) => {
-            const ft = nh - FOOTER_HEIGHT;
-            node.setPortProp('out', 'args', { x: nw, y: ft + FT_RESULT_Y, dx: 0 });
+            const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+            const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+            const ft = nh - fh;
+            const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+            node.setPortProp('out', 'args', { x: nw, y: outY, dx: 0 });
             updateEdges('out');
         },
         [node, updateEdges],
@@ -290,14 +322,17 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
     React.useEffect(() => {
         if (resizing) return;
         const s = node.getSize();
-        const ft = s.height - FOOTER_HEIGHT;
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
+        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
+        const ft = s.height - fh;
+        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
         try {
-            node.setPortProp('out', 'args', { x: s.width, y: ft + FT_RESULT_Y, dx: 0 });
+            node.setPortProp('out', 'args', { x: s.width, y: outY, dx: 0 });
             updateEdges('out');
         } catch {
             /* ignore */
         }
-    }, [size, variables.length, resizing, node, updateEdges]);
+    }, [size, variables.length, resizing, node, updateEdges, isCompact]);
 
     const nodeLabel = data?.__label || 'API Call';
     const handleTitleChange = React.useCallback(
@@ -349,6 +384,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                 />
             </PayloadEntryChrome>
 
+            {!isCompact && (
             <div
                 style={{
                     height: SERVICE_BLOCK_HEIGHT,
@@ -419,7 +455,9 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                         : 'Method/URL 随目标 API，无需在此选择'}
                 </Text>
             </div>
+            )}
 
+            {!isCompact && (
             <DynamicVariableList
                 variables={variables}
                 rowHeight={ROW_HEIGHT}
@@ -434,10 +472,11 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                 namePlaceholder="参数名 → @FP"
                 pathPlaceholder="来源 $.上游.out"
             />
+            )}
 
             <div
                 style={{
-                    height: FOOTER_HEIGHT,
+                    height: isCompact ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT,
                     position: 'relative',
                     pointerEvents: 'auto',
                     flexShrink: 0,
@@ -462,6 +501,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                 </div>
             </div>
 
+            {!isCompact && (
             <ResizeHandle
                 node={node}
                 minWidth={MIN_WIDTH}
@@ -472,6 +512,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                 onResizeStart={() => setResizing(true)}
                 onResizeEnd={() => setResizing(false)}
             />
+            )}
         </NodeWrapper>
     );
 };

@@ -27,6 +27,13 @@ import {
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import { NODE_HEADER_WITH_ID_HEIGHT } from '../../shared/useNodeSelection';
 import { createId } from '../../../utils/id';
+import {
+    COMPACT_EXIT_ROW,
+    CompactExitLabels,
+    getGraphNodeViewMode,
+    HTTP_COMPACT_FOOTER_HEIGHT,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -89,6 +96,10 @@ function calcHttpRequestMinHeight(opts: {
     }
     y += PADDING_BOTTOM + FOOTER_HEIGHT;
     return y;
+}
+
+function compactExitY(ft: number, idx: number): number {
+    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
 }
 
 const METHOD_OPTIONS = [
@@ -277,9 +288,19 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
         bodyType,
     });
 
+    const compactHeight = HEADER_HEIGHT + HTTP_COMPACT_FOOTER_HEIGHT;
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: minTotalHeight,
+        compactHeight,
+        minWidth: MIN_WIDTH,
+        resizing,
+    });
+
     // 端口与高度
     useEffect(() => {
         if (node.hasPort('out')) node.removePort('out');
+
+        const isCompactMode = getGraphNodeViewMode(node) === 'compact';
 
         // 历史 URL 行控制流 in → 迁到总入口 in:payload 后移除
         let migratedIn = false;
@@ -324,38 +345,6 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             }
         });
         ensurePayloadPort(node, PAYLOAD_PORT_Y);
-
-        let currentY = HEADER_HEIGHT + PADDING_TOP;
-        currentY += ROW_HEIGHT + GAP;
-
-        const headersListStartY = currentY + SECTION_HEADER_HEIGHT;
-        currentY += SECTION_HEADER_HEIGHT + headers.length * (ROW_HEIGHT + 4) + GAP;
-
-        const paramsListStartY = currentY + SECTION_HEADER_HEIGHT;
-        currentY += SECTION_HEADER_HEIGHT + params.length * (ROW_HEIGHT + 4) + GAP;
-
-        let bodyStartY = currentY;
-        if (showBody) {
-            bodyStartY += SECTION_HEADER_HEIGHT;
-        }
-
-        // 切换 Body 类型 / 增删行时：保证高度够用；非 JSON 时收回多余空白，避免与手动 resize 打架
-        if (!resizing) {
-            const s = node.getSize();
-            const fitH = calcHttpRequestMinHeight({
-                headerCount: headers.length,
-                paramCount: params.length,
-                formCount: formData.length,
-                showBody,
-                bodyType,
-            });
-            const nextH = bodyType === 'json' && showBody
-                ? Math.max(s.height, fitH) // JSON：只升高，保留用户拉高
-                : fitH; // None / Form：贴合内容
-            if (Math.abs(s.height - nextH) > 2) {
-                node.resize(Math.max(s.width, MIN_WIDTH), nextH);
-            }
-        }
 
         /** 清掉历史脏数据里的 X6 端口文字（absolute 组本身无 text markup） */
         const clearPortLabel = (id: string) => {
@@ -410,6 +399,69 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             }
         };
 
+        const currentSize = node.getSize();
+
+        if (isCompactMode) {
+            const parkY = HEADER_HEIGHT / 2;
+            headers.forEach((item) => {
+                setAbsoluteInPort(`in:header:${item.id}`, parkY);
+            });
+            params.forEach((item) => {
+                setAbsoluteInPort(`in:param:${item.id}`, parkY);
+            });
+
+            const jsonPortId = 'in:body:json';
+            if (showBody && bodyType === 'json') setAbsoluteInPort(jsonPortId, parkY);
+            else if (node.hasPort(jsonPortId)) node.removePort(jsonPortId);
+
+            if (showBody && bodyType === 'form-data') {
+                formData.forEach((item) => {
+                    setAbsoluteInPort(`in:form:${item.id}`, parkY);
+                });
+            } else {
+                node.getPorts().forEach((p) => {
+                    if (p.id?.startsWith('in:form:')) node.removePort(p.id);
+                });
+            }
+
+            const ft = currentSize.height - HTTP_COMPACT_FOOTER_HEIGHT;
+            setAbsoluteOutPort('success', 'absolute-out-solid', compactExitY(ft, 0), currentSize.width);
+            setAbsoluteOutPort('fail', 'absolute-out-hollow', compactExitY(ft, 1), currentSize.width);
+            return;
+        }
+
+        let currentY = HEADER_HEIGHT + PADDING_TOP;
+        currentY += ROW_HEIGHT + GAP;
+
+        const headersListStartY = currentY + SECTION_HEADER_HEIGHT;
+        currentY += SECTION_HEADER_HEIGHT + headers.length * (ROW_HEIGHT + 4) + GAP;
+
+        const paramsListStartY = currentY + SECTION_HEADER_HEIGHT;
+        currentY += SECTION_HEADER_HEIGHT + params.length * (ROW_HEIGHT + 4) + GAP;
+
+        let bodyStartY = currentY;
+        if (showBody) {
+            bodyStartY += SECTION_HEADER_HEIGHT;
+        }
+
+        // 切换 Body 类型 / 增删行时：保证高度够用；非 JSON 时收回多余空白，避免与手动 resize 打架
+        if (!resizing) {
+            const s = node.getSize();
+            const fitH = calcHttpRequestMinHeight({
+                headerCount: headers.length,
+                paramCount: params.length,
+                formCount: formData.length,
+                showBody,
+                bodyType,
+            });
+            const nextH = bodyType === 'json' && showBody
+                ? Math.max(s.height, fitH) // JSON：只升高，保留用户拉高
+                : fitH; // None / Form：贴合内容
+            if (Math.abs(s.height - nextH) > 2) {
+                node.resize(Math.max(s.width, MIN_WIDTH), nextH);
+            }
+        }
+
         headers.forEach((item, idx) => {
             setAbsoluteInPort(`in:header:${item.id}`, headersListStartY + idx * (ROW_HEIGHT + 4) + ROW_HEIGHT / 2);
         });
@@ -431,14 +483,13 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             });
         }
 
-        const currentSize = node.getSize();
         const footerY = currentSize.height - FOOTER_HEIGHT;
         const successY = footerY + 28;
         const failY = footerY + 56;
 
         setAbsoluteOutPort('success', 'absolute-out-solid', successY, currentSize.width);
         setAbsoluteOutPort('fail', 'absolute-out-hollow', failY, currentSize.width);
-    }, [data, resizing, size.width, size.height, node]);
+    }, [data, resizing, size.width, size.height, node, isCompact]);
 
     const renderKVRow = (listKey: KvListKey, item: KVItem, idx: number) => (
         <div key={item.id} style={{ height: ROW_HEIGHT, display: 'flex', alignItems: 'center', marginBottom: 4, position: 'relative' }}>
@@ -512,6 +563,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                 />
             </PayloadEntryChrome>
 
+            {!isCompact && (
             <div
                 style={{
                     padding: `${PADDING_TOP}px 12px ${PADDING_BOTTOM}px`,
@@ -617,7 +669,18 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                     )}
                 </div>
             </div>
+            )}
 
+            {isCompact ? (
+                <CompactExitLabels
+                    height={HTTP_COMPACT_FOOTER_HEIGHT}
+                    exits={[
+                        { id: 'success', label: 'success', color: '#52c41a' },
+                        { id: 'fail', label: 'fail', color: '#ff4d4f' },
+                    ]}
+                />
+            ) : (
+            <>
             {/* Footer — 成功条件；策略配置在右侧属性面板 */}
             <div
                 style={{
@@ -654,7 +717,10 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                 <div style={{ position: 'absolute', right: 22, top: 22, fontSize: 11, color: '#52c41a' }}>success</div>
                 <div style={{ position: 'absolute', right: 22, top: 50, fontSize: 11, color: '#ff4d4f' }}>fail</div>
             </div>
+            </>
+            )}
 
+            {!isCompact && (
             <ResizeHandle
                 node={node}
                 minWidth={MIN_WIDTH}
@@ -663,6 +729,7 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
                 onResizeStart={() => setResizing(true)}
                 onResizeEnd={() => setResizing(false)}
             />
+            )}
         </NodeWrapper>
     );
 };

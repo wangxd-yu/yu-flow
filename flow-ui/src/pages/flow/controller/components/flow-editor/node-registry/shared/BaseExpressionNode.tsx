@@ -21,6 +21,10 @@ import {
     hasPayloadInput,
     PayloadEntryChrome,
 } from './usePayloadEntryPort';
+import {
+    COMPACT_FOOTER_HEIGHT,
+    useNodeViewMode,
+} from './NodeViewMode';
 
 const { Text } = Typography;
 
@@ -62,6 +66,8 @@ export interface BaseExpressionNodeProps {
     titleText: string;
     /** 底部区域高度 (Evaluate = 44, If = 90) */
     footerHeight: number;
+    /** 极简模式底部高度（默认 COMPACT_FOOTER_HEIGHT；多出口可按行数传入） */
+    compactFooterHeight?: number;
     /** 表达式字段名 (Evaluate 用 "expression", If 用 "condition", Template 用 "template") */
     expressionField?: string;
     /** 隐藏语言下拉（Template 等纯文本场景） */
@@ -92,11 +98,15 @@ export interface BaseExpressionNodeProps {
 
 // ============================================================================
 export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
-    node, titleIcon, titleText, footerHeight, expressionField = 'expression',
+    node, titleIcon, titleText, footerHeight,
+    compactFooterHeight = COMPACT_FOOTER_HEIGHT,
+    expressionField = 'expression',
     hideLanguage = false, expressionPlaceholder, forceEditorLanguage,
     minExpressionHeight = MIN_QUERY_HEIGHT,
     bottomContent, onResize, onPortSync, onPortPositionSync,
 }) => {
+    const viewMode = useNodeViewMode();
+    const isCompact = viewMode === 'compact';
     const [data, setData] = React.useState<any>(node.getData());
     const themeObj = getNodeTheme(data?.themeColor);
     const { outlineCss, borderColor, selected } = useNodeSelection(node, { defaultColor: themeObj.primary, selectedColor: themeObj.primary });
@@ -130,24 +140,45 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
     usePayloadEntryConnection(node);
     const hasPayload = hasPayloadInput(data);
 
+    const activeFooterH = isCompact ? compactFooterHeight : footerHeight;
+    const exprMinH = Math.max(28, minExpressionHeight);
+    const cardMinH =
+        HEADER_HEIGHT + variables.length * ROW_HEIGHT + VAR_PADDING + COND_PADDING + footerHeight + exprMinH;
+    const compactMinH = HEADER_HEIGHT + compactFooterHeight;
+    const minH = isCompact ? compactMinH : cardMinH;
+
     // ── 端口同步 (委托给消费方) ──
     React.useEffect(() => {
         ensurePayloadPort(node, PAYLOAD_PORT_Y);
+        if (isCompact) {
+            // 极简：变量口叠到 Header 左侧中线，避免矮卡片溢出
+            variables.forEach((v: any) => {
+                const pid = `in:var:${v.id}`;
+                if (node.hasPort(pid)) {
+                    try {
+                        node.setPortProp(pid, 'args', { x: 0, y: HEADER_HEIGHT / 2, dx: 0 });
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            });
+        }
         onPortSync?.(node, node.getSize(), variables);
-    }, [variables, node, size]);
+    }, [variables, node, size, isCompact, activeFooterH]);
 
-    // ── 缩放 ──
+    // ── 缩放 / 模式切换收高度 ──
     const [resizing, setResizing] = React.useState(false);
-    const exprMinH = Math.max(28, minExpressionHeight);
-    const contentH = HEADER_HEIGHT + variables.length * ROW_HEIGHT + VAR_PADDING + COND_PADDING + footerHeight;
-    const minH = contentH + exprMinH;
 
     React.useEffect(() => {
-        if (!resizing) {
-            const s = node.getSize();
-            if (s.height < minH) node.resize(Math.max(s.width, MIN_WIDTH), minH);
+        if (resizing) return;
+        const s = node.getSize();
+        const w = Math.max(s.width, MIN_WIDTH);
+        if (isCompact) {
+            if (s.height !== compactMinH) node.resize(w, compactMinH);
+        } else if (s.height < cardMinH) {
+            node.resize(w, cardMinH);
         }
-    }, [minH, node, resizing]);
+    }, [isCompact, compactMinH, cardMinH, node, resizing]);
 
     const handleResize = React.useCallback((nw: number, nh: number) => {
         onResize?.(node, nw, nh, updateEdges);
@@ -157,7 +188,7 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
     React.useEffect(() => {
         if (resizing) return;
         onPortPositionSync?.(node, node.getSize(), updateEdges);
-    }, [size, variables.length, resizing]);
+    }, [size, variables.length, resizing, isCompact, activeFooterH]);
 
     // ── 标题 ──
     const nodeLabel = (data as any)?.__label || titleText;
@@ -182,7 +213,7 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={
-                        hideLanguage ? undefined : (
+                        isCompact || hideLanguage ? undefined : (
                             <Dropdown menu={langMenu} trigger={['click']}>
                                 <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <Text style={{ fontSize: 11, color: themeObj.primary }}>{language}</Text>
@@ -194,52 +225,56 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
                 />
             </PayloadEntryChrome>
 
-            {/* Variables — 使用共享组件 */}
-            <DynamicVariableList
-                variables={variables}
-                rowHeight={ROW_HEIGHT}
-                dragState={dragState}
-                hoverRowIndex={hoverRowIndex}
-                onHoverChange={setHoverRowIndex}
-                onDragStart={handleDragStart}
-                onAddVar={onAddVar}
-                onUpdateVar={onUpdateVar}
-                onRemoveVar={onRemoveVar}
-                addLabel={expressionField === 'template' ? 'variable' : '输入变量'}
-            />
+            {!isCompact && (
+                <>
+                    <DynamicVariableList
+                        variables={variables}
+                        rowHeight={ROW_HEIGHT}
+                        dragState={dragState}
+                        hoverRowIndex={hoverRowIndex}
+                        onHoverChange={setHoverRowIndex}
+                        onDragStart={handleDragStart}
+                        onAddVar={onAddVar}
+                        onUpdateVar={onUpdateVar}
+                        onRemoveVar={onRemoveVar}
+                        addLabel={expressionField === 'template' ? 'variable' : '输入变量'}
+                    />
 
-            {/* Expression Editor — CodeMirror 代码编辑器 */}
-            <div
-                style={{ padding: '8px 12px', pointerEvents: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: exprMinH }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onMouseUp={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <CodeEditor
-                    value={expression}
-                    onChange={(val) => node.setData({ ...node.getData(), [expressionField]: val }, { overwrite: true })}
-                    language={editorLanguage}
-                    height="100%"
-                    maxHeight="250px"
-                    fontSize={12}
-                    lineNumbers={false}
-                    bordered={false}
-                    theme="light"
-                    placeholder={expressionPlaceholder}
-                    style={{ flex: 1, minHeight: exprMinH, backgroundColor: '#f0f0f0', borderRadius: 4 }}
-                />
+                    <div
+                        style={{ padding: '8px 12px', pointerEvents: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: exprMinH }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseUp={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <CodeEditor
+                            value={expression}
+                            onChange={(val) => node.setData({ ...node.getData(), [expressionField]: val }, { overwrite: true })}
+                            language={editorLanguage}
+                            height="100%"
+                            maxHeight="250px"
+                            fontSize={12}
+                            lineNumbers={false}
+                            bordered={false}
+                            theme="light"
+                            placeholder={expressionPlaceholder}
+                            style={{ flex: 1, minHeight: exprMinH, backgroundColor: '#f0f0f0', borderRadius: 4 }}
+                        />
+                    </div>
+                </>
+            )}
+
+            {/* Footer — 由消费方定义；compact 时限高裁剪，避免 NodeOutFooter 撑破矮卡片 */}
+            <div style={{ height: activeFooterH, flexShrink: 0, overflow: 'hidden' }}>
+                {typeof bottomContent === 'function'
+                    ? bottomContent({ size })
+                    : bottomContent}
             </div>
 
-            {/* Footer — 由消费方定义 */}
-            {typeof bottomContent === 'function'
-                ? bottomContent({ size })
-                : bottomContent
-            }
-
-            {/* Resize */}
-            <ResizeHandle node={node} minWidth={MIN_WIDTH} minHeight={minH} onResize={handleResize} color={themeObj.primary}
-                onResizeStart={() => setResizing(true)} onResizeEnd={() => setResizing(false)} />
+            {!isCompact && (
+                <ResizeHandle node={node} minWidth={MIN_WIDTH} minHeight={minH} onResize={handleResize} color={themeObj.primary}
+                    onResizeStart={() => setResizing(true)} onResizeEnd={() => setResizing(false)} />
+            )}
         </NodeWrapper>
     );
 };
