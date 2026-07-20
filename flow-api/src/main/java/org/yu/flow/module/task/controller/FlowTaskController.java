@@ -8,6 +8,7 @@ import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.dto.FlowTaskDTO;
 import org.yu.flow.module.task.query.FlowTaskQueryDTO;
@@ -97,6 +98,40 @@ public class FlowTaskController {
     @PutMapping("/{id}/log-enabled")
     public R<FlowTaskDO> updateLogEnabled(@PathVariable String id, @RequestParam boolean enabled) {
         return R.ok(flowTaskService.updateLogEnabled(id, enabled));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 发布 / 下线 / 回滚草稿 / 历史版本
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @PutMapping("/{id}/publish")
+    public R<FlowTaskDO> publish(@PathVariable String id) {
+        return R.ok(flowTaskService.publish(id));
+    }
+
+    @PutMapping("/{id}/unpublish")
+    public R<FlowTaskDO> unpublish(@PathVariable String id) {
+        return R.ok(flowTaskService.unpublish(id));
+    }
+
+    @PutMapping("/{id}/rollback")
+    public R<FlowTaskDO> rollback(@PathVariable String id) {
+        return R.ok(flowTaskService.rollbackToPublished(id));
+    }
+
+    @PutMapping("/{id}/republish")
+    public R<FlowTaskDO> republish(@PathVariable String id) {
+        return R.ok(flowTaskService.republish(id));
+    }
+
+    @GetMapping("/{id}/versions")
+    public R<List<FlowAssetVersionDTO>> listVersions(@PathVariable String id) {
+        return R.ok(flowTaskService.listVersions(id));
+    }
+
+    @PostMapping("/{id}/versions/{versionId}/restore")
+    public R<FlowTaskDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
+        return R.ok(flowTaskService.restoreVersion(id, versionId));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

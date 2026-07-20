@@ -32,6 +32,8 @@ const GROUP_NAMES: Record<string, string> = {
   SECURITY: '安全配置',
   GATEWAY: '网关配置',
   OSS: '存储配置',
+  LOG: '日志配置',
+  FLOW: '流程配置',
 };
 
 // 辅助方法：获取数据

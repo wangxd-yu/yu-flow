@@ -20,7 +20,11 @@ import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDo
 import { merge } from 'lodash';
 import { PageContainer } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
-import { addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi } from '../services/flowController';
+import {
+  addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi,
+  listApiVersions, restoreApiVersion, queryAutoApiConfigDetail,
+} from '../services/flowController';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
 
 // ── Panel 子组件 ──
 import ImplementationPanel from './panels/ImplementationPanel';
@@ -274,6 +278,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
 
   // ─── 发布状态 ──────────────────────────────────────────────────────
   const [publishStatus, setPublishStatus] = useState<0 | 1>(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // ─── 保持 Form Store 与 React State 基础字段同步，防止右侧全局配置表单校验失败 ───
   useEffect(() => {
@@ -543,9 +548,14 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   //  Header 区域配置
   // ═══════════════════════════════════════════════════════════════════
 
+  // 顶栏控件统一高度，避免 Tag / Button / Compact 混用导致高低不齐
+  const headerCtrlSize = 'middle' as const;
+  const headerCtrlHeight = 32;
+
   const headerTitle = (
-    <Space.Compact style={{ display: 'flex', width: '100%' }}>
+    <Space.Compact style={{ display: 'flex', width: '100%' }} size={headerCtrlSize}>
       <Select
+        size={headerCtrlSize}
         value={method}
         onChange={setMethod}
         style={{ width: 116 }}
@@ -559,6 +569,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       </Select>
       <Popover content={urlConflictMsg} open={!!urlConflictMsg} placement="bottomLeft" overlayInnerStyle={{ color: '#ff4d4f' }}>
         <ApiPathInput
+          size={headerCtrlSize}
           value={url}
           onChange={setUrl}
           disabled={publishStatus === 1}
@@ -566,6 +577,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         />
       </Popover>
       <Input
+        size={headerCtrlSize}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="接口名称"
@@ -576,18 +588,35 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   );
 
   const headerExtra = (
-    <Space size={12}>
-      {/* 状态指示标签 */}
+    <Space size={8} align="center" wrap={false} style={{ height: headerCtrlHeight }}>
       <Tag
         color={publishStatus === 1 ? 'success' : 'default'}
-        style={{ padding: '4px 12px', fontSize: 13 }}
+        style={{
+          margin: 0,
+          height: headerCtrlHeight,
+          lineHeight: `${headerCtrlHeight - 2}px`,
+          paddingInline: 10,
+          fontSize: 13,
+          borderRadius: 6,
+          display: 'inline-flex',
+          alignItems: 'center',
+        }}
       >
         {publishStatus === 1 ? '● 已发布' : '○ 未发布'}
       </Tag>
 
+      {isEdit && (
+        <HistoryVersionButton
+          size={headerCtrlSize}
+          disabled={!values?.id}
+          onClick={() => setHistoryOpen(true)}
+        />
+      )}
+
       {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
           <Button
+            size={headerCtrlSize}
             danger
             icon={<RollbackOutlined />}
             onClick={async () => {
@@ -611,6 +640,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
 
       {(publishStatus === 0 || isEdit) && (
         <Button
+          size={headerCtrlSize}
           type="primary"
           style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
           icon={<CloudUploadOutlined />}
@@ -622,6 +652,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
 
       {isEdit && publishStatus === 1 && (
         <Button
+          size={headerCtrlSize}
           danger
           icon={<CloudDownloadOutlined />}
           onClick={async () => {
@@ -642,8 +673,10 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         </Button>
       )}
 
-      <Button icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Button type="primary" icon={<SaveOutlined />} onClick={() => handleSubmit()}>保存草稿</Button>
+      <Button size={headerCtrlSize} icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
+      <Button size={headerCtrlSize} type="primary" icon={<SaveOutlined />} onClick={() => handleSubmit()}>
+        保存草稿
+      </Button>
     </Space>
   );
 
@@ -655,30 +688,32 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     switch (activeTab) {
       case 'implementation':
         return (
-          <ImplementationPanel
-            engineMode={engineMode}
-            onEngineModeChange={setEngineMode}
-            dslContent={dslContent}
-            onDslContentChange={setDslContent}
-            sqlContent={sqlContent}
-            onSqlContentChange={setSqlContent}
-            jsonContent={jsonContent}
-            onJsonContentChange={setJsonContent}
-            textContent={textContent}
-            onTextContentChange={setTextContent}
-            dbDatasource={dbDatasource}
-            onDbDatasourceChange={setDbDatasource}
-            responseType={responseType}
-            onResponseTypeChange={setResponseType}
-            form={form}
-            isEdit={isEdit}
-            onSave={handleSubmit}
-            onCancel={onCancel}
-            apiUrl={url}
-            apiMethod={method}
-            apiId={values?.id}
-            apiName={name}
-          />
+          <div className="controller-form-fill">
+            <ImplementationPanel
+              engineMode={engineMode}
+              onEngineModeChange={setEngineMode}
+              dslContent={dslContent}
+              onDslContentChange={setDslContent}
+              sqlContent={sqlContent}
+              onSqlContentChange={setSqlContent}
+              jsonContent={jsonContent}
+              onJsonContentChange={setJsonContent}
+              textContent={textContent}
+              onTextContentChange={setTextContent}
+              dbDatasource={dbDatasource}
+              onDbDatasourceChange={setDbDatasource}
+              responseType={responseType}
+              onResponseTypeChange={setResponseType}
+              form={form}
+              isEdit={isEdit}
+              onSave={handleSubmit}
+              onCancel={onCancel}
+              apiUrl={url}
+              apiMethod={method}
+              apiId={values?.id}
+              apiName={name}
+            />
+          </div>
         );
       case 'req-schema':
         return (
@@ -761,17 +796,57 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         }
         .controller-form-page-container .ant-page-header {
           flex-shrink: 0;
+          padding-block: 8px !important;
+          padding-inline: 20px !important;
         }
-        .controller-form-page-container > .ant-pro-grid-content {
+        .controller-form-page-container .ant-page-header-heading {
+          max-width: 100%;
+        }
+        .controller-form-page-container .ant-page-header-heading-extra {
+          margin-block: 0 !important;
+        }
+        .controller-form-page-container .ant-tabs-nav {
+          margin: 0 !important;
+          padding-inline: 20px !important;
+        }
+        .controller-form-page-container .ant-tabs-nav::before {
+          border-bottom-color: #f0f0f0;
+        }
+        .controller-form-page-container .ant-tabs-tab {
+          padding: 6px 0 !important;
+          font-size: 13px !important;
+        }
+        .controller-form-page-container .ant-tabs-nav-list {
+          gap: 0;
+        }
+        .controller-form-page-container > .ant-pro-grid-content,
+        .controller-form-page-container .ant-pro-grid-content-children {
           flex: 1 !important;
           min-height: 0 !important;
-          overflow: auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
           padding-bottom: 0 !important;
           margin-bottom: 0 !important;
         }
         .controller-form-page-container .ant-pro-page-container-children-container {
-          padding-bottom: 0 !important;
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          height: auto !important;
+          /* 左右留白，避免贴边；上下仍保持紧凑 */
+          padding: 8px 20px 12px !important;
           margin-bottom: 0 !important;
+          overflow: hidden !important;
+          box-sizing: border-box !important;
+        }
+        .controller-form-fill {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
         }
       `}</style>
       <PageContainer
@@ -794,6 +869,108 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       >
         {renderTabContent()}
       </PageContainer>
+
+      {values?.id && (
+        <AssetVersionHistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={name || values.name}
+          loadVersions={async () => {
+            const res = await listApiVersions(values.id!);
+            return (Array.isArray(res) ? res : (res as any)?.data) || [];
+          }}
+          restoreVersion={async (versionId) => {
+            await restoreApiVersion(values.id!, versionId);
+          }}
+          onRestored={async () => {
+            // 重新拉详情刷新表单（实现内容 + 契约 + 基础/缓存等配置）
+            try {
+              const res: any = await queryAutoApiConfigDetail(values.id!);
+              const detail = res?.data || res;
+              if (!detail) return;
+              setDslContent(detail.dslContent || '');
+              setSqlContent(detail.sqlContent || '');
+              setJsonContent(detail.jsonContent || '');
+              setTextContent(detail.textContent || '');
+              setEngineMode(detail.serviceType || 'FLOW');
+              setDbDatasource(detail.datasource);
+              setResponseType(detail.responseType);
+              setPublishStatus(detail.publishStatus === 1 ? 1 : 0);
+              if (detail.name) setName(detail.name);
+              if (detail.url) setUrl(detail.url);
+              if (detail.method) setMethod(detail.method);
+
+              let cacheEnabled = false;
+              let cacheTtlSeconds = 300;
+              let cacheIncludePageable = true;
+              let cacheKeyParams: Array<{ source: string; name: string }> = [];
+              if (detail.cacheConfig) {
+                try {
+                  const cfg = typeof detail.cacheConfig === 'string'
+                    ? JSON.parse(detail.cacheConfig)
+                    : detail.cacheConfig;
+                  cacheEnabled = !!cfg?.enabled;
+                  cacheTtlSeconds = cfg?.ttlSeconds ?? 300;
+                  cacheIncludePageable = cfg?.includePageable !== false;
+                  cacheKeyParams = Array.isArray(cfg?.keyParams) ? cfg.keyParams : [];
+                } catch { /* ignore */ }
+              }
+
+              form.setFieldsValue({
+                ...form.getFieldsValue(),
+                name: detail.name,
+                url: detail.url,
+                method: detail.method,
+                info: detail.info,
+                tags: detail.tags
+                  ? (typeof detail.tags === 'string'
+                    ? detail.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+                    : detail.tags)
+                  : undefined,
+                version: detail.version,
+                level: detail.level,
+                logEnabled: detail.logEnabled,
+                templateId: detail.templateId,
+                customSuccessWrapper: detail.customSuccessWrapper,
+                customPageWrapper: detail.customPageWrapper,
+                customFailWrapper: detail.customFailWrapper,
+                isCustomSuccess: !!detail.customSuccessWrapper,
+                isCustomPage: !!detail.customPageWrapper,
+                isCustomFail: !!detail.customFailWrapper,
+                cacheEnabled,
+                cacheTtlSeconds,
+                cacheIncludePageable,
+                cacheKeyParams,
+                responseType: detail.responseType,
+                datasource: detail.datasource,
+                serviceType: detail.serviceType,
+              });
+
+              let contract: any = null;
+              if (detail.contract) {
+                try {
+                  contract = typeof detail.contract === 'string'
+                    ? JSON.parse(detail.contract)
+                    : detail.contract;
+                } catch { /* ignore */ }
+              }
+              if (contract) {
+                setQueryParams(contract.request?.query ?? []);
+                setPathParams(contract.request?.pathParams ?? []);
+                setHeaders(contract.request?.headers ?? []);
+                setBodyNodes(contract.request?.body ?? []);
+                setBodyType(contract.request?.bodyType ?? 'none');
+                setRawBody(contract.request?.rawBody ?? '');
+                setResponseBody(contract.responses?.['200']?.body ?? []);
+                setResponseDesc(contract.responses?.['200']?.description ?? '成功');
+                setStatusCode(contract.responses?.['200']?.statusCode ?? 200);
+              }
+            } catch {
+              // 拉详情失败时仍保持历史抽屉打开
+            }
+          }}
+        />
+      )}
     </Drawer>
   );
 };

@@ -573,6 +573,30 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         });
     }
 
+    @Override
+    public <T> T executeInTransactionThenRollback(String code, DataSourceCallback<T> callback) {
+        DataSource ds = datasourceMap.get(code);
+        if (ds == null) {
+            throw new IllegalArgumentException("数据源未找到, code=" + code);
+        }
+
+        PlatformTransactionManager txManager = transactionManagerMap.computeIfAbsent(
+                code, k -> new DataSourceTransactionManager(ds)
+        );
+
+        TransactionTemplate txTemplate = new TransactionTemplate(txManager);
+        txTemplate.setPropagationBehavior(Propagation.REQUIRED.value());
+
+        return txTemplate.execute(status -> {
+            try {
+                JdbcTemplate jt = jdbcTemplateMap.get(code);
+                return callback.doInDataSource(jt);
+            } finally {
+                status.setRollbackOnly();
+            }
+        });
+    }
+
     // ====================================================================
     //  连接测试
     // ====================================================================

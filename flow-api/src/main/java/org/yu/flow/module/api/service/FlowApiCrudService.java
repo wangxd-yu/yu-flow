@@ -103,4 +103,10 @@ public interface FlowApiCrudService {
 
     /** 重新发布：将最新草稿重新冻结为快照 */
     FlowApiDO republish(String id);
+
+    /** 历史版本列表 */
+    java.util.List<org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO> listVersions(String id);
+
+    /** 回退线上到指定历史版本（不覆盖草稿） */
+    FlowApiDO restoreVersion(String id, String versionId);
 }

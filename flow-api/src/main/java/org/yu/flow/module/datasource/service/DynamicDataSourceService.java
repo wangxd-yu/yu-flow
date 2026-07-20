@@ -70,6 +70,12 @@ public interface DynamicDataSourceService {
     <T> T executeInTransaction(String code, Propagation propagation, DataSourceCallback<T> callback);
 
     /**
+     * 在事务中执行回调，结束后强制回滚（用于数据库模式调试，避免写操作落库）。
+     * <p>内部嵌套的 {@link #executeInTransaction}（REQUIRED）会加入同一事务并一并回滚。</p>
+     */
+    <T> T executeInTransactionThenRollback(String code, DataSourceCallback<T> callback);
+
+    /**
      * 根据已保存数据源 ID 测试连接（从库中取加密密码并解密后使用）
      *
      * @param id 数据源 ID

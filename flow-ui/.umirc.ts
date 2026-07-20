@@ -81,7 +81,7 @@ export default defineConfig({
       component: './flow/task',
     },
     {
-      name: '服务编排',
+      name: '服务管理',
       icon: 'ClusterOutlined',
       path: '/flow/service',
       component: './flow/service',

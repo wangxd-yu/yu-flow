@@ -1,5 +1,5 @@
 /**
- * 服务编排 · 配置页
+ * 服务管理 · 配置页
  * - 基本信息 / 服务契约 / 流程编排
  * - 契约在独立 Tab 编辑；Service 卡片同步展示入参摘要
  */
@@ -22,7 +22,10 @@ import {
   republishServiceFlow,
   rollbackServiceFlow,
   getServiceFlow,
+  listServiceFlowVersions,
+  restoreServiceFlowVersion,
 } from '../services/serviceFlowService';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
 import { SchemaTreeTable } from '../../controller/components/ApiContractDesigner';
 import type { SchemaNode } from '../../controller/components/ApiContractDesigner';
 import {
@@ -86,6 +89,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   );
   const [activeTab, setActiveTab] = useState<string>('basic');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -149,6 +153,9 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       setDslContent(injectContractIntoServiceDsl(detail.dslContent, nextContract));
     }
     if (detail.name != null) setName(detail.name);
+    if (detail.enabled != null) setEnabled(!!detail.enabled);
+    if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
+    if (detail.info != null) setInfo(detail.info);
     onPublished?.(detail);
   }, [onPublished]);
 
@@ -256,6 +263,13 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
           调试运行
         </Button>
       </Tooltip>
+
+      {isEdit && (
+        <HistoryVersionButton
+          disabled={!initialValues.id}
+          onClick={() => setHistoryOpen(true)}
+        />
+      )}
 
       {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
@@ -386,7 +400,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
     if (activeTab === 'basic') return basicInfoContent;
     if (activeTab === 'contract') return contractContent;
     return (
-      <div style={{ height: 'calc(100vh - 160px)', minHeight: 500 }}>
+      <div className="service-form-fill">
         <FlowEditor
           value={dslContent}
           onChange={setDslContent}
@@ -408,14 +422,49 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       onClose={onCancel}
       closable={false}
       styles={{
-        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' },
       }}
       destroyOnClose
     >
       <style>{`
-        .service-form-page-container .ant-pro-page-container-children-content {
-          padding-bottom: 0 !important;
-          margin-bottom: 0 !important;
+        .service-form-page-container.ant-pro-page-container {
+          display: flex !important;
+          flex-direction: column !important;
+          height: 100% !important;
+          overflow: hidden !important;
+        }
+        .service-form-page-container .ant-page-header { flex-shrink: 0; }
+        .service-form-page-container > .ant-pro-grid-content,
+        .service-form-page-container .ant-pro-grid-content-children {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+        }
+        .service-form-page-container .ant-page-header {
+          padding-inline: 20px !important;
+        }
+        .service-form-page-container .ant-tabs-nav {
+          padding-inline: 20px !important;
+          margin: 0 !important;
+        }
+        .service-form-page-container .ant-pro-page-container-children-container {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          height: auto !important;
+          padding: 8px 20px 12px !important;
+          overflow: hidden !important;
+          box-sizing: border-box !important;
+        }
+        .service-form-fill {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
         }
       `}</style>
       <PageContainer
@@ -433,10 +482,29 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
           { tab: '服务契约', key: 'contract' },
           { tab: '流程编排', key: 'flow' },
         ]}
-        style={{ height: '100%', overflow: 'auto' }}
+        style={{ height: '100%', overflow: 'hidden' }}
       >
         {renderTabContent()}
       </PageContainer>
+
+      {initialValues.id && (
+        <AssetVersionHistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={name || initialValues.name}
+          loadVersions={async () => {
+            const res = await listServiceFlowVersions(initialValues.id!);
+            return (Array.isArray(res) ? res : (res as any)?.data) || [];
+          }}
+          restoreVersion={async (versionId) => {
+            await restoreServiceFlowVersion(initialValues.id!, versionId);
+          }}
+          onRestored={async () => {
+            const detail = unwrapService(await getServiceFlow(initialValues.id!));
+            applyDetail(detail);
+          }}
+        />
+      )}
     </Drawer>
   );
 };

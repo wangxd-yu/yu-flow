@@ -26,7 +26,7 @@ import {
   SettingOutlined, CloseOutlined, ConsoleSqlOutlined,
   CheckCircleFilled, CloseCircleFilled, LoadingOutlined,
   ClockCircleOutlined, UpOutlined, DownOutlined,
-  SendOutlined, PlusOutlined, DeleteOutlined,
+  PlusOutlined, DeleteOutlined,
   FileTextOutlined, BugOutlined, StepForwardOutlined, StopOutlined,
 } from '@ant-design/icons';
 import './FlowDebugger.less';
@@ -381,7 +381,15 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>([createEmptyKV()]);
   const [triggerParams, setTriggerParams] = useState<KVEntry[]>([createEmptyKV()]);
   const [triggerBody, setTriggerBody] = useState<string>('{\n  \n}');
-  const [triggerActiveTab, setTriggerActiveTab] = useState<string>('body');
+  const [triggerActiveTab, setTriggerActiveTab] = useState<string>(
+    (apiMethod || 'GET').toUpperCase() === 'GET' ? 'params' : 'body',
+  );
+  const isGetMethod = (apiMethod || 'GET').toUpperCase() === 'GET';
+  useEffect(() => {
+    if (isGetMethod && triggerActiveTab === 'body') {
+      setTriggerActiveTab('params');
+    }
+  }, [isGetMethod, triggerActiveTab]);
 
   // ─── Console 的 Inspector Tab ──────────────────────────────────────
   const [inspectorTab, setInspectorTab] = useState<string>('input');
@@ -438,7 +446,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       dslContent,
       headers: kvToRecord(triggerHeaders),
       queryParams: kvToRecord(triggerParams),
-      body: triggerBody,
+      body: isGetMethod ? '' : triggerBody,
       breakpoints: breakpoints || [],
     };
 
@@ -449,7 +457,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       setRunningStatus('error');
       setDebugStatus('error');
     }
-  }, [dslContent, triggerHeaders, triggerParams, triggerBody, onDebugStart, kvToRecord, breakpoints, onConsoleOpenChange, updateLogs, updateSelectedLog]);
+  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, onDebugStart, kvToRecord, breakpoints, onConsoleOpenChange, updateLogs, updateSelectedLog]);
 
   const pollStatus = useCallback(async () => {
     if (!debugSessionId || !onDebugStatus) return;
@@ -525,7 +533,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       dslContent,
       headers: kvToRecord(triggerHeaders),
       queryParams: kvToRecord(triggerParams),
-      body: triggerBody,
+      body: isGetMethod ? '' : triggerBody,
     };
 
     try {
@@ -603,7 +611,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       }]);
       updateSelectedLog('err_global');
     }
-  }, [dslContent, triggerHeaders, triggerParams, triggerBody, onRun, kvToRecord]);
+  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, onRun, kvToRecord]);
 
   /** 切换 Trigger Panel */
   const toggleTriggerPanel = useCallback(() => {
@@ -826,7 +834,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
           2. 右侧触发器面板 (Trigger Panel - 无遮罩悬浮卡片)
           ══════════════════════════════════════════════════════════════ */}
       {isTriggerPanelOpen && (
-        <div className="pfd-trigger-panel">
+        <div className={`pfd-trigger-panel ${isConsoleOpen ? 'pfd-trigger-panel--console-open' : ''}`}>
           <div className="pfd-trigger-header">
             <div className="pfd-trigger-title">
               <SettingOutlined style={{ marginRight: 8, color: '#1677ff' }} />
@@ -915,7 +923,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                   />
                 ),
               },
-              {
+              ...(!isGetMethod ? [{
                 key: 'body',
                 label: 'Body',
                 children: (
@@ -928,21 +936,21 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                     className="pfd-body-editor"
                   />
                 ),
-              },
+              }] : []),
             ]}
           />
 
-          {/* 底部运行按钮 */}
+          {/* 与底部悬浮「运行」同一逻辑 */}
           <div className="pfd-trigger-footer">
             <Button
               type="primary"
-              icon={<SendOutlined />}
+              icon={<CaretRightOutlined />}
               block
               onClick={handleRun}
               loading={runningStatus === 'running'}
               className="pfd-trigger-send-btn"
             >
-              发送请求
+              运行
             </Button>
           </div>
         </div>

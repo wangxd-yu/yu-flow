@@ -1091,20 +1091,17 @@ public class DynamicSqlParser {
 
                 // 只有当参数存在且不为null、不为空字符串时，才添加这个条件
                 if (value != null && !(value instanceof String && ((String) value).isEmpty())) {
-                    // 处理集合参数
-                    if (value instanceof List) {
-                        List<?> listValue = (List<?>) value;
-                        if (listValue.isEmpty()) {
-                            // 空集合，使用NULL
+                    List<Object> expanded = expandCollectionParam(value);
+                    if (expanded != null) {
+                        if (expanded.isEmpty()) {
                             processedSql.append("NULL");
                         } else {
-                            // 生成多个占位符
-                            for (int i = 0; i < listValue.size(); i++) {
+                            for (int i = 0; i < expanded.size(); i++) {
                                 if (i > 0) {
                                     processedSql.append(", ");
                                 }
                                 processedSql.append("?");
-                                paramValues.add(normalizeJdbcParam(listValue.get(i)));
+                                paramValues.add(normalizeJdbcParam(expanded.get(i)));
                             }
                         }
                     } else {
@@ -1135,6 +1132,24 @@ public class DynamicSqlParser {
         String finalSql = processedSql.toString().trim();
 
         return new SqlAndParams(finalSql, paramValues);
+    }
+
+    /**
+     * 将 List / Collection / 数组展开为 IN 占位符序列；非集合返回 null。
+     */
+    private static List<Object> expandCollectionParam(Object value) {
+        if (value instanceof Collection<?>) {
+            return new ArrayList<>((Collection<?>) value);
+        }
+        if (value != null && value.getClass().isArray()) {
+            int len = Array.getLength(value);
+            List<Object> items = new ArrayList<>(len);
+            for (int i = 0; i < len; i++) {
+                items.add(Array.get(value, i));
+            }
+            return items;
+        }
+        return null;
     }
 
     private static Object normalizeJdbcParam(Object value) {

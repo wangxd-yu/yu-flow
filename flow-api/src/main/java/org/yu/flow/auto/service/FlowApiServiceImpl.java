@@ -17,8 +17,10 @@ import org.yu.flow.auto.util.ValidationRule;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.service.SqlExecutorService;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.dto.FlowDbDebugRequestDTO;
 import org.yu.flow.module.datasource.service.DynamicDataSourceService;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +29,7 @@ import org.yu.flow.module.api.service.FlowApiCrudServiceImpl;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.regex.Pattern;
 import org.yu.flow.engine.model.FlowTrace;
@@ -279,6 +282,179 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         return flowApiDO.getLogEnabled() == null || flowApiDO.getLogEnabled();
     }
 
+    @Override
+    public FlowTrace debugRunDb(FlowDbDebugRequestDTO request) {
+        long startMs = System.currentTimeMillis();
+        String startTimeStr = new SimpleDateFormat("HH:mm:ss.SSS").format(new Date());
+
+        if (StrUtil.isBlank(request.getSqlContent())) {
+            return buildDbDebugErrorTrace(startMs, startTimeStr, "SQL 内容不能为空", null, null);
+        }
+        if (StrUtil.isBlank(request.getDatasource())) {
+            return buildDbDebugErrorTrace(startMs, startTimeStr, "请选择数据源", null, null);
+        }
+        if (StrUtil.isBlank(request.getResponseType())) {
+            return buildDbDebugErrorTrace(startMs, startTimeStr, "请选择响应类型", null, null);
+        }
+
+        FlowApiDO apiDO = new FlowApiDO()
+                .setId(request.getSourceRef())
+                .setName(StrUtil.blankToDefault(request.getSourceName(), "DB Debug"))
+                .setServiceType("DB")
+                .setSqlContent(request.getSqlContent())
+                .setDatasource(request.getDatasource())
+                .setResponseType(request.getResponseType())
+                .setPublishStatus(0)
+                .setLogEnabled(false);
+
+        Map<String, String> queryParams = request.getQueryParams() != null
+                ? new LinkedHashMap<>(request.getQueryParams()) : new LinkedHashMap<>();
+        Map<String, Object> bodyParams = parseDebugBody(request.getBody());
+        Map<String, Object> headers = new LinkedHashMap<>();
+        if (request.getHeaders() != null) {
+            request.getHeaders().forEach(headers::put);
+        }
+
+        int page = resolveInt(request.getPage(), queryParams.get("page"), 0);
+        int size = resolveInt(request.getSize(), queryParams.get("size"), 10);
+        if (size <= 0) {
+            size = 10;
+        }
+        Pageable pageable = PageRequest.of(Math.max(page, 0), size);
+
+        Map<String, Object> inputParamsMap = new HashMap<>(8);
+        inputParamsMap.put("@QP", new LinkedHashMap<>(queryParams));
+        inputParamsMap.put("@BP", bodyParams);
+        inputParamsMap.put("@PP", new LinkedHashMap<>());
+        inputParamsMap.put("headers", headers);
+        inputParamsMap.put("params", new LinkedHashMap<>(queryParams));
+        inputParamsMap.put("queryParams", new LinkedHashMap<>(queryParams));
+        inputParamsMap.put("body", bodyParams);
+        inputParamsMap.put("bodyParams", bodyParams);
+
+        RuntimeLogContext runtimeLogContext = new RuntimeLogContext();
+        boolean rollbackTransaction = request.getRollbackTransaction() == null
+                || Boolean.TRUE.equals(request.getRollbackTransaction());
+        try {
+            Object result;
+            if (rollbackTransaction) {
+                result = dynamicDataSourceService.executeInTransactionThenRollback(
+                        request.getDatasource(),
+                        jt -> {
+                            try {
+                                return doExecute(inputParamsMap, pageable, null, apiDO, runtimeLogContext);
+                            } catch (RuntimeException re) {
+                                throw re;
+                            } catch (Exception ex) {
+                                throw new RuntimeException(ex.getMessage(), ex);
+                            }
+                        });
+            } else {
+                result = doExecute(inputParamsMap, pageable, null, apiDO, runtimeLogContext);
+            }
+            long endMs = System.currentTimeMillis();
+
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("queryParams", queryParams);
+            inputs.put("bodyParams", bodyParams);
+            inputs.put("headers", headers);
+            inputs.put("datasource", apiDO.getDatasource());
+            inputs.put("responseType", apiDO.getResponseType());
+            inputs.put("rollbackTransaction", rollbackTransaction);
+            inputs.put("actualSql", resolveActualSqlForLog(apiDO, runtimeLogContext));
+
+            Map<String, Object> outputs = new LinkedHashMap<>();
+            outputs.put("result", result);
+            if (rollbackTransaction) {
+                outputs.put("transactionNote", "已开启事务回退：本次调试中的写操作不会提交到数据库");
+            }
+
+            ExecutionLog stepLog = new ExecutionLog()
+                    .setId("step_1")
+                    .setNodeId("db_node")
+                    .setNodeName("Database")
+                    .setNodeType("database")
+                    .setStatus("success")
+                    .setStartTime(startTimeStr)
+                    .setDuration(endMs - startMs)
+                    .setInputs(inputs)
+                    .setOutputs(outputs);
+
+            return new FlowTrace()
+                    .setTraceId(UUID.randomUUID().toString())
+                    .setStartTime(startMs)
+                    .setEndTime(endMs)
+                    .setTotalDurationMs(endMs - startMs)
+                    .setStatus("success")
+                    .setGlobalInputs(inputs)
+                    .setGlobalOutputs(result)
+                    .setStepLogs(Collections.singletonList(stepLog));
+        } catch (Exception e) {
+            log.error("DB debug run failed", e);
+            Map<String, Object> inputs = new LinkedHashMap<>();
+            inputs.put("queryParams", queryParams);
+            inputs.put("bodyParams", bodyParams);
+            inputs.put("actualSql", resolveActualSqlForLog(apiDO, runtimeLogContext));
+            return buildDbDebugErrorTrace(startMs, startTimeStr, e.getMessage(), inputs, e);
+        }
+    }
+
+    private FlowTrace buildDbDebugErrorTrace(long startMs, String startTimeStr, String errorMsg,
+                                             Map<String, Object> inputs, Exception e) {
+        long endMs = System.currentTimeMillis();
+        String msg = StrUtil.blankToDefault(errorMsg, e != null ? e.getClass().getSimpleName() : "未知错误");
+        ExecutionLog stepLog = new ExecutionLog()
+                .setId("step_1")
+                .setNodeId("db_node")
+                .setNodeName("Database")
+                .setNodeType("database")
+                .setStatus("error")
+                .setStartTime(startTimeStr)
+                .setDuration(endMs - startMs)
+                .setInputs(inputs != null ? inputs : Collections.emptyMap())
+                .setError(msg);
+        return new FlowTrace()
+                .setTraceId(UUID.randomUUID().toString())
+                .setStartTime(startMs)
+                .setEndTime(endMs)
+                .setTotalDurationMs(endMs - startMs)
+                .setStatus("error")
+                .setErrorMsg(msg)
+                .setStepLogs(Collections.singletonList(stepLog));
+    }
+
+    private Map<String, Object> parseDebugBody(String body) {
+        if (StrUtil.isBlank(body)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            Object parsed = OBJECT_MAPPER.readValue(body, Object.class);
+            if (parsed instanceof Map) {
+                return toObjectMap(parsed);
+            }
+            Map<String, Object> wrap = new LinkedHashMap<>();
+            wrap.put("value", parsed);
+            return wrap;
+        } catch (Exception e) {
+            Map<String, Object> wrap = new LinkedHashMap<>();
+            wrap.put("raw", body);
+            return wrap;
+        }
+    }
+
+    private int resolveInt(Integer primary, String fromQuery, int defaultValue) {
+        if (primary != null) {
+            return primary;
+        }
+        if (StrUtil.isNotBlank(fromQuery)) {
+            try {
+                return Integer.parseInt(fromQuery.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return defaultValue;
+    }
+
     /**
      * 构建日志 DO 基础字段（共用逻辑提取）
      */
@@ -505,19 +681,20 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                              Map<String, Object> mergeParamsMap, Pageable pageable,
                              HttpServletResponse response, FlowApiDO flowApiDO,
                              RuntimeLogContext runtimeLogContext) throws Exception {
-        // 参数校验
-        if (StrUtil.isNotBlank(flowApiDO.getContract())) {
+        // 参数校验 / 类型转换：已发布时读快照契约，避免草稿污染线上
+        String runtimeContract = resolveContract(flowApiDO);
+        if (StrUtil.isNotBlank(runtimeContract)) {
             Map<String, List<ValidationRule>> validationRules = OBJECT_MAPPER.readValue(
-                    flowApiDO.getContract(),
+                    runtimeContract,
                     new TypeReference<Map<String, List<ValidationRule>>>() {}
             );
             validateParams(queryParams, bodyParams, mergeParamsMap, validationRules);
         }
 
         Map<String, Object> typedQueryParams =
-                contractParamTypeConverter.convertSection(flowApiDO.getContract(), "query", queryParams);
+                contractParamTypeConverter.convertSection(runtimeContract, "query", queryParams);
         Map<String, Object> typedBodyParams =
-                contractParamTypeConverter.convertSection(flowApiDO.getContract(), "body", bodyParams);
+                contractParamTypeConverter.convertSection(runtimeContract, "body", bodyParams);
         Map<String, Object> typedMergeParams = new HashMap<>(mergeParamsMap);
         typedQueryParams.forEach((key, value) -> {
             typedMergeParams.put("query." + key, value);
@@ -545,7 +722,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     private Object doExecute(Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response, FlowApiDO flowApiDO,
                              RuntimeLogContext runtimeLogContext) throws Exception {
-        Map<String, Object> typedParams = convertContextParams(flowApiDO.getContract(), params);
+        Map<String, Object> typedParams = convertContextParams(resolveContract(flowApiDO), params);
         return dispatch(flowApiDO, typedParams, pageable, response, () -> {
             Map<String, Object> inputsMapObj = new HashMap<>();
             inputsMapObj.put("pageable", pageable);
@@ -700,6 +877,24 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
         // ── 降级：直接从草稿字段读取 ──
         return resolveContentFromDraft(flowApiDO);
+    }
+
+    /** 已发布时从快照读取契约，保证运行时与内容快照一致 */
+    private String resolveContract(FlowApiDO flowApiDO) {
+        if (flowApiDO.getPublishStatus() != null
+                && flowApiDO.getPublishStatus() == 1
+                && StrUtil.isNotBlank(flowApiDO.getPublishedSnapshot())) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode snap = OBJECT_MAPPER.readTree(flowApiDO.getPublishedSnapshot());
+                if (snap.has("contract") && !snap.get("contract").isNull()) {
+                    return snap.get("contract").asText();
+                }
+            } catch (Exception e) {
+                log.warn("[FlowApiService] 解析 publishedSnapshot.contract 失败，降级为草稿契约。apiId={}",
+                        flowApiDO.getId(), e);
+            }
+        }
+        return flowApiDO.getContract();
     }
 
     private String resolveContentFromDraft(FlowApiDO flowApiDO) {

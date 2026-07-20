@@ -52,9 +52,20 @@ public class FlowTaskDO implements Serializable {
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean logEnabled;
 
-    /** 流程定义 DSL JSON */
+    /** 流程定义 DSL JSON（草稿） */
     @Column(columnDefinition = "MEDIUMTEXT")
     private String dslContent;
+
+    /** 发布状态：0=未发布，1=已发布 */
+    @Column(columnDefinition = "tinyint default 0")
+    private Integer publishStatus;
+
+    /** 发布快照 JSON：dslContent */
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String publishedSnapshot;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime publishTime;
 
     /** 任务描述 */
     private String info;

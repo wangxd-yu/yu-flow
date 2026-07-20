@@ -1,27 +1,33 @@
 /**
  * TaskForm.tsx
- * ─────────────────────────────────────────────────────────────────────────────
  * 任务管理 · 核心配置页面
- *
- * 相比 ControllerForm 的简化点：
- *   1. 无 HTTP Method / URL 配置（任务通过 Cron 触发）
- *   2. 无发布快照机制（保存即生效）
- *   3. 仅提供 FLOW 编排模式（无 DB / JSON / STRING）
- *   4. 新建时默认插入 schedule 节点作为流程起点
- * ─────────────────────────────────────────────────────────────────────────────
+ * - 草稿 + 发布快照；调度仅跑已发布版本
+ * - 支持历史版本回退线上
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Drawer, message, Button, Form, Input, Switch, Space, Tooltip,
+  Drawer, message, Button, Form, Input, Switch, Space, Tooltip, Tag,
 } from 'antd';
-import { SaveOutlined, CloseOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import {
+  SaveOutlined, CloseOutlined, PlayCircleOutlined,
+  CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined,
+} from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import type { FlowTask } from '../services/taskService';
 import FlowEditor from '../../controller/components/FlowEditor';
-import { debugRunTask } from '../services/taskService';
+import {
+  debugRunTask,
+  updateTask,
+  publishTask,
+  unpublishTask,
+  republishTask,
+  rollbackTask,
+  getTask,
+  listTaskVersions,
+  restoreTaskVersion,
+} from '../services/taskService';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
 
-// ── 默认 schedule 节点 DSL（新建时插入） ──
-// 与 Request 默认占位一致：靠左 x=80（画布空白时由 FlowEditor 按此逻辑创建）
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
   nodes: [
     {
@@ -41,7 +47,9 @@ const DEFAULT_SCHEDULE_DSL = JSON.stringify({
   edges: [],
 });
 
-// ── Props ──
+function unwrapTask(res: any): FlowTask {
+  return (res?.data ?? res) as FlowTask;
+}
 
 export interface TaskFormProps {
   visible: boolean;
@@ -51,27 +59,27 @@ export interface TaskFormProps {
   onSubmit: (values: Partial<FlowTask>) => void;
 }
 
-// ── 主组件 ──
-
 const TaskForm: React.FC<TaskFormProps> = ({
   visible, isEdit, initialValues = {}, onCancel, onSubmit,
 }) => {
   const [form] = Form.useForm();
 
-  // 基本信息状态
   const [name, setName] = useState<string>(initialValues.name || '');
   const [cron, setCron] = useState<string>(initialValues.cron || '');
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
   const [logEnabled, setLogEnabled] = useState<boolean>(initialValues.logEnabled !== false);
   const [info, setInfo] = useState<string>(initialValues.info || '');
-
-  // 流程编排状态：新建时留空，由 FlowEditor 在左侧生成 schedule（与 Request 一致）
   const [dslContent, setDslContent] = useState<string>(initialValues.dslContent || '');
-
+  const [publishStatus, setPublishStatus] = useState<0 | 1>(
+    initialValues.publishStatus === 1 ? 1 : 0,
+  );
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState<boolean>(
+    !!initialValues.hasUnpublishedChanges,
+  );
   const [activeTab, setActiveTab] = useState<string>('basic');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  // 初始化
   useEffect(() => {
     if (visible) {
       setName(initialValues.name || '');
@@ -79,38 +87,109 @@ const TaskForm: React.FC<TaskFormProps> = ({
       setEnabled(initialValues.enabled !== false);
       setLogEnabled(initialValues.logEnabled !== false);
       setInfo(initialValues.info || '');
-      // 新建不预填 DSL，避免 centerContent 把节点居中；编辑加载已有 DSL
       setDslContent(initialValues.dslContent || '');
+      setPublishStatus(initialValues.publishStatus === 1 ? 1 : 0);
+      setHasUnpublishedChanges(!!initialValues.hasUnpublishedChanges);
       setSubmitAttempted(false);
       setActiveTab('basic');
     }
   }, [visible, initialValues]);
 
-  // 保存
-  const handleSave = useCallback(async () => {
+  const buildPayload = useCallback((): Partial<FlowTask> | null => {
     setSubmitAttempted(true);
     if (!name?.trim()) {
       message.warning('请输入任务名称');
-      return;
+      return null;
     }
     if (!cron?.trim()) {
       message.warning('请输入 Cron 表达式');
-      return;
+      return null;
     }
-
-    onSubmit({
+    return {
       name: name.trim(),
       cron: cron.trim(),
       enabled,
       logEnabled,
       info: info || undefined,
-      // 未进入流程编排时，写入默认左侧 schedule DSL
       dslContent: dslContent?.trim() || DEFAULT_SCHEDULE_DSL,
       directoryId: initialValues.directoryId,
-    });
-  }, [name, cron, enabled, logEnabled, info, dslContent, initialValues.directoryId, onSubmit]);
+    };
+  }, [name, cron, enabled, logEnabled, info, dslContent, initialValues.directoryId]);
 
-  // 调试运行
+  const handleSave = useCallback(async () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    onSubmit(payload);
+  }, [buildPayload, onSubmit]);
+
+  const applyDetail = useCallback((detail: FlowTask) => {
+    setPublishStatus(detail.publishStatus === 1 ? 1 : 0);
+    setHasUnpublishedChanges(!!detail.hasUnpublishedChanges);
+    if (detail.dslContent != null) setDslContent(detail.dslContent);
+    if (detail.name != null) setName(detail.name);
+    if (detail.cron != null) setCron(detail.cron);
+    if (detail.enabled != null) setEnabled(!!detail.enabled);
+    if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
+    if (detail.info != null) setInfo(detail.info);
+  }, []);
+
+  const handlePublish = useCallback(async () => {
+    if (!isEdit || !initialValues.id) {
+      message.warning('请先保存任务后再发布');
+      return;
+    }
+    const payload = buildPayload();
+    if (!payload) return;
+
+    const isRepublish = publishStatus === 1;
+    const hide = message.loading(isRepublish ? '正在发布更新...' : '正在发布...');
+    try {
+      await updateTask(initialValues.id, payload);
+      if (isRepublish) {
+        await republishTask(initialValues.id);
+      } else {
+        await publishTask(initialValues.id);
+      }
+      const detail = unwrapTask(await getTask(initialValues.id));
+      hide();
+      message.success(isRepublish ? '发布更新成功' : '发布成功');
+      applyDetail(detail);
+    } catch (e: any) {
+      hide();
+      message.error(e?.message || '发布失败');
+    }
+  }, [isEdit, initialValues.id, buildPayload, publishStatus, applyDetail]);
+
+  const handleUnpublish = useCallback(async () => {
+    if (!initialValues.id) return;
+    const hide = message.loading('正在下线...');
+    try {
+      await unpublishTask(initialValues.id);
+      const detail = unwrapTask(await getTask(initialValues.id));
+      hide();
+      message.success('下线成功，调度已停止');
+      applyDetail(detail);
+    } catch (e: any) {
+      hide();
+      message.error(e?.message || '下线失败');
+    }
+  }, [initialValues.id, applyDetail]);
+
+  const handleRollback = useCallback(async () => {
+    if (!initialValues.id) return;
+    const hide = message.loading('正在回滚...');
+    try {
+      await rollbackTask(initialValues.id);
+      const detail = unwrapTask(await getTask(initialValues.id));
+      hide();
+      message.success('已回滚到线上版本');
+      applyDetail(detail);
+    } catch (e: any) {
+      hide();
+      message.error(e?.message || '回滚失败');
+    }
+  }, [initialValues.id, applyDetail]);
+
   const handleDebugRun = useCallback(async () => {
     if (!dslContent) {
       message.warning('请先配置流程');
@@ -134,30 +213,69 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
   }, [dslContent, initialValues.id, initialValues.name, name]);
 
-  // ── Header ──
   const headerTitle = (
     <Space>
       <span style={{ fontWeight: 600, fontSize: 15 }}>
         {isEdit ? `编辑任务：${name}` : '新建任务'}
       </span>
+      <Tag
+        color={publishStatus === 1 ? 'success' : 'default'}
+        style={{ padding: '2px 10px', fontSize: 12 }}
+      >
+        {publishStatus === 1 ? '● 已发布' : '○ 未发布'}
+      </Tag>
+      {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
+        <Tag color="warning">待更新发布</Tag>
+      )}
     </Space>
   );
 
   const headerExtra = (
     <Space size={8}>
-      <Tooltip title="调试：立即运行一次当前流程">
+      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态）">
         <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
           调试运行
         </Button>
       </Tooltip>
+
+      {isEdit && (
+        <HistoryVersionButton
+          disabled={!initialValues.id}
+          onClick={() => setHistoryOpen(true)}
+        />
+      )}
+
+      {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
+        <Tooltip title="将草稿回滚到已发布的线上版本">
+          <Button danger icon={<RollbackOutlined />} onClick={handleRollback}>
+            回滚草稿
+          </Button>
+        </Tooltip>
+      )}
+
+      {isEdit && (
+        <Button
+          type="primary"
+          style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
+          icon={<CloudUploadOutlined />}
+          onClick={handlePublish}
+        >
+          {publishStatus === 1 ? '保存并发布' : '发布上线'}
+        </Button>
+      )}
+
+      {isEdit && publishStatus === 1 && (
+        <Button danger icon={<CloudDownloadOutlined />} onClick={handleUnpublish}>
+          下线
+        </Button>
+      )}
+
       <Button icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
       <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
-        保存
+        保存草稿
       </Button>
     </Space>
   );
-
-  // ── Tab 内容 ──
 
   const basicInfoContent = (
     <div style={{ maxWidth: 600, padding: '16px 0' }}>
@@ -204,6 +322,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
             checkedChildren="启用"
             unCheckedChildren="停用"
           />
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+            启用且已发布后才会注册调度；调试运行始终使用当前草稿。
+          </div>
         </Form.Item>
 
         <Form.Item label="开启日志">
@@ -230,14 +351,12 @@ const TaskForm: React.FC<TaskFormProps> = ({
     </div>
   );
 
-  // 与 ControllerForm 一致：按 Tab 条件挂载，避免 FlowEditor 在 display:none
-  // 容器（宽高为 0）中初始化 X6，触发 SVGMatrix non-finite 报错。
   const renderTabContent = () => {
     if (activeTab === 'basic') {
       return basicInfoContent;
     }
     return (
-      <div style={{ height: 'calc(100vh - 160px)', minHeight: 500 }}>
+      <div className="task-form-fill">
         <FlowEditor
           value={dslContent}
           onChange={setDslContent}
@@ -259,14 +378,49 @@ const TaskForm: React.FC<TaskFormProps> = ({
       onClose={onCancel}
       closable={false}
       styles={{
-        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' },
       }}
       destroyOnClose
     >
       <style>{`
-        .task-form-page-container .ant-pro-page-container-children-content {
-          padding-bottom: 0 !important;
-          margin-bottom: 0 !important;
+        .task-form-page-container.ant-pro-page-container {
+          display: flex !important;
+          flex-direction: column !important;
+          height: 100% !important;
+          overflow: hidden !important;
+        }
+        .task-form-page-container .ant-page-header { flex-shrink: 0; }
+        .task-form-page-container > .ant-pro-grid-content,
+        .task-form-page-container .ant-pro-grid-content-children {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+        }
+        .task-form-page-container .ant-page-header {
+          padding-inline: 20px !important;
+        }
+        .task-form-page-container .ant-tabs-nav {
+          padding-inline: 20px !important;
+          margin: 0 !important;
+        }
+        .task-form-page-container .ant-pro-page-container-children-container {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          height: auto !important;
+          padding: 8px 20px 12px !important;
+          overflow: hidden !important;
+          box-sizing: border-box !important;
+        }
+        .task-form-fill {
+          flex: 1 !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
         }
       `}</style>
       <PageContainer
@@ -283,10 +437,29 @@ const TaskForm: React.FC<TaskFormProps> = ({
           { tab: '基本信息', key: 'basic' },
           { tab: '流程编排', key: 'flow' },
         ]}
-        style={{ height: '100%', overflow: 'auto' }}
+        style={{ height: '100%', overflow: 'hidden' }}
       >
         {renderTabContent()}
       </PageContainer>
+
+      {initialValues.id && (
+        <AssetVersionHistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={name || initialValues.name}
+          loadVersions={async () => {
+            const res = await listTaskVersions(initialValues.id!);
+            return (Array.isArray(res) ? res : (res as any)?.data) || [];
+          }}
+          restoreVersion={async (versionId) => {
+            await restoreTaskVersion(initialValues.id!, versionId);
+          }}
+          onRestored={async () => {
+            const detail = unwrapTask(await getTask(initialValues.id!));
+            applyDetail(detail);
+          }}
+        />
+      )}
     </Drawer>
   );
 };

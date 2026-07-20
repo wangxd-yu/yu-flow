@@ -12,6 +12,7 @@ import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.dto.FlowServiceFlowDTO;
 import org.yu.flow.module.serviceflow.query.FlowServiceFlowQueryDTO;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowExecutionService;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowService;
 
@@ -104,6 +105,16 @@ public class FlowServiceFlowController {
     @PostMapping("/{id}/rollback")
     public R<FlowServiceFlowDO> rollback(@PathVariable String id) {
         return R.ok(flowServiceFlowService.rollbackToPublished(id));
+    }
+
+    @GetMapping("/{id}/versions")
+    public R<List<FlowAssetVersionDTO>> listVersions(@PathVariable String id) {
+        return R.ok(flowServiceFlowService.listVersions(id));
+    }
+
+    @PostMapping("/{id}/versions/{versionId}/restore")
+    public R<FlowServiceFlowDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
+        return R.ok(flowServiceFlowService.restoreVersion(id, versionId));
     }
 
     /**

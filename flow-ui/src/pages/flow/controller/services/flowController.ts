@@ -159,6 +159,28 @@ export async function debugRunAutoApiConfig(data: any) {
   });
 }
 
+/** 数据库模式调试运行 */
+export async function debugRunDbApiConfig(data: {
+  sqlContent: string;
+  datasource?: string;
+  responseType?: string;
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  body?: string;
+  page?: number;
+  size?: number;
+  sourceRef?: string;
+  sourceName?: string;
+  /** 默认 true：调试写操作事务回退，不落库 */
+  rollbackTransaction?: boolean;
+}) {
+  return request<any>('/flow-api/api/debug/db/run', {
+    method: 'POST',
+    data,
+    timeout: DEBUG_REQUEST_TIMEOUT_MS,
+  });
+}
+
 export async function startDebugSession(data: any) {
   return request<any>('/flow-api/debug/session/start', {
     method: 'POST',
@@ -207,4 +229,26 @@ export async function rollbackApi(id: string) {
 /** 重新发布（将最新草稿冻结为快照并上线） */
 export async function republishApi(id: string) {
   return request<FlowController>(`/flow-api/api/${id}/republish`, { method: 'PUT' });
+}
+
+export interface AssetVersionItem {
+  id: string;
+  versionNo: number;
+  source?: string;
+  remark?: string;
+  publisher?: string;
+  publishTime?: string;
+  current?: boolean;
+}
+
+/** 历史版本列表 */
+export async function listApiVersions(id: string) {
+  return request<AssetVersionItem[]>(`/flow-api/api/${id}/versions`, { method: 'GET' });
+}
+
+/** 回退线上到指定历史版本（不覆盖草稿） */
+export async function restoreApiVersion(id: string, versionId: string) {
+  return request<FlowController>(`/flow-api/api/${id}/versions/${versionId}/restore`, {
+    method: 'POST',
+  });
 }

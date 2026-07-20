@@ -102,6 +102,27 @@ export async function rollbackServiceFlow(id: string) {
   return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/rollback`, { method: 'POST' });
 }
 
+export interface AssetVersionItem {
+  id: string;
+  versionNo: number;
+  source?: string;
+  remark?: string;
+  publisher?: string;
+  publishTime?: string;
+  current?: boolean;
+}
+
+export async function listServiceFlowVersions(id: string) {
+  return request<AssetVersionItem[]>(`/flow-api/service-flow/${id}/versions`, { method: 'GET' });
+}
+
+export async function restoreServiceFlowVersion(id: string, versionId: string) {
+  return request<FlowServiceFlow>(
+    `/flow-api/service-flow/${id}/versions/${versionId}/restore`,
+    { method: 'POST' },
+  );
+}
+
 const DEBUG_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 export async function debugRunServiceFlow(

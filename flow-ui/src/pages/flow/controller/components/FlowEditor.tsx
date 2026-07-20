@@ -76,6 +76,8 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
      * 接口管理用 request；任务管理用 schedule。默认 request。
      */
     defaultEntryNode?: DslNodeType;
+    /** 工具条左侧插槽（如引擎模式切换），与设计/代码同一行 */
+    toolbarLeadingExtra?: React.ReactNode;
 };
 
 export default function FlowEditor(props: ExtendedFlowEditorProps) {
@@ -93,6 +95,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         onCancel,
         readonlyTrace,
         defaultEntryNode = 'request',
+        toolbarLeadingExtra,
     } = props;
 
     // ── 只读快照模式标识 ──
@@ -1298,6 +1301,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                 onSave={handleSave}
                 onFormat={handleFormat}
                 readonly={isReadonlySnapshot}
+                leadingExtra={toolbarLeadingExtra}
             />
 
             {parseError && (

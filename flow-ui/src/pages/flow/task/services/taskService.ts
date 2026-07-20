@@ -11,10 +11,25 @@ export interface FlowTask {
   enabled?: boolean;
   logEnabled?: boolean;
   dslContent?: string;
+  /** 0=未发布 1=已发布 */
+  publishStatus?: number;
+  publishedSnapshot?: string;
+  hasUnpublishedChanges?: boolean;
+  publishTime?: string;
   info?: string;
   tags?: string;
   createTime?: string;
   updateTime?: string;
+}
+
+export interface AssetVersionItem {
+  id: string;
+  versionNo: number;
+  source?: string;
+  remark?: string;
+  publisher?: string;
+  publishTime?: string;
+  current?: boolean;
 }
 
 export interface FlowTaskLog {
@@ -73,6 +88,34 @@ export async function updateTaskLogEnabled(id: string, enabled: boolean) {
   return request<FlowTask>(`/flow-api/task/${id}/log-enabled`, {
     method: 'PUT',
     params: { enabled },
+  });
+}
+
+// ── 发布 / 历史版本 ──
+
+export async function publishTask(id: string) {
+  return request<FlowTask>(`/flow-api/task/${id}/publish`, { method: 'PUT' });
+}
+
+export async function unpublishTask(id: string) {
+  return request<FlowTask>(`/flow-api/task/${id}/unpublish`, { method: 'PUT' });
+}
+
+export async function republishTask(id: string) {
+  return request<FlowTask>(`/flow-api/task/${id}/republish`, { method: 'PUT' });
+}
+
+export async function rollbackTask(id: string) {
+  return request<FlowTask>(`/flow-api/task/${id}/rollback`, { method: 'PUT' });
+}
+
+export async function listTaskVersions(id: string) {
+  return request<AssetVersionItem[]>(`/flow-api/task/${id}/versions`, { method: 'GET' });
+}
+
+export async function restoreTaskVersion(id: string, versionId: string) {
+  return request<FlowTask>(`/flow-api/task/${id}/versions/${versionId}/restore`, {
+    method: 'POST',
   });
 }
 

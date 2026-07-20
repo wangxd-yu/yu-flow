@@ -360,7 +360,7 @@ const ServiceFlowManagement: React.FC = () => {
   return (
     <PageContainer
       className="fh-container"
-      header={{ title: '服务编排' }}
+      header={{ title: '服务管理' }}
       style={{
         height: 'calc(100vh - 26px)',
         overflow: 'hidden',

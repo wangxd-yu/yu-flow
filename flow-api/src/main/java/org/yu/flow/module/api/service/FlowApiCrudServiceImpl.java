@@ -16,6 +16,10 @@ import org.yu.flow.module.api.domain.FlowServiceDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
+import org.yu.flow.module.assetversion.AssetBizType;
+import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
+import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
@@ -67,6 +71,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Resource
     private ApiResponseCacheService apiResponseCacheService;
+
+    @Resource
+    private FlowAssetVersionService flowAssetVersionService;
 
     // ============================= FlowApiDO CRUD =============================
 
@@ -380,10 +387,12 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
 
         // 生成快照 JSON
-        api.setPublishedSnapshot(buildSnapshot(api));
+        String snapshot = buildSnapshot(api);
+        api.setPublishedSnapshot(snapshot);
         api.setPublishTime(LocalDateTime.now());
         api.setPublishStatus(1);
         flowApiRepository.save(api);
+        flowAssetVersionService.append(AssetBizType.API, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, null);
 
         // 刷新缓存，线上生效
         flowApiCacheManager.publishRefreshEvent();
@@ -421,21 +430,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             throw new RuntimeException("该 API 没有发布快照，无法回滚");
         }
 
-        try {
-            com.fasterxml.jackson.databind.JsonNode snap = SNAPSHOT_MAPPER.readTree(api.getPublishedSnapshot());
-            api.setDslContent(getSnapText(snap, "dslContent"));
-            api.setSqlContent(getSnapText(snap, "sqlContent"));
-            api.setJsonContent(getSnapText(snap, "jsonContent"));
-            api.setTextContent(getSnapText(snap, "textContent"));
-            api.setContract(getSnapText(snap, "contract"));
-            api.setServiceType(getSnapText(snap, "serviceType"));
-            api.setDatasource(getSnapText(snap, "datasource"));
-            api.setResponseType(getSnapText(snap, "responseType"));
-            api.setUpdateTime(api.getPublishTime()); // 将 updateTime 对齐到发布时间，消除变更标记
-        } catch (Exception e) {
-            throw new RuntimeException("解析发布快照失败", e);
-        }
-
+        applySnapshotToDraft(api, api.getPublishedSnapshot());
+        api.setUpdateTime(api.getPublishTime()); // 将 updateTime 对齐到发布时间，消除变更标记
         flowApiRepository.save(api);
         return api;
     }
@@ -449,12 +445,87 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         return publish(id);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<FlowAssetVersionDTO> listVersions(String id) {
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+        return flowAssetVersionService.list(AssetBizType.API, id, api.getPublishedSnapshot());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO restoreVersion(String id, String versionId) {
+        FlowApiDO api = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+        FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.API, id);
+        LocalDateTime now = LocalDateTime.now();
+        // 线上快照 + 草稿同步为该历史版本，避免编辑器仍显示回退前内容
+        applySnapshotToDraft(api, version.getSnapshot());
+        api.setPublishedSnapshot(version.getSnapshot());
+        api.setPublishStatus(1);
+        api.setPublishTime(now);
+        api.setUpdateTime(now);
+        flowApiRepository.save(api);
+        flowAssetVersionService.append(
+                AssetBizType.API, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
+                "回退至 v" + version.getVersionNo(), null);
+        apiResponseCacheService.evictAll(id);
+        flowApiCacheManager.publishRefreshEvent();
+        return api;
+    }
+
     /**
-     * 构建快照 JSON
+     * 将快照字段写回草稿列。
+     * <p>仅覆盖快照中出现的字段，兼容旧版历史（缺字段时不把现有配置清空）。</p>
+     */
+    private void applySnapshotToDraft(FlowApiDO api, String snapshotJson) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode snap = SNAPSHOT_MAPPER.readTree(snapshotJson);
+            applyText(snap, "name", api::setName);
+            applyText(snap, "url", api::setUrl);
+            applyText(snap, "method", api::setMethod);
+            applyText(snap, "info", api::setInfo);
+            applyText(snap, "tags", api::setTags);
+            applyText(snap, "version", api::setVersion);
+            applyText(snap, "serviceType", api::setServiceType);
+            applyText(snap, "dslContent", api::setDslContent);
+            applyText(snap, "sqlContent", api::setSqlContent);
+            applyText(snap, "jsonContent", api::setJsonContent);
+            applyText(snap, "textContent", api::setTextContent);
+            applyText(snap, "datasource", api::setDatasource);
+            applyText(snap, "responseType", api::setResponseType);
+            applyText(snap, "contract", api::setContract);
+            applyText(snap, "cacheConfig", api::setCacheConfig);
+            applyText(snap, "templateId", api::setTemplateId);
+            applyText(snap, "customSuccessWrapper", api::setCustomSuccessWrapper);
+            applyText(snap, "customPageWrapper", api::setCustomPageWrapper);
+            applyText(snap, "customFailWrapper", api::setCustomFailWrapper);
+            if (snap.has("logEnabled") && !snap.get("logEnabled").isNull()) {
+                api.setLogEnabled(snap.get("logEnabled").asBoolean());
+            }
+            if (snap.has("level") && !snap.get("level").isNull()) {
+                api.setLevel(snap.get("level").asInt());
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("解析历史版本快照失败", e);
+        }
+    }
+
+    /**
+     * 构建完整发布快照（实现内容 + 契约 + 基础/缓存/响应包装等配置）
      */
     private String buildSnapshot(FlowApiDO api) {
         try {
             ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
+            snap.put("name", api.getName());
+            snap.put("url", api.getUrl());
+            snap.put("method", api.getMethod());
+            snap.put("info", api.getInfo());
+            snap.put("tags", api.getTags());
+            snap.put("version", api.getVersion());
             snap.put("serviceType", api.getServiceType());
             snap.put("dslContent", api.getDslContent());
             snap.put("sqlContent", api.getSqlContent());
@@ -463,10 +534,30 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             snap.put("datasource", api.getDatasource());
             snap.put("responseType", api.getResponseType());
             snap.put("contract", api.getContract());
+            snap.put("cacheConfig", api.getCacheConfig());
+            snap.put("templateId", api.getTemplateId());
+            snap.put("customSuccessWrapper", api.getCustomSuccessWrapper());
+            snap.put("customPageWrapper", api.getCustomPageWrapper());
+            snap.put("customFailWrapper", api.getCustomFailWrapper());
+            if (api.getLogEnabled() != null) {
+                snap.put("logEnabled", api.getLogEnabled());
+            }
+            if (api.getLevel() != null) {
+                snap.put("level", api.getLevel());
+            }
             return SNAPSHOT_MAPPER.writeValueAsString(snap);
         } catch (Exception e) {
             throw new RuntimeException("生成发布快照失败", e);
         }
+    }
+
+    private void applyText(com.fasterxml.jackson.databind.JsonNode snap, String field,
+                           java.util.function.Consumer<String> setter) {
+        if (!snap.has(field)) {
+            return;
+        }
+        com.fasterxml.jackson.databind.JsonNode node = snap.get(field);
+        setter.accept(node == null || node.isNull() ? null : node.asText());
     }
 
     private String getSnapText(com.fasterxml.jackson.databind.JsonNode snap, String field) {

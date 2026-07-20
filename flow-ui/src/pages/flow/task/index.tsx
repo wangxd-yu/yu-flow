@@ -17,6 +17,8 @@ import {
   updateTaskLogEnabled,
   runTaskNow,
   getTask,
+  publishTask,
+  unpublishTask,
   FlowTask,
 } from './services/taskService';
 import TaskForm from './components/TaskForm';
@@ -164,6 +166,28 @@ const TaskManagement: React.FC = () => {
       ),
     },
     {
+      title: '发布状态',
+      dataIndex: 'publishStatus',
+      width: 110,
+      hideInSearch: true,
+      valueEnum: {
+        0: { text: '未发布', status: 'Default' },
+        1: { text: '已发布', status: 'Success' },
+      },
+      render: (_, record) => {
+        if (record.publishStatus === 1 && record.hasUnpublishedChanges) {
+          return (
+            <Tooltip title="存在未发布的草稿修改">
+              <Tag color="warning">待更新发布</Tag>
+            </Tooltip>
+          );
+        }
+        return record.publishStatus === 1
+          ? <Tag color="success">已发布</Tag>
+          : <Tag>未发布</Tag>;
+      },
+    },
+    {
       title: '执行日志',
       dataIndex: 'logEnabled',
       width: 90,
@@ -194,12 +218,44 @@ const TaskManagement: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 340,
+      width: 380,
       render: (_, record) => [
         <a key="edit" onClick={() => handleEditAction(record)}>
           编辑
         </a>,
         <Divider key="d1" type="vertical" />,
+        record.publishStatus === 1 ? (
+          <a
+            key="unpublish"
+            onClick={async () => {
+              try {
+                await unpublishTask(record.id);
+                message.success('已下线');
+                actionRef.current?.reload();
+              } catch (e: any) {
+                message.error(e?.message || '下线失败');
+              }
+            }}
+          >
+            下线
+          </a>
+        ) : (
+          <a
+            key="publish"
+            onClick={async () => {
+              try {
+                await publishTask(record.id);
+                message.success('发布成功');
+                actionRef.current?.reload();
+              } catch (e: any) {
+                message.error(e?.message || '发布失败');
+              }
+            }}
+          >
+            发布
+          </a>
+        ),
+        <Divider key="d2" type="vertical" />,
         <a
           key="run"
           onClick={async () => {
@@ -213,14 +269,14 @@ const TaskManagement: React.FC = () => {
         >
           立即执行
         </a>,
-        <Divider key="d2" type="vertical" />,
+        <Divider key="d3" type="vertical" />,
         <a
           key="logs"
           onClick={() => history.push(`/log/task?taskId=${record.id}`)}
         >
           查看日志
         </a>,
-        <Divider key="d3" type="vertical" />,
+        <Divider key="d4" type="vertical" />,
         <Popconfirm
           key="delete"
           title="确定删除该任务？"

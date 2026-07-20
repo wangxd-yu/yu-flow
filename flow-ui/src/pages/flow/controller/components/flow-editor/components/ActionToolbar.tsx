@@ -34,6 +34,8 @@ export type ActionToolbarProps = {
   onCancel?: () => void;
   onFormat?: () => void;
   readonly?: boolean;
+  /** 左侧前置插槽（如引擎模式 Segmented），与设计/代码同一行节省纵向空间 */
+  leadingExtra?: React.ReactNode;
 };
 
 export default function ActionToolbar(props: ActionToolbarProps) {
@@ -52,21 +54,25 @@ export default function ActionToolbar(props: ActionToolbarProps) {
     onModeChange,
     onSave,
     onFormat,
-    readonly
+    readonly,
+    leadingExtra,
   } = props;
 
   return (
     <div
       style={{
-        padding: '8px 12px',
+        padding: '2px 8px',
+        minHeight: 36,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         borderBottom: '1px solid #e5e6eb',
         background: '#ffffff',
+        gap: 12,
       }}
     >
-      <div>
+      <Space size={8} wrap={false} style={{ minWidth: 0 }}>
+        {leadingExtra}
         {!readonly && (
           <Radio.Group
             value={mode}
@@ -76,22 +82,22 @@ export default function ActionToolbar(props: ActionToolbarProps) {
             size="small"
           >
             <Radio.Button value="design">
-              <Space size={4}>
+              <Space size={2}>
                 <NodeIndexOutlined />
-                设计模式
+                设计
               </Space>
             </Radio.Button>
             <Radio.Button value="code">
-              <Space size={4}>
+              <Space size={2}>
                 <CodeOutlined />
-                代码模式
+                代码
               </Space>
             </Radio.Button>
           </Radio.Group>
         )}
-      </div>
+      </Space>
 
-      <Space>
+      <Space size={2}>
         {!readonly && mode === 'code' && (
           <Tooltip title="格式化文档">
             <Button type="text" icon={<FormatPainterOutlined />} onClick={onFormat} />

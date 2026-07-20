@@ -1,6 +1,7 @@
 package org.yu.flow.module.task.scheduler;
 
 import cn.hutool.core.util.StrUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -102,6 +103,13 @@ public class FlowTaskScheduler {
     public void schedule(FlowTaskDO task) {
         if (task == null || StrUtil.isBlank(task.getCron())) {
             log.warn("[FlowTaskScheduler] 任务 Cron 为空，跳过注册: taskId={}", task != null ? task.getId() : "null");
+            return;
+        }
+        if (task.getPublishStatus() == null || task.getPublishStatus() != 1
+                || StrUtil.isBlank(task.getPublishedSnapshot())) {
+            log.info("[FlowTaskScheduler] 任务未发布，跳过注册: taskId={}, name={}",
+                    task.getId(), task.getName());
+            cancel(task.getId());
             return;
         }
         // 幂等：先取消旧调度
@@ -221,8 +229,9 @@ public class FlowTaskScheduler {
                 latestTask.getId(), latestTask.getName(), triggerType);
 
         try {
-            if (StrUtil.isBlank(latestTask.getDslContent())) {
-                throw new IllegalStateException("任务 DSL 内容为空，无法执行");
+            String dsl = resolvePublishedDsl(latestTask);
+            if (StrUtil.isBlank(dsl)) {
+                throw new IllegalStateException("任务未发布或发布快照为空，跳过执行");
             }
 
             // 透传任务元信息，供 ScheduleStepExecutor 写入 $.schedule.*
@@ -231,7 +240,7 @@ public class FlowTaskScheduler {
             args.put("cron", latestTask.getCron());
 
             boolean logEnabled = Boolean.TRUE.equals(latestTask.getLogEnabled());
-            Object result = flowEngine.execute(latestTask.getDslContent(), args, logEnabled,
+            Object result = flowEngine.execute(dsl, args, logEnabled,
                     "TASK", latestTask.getId(), latestTask.getName());
 
             if (logEnabled) {
@@ -296,6 +305,22 @@ public class FlowTaskScheduler {
         } catch (Exception e) {
             log.error("[FlowTaskScheduler] SKIPPED 日志写入失败: taskId={}, error={}",
                     task.getId(), e.getMessage());
+        }
+    }
+
+    /** 调度运行时只读已发布快照；MANUAL 也走快照，保证与线上一致。 */
+    private String resolvePublishedDsl(FlowTaskDO task) {
+        if (task.getPublishStatus() == null || task.getPublishStatus() != 1
+                || StrUtil.isBlank(task.getPublishedSnapshot())) {
+            return null;
+        }
+        try {
+            JsonNode snap = objectMapper.readTree(task.getPublishedSnapshot());
+            JsonNode dsl = snap.get("dslContent");
+            return dsl != null && !dsl.isNull() ? dsl.asText() : null;
+        } catch (Exception e) {
+            log.warn("[FlowTaskScheduler] 解析 publishedSnapshot 失败: taskId={}", task.getId(), e);
+            return null;
         }
     }
 }

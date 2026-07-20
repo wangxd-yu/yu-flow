@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.module.assetversion.AssetBizType;
+import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
+import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
@@ -53,6 +57,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
 
     @Resource
     private ServiceFlowReferenceChecker serviceFlowReferenceChecker;
+
+    @Resource
+    private FlowAssetVersionService flowAssetVersionService;
 
     @Override
     @Transactional
@@ -187,12 +194,15 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         if (StrUtil.isBlank(entity.getDslContent())) {
             throw new RuntimeException("服务 DSL 为空，无法发布");
         }
-        entity.setPublishedSnapshot(buildSnapshot(entity));
+        String snapshot = buildSnapshot(entity);
+        entity.setPublishedSnapshot(snapshot);
         entity.setPublishStatus(1);
         LocalDateTime now = LocalDateTime.now();
         entity.setPublishTime(now);
         entity.setUpdateTime(now);
-        return flowServiceFlowRepository.save(entity);
+        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
+        flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, null);
+        return saved;
     }
 
     @Override
@@ -214,19 +224,11 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         if (StrUtil.isBlank(entity.getPublishedSnapshot())) {
             throw new RuntimeException("该服务没有发布快照，无法回滚");
         }
-        try {
-            JsonNode snap = SNAPSHOT_MAPPER.readTree(entity.getPublishedSnapshot());
-            entity.setDslContent(getSnapText(snap, "dslContent"));
-            entity.setContract(getSnapText(snap, "contract"));
-            if (entity.getPublishTime() != null) {
-                entity.setUpdateTime(entity.getPublishTime());
-            } else {
-                entity.setUpdateTime(LocalDateTime.now());
-            }
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("解析发布快照失败", e);
+        applySnapshotToDraft(entity, entity.getPublishedSnapshot());
+        if (entity.getPublishTime() != null) {
+            entity.setUpdateTime(entity.getPublishTime());
+        } else {
+            entity.setUpdateTime(LocalDateTime.now());
         }
         return flowServiceFlowRepository.save(entity);
     }
@@ -237,15 +239,81 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         return publish(id);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<FlowAssetVersionDTO> listVersions(String id) {
+        FlowServiceFlowDO entity = require(id);
+        return flowAssetVersionService.list(AssetBizType.SERVICE, id, entity.getPublishedSnapshot());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowServiceFlowDO restoreVersion(String id, String versionId) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        FlowServiceFlowDO entity = require(id);
+        FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.SERVICE, id);
+        LocalDateTime now = LocalDateTime.now();
+        applySnapshotToDraft(entity, version.getSnapshot());
+        entity.setPublishedSnapshot(version.getSnapshot());
+        entity.setPublishStatus(1);
+        entity.setPublishTime(now);
+        entity.setUpdateTime(now);
+        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
+        flowAssetVersionService.append(
+                AssetBizType.SERVICE, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
+                "回退至 v" + version.getVersionNo(), null);
+        return saved;
+    }
+
+    /** 完整快照：DSL + 契约 + 启停/日志/基础信息 */
     private String buildSnapshot(FlowServiceFlowDO entity) {
         try {
             ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
+            snap.put("name", entity.getName());
             snap.put("dslContent", entity.getDslContent());
             snap.put("contract", entity.getContract());
+            snap.put("info", entity.getInfo());
+            snap.put("tags", entity.getTags());
+            if (entity.getEnabled() != null) {
+                snap.put("enabled", entity.getEnabled());
+            }
+            if (entity.getLogEnabled() != null) {
+                snap.put("logEnabled", entity.getLogEnabled());
+            }
             return SNAPSHOT_MAPPER.writeValueAsString(snap);
         } catch (Exception e) {
             throw new RuntimeException("生成发布快照失败", e);
         }
+    }
+
+    /** 兼容旧快照：缺字段时不覆盖现有值 */
+    private void applySnapshotToDraft(FlowServiceFlowDO entity, String snapshotJson) {
+        try {
+            JsonNode snap = SNAPSHOT_MAPPER.readTree(snapshotJson);
+            applyText(snap, "name", entity::setName);
+            applyText(snap, "dslContent", entity::setDslContent);
+            applyText(snap, "contract", entity::setContract);
+            applyText(snap, "info", entity::setInfo);
+            applyText(snap, "tags", entity::setTags);
+            if (snap.has("enabled") && !snap.get("enabled").isNull()) {
+                entity.setEnabled(snap.get("enabled").asBoolean());
+            }
+            if (snap.has("logEnabled") && !snap.get("logEnabled").isNull()) {
+                entity.setLogEnabled(snap.get("logEnabled").asBoolean());
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("解析历史版本快照失败", e);
+        }
+    }
+
+    private static void applyText(JsonNode snap, String field, java.util.function.Consumer<String> setter) {
+        if (!snap.has(field)) {
+            return;
+        }
+        JsonNode node = snap.get(field);
+        setter.accept(node == null || node.isNull() ? null : node.asText());
     }
 
     private static String getSnapText(JsonNode snap, String field) {

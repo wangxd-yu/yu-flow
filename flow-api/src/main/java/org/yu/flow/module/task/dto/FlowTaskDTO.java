@@ -23,8 +23,14 @@ public class FlowTaskDTO {
     private Boolean enabled;
     private Boolean logEnabled;
     private String dslContent;
+    private Integer publishStatus;
+    private String publishedSnapshot;
+    private Boolean hasUnpublishedChanges;
     private String info;
     private String tags;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime publishTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
@@ -42,10 +48,20 @@ public class FlowTaskDTO {
         dto.setEnabled(entity.getEnabled() != null ? entity.getEnabled() : true);
         dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : true);
         dto.setDslContent(entity.getDslContent());
+        dto.setPublishStatus(entity.getPublishStatus() != null ? entity.getPublishStatus() : 0);
+        dto.setPublishedSnapshot(entity.getPublishedSnapshot());
+        dto.setPublishTime(entity.getPublishTime());
         dto.setInfo(entity.getInfo());
         dto.setTags(entity.getTags());
         dto.setCreateTime(entity.getCreateTime());
         dto.setUpdateTime(entity.getUpdateTime());
+        if (dto.getPublishStatus() == 1
+                && entity.getPublishTime() != null
+                && entity.getUpdateTime() != null) {
+            dto.setHasUnpublishedChanges(entity.getUpdateTime().isAfter(entity.getPublishTime()));
+        } else {
+            dto.setHasUnpublishedChanges(false);
+        }
         return dto;
     }
 }

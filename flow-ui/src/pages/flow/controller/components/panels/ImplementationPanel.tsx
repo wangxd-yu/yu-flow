@@ -17,6 +17,8 @@ import {
 import { format } from 'sql-formatter';
 import FlowEditor from '../FlowEditor';
 import CodeEditor from '../flow-editor/components/CodeEditor';
+import { DbDebugger } from '../debugger';
+import { debugRunDbApiConfig } from '../../services/flowController';
 import { queryDataSourceList } from '@/pages/flow/dataSource/services/dataSource';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -145,7 +147,7 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
   // ─── Segmented 选项 ────────────────────────────────────────────────
   const engineSegmentedOptions = ENGINE_MODE_OPTIONS.map((opt) => ({
     label: (
-      <Space size={4}>
+      <Space size={2}>
         {opt.icon}
         <span>{opt.label}</span>
       </Space>
@@ -153,18 +155,24 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
     value: opt.value,
   }));
 
+  const engineModeSwitcher = (
+    <Segmented
+      size="small"
+      value={engineMode}
+      onChange={(val) => onEngineModeChange(val as EngineMode)}
+      options={engineSegmentedOptions}
+    />
+  );
+
   // ─── 渲染 ──────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)' }}>
-      {/* 引擎模式切换器 */}
-      <Segmented
-        block
-        size="large"
-        value={engineMode}
-        onChange={(val) => onEngineModeChange(val as EngineMode)}
-        options={engineSegmentedOptions}
-        style={{ marginBottom: 8, flexShrink: 0 }}
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {/* 非 FLOW 模式：引擎切换单独一行；FLOW 模式并入画布工具条，少占一行 */}
+      {engineMode !== 'FLOW' && (
+        <div style={{ flexShrink: 0, padding: '4px 0' }}>
+          {engineModeSwitcher}
+        </div>
+      )}
 
       {/* 引擎内容区 — 按需受控渲染 */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
@@ -201,6 +209,7 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
               apiMethod={apiMethod}
               apiId={apiId}
               apiName={apiName}
+              toolbarLeadingExtra={engineModeSwitcher}
             />
           </div>
         )}
@@ -252,6 +261,30 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
                 language="sql"
                 height="100%"
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              />
+              <DbDebugger
+                sqlContent={sqlContent}
+                datasource={dbDatasource}
+                responseType={responseType}
+                apiUrl={apiUrl}
+                apiMethod={apiMethod}
+                onRun={async (payload) => {
+                  const result = await debugRunDbApiConfig({
+                    ...payload,
+                    sourceRef: apiId,
+                    sourceName: apiName,
+                  });
+                  if (result?.code === 0 && result.data) {
+                    return result.data;
+                  }
+                  if (result?.data) {
+                    return result.data;
+                  }
+                  if (result?.traceId) {
+                    return result;
+                  }
+                  throw new Error(result?.msg || 'Run failed');
+                }}
               />
             </div>
           </Flex>

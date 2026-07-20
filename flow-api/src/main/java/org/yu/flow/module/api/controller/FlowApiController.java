@@ -16,10 +16,13 @@ import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
+import org.yu.flow.module.api.dto.FlowDbDebugRequestDTO;
 import org.yu.flow.dto.R;
+import org.yu.flow.auto.service.FlowApiExecutionService;
 
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.module.api.service.FlowApiCrudService;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 
 import jakarta.annotation.Resource;
 import java.text.SimpleDateFormat;
@@ -50,6 +53,9 @@ public class FlowApiController {
 
     @Resource
     private FlowEngine flowEngine;
+
+    @Resource
+    private FlowApiExecutionService flowApiExecutionService;
 
     @PostMapping("/debug/run")
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
@@ -94,6 +100,13 @@ public class FlowApiController {
         }
     }
 
+    /**
+     * 数据库模式调试运行：传入 SQL / 数据源 / 响应类型与请求参数，直接执行并返回 FlowTrace。
+     */
+    @PostMapping("/debug/db/run")
+    public R<FlowTrace> debugDbRun(@RequestBody FlowDbDebugRequestDTO requestDTO) {
+        return R.ok(flowApiExecutionService.debugRunDb(requestDTO));
+    }
 
     @PostMapping
     public R<FlowApiDO> create(@RequestBody FlowApiDO flowApiDO) {
@@ -273,6 +286,18 @@ public class FlowApiController {
     @PutMapping("/{id}/republish")
     public R<FlowApiDO> republish(@PathVariable String id) {
         return R.ok(flowApiCrudService.republish(id));
+    }
+
+    /** 历史版本列表 */
+    @GetMapping("/{id}/versions")
+    public R<List<FlowAssetVersionDTO>> listVersions(@PathVariable String id) {
+        return R.ok(flowApiCrudService.listVersions(id));
+    }
+
+    /** 回退线上到指定历史版本（不覆盖草稿） */
+    @PostMapping("/{id}/versions/{versionId}/restore")
+    public R<FlowApiDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
+        return R.ok(flowApiCrudService.restoreVersion(id, versionId));
     }
 
     @GetMapping("/name/{name}")

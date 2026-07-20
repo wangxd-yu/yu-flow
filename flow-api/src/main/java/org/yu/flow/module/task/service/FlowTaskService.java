@@ -40,4 +40,16 @@ public interface FlowTaskService {
 
     /** 更新日志开关 */
     FlowTaskDO updateLogEnabled(String id, boolean logEnabled);
+
+    FlowTaskDO publish(String id);
+
+    FlowTaskDO unpublish(String id);
+
+    FlowTaskDO rollbackToPublished(String id);
+
+    FlowTaskDO republish(String id);
+
+    java.util.List<org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO> listVersions(String id);
+
+    FlowTaskDO restoreVersion(String id, String versionId);
 }

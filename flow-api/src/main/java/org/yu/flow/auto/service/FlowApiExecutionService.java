@@ -1,7 +1,8 @@
 package org.yu.flow.auto.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.dto.FlowDbDebugRequestDTO;
 import org.springframework.data.domain.Pageable;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,4 +24,9 @@ public interface FlowApiExecutionService {
      * 执行动态 API（分离参数模式）
      */
     Object executeApi(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams, Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response) throws Exception;
+
+    /**
+     * 数据库模式调试运行：不落执行日志，返回与逻辑编排调试一致的 FlowTrace。
+     */
+    FlowTrace debugRunDb(FlowDbDebugRequestDTO request);
 }
