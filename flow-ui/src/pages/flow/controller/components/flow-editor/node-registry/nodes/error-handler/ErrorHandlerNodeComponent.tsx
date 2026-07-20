@@ -18,6 +18,9 @@ import {
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -52,7 +55,9 @@ export const ErrorHandlerNodeComponent: React.FC<{ node: Node }> = ({ node }) =>
     const { isCompact } = useCompactNodeResize(node, {
         cardMinHeight: ERROR_HANDLER_LAYOUT.height,
         compactHeight,
-        minWidth: 160,
+        minWidth: ERROR_HANDLER_LAYOUT.width,
+        cardDefaultWidth: ERROR_HANDLER_LAYOUT.width,
+        compactWidth: COMPACT_NODE_WIDTH,
     });
 
     React.useEffect(() => {
@@ -65,8 +70,7 @@ export const ErrorHandlerNodeComponent: React.FC<{ node: Node }> = ({ node }) =>
         const w = size.width || ERROR_HANDLER_LAYOUT.width;
         const h = size.height;
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
-        const outY = isCompactMode ? h - fh + fh / 2 : ERROR_HANDLER_LAYOUT.outPortY;
+        const outY = isCompactMode ? compactSingleOutPortY(h) : ERROR_HANDLER_LAYOUT.outPortY;
 
         if (!node.hasPort('out')) {
             node.addPort({
@@ -103,14 +107,18 @@ export const ErrorHandlerNodeComponent: React.FC<{ node: Node }> = ({ node }) =>
                     引擎异常时跳转至此；用 $.error 读取详情。
                 </div>
             )}
-            <NodeOutFooter
-                label="out"
-                color={theme.primary}
-                borderColor={theme.headerBorder}
-                style={{ marginTop: isCompact ? 0 : 'auto', height: isCompact ? COMPACT_FOOTER_HEIGHT : undefined }}
-            />
+            {isCompact ? (
+                <CompactOutFooter label="out" />
+            ) : (
+                <NodeOutFooter
+                    label="out"
+                    color={theme.primary}
+                    borderColor={theme.headerBorder}
+                    style={{ marginTop: 'auto' }}
+                />
+            )}
             {!isCompact && (
-                <ResizeHandle node={node} axes="x" minWidth={160} minHeight={ERROR_HANDLER_LAYOUT.height} />
+                <ResizeHandle node={node} axes="x" minWidth={ERROR_HANDLER_LAYOUT.width} minHeight={ERROR_HANDLER_LAYOUT.height} />
             )}
         </NodeWrapper>
     );

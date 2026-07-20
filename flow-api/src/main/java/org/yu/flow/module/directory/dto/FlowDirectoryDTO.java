@@ -22,6 +22,9 @@ public class FlowDirectoryDTO {
 
     private String name;
 
+    /** 业务域：api/task/service/model/page，空=共用 */
+    private String bizType;
+
     private Integer sort;
 
     /** 子目录列表（用于构造树形结构） */
@@ -43,6 +46,7 @@ public class FlowDirectoryDTO {
         dto.setId(entity.getId());
         dto.setParentId(entity.getParentId());
         dto.setName(entity.getName());
+        dto.setBizType(entity.getBizType());
         dto.setSort(entity.getSort());
         dto.setCreateTime(entity.getCreateTime());
         dto.setUpdateTime(entity.getUpdateTime());

@@ -9,68 +9,70 @@ import type { DslNodeType, DslPort } from '../types';
 import type { NodeRegistration, PortGroupName } from './types';
 
 // ── 通用端口分组配置 (给 SVG 注册节点使用) ──
+/** Postman 向：边缘小圆磁吸（实心=已占用语义，空心=可选出口） */
+const PORT_R = 4.5;
+const portCircleMarkup = () => [
+    { tagName: 'circle', selector: 'circle', className: 'x6-port-body' },
+];
+const portSolidAttrs = {
+    circle: {
+        r: PORT_R,
+        magnet: true,
+        fill: '#94a3b8',
+        stroke: '#ffffff',
+        strokeWidth: 1.5,
+    },
+};
+const portHollowAttrs = {
+    circle: {
+        r: PORT_R,
+        magnet: true,
+        fill: '#ffffff',
+        stroke: '#c0c4cc',
+        strokeWidth: 1.5,
+    },
+};
+
 export const PORT_GROUPS: Record<string, any> = {
-    // 1. 右侧输出端口（实心）
     'out-solid': {
         position: 'right',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L 4,-8 A 4,4 0 0,1 4,8 L 0,8 Z', fill: '#6b7280', stroke: 'none', magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portSolidAttrs,
     },
-    // 2. 右侧输出端口（中空/实线边框）
     'out-hollow': {
         position: 'right',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L 4,-8 A 4,4 0 0,1 4,8 L 0,8 Z', fill: '#ffffff', stroke: '#6b7280', strokeWidth: 1.5, magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portHollowAttrs,
     },
-    // 3. 左侧输入端口（实心）
     'in-solid': {
         position: 'left',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L -4,-8 A 4,4 0 0,0 -4,8 L 0,8 Z', fill: '#6b7280', stroke: 'none', magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portSolidAttrs,
     },
-    // 4. 左侧输入端口（中空）
     'in-hollow': {
         position: 'left',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L -4,-8 A 4,4 0 0,0 -4,8 L 0,8 Z', fill: '#ffffff', stroke: '#6b7280', strokeWidth: 1.5, magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portHollowAttrs,
     },
-
-    // ── 针对需要精确绝对定位 (x, y) 的节点的兼容分组 ──
     'absolute-out-solid': {
         position: 'absolute',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L 4,-8 A 4,4 0 0,1 4,8 L 0,8 Z', fill: '#6b7280', stroke: 'none', magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portSolidAttrs,
     },
     'absolute-out-hollow': {
         position: 'absolute',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L 4,-8 A 4,4 0 0,1 4,8 L 0,8 Z', fill: '#ffffff', stroke: '#6b7280', strokeWidth: 1.5, magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portHollowAttrs,
     },
     'absolute-in-solid': {
         position: 'absolute',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L -4,-8 A 4,4 0 0,0 -4,8 L 0,8 Z', fill: '#6b7280', stroke: 'none', magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portSolidAttrs,
     },
     'absolute-in-hollow': {
         position: 'absolute',
-        markup: [{ tagName: 'path', selector: 'x6-port-body', className: 'x6-port-body' }],
-        attrs: {
-            '.x6-port-body': { d: 'M 0,-8 L -4,-8 A 4,4 0 0,0 -4,8 L 0,8 Z', fill: '#ffffff', stroke: '#6b7280', strokeWidth: 1.5, magnet: true },
-        },
+        markup: portCircleMarkup(),
+        attrs: portHollowAttrs,
     },
 };
 
@@ -180,35 +182,31 @@ export function getPropertyEditor(type: DslNodeType): React.ComponentType<any> |
 export function registerAllShapes(force = false): void {
     if (_shapesRegistered && !force) return;
 
-    // ── 注入全局端口动画样式 ──
+    // ── 注入全局端口样式（小圆磁吸；始终更新以便 HMR）──
     if (typeof document !== 'undefined') {
         const styleId = 'x6-port-dynamic-styles';
-        if (!document.getElementById(styleId)) {
-            const style = document.createElement('style');
+        let style = document.getElementById(styleId) as HTMLStyleElement | null;
+        if (!style) {
+            style = document.createElement('style');
             style.id = styleId;
-            // 端口默认缩放宽度 (0.35倍大概 1.4px 宽，实现扁平卡片边缘) 
-            style.innerHTML = `
-                .x6-port-body {
-                    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), fill 0.2s ease, stroke-opacity 0.2s ease !important;
-                    transform-origin: 0 0;
-                    /* 保持边框在缩放时不发生形变压缩 */
-                    vector-effect: non-scaling-stroke;
-                }
-                .x6-port:not(:hover) .x6-port-body {
-                    transform: scaleX(0.35);
-                }
-                .x6-port:hover .x6-port-body {
-                    transform: scaleX(1);
-                }
-                .x6-port:not(:hover) .x6-port-body[stroke]:not([stroke="none"]) {
-                    stroke-opacity: 0.45;
-                }
-                .x6-port:hover .x6-port-body[stroke]:not([stroke="none"]) {
-                    stroke-opacity: 1;
-                }
-            `;
             document.head.appendChild(style);
         }
+        style.innerHTML = `
+            .x6-port-body {
+                transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), fill 0.15s ease, stroke 0.15s ease, opacity 0.15s ease !important;
+                transform-box: fill-box;
+                transform-origin: center;
+                vector-effect: non-scaling-stroke;
+            }
+            .x6-port:not(:hover) .x6-port-body {
+                transform: scale(1);
+                opacity: 0.92;
+            }
+            .x6-port:hover .x6-port-body {
+                transform: scale(1.28);
+                opacity: 1;
+            }
+        `;
     }
 
     _registry.forEach((reg) => {

@@ -18,6 +18,9 @@ import {
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -55,7 +58,9 @@ export const ParallelNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const { isCompact } = useCompactNodeResize(node, {
         cardMinHeight: PARALLEL_LAYOUT.height,
         compactHeight,
-        minWidth: 160,
+        minWidth: PARALLEL_LAYOUT.width,
+        cardDefaultWidth: PARALLEL_LAYOUT.width,
+        compactWidth: COMPACT_NODE_WIDTH,
     });
 
     React.useEffect(() => {
@@ -68,9 +73,10 @@ export const ParallelNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
         const w = size.width || PARALLEL_LAYOUT.width;
         const h = size.height;
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
         const inY = isCompactMode ? NODE_HEADER_WITH_ID_HEIGHT / 2 : PARALLEL_LAYOUT.inPortY;
-        const outY = isCompactMode ? h - fh + fh / 2 : h - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
+        const outY = isCompactMode
+            ? compactSingleOutPortY(h)
+            : h - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
 
         const ensure = (id: string, group: string, x: number, y: number) => {
             if (!node.hasPort(id)) {
@@ -107,14 +113,18 @@ export const ParallelNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                     从 out 拉多条线到不同下游即并行；汇入同一节点自动 join。
                 </div>
             )}
-            <NodeOutFooter
-                label="out × N"
-                color={theme.primary}
-                borderColor={theme.headerBorder}
-                style={{ marginTop: isCompact ? 0 : 'auto', height: isCompact ? COMPACT_FOOTER_HEIGHT : undefined }}
-            />
+            {isCompact ? (
+                <CompactOutFooter label="out × N" />
+            ) : (
+                <NodeOutFooter
+                    label="out × N"
+                    color={theme.primary}
+                    borderColor={theme.headerBorder}
+                    style={{ marginTop: 'auto' }}
+                />
+            )}
             {!isCompact && (
-                <ResizeHandle node={node} axes="x" minWidth={160} minHeight={PARALLEL_LAYOUT.height} />
+                <ResizeHandle node={node} axes="x" minWidth={PARALLEL_LAYOUT.width} minHeight={PARALLEL_LAYOUT.height} />
             )}
         </NodeWrapper>
     );

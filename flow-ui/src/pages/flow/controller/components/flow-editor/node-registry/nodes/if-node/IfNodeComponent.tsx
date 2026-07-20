@@ -11,8 +11,8 @@ import {
     HEADER_HEIGHT, ROW_HEIGHT, VAR_PADDING, COND_PADDING, MIN_WIDTH, MIN_QUERY_HEIGHT,
 } from '../../shared/BaseExpressionNode';
 import {
-    COMPACT_EXIT_ROW,
     CompactExitLabels,
+    compactExitPortY,
     getGraphNodeViewMode,
     IF_COMPACT_FOOTER_HEIGHT,
     useNodeViewMode,
@@ -44,10 +44,6 @@ function activeFooterHeight(node: Node): number {
     return getGraphNodeViewMode(node) === 'compact' ? IF_COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
 }
 
-function compactExitY(ft: number, idx: number): number {
-    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
-}
-
 function syncIfPorts(
     node: Node,
     size: { width: number; height: number },
@@ -70,8 +66,8 @@ function syncIfPorts(
 
     if (isCompact) {
         ensurePort('in', 'absolute-in-solid', 0, HEADER_HEIGHT / 2);
-        ensurePort('true', 'absolute-out-solid', size.width, compactExitY(ft, 0));
-        ensurePort('false', 'absolute-out-solid', size.width, compactExitY(ft, 1));
+        ensurePort('true', 'absolute-out-solid', size.width, compactExitPortY(ft, 0));
+        ensurePort('false', 'absolute-out-solid', size.width, compactExitPortY(ft, 1));
     } else {
         ensurePort('in', 'absolute-in-solid', 0, ft + FT_DATA_Y);
         ensurePort('true', 'absolute-out-solid', size.width, ft + FT_THEN_Y);

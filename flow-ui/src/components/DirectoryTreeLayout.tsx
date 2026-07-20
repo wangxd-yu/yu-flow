@@ -22,15 +22,26 @@ import {
 import { request } from '@umijs/max';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 
+/** 目录业务域 */
+export type DirectoryBizType = 'api' | 'task' | 'service' | 'model' | 'page';
+
 // ================================================================
 // 全局目录 API — 统一接口
 // ================================================================
 
-async function getDirectoryTree() {
-  return request<any[]>('/flow-api/directories/tree', { method: 'GET' });
+async function getDirectoryTree(bizType?: DirectoryBizType) {
+  return request<any[]>('/flow-api/directories/tree', {
+    method: 'GET',
+    params: bizType ? { bizType } : undefined,
+  });
 }
 
-async function addDirectory(data: { parentId?: string; name: string; sort?: number }) {
+async function addDirectory(data: {
+  parentId?: string;
+  name: string;
+  sort?: number;
+  bizType?: DirectoryBizType;
+}) {
   return request('/flow-api/directories', { method: 'POST', data });
 }
 
@@ -215,6 +226,8 @@ const treeStyles = `
 export interface DirectoryTreeLayoutProps {
   /** render-props：将选中的 directoryId 传递给子组件 */
   children: (selectedDirectoryId: string | undefined, selectedDirectoryName?: string) => React.ReactNode;
+  /** 业务域：过滤目录树，并在新建目录时写入 */
+  bizType?: DirectoryBizType;
   /** 左侧目录树面板初始宽度，默认 300px */
   treeWidth?: string | number;
   /** 左侧目录树最小宽度，默认 240px */
@@ -232,6 +245,7 @@ export interface DirectoryTreeLayoutProps {
 // ================================================================
 const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   children,
+  bizType,
   treeWidth = 300,
   minTreeWidth = 240,
   maxTreeWidth = 480,
@@ -296,7 +310,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   // ---- 加载目录树 ----
   const loadTree = useCallback(async () => {
     try {
-      const res = await getDirectoryTree();
+      const res = await getDirectoryTree(bizType);
       const anyRes = res as any;
       const data = Array.isArray(anyRes) ? anyRes : anyRes?.data ?? [];
       setTreeData(convertToTreeData(data));
@@ -305,7 +319,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
     } catch (err) {
       console.error('获取目录树失败', err);
     }
-  }, []);
+  }, [bizType]);
 
   useEffect(() => {
     loadTree();
@@ -340,11 +354,23 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   };
 
   // ---- 目录 CRUD ----
+  const handleAddRootDir = async () => {
+    const name = window.prompt('请输入根目录名称');
+    if (!name) return;
+    try {
+      await addDirectory({ name, bizType });
+      message.success('目录创建成功');
+      loadTree();
+    } catch {
+      // 错误提示已由 request 拦截器统一处理
+    }
+  };
+
   const handleAddDir = async (parentKey: string) => {
     const name = window.prompt('请输入子目录名称');
     if (!name) return;
     try {
-      await addDirectory({ parentId: parentKey, name });
+      await addDirectory({ parentId: parentKey, name, bizType });
       message.success('目录创建成功');
       loadTree();
     } catch {
@@ -416,13 +442,23 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
               boxSizing: 'border-box',
             }}
           >
-            <Input.Search
-              placeholder="搜索目录"
-              allowClear
-              size="small"
-              style={{ marginBottom: 12 }}
-              onChange={(e) => setTreeSearchValue(e.target.value)}
-            />
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              <Input.Search
+                placeholder="搜索目录"
+                allowClear
+                size="small"
+                style={{ flex: 1 }}
+                onChange={(e) => setTreeSearchValue(e.target.value)}
+              />
+              <Tooltip title="新建根目录">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<PlusOutlined />}
+                  onClick={handleAddRootDir}
+                />
+              </Tooltip>
+            </div>
 
             <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
               <Tree

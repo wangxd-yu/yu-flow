@@ -39,6 +39,62 @@ public class ContractParamTypeConverter {
     private final Map<String, JsonNode> contractCache = new ConcurrentHashMap<>();
 
     /**
+     * 内部服务契约：校验必填并转换 {@code inputs} SchemaNode 列表对应的入参。
+     *
+     * <p>契约形状：{@code { "inputs": SchemaNode[], "outputs": ..., "outputDescription": "..." }}
+     */
+    public Map<String, Object> convertAndValidateServiceInputs(String serviceContractJson,
+                                                               Map<String, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (source != null) {
+            source.forEach(result::put);
+        }
+        if (StrUtil.isBlank(serviceContractJson)) {
+            return result;
+        }
+
+        JsonNode inputs = getContract(serviceContractJson).path("inputs");
+        if (!inputs.isArray() || inputs.isEmpty()) {
+            return result;
+        }
+
+        for (JsonNode node : inputs) {
+            String name = node.path("name").asText("").trim();
+            if (name.isEmpty() || "根节点".equals(name) || "root".equals(node.path("id").asText(""))) {
+                // 根节点：校验/转换其 children
+                JsonNode children = node.path("children");
+                if (children.isArray()) {
+                    for (JsonNode child : children) {
+                        applyServiceInputNode(child, result);
+                    }
+                }
+                continue;
+            }
+            applyServiceInputNode(node, result);
+        }
+        return result;
+    }
+
+    private void applyServiceInputNode(JsonNode node, Map<String, Object> result) {
+        String name = node.path("name").asText("").trim();
+        if (name.isEmpty()) {
+            return;
+        }
+        boolean required = node.path("required").asBoolean(false);
+        boolean present = result.containsKey(name) && result.get(name) != null
+                && !(result.get(name) instanceof String && ((String) result.get(name)).isBlank());
+        if (required && !present) {
+            String title = node.path("title").asText("");
+            String desc = node.path("description").asText("");
+            String label = !title.isBlank() ? title : (!desc.isBlank() ? desc : name);
+            throw new SchemaValidationException("缺少必填入参: " + label + "（" + name + "）");
+        }
+        if (result.containsKey(name) && result.get(name) != null) {
+            result.put(name, convertValue(result.get(name), node, "input." + name));
+        }
+    }
+
+    /**
      * 转换 contract.request 下指定区域（query、pathParams、headers、body）的参数。
      */
     public Map<String, Object> convertSection(String contractJson, String section,

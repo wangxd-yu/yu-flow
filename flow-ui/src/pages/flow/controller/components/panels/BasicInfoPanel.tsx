@@ -192,6 +192,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
               </Col>
               <Col span={12}>
                 <DirectoryTreeSelect
+                  bizType="api"
                   name="directoryId"
                   label="所属目录"
                   placeholder="不选默认为根目录"

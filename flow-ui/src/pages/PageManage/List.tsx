@@ -306,7 +306,7 @@ const PageManageList: React.FC = () => {
       header={{ title: '页面可视化管理' }}
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
     >
-      <DirectoryTreeLayout height="calc(100vh - 90px)">
+      <DirectoryTreeLayout bizType="page" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <>
             <style>{fullHeightTableCSS}</style>
@@ -430,7 +430,7 @@ const PageManageList: React.FC = () => {
           }
         }}
       >
-        <DirectoryTreeSelect />
+        <DirectoryTreeSelect bizType="page" />
       </ModalForm>
 
       {/* ========== 设计器弹窗 ========== */}

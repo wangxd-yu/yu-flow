@@ -67,14 +67,24 @@ export default defineConfig({
     {
       name: '接口管理',
       icon: 'ApiOutlined',
-      path: '/flow/controller',
+      path: '/flow/api',
       component: './flow/controller',
+    },
+    {
+      path: '/flow/controller',
+      redirect: '/flow/api',
     },
     {
       name: '任务管理',
       icon: 'ClockCircleOutlined',
       path: '/flow/task',
       component: './flow/task',
+    },
+    {
+      name: '服务编排',
+      icon: 'ClusterOutlined',
+      path: '/flow/service',
+      component: './flow/service',
     },
     {
       name: '页面管理',
@@ -119,6 +129,11 @@ export default defineConfig({
           name: '任务日志',
           path: '/log/task',
           component: './Log/TaskLog',
+        },
+        {
+          name: '服务日志',
+          path: '/log/service',
+          component: './Log/ServiceLog',
         },
         {
           name: '三方日志',

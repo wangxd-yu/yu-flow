@@ -7,15 +7,20 @@ import org.yu.flow.module.directory.dto.FlowDirectoryDTO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.model.repository.FlowModelInfoRepository;
 import org.yu.flow.module.page.repository.PageInfoRepository;
+import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import cn.hutool.core.util.StrUtil;
+
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +47,9 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
     private FlowTaskRepository flowTaskRepository;
 
     @Resource
+    private FlowServiceFlowRepository flowServiceFlowRepository;
+
+    @Resource
     private DemoModeGuard demoModeGuard;
 
     // ================================================================
@@ -49,24 +57,27 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
     // ================================================================
     @Override
     public List<FlowDirectoryDTO> getTree() {
-        // 1. 查询全部目录
-        List<FlowDirectoryDO> allDirs = directoryRepository.findAll();
+        return getTree(null);
+    }
 
-        // 2. 转换为 DTO
+    @Override
+    public List<FlowDirectoryDTO> getTree(String bizType) {
+        List<FlowDirectoryDO> allDirs = directoryRepository.findAll();
+        if (StrUtil.isNotBlank(bizType)) {
+            allDirs = filterByBizType(allDirs, bizType.trim());
+        }
+
         List<FlowDirectoryDTO> allDtos = allDirs.stream()
                 .map(FlowDirectoryDTO::fromDO)
                 .collect(Collectors.toList());
 
-        // 3. 按 parentId 分组
         Map<String, List<FlowDirectoryDTO>> parentMap = allDtos.stream()
                 .filter(d -> d.getParentId() != null)
                 .collect(Collectors.groupingBy(FlowDirectoryDTO::getParentId));
 
-        // 4. 递归构建树
         allDtos.forEach(dto -> {
             List<FlowDirectoryDTO> children = parentMap.get(dto.getId());
             if (children != null) {
-                // 按 sort 排序
                 children.sort((a, b) -> {
                     int sa = a.getSort() == null ? 0 : a.getSort();
                     int sb = b.getSort() == null ? 0 : b.getSort();
@@ -76,10 +87,42 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
             }
         });
 
-        // 5. 返回根节点列表（parentId 为 null 的节点）
         return allDtos.stream()
                 .filter(d -> d.getParentId() == null)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 保留：匹配域 / 共用（bizType 空）节点，以及它们的祖先（保证树完整）。
+     */
+    private List<FlowDirectoryDO> filterByBizType(List<FlowDirectoryDO> allDirs, String bizType) {
+        Map<String, FlowDirectoryDO> byId = allDirs.stream()
+                .collect(Collectors.toMap(FlowDirectoryDO::getId, d -> d, (a, b) -> a));
+
+        Set<String> keep = new HashSet<>();
+        for (FlowDirectoryDO d : allDirs) {
+            if (matchesBizType(d.getBizType(), bizType)) {
+                keep.add(d.getId());
+            }
+        }
+        // 补齐祖先
+        Set<String> frontier = new HashSet<>(keep);
+        while (!frontier.isEmpty()) {
+            Set<String> parents = new HashSet<>();
+            for (String id : frontier) {
+                FlowDirectoryDO d = byId.get(id);
+                if (d != null && StrUtil.isNotBlank(d.getParentId()) && keep.add(d.getParentId())) {
+                    parents.add(d.getParentId());
+                }
+            }
+            frontier = parents;
+        }
+
+        return allDirs.stream().filter(d -> keep.contains(d.getId())).collect(Collectors.toList());
+    }
+
+    private static boolean matchesBizType(String dirBizType, String filter) {
+        return StrUtil.isBlank(dirBizType) || filter.equalsIgnoreCase(dirBizType);
     }
 
     // ================================================================
@@ -92,6 +135,14 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
         directory.setUpdateTime(LocalDateTime.now());
         if (directory.getSort() == null) {
             directory.setSort(0);
+        }
+        // 未显式指定域时，继承父目录域
+        if (StrUtil.isBlank(directory.getBizType()) && StrUtil.isNotBlank(directory.getParentId())) {
+            directoryRepository.findById(directory.getParentId()).ifPresent(parent -> {
+                if (StrUtil.isNotBlank(parent.getBizType())) {
+                    directory.setBizType(parent.getBizType());
+                }
+            });
         }
         return directoryRepository.save(directory);
     }
@@ -145,6 +196,10 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
         // 校验5：是否有关联定时任务
         if (flowTaskRepository.existsByDirectoryId(id)) {
             throw new RuntimeException("该目录下还有定时任务，请先移除或删除相关任务");
+        }
+        // 校验6：是否有关联内部服务
+        if (flowServiceFlowRepository.existsByDirectoryId(id)) {
+            throw new RuntimeException("该目录下还有内部服务，请先移除或删除相关服务");
         }
         directoryRepository.deleteById(id);
     }

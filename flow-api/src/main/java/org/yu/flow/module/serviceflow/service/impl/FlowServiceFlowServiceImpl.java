@@ -1,0 +1,273 @@
+package org.yu.flow.module.serviceflow.service.impl;
+
+import cn.hutool.core.util.StrUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.module.directory.domain.FlowDirectoryDO;
+import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
+import org.yu.flow.module.directory.service.FlowDirectoryService;
+import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
+import org.yu.flow.module.serviceflow.dto.FlowServiceFlowDTO;
+import org.yu.flow.module.serviceflow.query.FlowServiceFlowQueryDTO;
+import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
+import org.yu.flow.module.serviceflow.service.FlowServiceFlowService;
+import org.yu.flow.module.serviceflow.service.ServiceFlowReferenceChecker;
+
+import jakarta.annotation.Resource;
+import jakarta.persistence.criteria.Predicate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
+
+    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
+
+    @Resource
+    private FlowServiceFlowRepository flowServiceFlowRepository;
+
+    @Resource
+    private FlowDirectoryService flowDirectoryService;
+
+    @Resource
+    private FlowDirectoryRepository flowDirectoryRepository;
+
+    @Resource
+    private DemoModeGuard demoModeGuard;
+
+    @Resource
+    private ServiceFlowReferenceChecker serviceFlowReferenceChecker;
+
+    @Override
+    @Transactional
+    public FlowServiceFlowDO save(FlowServiceFlowDO entity) {
+        if (entity.getEnabled() == null) entity.setEnabled(true);
+        if (entity.getLogEnabled() == null) entity.setLogEnabled(true);
+        if (entity.getPublishStatus() == null) entity.setPublishStatus(0);
+        if (entity.getDeleted() == null) entity.setDeleted(0);
+        LocalDateTime now = LocalDateTime.now();
+        entity.setCreateTime(now);
+        entity.setUpdateTime(now);
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
+    public FlowServiceFlowDO update(FlowServiceFlowDO entity) {
+        demoModeGuard.checkModifyOrDelete(entity.getId(), "内部服务");
+        FlowServiceFlowDO existing = flowServiceFlowRepository.findById(entity.getId())
+                .orElseThrow(() -> new RuntimeException("服务不存在: " + entity.getId()));
+
+        if (entity.getName() != null) existing.setName(entity.getName());
+        if (entity.getEnabled() != null) existing.setEnabled(entity.getEnabled());
+        if (entity.getLogEnabled() != null) existing.setLogEnabled(entity.getLogEnabled());
+        if (entity.getDslContent() != null) existing.setDslContent(entity.getDslContent());
+        if (entity.getContract() != null) existing.setContract(entity.getContract());
+        if (entity.getInfo() != null) existing.setInfo(entity.getInfo());
+        if (entity.getTags() != null) existing.setTags(entity.getTags());
+        if (entity.getDirectoryId() != null) existing.setDirectoryId(entity.getDirectoryId());
+        existing.setUpdateTime(LocalDateTime.now());
+        return flowServiceFlowRepository.save(existing);
+    }
+
+    @Override
+    @Transactional
+    public void delete(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        serviceFlowReferenceChecker.assertDeletable(id);
+        flowServiceFlowRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional
+    public void batchDelete(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        ids.forEach(id -> {
+            demoModeGuard.checkModifyOrDelete(id, "内部服务");
+            serviceFlowReferenceChecker.assertDeletable(id);
+        });
+        flowServiceFlowRepository.logicDeleteByIds(ids);
+    }
+
+    @Override
+    public FlowServiceFlowDO findById(String id) {
+        return flowServiceFlowRepository.findById(id).orElse(null);
+    }
+
+    @Override
+    public PageBean<FlowServiceFlowDTO> findPage(FlowServiceFlowQueryDTO queryDTO) {
+        Pageable pageable = PageRequest.of(
+                queryDTO.getPage(), queryDTO.getSize(),
+                Sort.by(Sort.Direction.DESC, "createTime")
+        );
+
+        Specification<FlowServiceFlowDO> spec = (root, cq, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (StrUtil.isNotBlank(queryDTO.getDirectoryId())) {
+                List<String> dirIds = flowDirectoryService.getAllChildIds(queryDTO.getDirectoryId());
+                if (!dirIds.isEmpty()) {
+                    predicates.add(root.get("directoryId").in(dirIds));
+                } else {
+                    predicates.add(cb.equal(root.get("directoryId"), "-1"));
+                }
+            }
+            if (StrUtil.isNotBlank(queryDTO.getName())) {
+                predicates.add(cb.like(root.get("name"), "%" + queryDTO.getName() + "%"));
+            }
+            if (queryDTO.getEnabled() != null) {
+                predicates.add(cb.equal(root.get("enabled"), queryDTO.getEnabled()));
+            }
+            if (queryDTO.getPublishStatus() != null) {
+                predicates.add(cb.equal(root.get("publishStatus"), queryDTO.getPublishStatus()));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<FlowServiceFlowDO> page = flowServiceFlowRepository.findAll(spec, pageable);
+        List<FlowServiceFlowDTO> items = page.getContent().stream()
+                .map(FlowServiceFlowDTO::fromDO)
+                .collect(Collectors.toList());
+        enrichDirectoryNames(items);
+        return new PageBean<>(items, page.getNumber(), page.getSize(),
+                page.getTotalPages(), page.getTotalElements());
+    }
+
+    @Override
+    @Transactional
+    public FlowServiceFlowDO enable(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        FlowServiceFlowDO entity = require(id);
+        entity.setEnabled(true);
+        entity.setUpdateTime(LocalDateTime.now());
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
+    public FlowServiceFlowDO disable(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        FlowServiceFlowDO entity = require(id);
+        entity.setEnabled(false);
+        entity.setUpdateTime(LocalDateTime.now());
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
+    public FlowServiceFlowDO updateLogEnabled(String id, boolean logEnabled) {
+        FlowServiceFlowDO entity = require(id);
+        entity.setLogEnabled(logEnabled);
+        entity.setUpdateTime(LocalDateTime.now());
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowServiceFlowDO publish(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        FlowServiceFlowDO entity = require(id);
+        if (StrUtil.isBlank(entity.getDslContent())) {
+            throw new RuntimeException("服务 DSL 为空，无法发布");
+        }
+        entity.setPublishedSnapshot(buildSnapshot(entity));
+        entity.setPublishStatus(1);
+        LocalDateTime now = LocalDateTime.now();
+        entity.setPublishTime(now);
+        entity.setUpdateTime(now);
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowServiceFlowDO unpublish(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        FlowServiceFlowDO entity = require(id);
+        entity.setPublishStatus(0);
+        entity.setPublishedSnapshot(null);
+        entity.setUpdateTime(LocalDateTime.now());
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowServiceFlowDO rollbackToPublished(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        FlowServiceFlowDO entity = require(id);
+        if (StrUtil.isBlank(entity.getPublishedSnapshot())) {
+            throw new RuntimeException("该服务没有发布快照，无法回滚");
+        }
+        try {
+            JsonNode snap = SNAPSHOT_MAPPER.readTree(entity.getPublishedSnapshot());
+            entity.setDslContent(getSnapText(snap, "dslContent"));
+            entity.setContract(getSnapText(snap, "contract"));
+            if (entity.getPublishTime() != null) {
+                entity.setUpdateTime(entity.getPublishTime());
+            } else {
+                entity.setUpdateTime(LocalDateTime.now());
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("解析发布快照失败", e);
+        }
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowServiceFlowDO republish(String id) {
+        return publish(id);
+    }
+
+    private String buildSnapshot(FlowServiceFlowDO entity) {
+        try {
+            ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
+            snap.put("dslContent", entity.getDslContent());
+            snap.put("contract", entity.getContract());
+            return SNAPSHOT_MAPPER.writeValueAsString(snap);
+        } catch (Exception e) {
+            throw new RuntimeException("生成发布快照失败", e);
+        }
+    }
+
+    private static String getSnapText(JsonNode snap, String field) {
+        JsonNode node = snap.get(field);
+        return node != null && !node.isNull() ? node.asText() : null;
+    }
+
+    private FlowServiceFlowDO require(String id) {
+        return flowServiceFlowRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("服务不存在: " + id));
+    }
+
+    private void enrichDirectoryNames(List<FlowServiceFlowDTO> dtoList) {
+        Set<String> directoryIds = dtoList.stream()
+                .map(FlowServiceFlowDTO::getDirectoryId)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
+        if (directoryIds.isEmpty()) {
+            return;
+        }
+        Map<String, String> dirMap = flowDirectoryRepository.findAllById(directoryIds).stream()
+                .collect(Collectors.toMap(FlowDirectoryDO::getId, FlowDirectoryDO::getName));
+        dtoList.forEach(dto -> dto.setDirectoryName(dirMap.get(dto.getDirectoryId())));
+    }
+}

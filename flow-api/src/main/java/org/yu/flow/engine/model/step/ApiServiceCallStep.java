@@ -26,8 +26,13 @@ import java.util.Map;
 @Data
 public class ApiServiceCallStep extends Step {
 
-    /** 目标 Flow API 的主键 ID */
+    /** 目标实体主键 ID（Flow API 或内部服务） */
     private String serviceId;
+
+    /**
+     * 调用目标类型：{@code api}（默认，Flow API）或 {@code service}（内部服务编排）。
+     */
+    private String targetType;
 
     /**
      * Jackson 多态遗留字段；勿依赖。真实类型由 {@link #getType()} 固定为 {@code api}。

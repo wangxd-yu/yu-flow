@@ -15,6 +15,7 @@ import {
     useNodeSelection,
     getNodeTheme,
     ResizeHandle,
+    NodeOutFooter,
 } from '../../shared/useNodeSelection';
 import { useNodeVariables, type NodeVariable } from '../../shared/useNodeVariables';
 import { DynamicVariableList } from '../../shared/DynamicVariableList';
@@ -37,11 +38,23 @@ import {
     queryAutoApiConfigDetail,
 } from '@/pages/flow/controller/services/flowController';
 import {
+    getServiceFlow,
+    queryServiceFlowPage,
+    resolveRuntimeContract,
+} from '@/pages/flow/service/services/serviceFlowService';
+import {
     extractContractParams,
     mergeContractParamsIntoVariables,
 } from './contractParams';
 import {
+    extractServiceContractParams,
+    mergeServiceContractIntoVariables,
+} from './serviceContractParams';
+import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -97,6 +110,8 @@ const ICONS = {
 };
 
 export interface ApiNodeData {
+    /** api（默认）| service */
+    targetType?: 'api' | 'service';
     serviceId?: string;
     /** 展示用名称，随选择写入 */
     __serviceName?: string;
@@ -132,6 +147,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         };
     }, [node]);
 
+    const targetType: 'api' | 'service' = data?.targetType === 'service' ? 'service' : 'api';
     const serviceId = data?.serviceId;
     const serviceName = data?.__serviceName;
     const serviceMethod = data?.__serviceMethod;
@@ -140,36 +156,55 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
     const [apiOptions, setApiOptions] = React.useState<ApiOption[]>([]);
     const [loadingApis, setLoadingApis] = React.useState(false);
 
-    const loadApis = React.useCallback(async (keyword?: string) => {
+    const loadTargets = React.useCallback(async (keyword?: string) => {
         setLoadingApis(true);
         try {
-            const res: any = await queryAutoApiConfigList({
-                page: 0,
-                size: 50,
-                name: keyword || undefined,
-            });
-            const items = res?.items || res?.data?.items || [];
-            setApiOptions(
-                items.map((item: any) => ({
-                    label: item.name
-                        ? `${item.name}${item.url ? `  (${item.method || ''} ${item.url})` : ''}`
-                        : item.id,
-                    value: item.id,
-                    name: item.name,
-                    method: item.method,
-                    url: item.url,
-                })),
-            );
+            if (targetType === 'service') {
+                const res: any = await queryServiceFlowPage({
+                    page: 0,
+                    size: 50,
+                    name: keyword || undefined,
+                    enabled: true,
+                    publishStatus: 1,
+                });
+                const items = res?.items || res?.data?.items || [];
+                setApiOptions(
+                    items.map((item: any) => ({
+                        label: item.name || item.id,
+                        value: item.id,
+                        name: item.name,
+                    })),
+                );
+            } else {
+                const res: any = await queryAutoApiConfigList({
+                    page: 0,
+                    size: 50,
+                    name: keyword || undefined,
+                    publishStatus: 1,
+                });
+                const items = res?.items || res?.data?.items || [];
+                setApiOptions(
+                    items.map((item: any) => ({
+                        label: item.name
+                            ? `${item.name}${item.url ? `  (${item.method || ''} ${item.url})` : ''}`
+                            : item.id,
+                        value: item.id,
+                        name: item.name,
+                        method: item.method,
+                        url: item.url,
+                    })),
+                );
+            }
         } catch {
             setApiOptions([]);
         } finally {
             setLoadingApis(false);
         }
-    }, []);
+    }, [targetType]);
 
     React.useEffect(() => {
-        loadApis();
-    }, [loadApis]);
+        loadTargets();
+    }, [loadTargets]);
 
     // 已选 API 不在当前页时，补一条 option 避免 Select 只显示 id
     const selectOptions = React.useMemo(() => {
@@ -200,23 +235,50 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         handleDragStart,
     } = useNodeVariables(node, { varPortY, rowHeight: ROW_HEIGHT });
 
+    // 服务 + 已同步契约：去掉末尾「+」占位行与非契约手动行
+    React.useEffect(() => {
+        if (targetType !== 'service') return;
+        const hasContract = variables.some((v) => v.fromContract && !!v.name?.trim());
+        if (!hasContract) return;
+        const locked = variables.filter((v) => v.fromContract && !!v.name?.trim());
+        if (locked.length === variables.length) return;
+        syncToNodeData(locked);
+    }, [targetType, variables, syncToNodeData]);
+
     usePayloadEntryConnection(node);
     const hasPayload = hasPayloadInput(data);
 
     const [syncingContract, setSyncingContract] = React.useState(false);
 
-    /** 拉取目标 API contract，自动带出入参行（保留已填路径） */
+    /** 拉取目标 API / 服务契约，自动带出入参行（保留已填路径） */
     const syncParamsFromContract = React.useCallback(
         async (targetId: string, existingVars?: NodeVariable[]) => {
             if (!targetId) return;
             setSyncingContract(true);
             try {
-                const detail: any = await queryAutoApiConfigDetail(targetId);
-                const defs = extractContractParams(detail?.contract);
                 const cur =
                     existingVars ||
                     (node.getData() as ApiNodeData)?.__variables ||
                     variables;
+
+                if (targetType === 'service') {
+                    const detail: any = await getServiceFlow(targetId);
+                    const svc = detail?.data || detail;
+                    const defs = extractServiceContractParams(resolveRuntimeContract(svc));
+                    const merged = mergeServiceContractIntoVariables(defs, cur);
+                    syncToNodeData(merged, {
+                        __serviceMethod: '',
+                        __serviceUrl: '',
+                        __serviceName: svc?.name || (node.getData() as any)?.__serviceName,
+                    });
+                    if (defs.length === 0) {
+                        message.info('目标服务未定义入参契约，可手动添加（写入 $.service.input）');
+                    }
+                    return;
+                }
+
+                const detail: any = await queryAutoApiConfigDetail(targetId);
+                const defs = extractContractParams(detail?.contract);
                 const merged = mergeContractParamsIntoVariables(defs, cur);
                 syncToNodeData(merged, {
                     __serviceMethod: detail?.method || (node.getData() as any)?.__serviceMethod,
@@ -228,12 +290,16 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                     message.info('目标 API 未定义请求入参（contract），可手动添加');
                 }
             } catch {
-                message.warning('读取目标 API 契约失败，请手动配置入参');
+                message.warning(
+                    targetType === 'service'
+                        ? '读取服务契约失败，请手动配置入参'
+                        : '读取目标 API 契约失败，请手动配置入参',
+                );
             } finally {
                 setSyncingContract(false);
             }
         },
-        [node, syncToNodeData, variables],
+        [node, syncToNodeData, variables, targetType],
     );
 
     React.useEffect(() => {
@@ -247,9 +313,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
 
         const s = node.getSize();
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
-        const ft = s.height - fh;
-        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+        const outY = isCompactMode ? compactSingleOutPortY(s.height) : s.height - FOOTER_HEIGHT + FT_RESULT_Y;
         const outX = s.width;
 
         if (isCompactMode) {
@@ -297,22 +361,26 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         cardMinHeight: minH,
         compactHeight,
         minWidth: MIN_WIDTH,
+        cardDefaultWidth: MIN_WIDTH,
+        compactWidth: COMPACT_NODE_WIDTH,
         resizing,
     });
 
     React.useEffect(() => {
         if (!resizing && !isCompact) {
             const s = node.getSize();
-            if (s.height < minH) node.resize(Math.max(s.width, MIN_WIDTH), minH);
+            const w = Math.max(s.width, MIN_WIDTH);
+            // 随变量行增减贴合高度（避免连线误加占位后只涨不缩留下空白）
+            if (Math.abs(s.height - minH) > 1) {
+                node.resize(w, minH);
+            }
         }
     }, [minH, node, resizing, isCompact]);
 
     const handleResize = React.useCallback(
         (nw: number, nh: number) => {
             const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-            const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
-            const ft = nh - fh;
-            const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+            const outY = isCompactMode ? compactSingleOutPortY(nh) : nh - FOOTER_HEIGHT + FT_RESULT_Y;
             node.setPortProp('out', 'args', { x: nw, y: outY, dx: 0 });
             updateEdges('out');
         },
@@ -323,9 +391,7 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         if (resizing) return;
         const s = node.getSize();
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
-        const ft = s.height - fh;
-        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+        const outY = isCompactMode ? compactSingleOutPortY(s.height) : s.height - FOOTER_HEIGHT + FT_RESULT_Y;
         try {
             node.setPortProp('out', 'args', { x: s.width, y: outY, dx: 0 });
             updateEdges('out');
@@ -342,6 +408,21 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         [node],
     );
 
+    const handleTargetTypeChange = React.useCallback(
+        (next: 'api' | 'service') => {
+            const prev = node.getData() as ApiNodeData;
+            node.setData({
+                ...prev,
+                targetType: next,
+                serviceId: '',
+                __serviceName: '',
+                __serviceMethod: '',
+                __serviceUrl: '',
+            });
+        },
+        [node],
+    );
+
     const handleServiceChange = React.useCallback(
         (val: string | undefined, option: any) => {
             const opt: ApiOption | undefined = Array.isArray(option) ? option[0] : option;
@@ -350,17 +431,17 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
             const prev = node.getData() as ApiNodeData;
             node.setData({
                 ...prev,
+                targetType,
                 serviceId: val || '',
                 __serviceName: src?.name || (typeof src?.label === 'string' ? src.label : '') || '',
-                __serviceMethod: src?.method || '',
-                __serviceUrl: src?.url || '',
+                __serviceMethod: targetType === 'api' ? (src?.method || '') : '',
+                __serviceUrl: targetType === 'api' ? (src?.url || '') : '',
             });
             if (val) {
-                // 切换目标 API 时带出契约入参
                 void syncParamsFromContract(val, prev.__variables || variables);
             }
         },
-        [node, apiOptions, syncParamsFromContract, variables],
+        [node, apiOptions, syncParamsFromContract, variables, targetType],
     );
 
     return (
@@ -398,27 +479,45 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                     flexShrink: 0,
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: SERVICE_ROW_HEIGHT - 6 }}>
-                    <Text style={{ fontSize: 11, color: '#8c8c8c', flexShrink: 0 }}>目标 API</Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: SERVICE_ROW_HEIGHT - 6 }}>
+                    <Select
+                        size="small"
+                        value={targetType}
+                        options={[
+                            { value: 'api', label: 'API' },
+                            { value: 'service', label: '服务' },
+                        ]}
+                        onChange={handleTargetTypeChange}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ width: 72, fontSize: 11, flexShrink: 0 }}
+                        getPopupContainer={() => document.body}
+                        dropdownStyle={{ zIndex: 10000 }}
+                    />
                     <Select
                         size="small"
                         showSearch
                         allowClear
                         loading={loadingApis || syncingContract}
                         value={serviceId || undefined}
-                        placeholder="选择内部 Flow API..."
+                        placeholder={targetType === 'service' ? '选择内部服务...' : '选择内部 Flow API...'}
                         options={selectOptions}
                         filterOption={false}
-                        onSearch={(kw) => loadApis(kw)}
+                        onSearch={(kw) => loadTargets(kw)}
                         onChange={handleServiceChange}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                         style={{ flex: 1, fontSize: 11 }}
-                        // 挂到 body，避免被 NodeWrapper overflow:hidden 裁切
                         getPopupContainer={() => document.body}
                         dropdownStyle={{ zIndex: 10000 }}
                     />
-                    <Tooltip title="从目标 API 契约重新同步入参（保留已填路径）">
+                    <Tooltip
+                        title={
+                            targetType === 'service'
+                                ? '从服务契约重新同步入参（保留已填路径）'
+                                : '从目标 API 契约重新同步入参（保留已填路径）'
+                        }
+                    >
                         <Button
                             type="text"
                             size="small"
@@ -442,17 +541,21 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
-                        paddingLeft: 52,
+                        paddingLeft: 2,
                     }}
                     title={
-                        serviceId
-                            ? `${serviceMethod || ''} ${serviceUrl || ''}`.trim() || 'Method/URL 随目标 API 配置，此处不可改'
-                            : '无需选 Method：沿用目标 API 已配置的 Method/URL'
+                        targetType === 'service'
+                            ? '内部服务：入参写入 $.service.input'
+                            : serviceId
+                              ? `${serviceMethod || ''} ${serviceUrl || ''}`.trim() || 'Method/URL 随目标 API 配置，此处不可改'
+                              : '无需选 Method：沿用目标 API 已配置的 Method/URL'
                     }
                 >
-                    {serviceId
-                        ? `${serviceMethod || '—'} ${serviceUrl || ''}`.trim() || 'Method/URL 来自目标 API'
-                        : 'Method/URL 随目标 API，无需在此选择'}
+                    {targetType === 'service'
+                        ? (serviceId ? `服务 · ${serviceName || serviceId}` : '内部服务：按契约入参 → $.service.input')
+                        : (serviceId
+                            ? `${serviceMethod || '—'} ${serviceUrl || ''}`.trim() || 'Method/URL 来自目标 API'
+                            : 'Method/URL 随目标 API，无需在此选择')}
                 </Text>
             </div>
             )}
@@ -468,38 +571,25 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
                 onAddVar={onAddVar}
                 onUpdateVar={onUpdateVar}
                 onRemoveVar={onRemoveVar}
-                addLabel="传参给目标 API"
-                namePlaceholder="参数名 → @FP"
+                addLabel={targetType === 'service' ? '传参给目标服务' : '传参给目标 API'}
+                namePlaceholder={targetType === 'service' ? '参数名 → $.service.input' : '参数名 → @FP'}
                 pathPlaceholder="来源 $.上游.out"
+                hideAdd={
+                    targetType === 'service'
+                    && variables.some((v) => v.fromContract && !!v.name?.trim())
+                }
+                hideRemove={
+                    targetType === 'service'
+                    && variables.some((v) => v.fromContract && !!v.name?.trim())
+                }
             />
             )}
 
-            <div
-                style={{
-                    height: isCompact ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT,
-                    position: 'relative',
-                    pointerEvents: 'auto',
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    padding: '0 12px',
-                }}
-            >
-                <div
-                    style={{
-                        position: 'absolute',
-                        right: 10,
-                        top: FT_RESULT_Y,
-                        transform: 'translateY(-50%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                    }}
-                >
-                    <Text style={{ fontSize: 12, color: '#595959' }}>Result</Text>
-                </div>
-            </div>
+            {isCompact ? (
+                <CompactOutFooter label="Result" />
+            ) : (
+                <NodeOutFooter label="Result" height={FOOTER_HEIGHT} />
+            )}
 
             {!isCompact && (
             <ResizeHandle

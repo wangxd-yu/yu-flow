@@ -39,4 +39,10 @@ public interface FlowApiRepository extends JpaRepository<FlowApiDO, String>, Jpa
     @Modifying
     @Query("UPDATE FlowApiDO f SET f.deleted = 1 WHERE f.id IN :ids")
     int logicDeleteByIds(@Param("ids") List<String> ids);
+
+    /** 粗筛：DSL / 发布快照中可能引用某 serviceId 的 API */
+    @Query("SELECT a FROM FlowApiDO a WHERE "
+            + "(a.dslContent IS NOT NULL AND a.dslContent LIKE CONCAT('%', :needle, '%')) "
+            + "OR (a.publishedSnapshot IS NOT NULL AND a.publishedSnapshot LIKE CONCAT('%', :needle, '%'))")
+    List<FlowApiDO> findPossibleServiceFlowRefs(@Param("needle") String needle);
 }

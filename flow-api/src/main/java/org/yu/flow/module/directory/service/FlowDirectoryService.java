@@ -20,6 +20,12 @@ public interface FlowDirectoryService {
     List<FlowDirectoryDTO> getTree();
 
     /**
+     * 按业务域过滤目录树。
+     * <p>bizType 为空时返回全部；否则返回「该域目录 + 共用目录（bizType 为空）」及其祖先。
+     */
+    List<FlowDirectoryDTO> getTree(String bizType);
+
+    /**
      * 新增目录
      */
     FlowDirectoryDO create(FlowDirectoryDO directory);

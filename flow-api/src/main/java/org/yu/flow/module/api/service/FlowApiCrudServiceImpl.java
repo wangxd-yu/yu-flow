@@ -48,6 +48,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private DataSource dataSource;
 
     @Resource
+    private FlowApiReferenceChecker flowApiReferenceChecker;
+
+    @Resource
     private FlowApiRepository flowApiRepository;
 
     @Resource
@@ -167,6 +170,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     public void delete(String id) {
         // [Demo 模式] 系统预置 API 不可删除
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
+        flowApiReferenceChecker.assertDeletable(id);
         flowApiRepository.deleteById(id);
         apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
@@ -178,6 +182,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (ids != null && !ids.isEmpty()) {
             // [Demo 模式] 逐一检查，只要有一个受保护的 ID 就整体拒绝
             ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
+            ids.forEach(flowApiReferenceChecker::assertDeletable);
             flowApiRepository.logicDeleteByIds(ids);
             ids.forEach(apiResponseCacheService::evictAll);
             flowApiCacheManager.publishRefreshEvent();

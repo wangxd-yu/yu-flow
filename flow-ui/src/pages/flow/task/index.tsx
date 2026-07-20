@@ -342,7 +342,7 @@ const TaskManagement: React.FC = () => {
       }}
     >
       <style>{fullHeightTableCSS}</style>
-      <DirectoryTreeLayout height="calc(100vh - 90px)">
+      <DirectoryTreeLayout bizType="task" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <ProTable<FlowTask>
             className="fh-table"

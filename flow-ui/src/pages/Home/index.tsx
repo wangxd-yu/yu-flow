@@ -203,7 +203,7 @@ const HomePage: React.FC = () => {
         <Col xs={24} lg={12}>
           <Card title="快捷操作台" bordered={false} style={{ height: '100%' }}>
             <div className={styles.quickActions}>
-              <div className={styles.actionBtn} onClick={() => history.push('/flow/controller')}>
+              <div className={styles.actionBtn} onClick={() => history.push('/flow/api')}>
                 <div className={styles.actionIcon}><CodeOutlined /></div>
                 <span className={styles.actionText}>管理动态接口</span>
               </div>

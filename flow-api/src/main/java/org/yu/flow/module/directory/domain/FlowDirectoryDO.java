@@ -40,6 +40,13 @@ public class FlowDirectoryDO {
     @Column(nullable = false)
     private String name;
 
+    /**
+     * 业务域：api / task / service / model / page；
+     * 空表示各模块共用（兼容历史数据）。
+     */
+    @Column(length = 32)
+    private String bizType;
+
     /** 排序（升序） */
     @Column(columnDefinition = "INT DEFAULT 0")
     private Integer sort;

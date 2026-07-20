@@ -101,13 +101,17 @@ export interface NodeSelectionResult {
     outlineCss: React.CSSProperties;
 }
 
+/** 卡片圆角（Postman 向） */
+export const NODE_CARD_RADIUS = 10;
+
 export function useNodeSelection(node: Node, opts: NodeSelectionOpts = {}): NodeSelectionResult {
     const {
-        defaultColor = '#d9d9d9',
+        defaultColor = '#e5e7eb',
         selectedColor = '#1677ff',
         defaultWidth = 1,
+        /** X6 选中描边通常 ≥3；勿降到 2，否则默认 attrs.strokeWidth:2 会被误判为选中 */
         selectedWidth = 3,
-        borderRadius = 12,
+        borderRadius = NODE_CARD_RADIUS,
     } = opts;
 
     const [attrs, setAttrs] = React.useState(node.getAttrs());
@@ -121,7 +125,8 @@ export function useNodeSelection(node: Node, opts: NodeSelectionOpts = {}): Node
     const sw = (attrs?.body?.strokeWidth as number) ?? defaultWidth;
     const selected = sw >= selectedWidth;
     const borderColor = selected ? (attrs?.body?.stroke as string || selectedColor) : defaultColor;
-    const borderWidth = selected ? selectedWidth : defaultWidth;
+    // 选中视觉用 2px（Postman 向），检测阈值仍用 selectedWidth
+    const borderWidth = selected ? 2 : defaultWidth;
 
     return {
         selected,
@@ -129,10 +134,13 @@ export function useNodeSelection(node: Node, opts: NodeSelectionOpts = {}): Node
         borderWidth,
         attrs,
         outlineStyle: 'solid',
-        // Use standard border (content box will shrink, but headers won't cover it)
+        // 发丝边 + 轻环境阴影；选中时略加强描边与光晕
         outlineCss: {
             border: `${borderWidth}px solid ${borderColor}`,
             borderRadius,
+            boxShadow: selected
+                ? `0 0 0 1px ${borderColor}28, 0 4px 16px rgba(15, 23, 42, 0.08)`
+                : '0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px rgba(15, 23, 42, 0.05)',
         },
     };
 }
@@ -168,16 +176,15 @@ export const NODE_THEMES: Record<string, NodeTheme> = {
     red: {
         primary: '#f5222d', headerBg: '#fff1f0', headerBorder: '#ffa39e', titleColor: '#a8071a', bodyBg: '#ffffff',
     },
-    // New themes for palette
     magenta: {
         primary: '#eb2f96', headerBg: '#fff0f6', headerBorder: '#ffadd2', titleColor: '#c41d7f', bodyBg: '#ffffff',
     },
     cyan: {
         primary: '#13c2c2', headerBg: '#e6fffb', headerBorder: '#87e8de', titleColor: '#08979c', bodyBg: '#ffffff',
     },
-    dark: { // #1f1f1f
+    dark: {
         primary: '#1f1f1f', headerBg: '#f5f5f5', headerBorder: '#d9d9d9', titleColor: '#000000', bodyBg: '#ffffff',
-    }
+    },
 };
 
 export const PALETTE_MAP: Record<string, string> = {
@@ -405,7 +412,8 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({
             display: 'flex',
             alignItems: 'center',
             padding: '0 12px',
-            borderBottom: `1px solid ${t.headerBorder}`,
+            // 轻分割，避免厚色条「分区感」
+            borderBottom: '1px solid rgba(15, 23, 42, 0.06)',
             pointerEvents: 'auto' as const,
             flexShrink: 0,
             gap: 8,

@@ -43,6 +43,7 @@ export type DslNodeType =
   | 'response'
   | 'request'
   | 'schedule'
+  | 'service'
   | 'template'
   | 'collect'      // Scatter-Gather: 汇聚屏障（线程接力并发 Barrier）
   | 'database'
@@ -79,10 +80,12 @@ export interface SwitchNodeData {
   cases?: SwitchCaseData[];
 }
 
-/** 内部 Flow API 编排调用 */
+/** 内部编排调用（Flow API 或内部服务） */
 export interface ApiNodeData {
   inputs?: InputsMap;
-  /** 目标 Flow API 实体 ID */
+  /** 目标类型：api（默认）| service */
+  targetType?: 'api' | 'service';
+  /** 目标实体 ID（Flow API 或内部服务） */
   serviceId?: string;
   /** 展示用名称 */
   __serviceName?: string;
@@ -449,6 +452,15 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     label: '调度入口 (Schedule)',
     category: '基础节点',
     color: '#722ed1',
+    defaultPorts: [
+      { id: 'out', group: 'right' },
+    ],
+  },
+  service: {
+    type: 'service',
+    label: '服务入口 (Service)',
+    category: '基础节点',
+    color: '#1677ff',
     defaultPorts: [
       { id: 'out', group: 'right' },
     ],

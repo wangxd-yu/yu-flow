@@ -15,6 +15,8 @@ public final class NodeType {
     public static final String RESPONSE = "response";
     /** 定时调度入口节点（任务管理专用） */
     public static final String SCHEDULE = "schedule";
+    /** 内部服务编排入口节点（服务编排专用） */
+    public static final String SERVICE = "service";
 
     // ========== 基础逻辑 ==========
     public static final String EVALUATE = "evaluate";
@@ -24,7 +26,7 @@ public final class NodeType {
     // ========== 服务/IO ==========
     /** HTTP 外部请求 */
     public static final String HTTP_REQUEST = "httpRequest";
-    /** 内部 Flow API 编排调用（调用另一条已配置的 Flow API） */
+    /** 内部编排调用（Flow API 或内部服务，由 targetType 区分） */
     public static final String API = "api";
     public static final String DATABASE = "database";
 

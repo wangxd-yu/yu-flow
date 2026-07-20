@@ -25,8 +25,8 @@ import {
     normalizeCases,
 } from './switchCases';
 import {
-    COMPACT_EXIT_ROW,
     CompactExitLabels,
+    compactExitPortY,
     getGraphNodeViewMode,
     switchCompactFooterHeight,
     useNodeViewMode,
@@ -118,10 +118,6 @@ function refreshEdges(node: Node, portId: string) {
     });
 }
 
-function compactExitY(ft: number, idx: number): number {
-    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
-}
-
 function syncSwitchPorts(
     node: Node,
     size: { width: number; height: number },
@@ -162,9 +158,9 @@ function syncSwitchPorts(
     if (isCompact) {
         cases.forEach((c, idx) => {
             const portId = casePortId(c.id);
-            ensurePort(portId, 'absolute-out-solid', w, compactExitY(ft, idx));
+            ensurePort(portId, 'absolute-out-solid', w, compactExitPortY(ft, idx));
         });
-        ensurePort('default', 'absolute-out-solid', w, compactExitY(ft, caseCount));
+        ensurePort('default', 'absolute-out-solid', w, compactExitPortY(ft, caseCount));
     } else {
         ensurePort('default', 'absolute-out-solid', w, SWITCH_LAYOUT.defaultPortY(h, caseCount));
         cases.forEach((c, idx) => {

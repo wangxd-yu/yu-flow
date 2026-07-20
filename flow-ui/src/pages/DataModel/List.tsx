@@ -311,7 +311,7 @@ const DataModelList: React.FC = () => {
       header={{ title: '数据模型管理' }}
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
     >
-      <DirectoryTreeLayout height="calc(100vh - 90px)">
+      <DirectoryTreeLayout bizType="model" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => {
           // 先写入 ref，再通过 useEffect 同步到 state（避免渲染期间 setState 触发警告）
           if (selectedDirectoryId !== latestDirIdRef.current) {
@@ -483,7 +483,7 @@ const DataModelList: React.FC = () => {
           }
         }}
       >
-        <DirectoryTreeSelect />
+        <DirectoryTreeSelect bizType="model" />
       </ModalForm>
       {/* ========== 设计器弹窗 ========== */}
       <Modal

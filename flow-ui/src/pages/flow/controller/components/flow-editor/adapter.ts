@@ -445,14 +445,14 @@ function buildNodeAttrs(
         return reg.importConfig.buildAttrs(color, label);
     }
 
-    // 默认 attrs
+    // 默认 attrs（rx 与 NODE_CARD_RADIUS 对齐；默认 strokeWidth 1，选中由编辑器设为 3）
     return {
         body: {
             stroke: color,
             fill: '#ffffff',
-            rx: 8,
-            ry: 8,
-            strokeWidth: 2,
+            rx: 10,
+            ry: 10,
+            strokeWidth: 1,
         },
         label: {
             text: label,

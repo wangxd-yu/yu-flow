@@ -14,15 +14,17 @@ import {
 } from '../../shared/useNodeSelection';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
-    COMPACT_EXIT_ROW,
+    COMPACT_NODE_WIDTH,
     CompactExitLabels,
+    compactExitPortY,
     getGraphNodeViewMode,
+    HTTP_COMPACT_FOOTER_HEIGHT,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
 
 export const FOREACH_COLOR = '#0d9488';
 
-const FOREACH_COMPACT_FOOTER = COMPACT_EXIT_ROW * 2;
+const FOREACH_COMPACT_FOOTER = HTTP_COMPACT_FOOTER_HEIGHT;
 
 export const FOREACH_LAYOUT = {
     width: 168,
@@ -34,10 +36,6 @@ export const FOREACH_LAYOUT = {
         done: 100,
     },
 } as const;
-
-function compactExitY(ft: number, idx: number): number {
-    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
-}
 
 const ICON = (
     <svg viewBox="0 0 1024 1024" width="14" height="14" fill="currentColor">
@@ -55,7 +53,9 @@ export const ForEachNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const { isCompact } = useCompactNodeResize(node, {
         cardMinHeight: FOREACH_LAYOUT.height,
         compactHeight,
-        minWidth: 150,
+        minWidth: FOREACH_LAYOUT.width,
+        cardDefaultWidth: FOREACH_LAYOUT.width,
+        compactWidth: COMPACT_NODE_WIDTH,
     });
 
     React.useEffect(() => {
@@ -69,10 +69,10 @@ export const ForEachNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
         const h = size.height;
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
         const headerH = NODE_HEADER_WITH_ID_HEIGHT;
-        const ft = isCompactMode ? headerH : h - 36;
+        const footerTop = headerH;
         const inY = isCompactMode ? headerH / 2 : FOREACH_LAYOUT.portY.in;
-        const itemY = isCompactMode ? compactExitY(ft, 0) : FOREACH_LAYOUT.portY.item;
-        const doneY = isCompactMode ? compactExitY(ft, 1) : FOREACH_LAYOUT.portY.done;
+        const itemY = isCompactMode ? compactExitPortY(footerTop, 0) : FOREACH_LAYOUT.portY.item;
+        const doneY = isCompactMode ? compactExitPortY(footerTop, 1) : FOREACH_LAYOUT.portY.done;
 
         const ports = [
             { id: 'in', group: 'absolute-in-solid', x: 0, y: inY },
@@ -142,7 +142,7 @@ export const ForEachNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 </div>
             )}
             {!isCompact && (
-                <ResizeHandle node={node} axes="x" minWidth={150} minHeight={FOREACH_LAYOUT.height} />
+                <ResizeHandle node={node} axes="x" minWidth={FOREACH_LAYOUT.width} minHeight={FOREACH_LAYOUT.height} />
             )}
         </NodeWrapper>
     );

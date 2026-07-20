@@ -10,6 +10,7 @@ import org.yu.flow.engine.model.step.ApiServiceCallStep;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.service.FlowApiCrudService;
+import org.yu.flow.module.serviceflow.service.FlowServiceFlowExecutionService;
 import org.springframework.data.domain.Pageable;
 
 import java.util.HashMap;
@@ -31,26 +32,54 @@ public class ApiServiceCallStepExecutor extends AbstractStepExecutor<ApiServiceC
     public String execute(ApiServiceCallStep step, ExecutionContext context, FlowDefinition flow) {
         if (step.getServiceId() == null || step.getServiceId().isBlank()) {
             throw new FlowException("API_SERVICE_ID_EMPTY",
-                    "API 节点 '" + step.getId() + "' 未配置 serviceId（目标 Flow API）");
+                    "API 节点 '" + step.getId() + "' 未配置 serviceId（目标）");
         }
 
-        FlowApiCrudService crudService = SpringUtil.getBean(FlowApiCrudService.class);
-        FlowApiExecutionService executionService = SpringUtil.getBean(FlowApiExecutionService.class);
+        String targetType = step.getTargetType();
+        boolean callService = targetType != null && "service".equalsIgnoreCase(targetType.trim());
 
         try {
-            FlowApiDO api = crudService.findById(step.getServiceId());
-            if (api == null) {
-                throw new FlowException("API_NOT_FOUND",
-                        "API 节点 '" + step.getId() + "' 找不到 serviceId=" + step.getServiceId());
-            }
+            Object ret;
+            if (callService) {
+                FlowServiceFlowExecutionService svcExec =
+                        SpringUtil.getBean(FlowServiceFlowExecutionService.class);
+                Map<String, Object> prepared = prepareInputs(step, context, flow);
+                Map<String, Object> input = new LinkedHashMap<>();
+                for (Map.Entry<String, Object> e : prepared.entrySet()) {
+                    if (PAYLOAD_KEY.equals(e.getKey()) || e.getKey() == null || e.getKey().isBlank()) {
+                        continue;
+                    }
+                    input.put(e.getKey(), e.getValue());
+                }
+                // 兼容旧 args
+                Map<String, String> legacyArgs = step.getArgs();
+                if (legacyArgs != null && !legacyArgs.isEmpty()) {
+                    Map<String, Object> vars = context.getVar();
+                    legacyArgs.forEach((key, value) -> {
+                        if (key == null || key.isBlank() || input.containsKey(key)) {
+                            return;
+                        }
+                        input.put(key, InputParamsUtil.resolveParam(vars, value));
+                    });
+                }
+                ret = svcExec.executeById(step.getServiceId(), input, "CALL", true);
+            } else {
+                FlowApiCrudService crudService = SpringUtil.getBean(FlowApiCrudService.class);
+                FlowApiExecutionService executionService = SpringUtil.getBean(FlowApiExecutionService.class);
+                FlowApiDO api = crudService.findById(step.getServiceId());
+                if (api == null) {
+                    throw new FlowException("API_NOT_FOUND",
+                            "API 节点 '" + step.getId() + "' 找不到 serviceId=" + step.getServiceId());
+                }
 
-            Map<String, Object> calleeParams = buildCalleeParams(step, context, flow);
-            Object pageable = context.getVariable("pageable");
-            Object ret = executionService.executeApi(
-                    api,
-                    calleeParams,
-                    pageable instanceof Pageable ? (Pageable) pageable : null,
-                    null);
+                Map<String, Object> calleeParams = buildCalleeParams(step, context, flow);
+                Object pageable = context.getVariable("pageable");
+                ret = executionService.executeApi(
+                        api,
+                        calleeParams,
+                        pageable instanceof Pageable ? (Pageable) pageable : null,
+                        null);
+            }
 
             Map<String, Object> stepResult = new HashMap<>(2);
             stepResult.put(PortNames.OUT, ret);

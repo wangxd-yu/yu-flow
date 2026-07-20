@@ -17,12 +17,16 @@ import {
     useNodeSelection,
     getNodeTheme,
     ResizeHandle,
+    NodeOutFooter,
     NODE_HEADER_WITH_ID_HEIGHT,
 } from '../../shared/useNodeSelection';
 import { relativizeExtractPath } from '../../shared/extractPathUtils';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -74,8 +78,8 @@ export const RECORD_LAYOUT = {
     },
 };
 
-/** 卡片 / 弹框共用：固定宽度 + 统一字形 */
-const TYPE_BADGE_WIDTH = 32;
+/** Postman 向：输入左侧类型条宽度 */
+const TYPE_ADDON_WIDTH = 34;
 
 const TYPE_BADGE_LABEL: Record<RecordValueType | 'path', string> = {
     string: 'Aa',
@@ -125,21 +129,10 @@ const ICONS = {
     ),
 };
 
-const typeBadge = (kind: RecordValueType | 'path', opts?: { color?: string }) => {
-    const color = opts?.color ?? '#bfbfbf';
+const typeGlyph = (kind: RecordValueType | 'path', color = '#8b8f98') => {
     if (kind === 'path') {
         return (
-            <span
-                style={{
-                    color,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: TYPE_BADGE_WIDTH,
-                    minWidth: TYPE_BADGE_WIDTH,
-                    flexShrink: 0,
-                }}
-            >
+            <span style={{ color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 {ICONS.selectPath}
             </span>
         );
@@ -148,12 +141,6 @@ const typeBadge = (kind: RecordValueType | 'path', opts?: { color?: string }) =>
         <span
             style={{
                 color,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: TYPE_BADGE_WIDTH,
-                minWidth: TYPE_BADGE_WIDTH,
-                flexShrink: 0,
                 fontSize: 11,
                 fontWeight: 600,
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
@@ -165,6 +152,53 @@ const typeBadge = (kind: RecordValueType | 'path', opts?: { color?: string }) =>
         </span>
     );
 };
+
+/** Postman：左侧浅灰类型条 + 右侧无边框输入 */
+const ValueShell: React.FC<{
+    kind: RecordValueType | 'path';
+    children: React.ReactNode;
+    muted?: boolean;
+}> = ({ kind, children, muted }) => (
+    <div
+        style={{
+            flex: 1,
+            minWidth: 0,
+            height: 30,
+            display: 'flex',
+            alignItems: 'stretch',
+            background: muted ? '#fafafa' : '#fff',
+            border: '1px solid #e4e4e7',
+            borderRadius: 6,
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+        }}
+    >
+        <div
+            style={{
+                width: TYPE_ADDON_WIDTH,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f4f4f5',
+                borderRight: '1px solid #ebebeb',
+            }}
+        >
+            {typeGlyph(kind)}
+        </div>
+        <div
+            style={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 8px',
+            }}
+        >
+            {children}
+        </div>
+    </div>
+);
 
 const fieldPortY = (idx: number) =>
     HEADER_HEIGHT + PADDING_Y + idx * ROW_HEIGHT + ROW_HEIGHT / 2;
@@ -403,14 +437,17 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
         cardMinHeight,
         compactHeight,
         minWidth: MIN_WIDTH,
+        cardDefaultWidth: MIN_WIDTH,
+        compactWidth: COMPACT_NODE_WIDTH,
     });
 
     // 高度随属性行自动撑开 + 端口 Y 与行对齐（compact 时矮卡片）
     useEffect(() => {
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
         const height = isCompactMode ? compactHeight : calcRecordHeight(fields.length);
-        const width = Math.max(node.getSize().width || MIN_WIDTH, MIN_WIDTH);
-        // 始终写成精确高度，避免历史手动缩放导致端口落在节点外、连不上
+        const width = isCompactMode
+            ? COMPACT_NODE_WIDTH
+            : Math.max(node.getSize().width || MIN_WIDTH, MIN_WIDTH);
         if (
             Math.abs(node.getSize().height - height) > 0.5
             || Math.abs(node.getSize().width - width) > 0.5
@@ -418,9 +455,8 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             node.resize(width, height);
         }
 
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
         const outY = isCompactMode
-            ? height - fh / 2
+            ? compactSingleOutPortY(height)
             : height - FOOTER_HEIGHT + FT_RESULT_Y;
 
         const ensureVarPort = (id: string, y: number) => {
@@ -827,7 +863,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             key: t.key,
             label: (
                 <span style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    {typeBadge(t.key, { color: '#8c8c8c' })}
+                    {typeGlyph(t.key)}
                     <span>{t.label}</span>
                 </span>
             ),
@@ -840,65 +876,42 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
 
     const hasPayload = !!(data?.inputs?.payload);
 
-    const valueBoxStyle: React.CSSProperties = {
+    const innerInputStyle: React.CSSProperties = {
         flex: 1,
+        width: '100%',
         fontSize: 12,
-        height: 32,
-        background: '#fff',
-        borderRadius: 6,
-        border: '1px solid #f0f0f0',
+        padding: 0,
+        background: 'transparent',
     };
 
     const renderValueEditor = (field: RecordField) => {
         if (field.source === 'wire') {
             return (
-                <Input
-                    size="small"
-                    placeholder={hasPayload ? '相对路径，如 apiid' : '绝对路径 $.node.out 或先接左上角'}
-                    value={field.value === '$' ? '' : field.value}
-                    prefix={typeBadge('path')}
-                    onChange={(e) => onUpdateField(field.id, { value: e.target.value })}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    style={valueBoxStyle}
-                />
+                <ValueShell kind="path">
+                    <Input
+                        size="small"
+                        variant="borderless"
+                        placeholder={hasPayload ? 'Enter path...' : '$.node.out or connect left'}
+                        value={field.value === '$' ? '' : field.value}
+                        onChange={(e) => onUpdateField(field.id, { value: e.target.value })}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={innerInputStyle}
+                    />
+                </ValueShell>
             );
         }
 
         const vt = field.valueType || 'string';
         if (vt === 'null') {
             return (
-                <div
-                    style={{
-                        ...valueBoxStyle,
-                        background: '#fafafa',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '0 11px',
-                        color: '#8c8c8c',
-                        fontFamily: 'monospace',
-                        boxSizing: 'border-box',
-                    }}
-                >
-                    {typeBadge('null')}
-                    <span>null</span>
-                </div>
+                <ValueShell kind="null" muted>
+                    <span style={{ color: '#8c8c8c', fontFamily: 'monospace', fontSize: 12 }}>null</span>
+                </ValueShell>
             );
         }
         if (vt === 'boolean') {
             return (
-                <div
-                    style={{
-                        ...valueBoxStyle,
-                        display: 'flex',
-                        alignItems: 'center',
-                        paddingLeft: 11,
-                        gap: 4,
-                        width: '100%',
-                        boxSizing: 'border-box',
-                    }}
-                >
-                    {typeBadge('boolean')}
+                <ValueShell kind="boolean">
                     <Select
                         size="small"
                         variant="borderless"
@@ -909,36 +922,41 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                         ]}
                         onChange={(v) => onUpdateField(field.id, { value: v })}
                         onMouseDown={(e) => e.stopPropagation()}
-                        style={{ flex: 1, fontSize: 12 }}
+                        style={{ flex: 1, width: '100%', fontSize: 12 }}
                     />
-                </div>
+                </ValueShell>
             );
         }
         if (vt === 'number') {
             return (
-                <InputNumber
-                    size="small"
-                    value={field.value === '' ? undefined : Number(field.value)}
-                    prefix={typeBadge('number')}
-                    onChange={(v) =>
-                        onUpdateField(field.id, { value: v == null ? '' : String(v) })
-                    }
-                    onMouseDown={(e) => e.stopPropagation()}
-                    style={{ ...valueBoxStyle, width: '100%' }}
-                    placeholder="0"
-                />
+                <ValueShell kind="number">
+                    <InputNumber
+                        size="small"
+                        controls={false}
+                        variant="borderless"
+                        value={field.value === '' ? undefined : Number(field.value)}
+                        onChange={(v) =>
+                            onUpdateField(field.id, { value: v == null ? '' : String(v) })
+                        }
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={innerInputStyle}
+                        placeholder="0"
+                    />
+                </ValueShell>
             );
         }
         return (
-            <Input
-                size="small"
-                placeholder="Enter text..."
-                value={field.value}
-                prefix={typeBadge('string')}
-                onChange={(e) => onUpdateField(field.id, { value: e.target.value })}
-                onMouseDown={(e) => e.stopPropagation()}
-                style={valueBoxStyle}
-            />
+            <ValueShell kind="string">
+                <Input
+                    size="small"
+                    variant="borderless"
+                    placeholder="Enter text..."
+                    value={field.value}
+                    onChange={(e) => onUpdateField(field.id, { value: e.target.value })}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={innerInputStyle}
+                />
+            </ValueShell>
         );
     };
 
@@ -982,7 +1000,7 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             <div
                 style={{
                     height: fields.length * ROW_HEIGHT + PADDING_Y * 2,
-                    padding: `${PADDING_Y}px 8px`,
+                    padding: `${PADDING_Y + 2}px 10px`,
                     boxSizing: 'border-box',
                     overflow: 'hidden',
                     pointerEvents: 'auto',
@@ -1007,25 +1025,14 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                                     height: ROW_HEIGHT,
                                     display: 'flex',
                                     alignItems: 'center',
-                                    padding: '0 4px 0 8px',
-                                    gap: 8,
+                                    padding: '0 4px 0 2px',
+                                    gap: 4,
                                     position: 'relative',
-                                    borderRadius: 6,
                                 }}
                             >
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        left: -6,
-                                        top: '50%',
-                                        marginTop: -3,
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: '50%',
-                                        background: themeObj.primary,
-                                    }}
-                                />
-                                <Text style={{ fontSize: 12, color: '#bfbfbf', width: 56 }}>
+                                {/* 与数据行对齐：拖拽位 + key 列占位 */}
+                                <div style={{ width: 20, flexShrink: 0 }} />
+                                <Text style={{ fontSize: 12, color: '#c0c4cc', width: 72, padding: '0 4px' }}>
                                     key
                                 </Text>
                                 <Dropdown
@@ -1036,19 +1043,28 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                                     <div
                                         onClick={(e) => e.stopPropagation()}
                                         onMouseDown={(e) => e.stopPropagation()}
+                                        title="添加字段"
                                         style={{
                                             flex: 1,
-                                            height: 32,
+                                            height: 30,
                                             borderRadius: 6,
-                                            background: '#fafafa',
-                                            border: '1px dashed #d9d9d9',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            color: '#1677ff',
+                                            color: '#a1a1aa',
                                             fontSize: 18,
+                                            fontWeight: 400,
                                             lineHeight: 1,
                                             cursor: 'pointer',
+                                            transition: 'color 0.15s, background 0.15s',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.color = '#71717a';
+                                            e.currentTarget.style.background = '#f4f4f5';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.color = '#a1a1aa';
+                                            e.currentTarget.style.background = 'transparent';
                                         }}
                                     >
                                         +
@@ -1067,41 +1083,29 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
                                 height: ROW_HEIGHT,
                                 display: 'flex',
                                 alignItems: 'center',
-                                padding: '0 4px 0 4px',
-                                gap: 6,
+                                padding: '0 4px 0 2px',
+                                gap: 4,
                                 transform,
                                 zIndex: isDragging ? 100 : 1,
                                 position: 'relative',
                                 backgroundColor: isDragging
-                                    ? '#e6f4ff'
+                                    ? '#f0f1f3'
                                     : isHovering
-                                        ? '#f5f5f5'
+                                        ? '#f8f9fb'
                                         : 'transparent',
                                 borderRadius: 6,
                                 transition: isDragging ? 'none' : 'background-color 0.15s',
                             }}
                         >
-                            {isWire && (
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        left: -6,
-                                        top: '50%',
-                                        marginTop: -3,
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: '50%',
-                                        background: themeObj.primary,
-                                    }}
-                                />
-                            )}
                             <div
                                 onMouseDown={handleDragStart(idx)}
                                 style={{
-                                    color: isDragging ? themeObj.primary : '#bfbfbf',
+                                    color: isDragging ? themeObj.primary : '#d4d4d8',
                                     display: 'flex',
                                     cursor: isDragging ? 'grabbing' : 'grab',
-                                    padding: 4,
+                                    padding: '4px 2px',
+                                    opacity: isDragging || isHovering ? 1 : 0.35,
+                                    transition: 'opacity 0.15s',
                                 }}
                             >
                                 {ICONS.drag}
@@ -1136,29 +1140,11 @@ export const RecordNodeComponent = ({ node }: { node: Node }) => {
             </div>
             )}
 
-            <div
-                style={{
-                    height: isCompact ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT,
-                    position: 'relative',
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    padding: '0 12px',
-                    borderTop: '1px solid #f0f0f0',
-                }}
-            >
-                <div
-                    style={{
-                        position: 'absolute',
-                        right: 10,
-                        top: isCompact ? COMPACT_FOOTER_HEIGHT / 2 : FT_RESULT_Y,
-                        transform: 'translateY(-50%)',
-                    }}
-                >
-                    <Text style={{ fontSize: 12, color: '#595959' }}>Result</Text>
-                </div>
-            </div>
+            {isCompact ? (
+                <CompactOutFooter label="Result" />
+            ) : (
+                <NodeOutFooter label="Result" height={FOOTER_HEIGHT} />
+            )}
 
             {!isCompact && (
                 <ResizeHandle

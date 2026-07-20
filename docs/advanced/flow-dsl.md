@@ -48,7 +48,7 @@ outline: deep
 | 省略 `source.port` | 默认为 `out` |
 | 省略 `target.port` | 默认为 `in` |
 | 同一源端口多条边 | 并行扇出（`next[port]` 变为目标 id 数组） |
-| 入口节点 | `request` / `schedule` **不能**作为任何边的 `target` |
+| 入口节点 | `request` / `schedule` / `service` **不能**作为任何边的 `target` |
 
 ### 2.1 常用端口
 
@@ -104,8 +104,10 @@ outline: deep
 | `data.inputs` | 变量装载（§4） |
 | `data.language` | 表达式语言（If / Switch / Evaluate） |
 
-**启动节点**：引擎取第一个 `request` | `schedule`。  
-**API 流程推荐**：`request` → … → `response`（各 0～1 个入口；`request`/`schedule` 互斥场景按产品约定）。
+**启动节点**：引擎取第一个 `request` | `schedule` | `service`。  
+三种入口**互斥**（同一流程只能有一种）。  
+**API 流程推荐**：`request` → … → `response`。  
+**内部服务编排**：`service` → …（无网关/定时；由其他流程的 `api` 节点以 `targetType=service` 调用）。
 
 ---
 
@@ -139,6 +141,7 @@ outline: deep
 | `$.<httpId>.out` 或结果字段 | HttpRequest：`status`/`body`/`headers`/`timeMs`（以执行器写入为准，常用挂在节点 id 下） |
 | `$.error` | ErrorHandler 场景下的异常信息 |
 | `$.schedule.*` | Schedule：`taskName`/`cron`/`triggerTime` |
+| `$.service.*` | Service 入口：`serviceName`/`serviceId`/`input`/`triggerTime` |
 
 遗留路径 `$.nodeId.result`：仅部分旧节点双写；**新生成请一律用 `.out`**。
 
@@ -200,6 +203,34 @@ outline: deep
 ```json
 { "id": "sched", "type": "schedule", "data": {} }
 ```
+
+---
+
+### 5.2.1 `service` — 内部服务编排入口
+
+| | |
+| --- | --- |
+| 入端口 | 无 |
+| 出端口 | `out` |
+| 约束 | 流程内唯一；不可作为边的 target；不可与 `request`/`schedule` 并存 |
+| 运行时 | 写入 `$.service.serviceName` / `serviceId` / `input` / `triggerTime` |
+
+```json
+{
+  "id": "service_1",
+  "type": "service",
+  "data": {
+    "__label": "Service",
+    "__contractInputs": [],
+    "__contractOutputs": []
+  }
+}
+```
+
+契约在「服务契约」Tab 编辑，持久化为资产字段 `contract`；保存时写入入口节点 `__contractInputs` / `__contractOutputs` 供画布卡片摘要。  
+画布仅一个出口 `out`，返回值可为对象（不必为字段拆端口）。  
+调用方入参经校验后注入为 `$.service.input`。  
+**CALL 执行走已发布快照**；调试/手动可跑草稿。
 
 ---
 
@@ -346,19 +377,23 @@ API Key：`authApiKeyIn`=`header`|`query`，`authApiKeyName`，`authApiKeyValue`
 
 ---
 
-### 5.8 `api` — 调用另一条 Flow API
+### 5.8 `api` — 调用内部 Flow API 或内部服务
 
 | | |
 | --- | --- |
 | 入 | `in:payload` |
 | 出 | `out` |
-| 必填 | `serviceId`（目标 Flow API id） |
+| 必填 | `serviceId`（目标实体 id） |
+| 可选 | `targetType`：`api`（默认，Flow API）\| `service`（内部服务编排） |
+
+调用 **Flow API**：
 
 ```json
 {
   "id": "call_inner",
   "type": "api",
   "data": {
+    "targetType": "api",
     "serviceId": "<target-flow-api-id>",
     "inputs": {
       "q": { "extractPath": "$.req.params.q", "paramSource": "query" }
@@ -367,7 +402,28 @@ API Key：`authApiKeyIn`=`header`|`query`，`authApiKeyName`，`authApiKeyValue`
 }
 ```
 
-`paramSource`（前端契约）：`query` / `path` / `body`，用于自动映射入参；后端以 `inputs` 注入为主。
+调用 **内部服务**（须已发布且启用）：
+
+```json
+{
+  "id": "call_svc",
+  "type": "api",
+  "data": {
+    "targetType": "service",
+    "serviceId": "<target-service-flow-id>",
+    "inputs": {
+      "userId": { "extractPath": "$.req.params.userId" }
+    }
+  }
+}
+```
+
+| `targetType` | 行为 |
+| --- | --- |
+| `api`（默认） | 调另一条 Flow API；`paramSource`=`query`/`path`/`body`/`header` 映射到被调侧 `@QP/@PP/@BP` |
+| `service` | 调服务编排；入参写入被调侧 `$.service.input`；按服务已发布契约校验/类型转换 |
+
+省略 `targetType` 时按 `api` 处理。
 
 ---
 
@@ -723,15 +779,15 @@ SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数
 ## 7. 给大模型的生成检查清单
 
 1. **根对象**只有 `nodes` + `edges`（可加 `id`/`version`）。
-2. **恰好一个入口**：`request` 或 `schedule`；API 场景再配 **至少一个** `response`（或明确的终止语义）。
+2. **恰好一个入口**：`request` / `schedule` / `service` 三选一；API 场景再配 **至少一个** `response`；服务编排用 `service`，无 `response` 要求。
 3. 每个节点：`id` 唯一、`type` 合法、业务字段在 `data`。
 4. 每条控制流边的 `source.port` 必须是该类型**真实出口**（If 用 `true`/`false`，Switch 用 `case_<id>`/`default`，HttpRequest 用 `success`/`fail`）。
-5. 数据引用统一 `$.节点id.out`（Request 用 `.headers/.params/.body`）。
+5. 数据引用统一 `$.节点id.out`（Request 用 `.headers/.params/.body`；服务编排用 `$.service.input`）。
 6. `inputs` 键名 = 表达式变量名；需要连线时带稳定 `id`，边指向 `in:var:<id>`。
 7. Switch：`cases[].id` 稳定且与边端口 `case_<id>` 一致；匹配看 `value`。
 8. For 必须声明 `collectStepId` 且图上存在对应 `collect`。
 9. **禁止生成**（引擎不再识别）：`condition`、`start`、`end`、`set`、`return`、`serviceCall`、`call`。If 的字段名 `condition` 可以，那是表达式字段不是节点类型。
-10. `systemVar` / `systemMethod` / `api.serviceId` / `database.datasourceId` 用明确占位符，并注明需替换为环境真实 ID。
+10. `systemVar` / `systemMethod` / `api.serviceId` / `database.datasourceId` 用明确占位符；`api` 调服务时写 `targetType: "service"`。
 11. 坐标与 `ports` 数组可省略；若写出 `ports`，须与所用边端口一致。
 12. Parallel：只用多条从 `out` 出发的边表示并行，**不要**写 `tasks`。
 13. Switch：`cases` 必须是 `[{id,name,value}]`，禁止字符串数组。
@@ -744,7 +800,7 @@ SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数
 
 `condition` · `start` · `end` · `set` · `return` · `serviceCall` · `call`
 
-替换约定：入口/出口用 `request`/`response`（或 `schedule`）；外部调用用 `httpRequest`；内部编排用 `api`；赋值/计算用 `evaluate` 或 `record`。
+替换约定：入口/出口用 `request`/`response`（或 `schedule` / 内部复用用 `service`）；外部调用用 `httpRequest`；内部编排用 `api`（`targetType`=`api`|`service`）；赋值/计算用 `evaluate` 或 `record`。
 
 ---
 

@@ -89,6 +89,9 @@ const ExecutionLog: React.FC = () => {
   /** 当前快照的 serviceType（决定用哪种查看器） */
   const [currentServiceType, setCurrentServiceType] = useState<string>('');
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialApiId = urlParams.get('apiId') || undefined;
+
   const handleViewTrace = async (record: ExecutionLogListDTO) => {
     if (!record.hasTrace) {
       message.warning('该执行日志没有关联的追踪快照数据');
@@ -158,7 +161,7 @@ const ExecutionLog: React.FC = () => {
       fixed: 'left',
     },
     {
-      title: 'API 名称',
+      title: '接口名称',
       dataIndex: 'apiName',
       width: 140,
       fixed: 'left',
@@ -167,6 +170,15 @@ const ExecutionLog: React.FC = () => {
           {record.apiName || '未命名'}
         </Text>
       ),
+    },
+    {
+      title: '接口 ID',
+      dataIndex: 'apiId',
+      hideInTable: true,
+      initialValue: initialApiId,
+      fieldProps: {
+        placeholder: '按接口 ID 筛选',
+      },
     },
     {
       title: '请求路径',
@@ -242,8 +254,8 @@ const ExecutionLog: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: 'API 调用日志',
-        subTitle: '监控与追溯生产环境下 API 的调用状态、耗时及请求上下文',
+        title: initialApiId ? `接口日志 (apiId=${initialApiId})` : '接口日志',
+        subTitle: '监控与追溯生产环境下接口的调用状态、耗时及请求上下文',
       }}
     >
       <ProTable<ExecutionLogListDTO>
@@ -262,7 +274,14 @@ const ExecutionLog: React.FC = () => {
           showSizeChanger: true,
           pageSizeOptions: ['10', '20', '50', '100'],
         }}
-        request={queryExecutionLogPage}
+        params={{ apiId: initialApiId }}
+        request={async (params) => {
+          const result = await queryExecutionLogPage({
+            ...params,
+            apiId: params.apiId || initialApiId,
+          });
+          return result;
+        }}
         columns={columns}
         rowClassName={(record) =>
           record.status === 'ERROR' ? 'log-row-fail' : ''

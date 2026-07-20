@@ -10,6 +10,7 @@ import {
   ModalForm,
 } from '@ant-design/pro-components';
 import { Button, Divider, Drawer, Modal, message, Tag, Popconfirm, Space, Switch, Tooltip, Table, Spin } from 'antd';
+import { history } from '@umijs/max';
 import {
   queryAutoApiConfigDetail,
   queryAutoApiConfigList,
@@ -23,6 +24,8 @@ import {
   getApiCacheEntryContent,
   clearApiCache,
   clearApiCacheEntry,
+  publishApi,
+  unpublishApi,
   FlowController,
   ApiCacheEntry,
 } from './services/flowController';
@@ -109,7 +112,8 @@ const handleRemove = async (selectedRows: FlowController[]) => {
     return true;
   } catch (error: any) {
     hide();
-    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+    // 引用拦截 / DEMO 等已由 request 拦截器提示
+    if (!error?.message) {
       message.error('删除失败，请重试');
     }
     return false;
@@ -239,9 +243,9 @@ const AutoApiConfigList: React.FC = () => {
 
   const columns: ProColumns<FlowController>[] = [
     {
-      title: '名称',
+      title: '接口名称',
       dataIndex: 'name',
-      tip: '配置名称',
+      tip: '接口名称',
       formItemProps: {
         rules: [
           {
@@ -250,6 +254,9 @@ const AutoApiConfigList: React.FC = () => {
           },
         ],
       },
+      render: (_, record) => (
+        <a onClick={() => handleEdit(record)}>{record.name}</a>
+      ),
     },
     {
       title: '所属目录',
@@ -381,14 +388,49 @@ const AutoApiConfigList: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
+      width: 360,
       render: (_, record) => (
         <>
           <a onClick={() => handleEdit(record)}>编辑</a>
           <Divider type="vertical" />
+          {record.publishStatus === 1 ? (
+            <a
+              onClick={async () => {
+                try {
+                  await unpublishApi(record.id);
+                  message.success('已下线');
+                  actionRef.current?.reload();
+                } catch {
+                  /* 拦截器已提示 */
+                }
+              }}
+            >
+              下线
+            </a>
+          ) : (
+            <a
+              onClick={async () => {
+                try {
+                  await publishApi(record.id);
+                  message.success('发布成功');
+                  actionRef.current?.reload();
+                } catch {
+                  /* 拦截器已提示 */
+                }
+              }}
+            >
+              发布
+            </a>
+          )}
+          <Divider type="vertical" />
+          <a onClick={() => history.push(`/log/execution?apiId=${record.id}`)}>
+            查看日志
+          </a>
+          <Divider type="vertical" />
           <a onClick={() => handleViewCache(record)}>查看缓存</a>
           <Divider type="vertical" />
           <Popconfirm
-            title="确认删除该配置吗？"
+            title="确认删除该接口吗？"
             onConfirm={async () => {
               try {
                 await deleteAutoApiConfig(record.id);
@@ -507,20 +549,20 @@ const AutoApiConfigList: React.FC = () => {
     <PageContainer
       className="fh-container"
       header={{
-        title: 'API配置管理',
+        title: '接口管理',
       }}
       style={{
         height: 'calc(100vh - 26px)',
         overflow: 'hidden',
       }}
     >
-      <DirectoryTreeLayout height="calc(100vh - 90px)">
+      <DirectoryTreeLayout bizType="api" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <>
             <style>{fullHeightTableCSS}</style>
             <ProTable<FlowController>
               className="fh-table"
-              headerTitle={`API配置列表 (${selectedDirectoryName || '全部'})`}
+              headerTitle={`接口列表 (${selectedDirectoryName || '全部'})`}
               scroll={{ x: 'max-content', y: 100000 }}
               pagination={{
                 defaultPageSize: 20,
@@ -539,7 +581,7 @@ const AutoApiConfigList: React.FC = () => {
                 type="primary"
                 onClick={() => handleAddAction(selectedDirectoryId)}
               >
-                新建配置
+                新建接口
               </Button>
             ]}
             params={{ directoryId: selectedDirectoryId }}
@@ -552,9 +594,6 @@ const AutoApiConfigList: React.FC = () => {
                 size: pageSize || 20,
               });
 
-              if (data) {
-                console.log("data------", data)
-              }
               return {
                 data: data?.items || [],
                 success: true,
@@ -609,12 +648,28 @@ const AutoApiConfigList: React.FC = () => {
           <Button
             type="primary"
             onClick={async () => {
+              const hide = message.loading(`正在发布 ${selectedRowsState.length} 个接口...`);
               try {
-                await updateAutoApiConfig(selectedRowsState[0].id, { publishStatus: 1 });
+                let ok = 0;
+                let fail = 0;
+                for (const row of selectedRowsState) {
+                  try {
+                    await publishApi(row.id);
+                    ok += 1;
+                  } catch {
+                    fail += 1;
+                  }
+                }
+                hide();
+                if (fail === 0) {
+                  message.success(`已发布 ${ok} 个接口`);
+                } else {
+                  message.warning(`发布完成：成功 ${ok}，失败 ${fail}`);
+                }
                 setSelectedRows([]);
                 actionRef.current?.reloadAndRest?.();
-              } catch (error) {
-                // 已处理
+              } catch {
+                hide();
               }
             }}
           >
@@ -683,7 +738,7 @@ const AutoApiConfigList: React.FC = () => {
           }
         }}
       >
-        <DirectoryTreeSelect />
+        <DirectoryTreeSelect bizType="api" />
       </ModalForm>
 
       <Drawer

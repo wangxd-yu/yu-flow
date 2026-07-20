@@ -8,7 +8,9 @@ import React from 'react';
 import { Typography, Space, Dropdown, Select } from 'antd';
 import { Node } from '@antv/x6';
 import CodeEditor from '../../../components/CodeEditor';
-import { useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme } from '../../shared/useNodeSelection';
+import {
+    useNodeSelection, NodeHeader, NodeWrapper, ResizeHandle, getNodeTheme, NodeOutFooter,
+} from '../../shared/useNodeSelection';
 import { useNodeVariables, NodeVariable } from '../../shared/useNodeVariables';
 import { DynamicVariableList } from '../../shared/DynamicVariableList';
 import {
@@ -24,6 +26,9 @@ import {
 } from '../../shared/usePayloadEntryPort';
 import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -144,9 +149,7 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
 
         const s = node.getSize();
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
-        const ft = s.height - fh;
-        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+        const outY = isCompactMode ? compactSingleOutPortY(s.height) : s.height - FOOTER_HEIGHT + FT_RESULT_Y;
         const outX = s.width;
 
         if (isCompactMode) {
@@ -191,6 +194,8 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
         cardMinHeight: minH,
         compactHeight,
         minWidth: MIN_WIDTH,
+        cardDefaultWidth: MIN_WIDTH,
+        compactWidth: COMPACT_NODE_WIDTH,
         resizing,
     });
 
@@ -203,9 +208,7 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
 
     const handleResize = React.useCallback((nw: number, nh: number) => {
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
-        const ft = nh - fh;
-        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+        const outY = isCompactMode ? compactSingleOutPortY(nh) : nh - FOOTER_HEIGHT + FT_RESULT_Y;
         node.setPortProp('out', 'args', { x: nw, y: outY, dx: 0 });
         updateEdges('out');
     }, [node, updateEdges]);
@@ -215,9 +218,7 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
         if (resizing) return;
         const s = node.getSize();
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : FOOTER_HEIGHT;
-        const ft = s.height - fh;
-        const outY = isCompactMode ? ft + fh / 2 : ft + FT_RESULT_Y;
+        const outY = isCompactMode ? compactSingleOutPortY(s.height) : s.height - FOOTER_HEIGHT + FT_RESULT_Y;
         try {
             node.setPortProp('out', 'args', { x: s.width, y: outY, dx: 0 });
             updateEdges('out');
@@ -258,114 +259,120 @@ export const DatabaseNode = ({ node }: { node: Node }) => {
                     onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
                     onTitleChange={handleTitleChange}
                     extra={
-                        <Space size={8}>
-                            {sqlType === 'SELECT' && (
-                                <Dropdown menu={returnTypeMenu} trigger={['click']}>
+                        isCompact ? undefined : (
+                            <Space size={8}>
+                                {sqlType === 'SELECT' && (
+                                    <Dropdown menu={returnTypeMenu} trigger={['click']}>
+                                        <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            <Text style={{ fontSize: 11, color: themeObj.primary }}>{returnType}</Text>
+                                            <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
+                                        </div>
+                                    </Dropdown>
+                                )}
+                                <Dropdown menu={sqlTypeMenu} trigger={['click']}>
                                     <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <Text style={{ fontSize: 11, color: themeObj.primary }}>{returnType}</Text>
+                                        <Text style={{ fontSize: 11, color: themeObj.primary }}>{sqlType}</Text>
                                         <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
                                     </div>
                                 </Dropdown>
-                            )}
-                            <Dropdown menu={sqlTypeMenu} trigger={['click']}>
-                                <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <Text style={{ fontSize: 11, color: themeObj.primary }}>{sqlType}</Text>
-                                    <div style={{ color: themeObj.primary, display: 'flex' }}>{ICONS.chevron}</div>
-                                </div>
-                            </Dropdown>
-                        </Space>
+                            </Space>
+                        )
                     }
                 />
             </PayloadEntryChrome>
 
-            {/* Data Source Selector */}
-            <div style={{
-                height: DATASOURCE_ROW_HEIGHT,
-                padding: '4px 12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                borderBottom: '1px solid #f0f0f0',
-                pointerEvents: 'auto',
-                flexShrink: 0,
-            }}>
-                <Text style={{ fontSize: 11, color: '#8c8c8c', flexShrink: 0 }}>数据源</Text>
-                <Select
-                    size="small"
-                    value={datasourceId}
-                    placeholder="选择数据源..."
-                    options={dataSourceOptions}
-                    onChange={(val) => node.setData({ ...node.getData(), datasourceId: val })}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ flex: 1, fontSize: 11 }}
-                    getPopupContainer={(trigger) => trigger.parentElement || document.body}
-                    allowClear
-                />
-            </div>
+            {!isCompact && (
+                <>
+                    {/* Data Source Selector */}
+                    <div style={{
+                        height: DATASOURCE_ROW_HEIGHT,
+                        padding: '4px 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        borderBottom: '1px solid #f0f0f0',
+                        pointerEvents: 'auto',
+                        flexShrink: 0,
+                    }}>
+                        <Text style={{ fontSize: 11, color: '#8c8c8c', flexShrink: 0 }}>数据源</Text>
+                        <Select
+                            size="small"
+                            value={datasourceId}
+                            placeholder="选择数据源..."
+                            options={dataSourceOptions}
+                            onChange={(val) => node.setData({ ...node.getData(), datasourceId: val })}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ flex: 1, fontSize: 11 }}
+                            getPopupContainer={(trigger) => trigger.parentElement || document.body}
+                            allowClear
+                        />
+                    </div>
 
-            {/* Variables — 使用共享组件 */}
-            <DynamicVariableList
-                variables={variables}
-                rowHeight={ROW_HEIGHT}
-                dragState={dragState}
-                hoverRowIndex={hoverRowIndex}
-                onHoverChange={setHoverRowIndex}
-                onDragStart={handleDragStart}
-                onAddVar={onAddVar}
-                onUpdateVar={onUpdateVar}
-                onRemoveVar={onRemoveVar}
-            />
-
-            {/* SQL Editor — CodeMirror */}
-            <div style={{ padding: '8px 12px', pointerEvents: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: MIN_QUERY_HEIGHT }}>
-                <div style={{ flex: 1, minHeight: 60, display: 'flex', flexDirection: 'column' }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <CodeEditor
-                        value={sql}
-                        onChange={(value) => {
-                            const val = value || '';
-                            const cleanSql = val.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*/g, '').trim().toUpperCase();
-                            const newData: any = { ...node.getData(), sql: val };
-
-                            let detectedType = null;
-                            if (cleanSql.startsWith('INSERT')) detectedType = 'INSERT';
-                            else if (cleanSql.startsWith('UPDATE')) detectedType = 'UPDATE';
-                            else if (cleanSql.startsWith('DELETE')) detectedType = 'DELETE';
-                            else if (cleanSql.startsWith('SELECT')) detectedType = 'SELECT';
-
-                            if (detectedType && newData.sqlType !== detectedType) {
-                                newData.sqlType = detectedType;
-                                if (detectedType !== 'SELECT') {
-                                    delete newData.returnType;
-                                } else if (!newData.returnType) {
-                                    newData.returnType = 'LIST';
-                                }
-                            }
-
-                            node.setData(newData);
-                        }}
-                        language="sql"
-                        height="100%"
-                        lineNumbers={false}
-                        fontSize={12}
-                        style={{ border: '1px solid #e8e8e8', flex: 1, display: 'flex', flexDirection: 'column' }}
+                    {/* Variables — 使用共享组件 */}
+                    <DynamicVariableList
+                        variables={variables}
+                        rowHeight={ROW_HEIGHT}
+                        dragState={dragState}
+                        hoverRowIndex={hoverRowIndex}
+                        onHoverChange={setHoverRowIndex}
+                        onDragStart={handleDragStart}
+                        onAddVar={onAddVar}
+                        onUpdateVar={onUpdateVar}
+                        onRemoveVar={onRemoveVar}
                     />
-                </div>
-            </div>
 
-            {/* Footer — Result 输出 */}
-            <div style={{ height: FOOTER_HEIGHT, position: 'relative', pointerEvents: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 12px' }}>
-                <div style={{ position: 'absolute', right: 10, top: FT_RESULT_Y, transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 12, color: '#595959' }}>Result</Text>
-                </div>
-            </div>
+                    {/* SQL Editor — CodeMirror */}
+                    <div style={{ padding: '8px 12px', pointerEvents: 'auto', flex: 1, display: 'flex', flexDirection: 'column', minHeight: MIN_QUERY_HEIGHT }}>
+                        <div style={{ flex: 1, minHeight: 60, display: 'flex', flexDirection: 'column' }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <CodeEditor
+                                value={sql}
+                                onChange={(value) => {
+                                    const val = value || '';
+                                    const cleanSql = val.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*/g, '').trim().toUpperCase();
+                                    const newData: any = { ...node.getData(), sql: val };
 
-            {/* Resize */}
-            <ResizeHandle node={node} minWidth={MIN_WIDTH} minHeight={minH} onResize={handleResize} color={themeObj.primary}
-                onResizeStart={() => setResizing(true)} onResizeEnd={() => setResizing(false)} />
+                                    let detectedType = null;
+                                    if (cleanSql.startsWith('INSERT')) detectedType = 'INSERT';
+                                    else if (cleanSql.startsWith('UPDATE')) detectedType = 'UPDATE';
+                                    else if (cleanSql.startsWith('DELETE')) detectedType = 'DELETE';
+                                    else if (cleanSql.startsWith('SELECT')) detectedType = 'SELECT';
+
+                                    if (detectedType && newData.sqlType !== detectedType) {
+                                        newData.sqlType = detectedType;
+                                        if (detectedType !== 'SELECT') {
+                                            delete newData.returnType;
+                                        } else if (!newData.returnType) {
+                                            newData.returnType = 'LIST';
+                                        }
+                                    }
+
+                                    node.setData(newData);
+                                }}
+                                language="sql"
+                                height="100%"
+                                lineNumbers={false}
+                                fontSize={12}
+                                style={{ border: '1px solid #e8e8e8', flex: 1, display: 'flex', flexDirection: 'column' }}
+                            />
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {isCompact ? (
+                <CompactOutFooter label="Result" />
+            ) : (
+                <NodeOutFooter label="Result" height={FOOTER_HEIGHT} />
+            )}
+
+            {!isCompact && (
+                <ResizeHandle node={node} minWidth={MIN_WIDTH} minHeight={minH} onResize={handleResize} color={themeObj.primary}
+                    onResizeStart={() => setResizing(true)} onResizeEnd={() => setResizing(false)} />
+            )}
         </NodeWrapper>
     );
 };

@@ -9,11 +9,13 @@ CREATE TABLE IF NOT EXISTS `flow_directory` (
     `id`          VARCHAR(64)  NOT NULL COMMENT '主键（雪花ID）',
     `parent_id`   VARCHAR(64)  DEFAULT NULL COMMENT '父节点ID，NULL 表示根节点',
     `name`        VARCHAR(128) NOT NULL COMMENT '目录名称',
+    `biz_type`    VARCHAR(32)  DEFAULT NULL COMMENT '业务域：api/task/service/model/page，空=共用',
     `sort`        INT          DEFAULT 0 COMMENT '排序（升序）',
     `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    INDEX `idx_parent_id` (`parent_id`)
+    INDEX `idx_parent_id` (`parent_id`),
+    INDEX `idx_directory_biz_type` (`biz_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全局目录表';
 
 -- 初始化根目录

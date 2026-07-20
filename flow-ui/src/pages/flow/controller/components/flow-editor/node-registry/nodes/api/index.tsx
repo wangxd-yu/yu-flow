@@ -1,6 +1,6 @@
 // ============================================================================
 // node-registry/nodes/api
-// API Call：调用另一条内部 Flow API（编排组合）
+// API Call：调用另一条内部 Flow API 或内部服务（编排组合）
 // ============================================================================
 
 import React from 'react';
@@ -11,6 +11,7 @@ import { ApiNodeComponent, API_LAYOUT } from './ApiNodeComponent';
 import { PAYLOAD_PORT_ID, PAYLOAD_PORT_Y } from '../../shared/usePayloadEntryPort';
 import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
 import { queryAutoApiConfigList } from '@/pages/flow/controller/services/flowController';
+import { queryServiceFlowPage } from '@/pages/flow/service/services/serviceFlowService';
 
 const buildApiPortItems = (ports: DslPort[]) => {
     const seen = new Set<string>();
@@ -50,32 +51,51 @@ const buildApiPortItems = (ports: DslPort[]) => {
 };
 
 function ApiPropertyEditor({ data, onChange }: PropertyEditorProps) {
+    const targetType: 'api' | 'service' = data.targetType === 'service' ? 'service' : 'api';
     const [options, setOptions] = React.useState<{ label: string; value: string }[]>([]);
     const [loading, setLoading] = React.useState(false);
 
     const load = React.useCallback(async (keyword?: string) => {
         setLoading(true);
         try {
-            const res: any = await queryAutoApiConfigList({
-                page: 0,
-                size: 50,
-                name: keyword || undefined,
-            });
-            const items = res?.items || res?.data?.items || [];
-            setOptions(
-                items.map((item: any) => ({
-                    label: item.name
-                        ? `${item.name}${item.url ? `  (${item.method || ''} ${item.url})` : ''}`
-                        : item.id,
-                    value: item.id,
-                })),
-            );
+            if (targetType === 'service') {
+                const res: any = await queryServiceFlowPage({
+                    page: 0,
+                    size: 50,
+                    name: keyword || undefined,
+                    enabled: true,
+                    publishStatus: 1,
+                });
+                const items = res?.items || res?.data?.items || [];
+                setOptions(
+                    items.map((item: any) => ({
+                        label: item.name || item.id,
+                        value: item.id,
+                    })),
+                );
+            } else {
+                const res: any = await queryAutoApiConfigList({
+                    page: 0,
+                    size: 50,
+                    name: keyword || undefined,
+                    publishStatus: 1,
+                });
+                const items = res?.items || res?.data?.items || [];
+                setOptions(
+                    items.map((item: any) => ({
+                        label: item.name
+                            ? `${item.name}${item.url ? `  (${item.method || ''} ${item.url})` : ''}`
+                            : item.id,
+                        value: item.id,
+                    })),
+                );
+            }
         } catch {
             setOptions([]);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [targetType]);
 
     React.useEffect(() => {
         load();
@@ -90,23 +110,45 @@ function ApiPropertyEditor({ data, onChange }: PropertyEditorProps) {
 
     return (
         <PropertySection
-            title="API 调用配置"
-            tip="内部编排：直接执行另一条 Flow API，Method/URL 用目标 API 自己的配置，无需在此选择"
+            title="编排调用配置"
+            tip="可调用内部 Flow API，或服务编排中的内部服务"
         >
-            <PropertyField label="目标 API">
+            <PropertyField label="目标类型">
+                <Select
+                    size="small"
+                    value={targetType}
+                    options={[
+                        { value: 'api', label: '接口 API' },
+                        { value: 'service', label: '内部服务' },
+                    ]}
+                    onChange={(val: 'api' | 'service') => {
+                        onChange({
+                            targetType: val,
+                            serviceId: '',
+                            __serviceName: '',
+                            __serviceMethod: '',
+                            __serviceUrl: '',
+                        });
+                    }}
+                    style={{ width: '100%' }}
+                    getPopupContainer={() => document.body}
+                />
+            </PropertyField>
+            <PropertyField label={targetType === 'service' ? '目标服务' : '目标 API'}>
                 <Select
                     size="small"
                     showSearch
                     allowClear
                     loading={loading}
                     value={data.serviceId || undefined}
-                    placeholder="选择内部 Flow API..."
+                    placeholder={targetType === 'service' ? '选择内部服务...' : '选择内部 Flow API...'}
                     options={selectOptions}
                     filterOption={false}
                     onSearch={(kw) => load(kw)}
                     onChange={(val, option: any) => {
                         const opt = Array.isArray(option) ? option[0] : option;
                         onChange({
+                            targetType,
                             serviceId: val || '',
                             __serviceName: typeof opt?.label === 'string' ? opt.label : '',
                         });
@@ -127,8 +169,9 @@ function ApiPropertyEditor({ data, onChange }: PropertyEditorProps) {
                 />
             </PropertyField>
             <PropertyHint>
-                选择目标 API 后会从契约自动带出 query/path/body 入参（可点同步刷新）。
-                右栏填本流程来源；执行时按来源写入被调侧 @QP/@PP/@BP。下游取 $.本节点.out
+                {targetType === 'service'
+                    ? '选择服务后按契约自动带出入参，执行时写入 $.service.input；下游取 $.本节点.out'
+                    : '选择目标 API 后会从契约自动带出 query/path/body 入参。下游取 $.本节点.out'}
             </PropertyHint>
         </PropertySection>
     );
@@ -141,10 +184,9 @@ export const apiNodeRegistration: NodeRegistration = {
     color: '#2f54eb',
     tagColor: 'blue',
     description:
-        '调用另一条已配置的内部 Flow API（编排组合）。\n\n' +
-        '· 选择目标 API 后，会从契约自动带出 query / path / body 入参\n' +
-        '· 右侧填写本流程数据来源（如 $.request.params.id）\n' +
-        '· Method/URL 沿用目标 API，无需在此选择\n' +
+        '调用另一条已配置的内部 Flow API，或服务编排中的内部服务。\n\n' +
+        '· 目标类型可选「接口 API」或「内部服务」\n' +
+        '· API：从契约自动带出入参；服务：手动配置入参 → $.service.input\n' +
         '· 结果从右侧 Result 输出，下游用 $.本节点.out 读取',
     hasInputs: true,
 
@@ -169,6 +211,7 @@ export const apiNodeRegistration: NodeRegistration = {
             { id: 'out', group: 'absolute-out-solid' },
         ],
         data: {
+            targetType: 'api',
             serviceId: '',
             __serviceName: '',
             output: '',
@@ -186,12 +229,17 @@ export const apiNodeRegistration: NodeRegistration = {
         }),
     },
 
-    buildLabel: (data) =>
-        data.__serviceName
-            ? `API: ${String(data.__serviceName).split('  (')[0]}`
+    buildLabel: (data) => {
+        const name = data.__serviceName
+            ? String(data.__serviceName).split('  (')[0]
             : data.serviceId
-              ? `API: ${data.serviceId}`
-              : 'API Call',
+              ? String(data.serviceId)
+              : '';
+        if (data.targetType === 'service') {
+            return name ? `Svc: ${name}` : 'Service Call';
+        }
+        return name ? `API: ${name}` : 'API Call';
+    },
 
     PropertyEditor: ApiPropertyEditor,
 };

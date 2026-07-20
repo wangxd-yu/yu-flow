@@ -111,6 +111,7 @@ public class FlowEngine {
         executors.put("systemVar", new SystemVarStepExecutor());
         executors.put("systemMethod", new SystemMethodStepExecutor());
         executors.put("schedule", new ScheduleStepExecutor());
+        executors.put("service", new ServiceStepExecutor());
         executors.put("delay", new DelayStepExecutor());
         executors.put("errorHandler", new ErrorHandlerStepExecutor());
     }

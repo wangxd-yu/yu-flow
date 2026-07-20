@@ -10,6 +10,7 @@ import { useNodeVariables, NodeVariable } from '../../shared/useNodeVariables';
 import { DynamicVariableList } from '../../shared/DynamicVariableList';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
+    COMPACT_NODE_WIDTH,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -152,6 +153,8 @@ export const ResponseNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
         cardMinHeight: contentH,
         compactHeight,
         minWidth: MIN_WIDTH,
+        cardDefaultWidth: MIN_WIDTH,
+        compactWidth: COMPACT_NODE_WIDTH,
         resizing,
     });
 

@@ -67,10 +67,10 @@ public class FlowParser {
             }
         }
 
-        // 设置 startStepId（request 或 schedule 作为入口）
+        // 设置 startStepId（request / schedule / service 作为入口）
         for (ObjectNode node : nodeMap.values()) {
             String type = node.get("type").asText();
-            if ("request".equals(type) || "schedule".equals(type)) {
+            if ("request".equals(type) || "schedule".equals(type) || "service".equals(type)) {
                 result.put("startStepId", node.get("id").asText());
                 break;
             }
@@ -149,6 +149,53 @@ public class FlowParser {
                     }
                 }
             }
+        }
+
+        // --- 对 Service 节点进行规则校验 ---
+        int serviceCount = 0;
+        String serviceNodeId = null;
+        for (ObjectNode node : nodeMap.values()) {
+            if ("service".equals(node.get("type").asText())) {
+                serviceCount++;
+                serviceNodeId = node.get("id").asText();
+            }
+        }
+
+        if (serviceCount > 1) {
+            throw new FlowException("SERVICE_VALIDATION_ERROR", "单个流程中只能有一个 service 节点");
+        }
+
+        if (serviceNodeId != null) {
+            for (ObjectNode node : nodeMap.values()) {
+                if (!node.get("id").asText().equals(serviceNodeId)) {
+                    JsonNode nextNode = node.get("next");
+                    if (nextNode != null && nextNode.isObject()) {
+                        Iterator<JsonNode> nextTargets = nextNode.elements();
+                        while (nextTargets.hasNext()) {
+                            JsonNode target = nextTargets.next();
+                            if (target.isArray()) {
+                                for (JsonNode t : target) {
+                                    if (serviceNodeId.equals(t.asText())) {
+                                        throw new FlowException("SERVICE_VALIDATION_ERROR", "service 节点必须为流程中的第一个节点，不能有其他节点指向它");
+                                    }
+                                }
+                            } else if (serviceNodeId.equals(target.asText())) {
+                                throw new FlowException("SERVICE_VALIDATION_ERROR", "service 节点必须为流程中的第一个节点，不能有其他节点指向它");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 同一 DSL 仅允许一种入口类型
+        int entryKinds = 0;
+        if (requestCount > 0) entryKinds++;
+        if (scheduleCount > 0) entryKinds++;
+        if (serviceCount > 0) entryKinds++;
+        if (entryKinds > 1) {
+            throw new FlowException("ENTRY_VALIDATION_ERROR",
+                    "单个流程只能有一种入口（request / schedule / service），不能混用");
         }
         // ---------------------------------
 

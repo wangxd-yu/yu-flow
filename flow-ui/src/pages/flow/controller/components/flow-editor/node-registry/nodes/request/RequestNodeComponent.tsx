@@ -11,6 +11,15 @@ import {
     useNodeSelection, NodeHeader, NodeWrapper, NodeToolbar, getNodeTheme, ResizeHandle, NODE_HEADER_WITH_ID_HEIGHT,
 } from '../../shared/useNodeSelection';
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
+import {
+    COMPACT_ACCENT_WIDTH,
+    COMPACT_NODE_WIDTH,
+    CompactExitLabels,
+    compactExitPortY,
+    getGraphNodeViewMode,
+    multiExitCompactFooterHeight,
+    useCompactNodeResize,
+} from '../../shared/NodeViewMode';
 
 const ICONS = {
     request: (
@@ -181,50 +190,73 @@ export const RequestNodeComponent = ({ node }: { node: Node }) => {
     // ── Method ──
     const method = data?.method || 'GET';
     const hasBody = methodHasBody(method);
+    const cardHeight = hasBody ? REQUEST_LAYOUT.totalHeight3 : REQUEST_LAYOUT.totalHeight2;
+    const exitCount = hasBody ? 3 : 2;
+    const compactFooterH = multiExitCompactFooterHeight(exitCount);
+    const compactHeight = REQUEST_LAYOUT.headerHeight + compactFooterH;
+
+    const { isCompact } = useCompactNodeResize(node, {
+        cardMinHeight: cardHeight,
+        compactHeight,
+        minWidth: REQUEST_LAYOUT.width,
+        cardDefaultWidth: REQUEST_LAYOUT.width,
+        compactWidth: COMPACT_NODE_WIDTH + COMPACT_ACCENT_WIDTH,
+    });
+
+    const syncRequestPorts = React.useCallback(() => {
+        const w = node.getSize().width || REQUEST_LAYOUT.width;
+        const h = node.getSize().height;
+        const compact = getGraphNodeViewMode(node) === 'compact';
+        const ports = hasBody
+            ? (['headers', 'params', 'body'] as const)
+            : (['headers', 'params'] as const);
+
+        const footerTop = REQUEST_LAYOUT.headerHeight;
+        ports.forEach((id, idx) => {
+            const y = compact
+                ? compactExitPortY(footerTop, idx)
+                : REQUEST_LAYOUT.rowCenterY(idx);
+            if (!node.hasPort(id)) {
+                node.addPort({ id, group: 'absolute-out-solid', args: { x: w, y, dx: 0 } });
+            } else {
+                node.setPortProp(id, 'args', { x: w, y, dx: 0 });
+            }
+        });
+
+        if (!hasBody && node.hasPort('body')) {
+            const graph = node.model?.graph;
+            if (graph) {
+                graph.getConnectedEdges(node).forEach((edge: any) => {
+                    if (edge.getSourcePortId?.() === 'body' && edge.getSourceCellId?.() === node.id) {
+                        graph.removeEdge(edge);
+                    }
+                });
+            }
+            node.removePort('body');
+        }
+
+        // compact 时高度由 useCompactNodeResize 管；card 时按行数校正
+        if (!compact) {
+            const target = hasBody ? REQUEST_LAYOUT.totalHeight3 : REQUEST_LAYOUT.totalHeight2;
+            if (Math.abs(h - target) > 0.5) {
+                node.resize(Math.max(w, REQUEST_LAYOUT.width), target);
+            }
+        }
+    }, [node, hasBody]);
+
+    React.useEffect(() => {
+        syncRequestPorts();
+    }, [syncRequestPorts, isCompact]);
 
     const handleMethodChange = React.useCallback((newMethod: string) => {
         const oldData = node.getData() || {};
-        const oldMethod = oldData.method || 'GET';
-        const oldHasBody = methodHasBody(oldMethod);
-        const newHasBody = methodHasBody(newMethod);
-
         node.setData({ ...oldData, method: newMethod });
-
-        // 动态增减 body 端口 & 调整节点高度
-        if (oldHasBody !== newHasBody) {
-            if (newHasBody) {
-                // Add body port
-                if (!node.getPort('body')) {
-                    node.addPort({
-                        id: 'body',
-                        group: 'absolute-out-solid',
-                        args: { x: REQUEST_LAYOUT.width, y: REQUEST_LAYOUT.rowCenterY(2), dx: 0 },
-                    });
-                }
-                node.resize(REQUEST_LAYOUT.width, REQUEST_LAYOUT.totalHeight3);
-            } else {
-                // Remove body port (also remove connected edges)
-                const graph = node.model?.graph;
-                if (graph) {
-                    const edges = graph.getConnectedEdges(node).filter(
-                        (edge: any) =>
-                            (edge.getSourcePortId?.() === 'body' && edge.getSourceCellId?.() === node.id) ||
-                            (edge.getTargetPortId?.() === 'body' && edge.getTargetCellId?.() === node.id)
-                    );
-                    edges.forEach((edge: any) => graph.removeEdge(edge));
-                }
-                if (node.getPort('body')) {
-                    node.removePort('body');
-                }
-                node.resize(REQUEST_LAYOUT.width, REQUEST_LAYOUT.totalHeight2);
-            }
-        }
     }, [node]);
 
     const rows = hasBody ? ['Headers', 'Params', 'Body'] : ['Headers', 'Params'];
 
     // Method 选择器作为 header extra
-    const methodExtra = (
+    const methodExtra = isCompact ? undefined : (
         <MethodSelect value={method} onChange={handleMethodChange} />
     );
 
@@ -247,23 +279,34 @@ export const RequestNodeComponent = ({ node }: { node: Node }) => {
                     extra={methodExtra}
                 />
 
-                {/* Port Rows */}
-                <div style={{ paddingTop: REQUEST_LAYOUT.paddingTop, paddingBottom: REQUEST_LAYOUT.paddingBottom, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: REQUEST_LAYOUT.rowGap, pointerEvents: 'auto' }}>
-                    {rows.map((label) => (
-                        <div key={label} style={{ height: REQUEST_LAYOUT.rowHeight, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                            <span style={{ fontSize: 11, color: '#595959' }}>{label}</span>
-                        </div>
-                    ))}
-                </div>
+                {isCompact ? (
+                    <CompactExitLabels
+                        height={compactFooterH}
+                        exits={rows.map((label) => ({
+                            id: label.toLowerCase(),
+                            label,
+                        }))}
+                    />
+                ) : (
+                    <div style={{ paddingTop: REQUEST_LAYOUT.paddingTop, paddingBottom: REQUEST_LAYOUT.paddingBottom, paddingRight: 12, display: 'flex', flexDirection: 'column', gap: REQUEST_LAYOUT.rowGap, pointerEvents: 'auto' }}>
+                        {rows.map((label) => (
+                            <div key={label} style={{ height: REQUEST_LAYOUT.rowHeight, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                <span style={{ fontSize: 11, color: '#595959' }}>{label}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
-            <ResizeHandle
-                node={node}
-                minWidth={REQUEST_LAYOUT.width}
-                minHeight={hasBody ? REQUEST_LAYOUT.totalHeight3 : REQUEST_LAYOUT.totalHeight2}
-                axes="x"
-                color={themeObj.primary}
-            />
+            {!isCompact && (
+                <ResizeHandle
+                    node={node}
+                    minWidth={REQUEST_LAYOUT.width}
+                    minHeight={cardHeight}
+                    axes="x"
+                    color={themeObj.primary}
+                />
+            )}
         </NodeWrapper>
     );
 };

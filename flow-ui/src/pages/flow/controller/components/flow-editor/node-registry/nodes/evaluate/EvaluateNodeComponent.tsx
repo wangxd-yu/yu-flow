@@ -15,6 +15,8 @@ import {
 } from '../../shared/useNodeSelection';
 import {
     COMPACT_FOOTER_HEIGHT,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
 } from '../../shared/NodeViewMode';
 
@@ -37,13 +39,11 @@ export const EVALUATE_LAYOUT = {
     },
 };
 
-function activeFooterHeight(node: Node) {
-    return getGraphNodeViewMode(node) === 'compact' ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
-}
-
 function outPortY(node: Node, height: number) {
-    const fh = activeFooterHeight(node);
-    return height - fh + fh / 2;
+    if (getGraphNodeViewMode(node) === 'compact') {
+        return compactSingleOutPortY(height);
+    }
+    return height - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
 }
 
 const handlePortSync = (node: Node, size: { width: number; height: number }) => {
@@ -95,7 +95,9 @@ export const EvaluateNodeComponent = ({ node }: { node: Node }) => {
             onPortSync={handlePortSync}
             onResize={handleResize}
             onPortPositionSync={handlePortPositionSync}
-            bottomContent={<NodeOutFooter label="Result" />}
+            bottomContent={({ isCompact }) =>
+                isCompact ? <CompactOutFooter label="Result" /> : <NodeOutFooter label="Result" />
+            }
         />
     );
 };

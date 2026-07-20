@@ -28,8 +28,9 @@ import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import { NODE_HEADER_WITH_ID_HEIGHT } from '../../shared/useNodeSelection';
 import { createId } from '../../../utils/id';
 import {
-    COMPACT_EXIT_ROW,
+    COMPACT_NODE_WIDTH,
     CompactExitLabels,
+    compactExitPortY,
     getGraphNodeViewMode,
     HTTP_COMPACT_FOOTER_HEIGHT,
     useCompactNodeResize,
@@ -96,10 +97,6 @@ function calcHttpRequestMinHeight(opts: {
     }
     y += PADDING_BOTTOM + FOOTER_HEIGHT;
     return y;
-}
-
-function compactExitY(ft: number, idx: number): number {
-    return ft + 2 + idx * COMPACT_EXIT_ROW + COMPACT_EXIT_ROW / 2;
 }
 
 const METHOD_OPTIONS = [
@@ -293,6 +290,8 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
         cardMinHeight: minTotalHeight,
         compactHeight,
         minWidth: MIN_WIDTH,
+        cardDefaultWidth: MIN_WIDTH,
+        compactWidth: COMPACT_NODE_WIDTH,
         resizing,
     });
 
@@ -425,8 +424,8 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             }
 
             const ft = currentSize.height - HTTP_COMPACT_FOOTER_HEIGHT;
-            setAbsoluteOutPort('success', 'absolute-out-solid', compactExitY(ft, 0), currentSize.width);
-            setAbsoluteOutPort('fail', 'absolute-out-hollow', compactExitY(ft, 1), currentSize.width);
+            setAbsoluteOutPort('success', 'absolute-out-solid', compactExitPortY(ft, 0), currentSize.width);
+            setAbsoluteOutPort('fail', 'absolute-out-hollow', compactExitPortY(ft, 1), currentSize.width);
             return;
         }
 

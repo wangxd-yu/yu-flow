@@ -23,6 +23,8 @@ import {
 } from './usePayloadEntryPort';
 import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    useCompactNodeResize,
     useNodeViewMode,
 } from './NodeViewMode';
 
@@ -55,6 +57,8 @@ const LANGUAGE_ITEMS = [
 export interface BottomContentProps {
     /** 当前节点尺寸 */
     size: { width: number; height: number };
+    /** 是否极简模式（消费方据此切换 CompactOutFooter / CompactExitLabels） */
+    isCompact: boolean;
 }
 
 export interface BaseExpressionNodeProps {
@@ -111,6 +115,7 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
     const themeObj = getNodeTheme(data?.themeColor);
     const { outlineCss, borderColor, selected } = useNodeSelection(node, { defaultColor: themeObj.primary, selectedColor: themeObj.primary });
     const [size, setSize] = React.useState(node.getSize());
+    const [resizing, setResizing] = React.useState(false);
 
     React.useEffect(() => {
         const onD = () => setData({ ...node.getData() });
@@ -147,6 +152,15 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
     const compactMinH = HEADER_HEIGHT + compactFooterHeight;
     const minH = isCompact ? compactMinH : cardMinH;
 
+    useCompactNodeResize(node, {
+        cardMinHeight: cardMinH,
+        compactHeight: compactMinH,
+        minWidth: MIN_WIDTH,
+        cardDefaultWidth: MIN_WIDTH,
+        compactWidth: COMPACT_NODE_WIDTH,
+        resizing,
+    });
+
     // ── 端口同步 (委托给消费方) ──
     React.useEffect(() => {
         ensurePayloadPort(node, PAYLOAD_PORT_Y);
@@ -165,20 +179,6 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
         }
         onPortSync?.(node, node.getSize(), variables);
     }, [variables, node, size, isCompact, activeFooterH]);
-
-    // ── 缩放 / 模式切换收高度 ──
-    const [resizing, setResizing] = React.useState(false);
-
-    React.useEffect(() => {
-        if (resizing) return;
-        const s = node.getSize();
-        const w = Math.max(s.width, MIN_WIDTH);
-        if (isCompact) {
-            if (s.height !== compactMinH) node.resize(w, compactMinH);
-        } else if (s.height < cardMinH) {
-            node.resize(w, cardMinH);
-        }
-    }, [isCompact, compactMinH, cardMinH, node, resizing]);
 
     const handleResize = React.useCallback((nw: number, nh: number) => {
         onResize?.(node, nw, nh, updateEdges);
@@ -264,10 +264,10 @@ export const BaseExpressionNode: React.FC<BaseExpressionNodeProps> = ({
                 </>
             )}
 
-            {/* Footer — 由消费方定义；compact 时限高裁剪，避免 NodeOutFooter 撑破矮卡片 */}
+            {/* Footer — 消费方提供 CompactOutFooter / CompactExitLabels / NodeOutFooter */}
             <div style={{ height: activeFooterH, flexShrink: 0, overflow: 'hidden' }}>
                 {typeof bottomContent === 'function'
-                    ? bottomContent({ size })
+                    ? bottomContent({ size, isCompact })
                     : bottomContent}
             </div>
 

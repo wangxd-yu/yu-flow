@@ -1,9 +1,13 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { ProFormTreeSelect } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
+import type { DirectoryBizType } from './DirectoryTreeLayout';
 
-async function getDirectoryTree() {
-  const res = await request<any>('/flow-api/directories/tree', { method: 'GET' });
+async function getDirectoryTree(bizType?: DirectoryBizType) {
+  const res = await request<any>('/flow-api/directories/tree', {
+    method: 'GET',
+    params: bizType ? { bizType } : undefined,
+  });
   return Array.isArray(res) ? res : res?.data ?? [];
 }
 
@@ -18,6 +22,7 @@ const formatTreeData = (data: any[]): any[] => {
 };
 
 export const DirectoryTreeSelect: React.FC<any> = (props) => {
+  const { bizType, request: _ignored, ...rest } = props;
   return (
     <ProFormTreeSelect
       name="targetDirectoryId"
@@ -26,14 +31,14 @@ export const DirectoryTreeSelect: React.FC<any> = (props) => {
       allowClear
       rules={[{ required: false }]}
       request={async () => {
-        const data = await getDirectoryTree();
+        const data = await getDirectoryTree(bizType);
         return formatTreeData(data);
       }}
       fieldProps={{
         showSearch: true,
         treeDefaultExpandAll: true,
       }}
-      {...props}
+      {...rest}
     />
   );
 };

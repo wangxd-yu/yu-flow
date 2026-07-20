@@ -1,20 +1,42 @@
 // ============================================================================
 // NodeViewMode — 画布节点展示模式：card（完整）| compact（极简）
 // 不写入 DSL；仅编辑器状态 + localStorage
+//
+// 重要：@antv/x6-react-shape 在独立 React 根中渲染节点，读不到 Provider Context。
+// 因此用模块级 store + 订阅，供节点组件跨根同步。
 // ============================================================================
 
 import React from 'react';
 import type { Graph, Node } from '@antv/x6';
+import {
+    CARD_WIDTH_DATA_KEY,
+    COMPACT_NODE_WIDTH,
+} from './CompactNodeChrome';
+
+// 统一视觉 API 再导出，便于现有 import 路径不变
+export {
+    COMPACT_NODE_WIDTH,
+    COMPACT_ACCENT_WIDTH,
+    COMPACT_HEADER_HEIGHT,
+    COMPACT_FOOTER_HEIGHT,
+    COMPACT_EXIT_ROW,
+    CARD_WIDTH_DATA_KEY,
+    IF_COMPACT_FOOTER_HEIGHT,
+    HTTP_COMPACT_FOOTER_HEIGHT,
+    switchCompactFooterHeight,
+    multiExitCompactFooterHeight,
+    compactSingleOutPortY,
+    compactExitPortY,
+    CompactOutFooter,
+    CompactExitLabels,
+} from './CompactNodeChrome';
 
 export type NodeViewMode = 'card' | 'compact';
 
 const STORAGE_KEY = 'yu-flow.flowEditor.nodeViewMode';
 export const GRAPH_NODE_VIEW_MODE_KEY = 'nodeViewMode';
 
-const NodeViewModeContext = React.createContext<{
-    mode: NodeViewMode;
-    setMode: (m: NodeViewMode) => void;
-}>({ mode: 'card', setMode: () => {} });
+type ModeListener = () => void;
 
 function readStored(): NodeViewMode {
     try {
@@ -26,6 +48,36 @@ function readStored(): NodeViewMode {
     return 'card';
 }
 
+let sharedMode: NodeViewMode = readStored();
+const modeListeners = new Set<ModeListener>();
+
+function publishMode(m: NodeViewMode) {
+    sharedMode = m;
+    modeListeners.forEach((l) => {
+        try {
+            l();
+        } catch {
+            /* ignore */
+        }
+    });
+}
+
+export function getSharedNodeViewMode(): NodeViewMode {
+    return sharedMode;
+}
+
+function subscribeMode(listener: ModeListener): () => void {
+    modeListeners.add(listener);
+    return () => {
+        modeListeners.delete(listener);
+    };
+}
+
+const NodeViewModeContext = React.createContext<{
+    mode: NodeViewMode;
+    setMode: (m: NodeViewMode) => void;
+}>({ mode: sharedMode, setMode: () => {} });
+
 function graphGet(graph: Graph | null | undefined, key: string): unknown {
     return (graph as any)?.get?.(key);
 }
@@ -34,7 +86,7 @@ function graphSet(graph: Graph | null | undefined, key: string, value: unknown) 
     (graph as any)?.set?.(key, value);
 }
 
-/** 非 React 回调（端口同步）从 graph 读当前展示模式 */
+/** 非 React 回调（端口同步）：graph 属性 → 模块级共享模式 */
 export function getGraphNodeViewMode(node: Node): NodeViewMode {
     try {
         const m = graphGet(node.model?.graph, GRAPH_NODE_VIEW_MODE_KEY);
@@ -42,39 +94,110 @@ export function getGraphNodeViewMode(node: Node): NodeViewMode {
     } catch {
         /* ignore */
     }
-    return 'card';
+    return sharedMode;
 }
 
 /**
- * compact 时强制矮高度；切回 card 时保证不低于 cardMinHeight。
+ * compact：强制统一宽 + 矮高；进入前缓存 `__cardWidth`。
+ * card：恢复 `__cardWidth`（或 cardDefaultWidth / minWidth），高度不低于 cardMinHeight。
  */
 export function useCompactNodeResize(
     node: Node,
     opts: {
         cardMinHeight: number;
         compactHeight: number;
+        /** card 模式最小宽（恢复时下限） */
         minWidth: number;
+        /** card 默认宽；无缓存时用此值 */
+        cardDefaultWidth?: number;
+        /** compact 强制宽，默认 COMPACT_NODE_WIDTH */
+        compactWidth?: number;
         resizing?: boolean;
     },
 ): { isCompact: boolean; mode: NodeViewMode } {
     const mode = useNodeViewMode();
     const isCompact = mode === 'compact';
-    const { cardMinHeight, compactHeight, minWidth, resizing } = opts;
+    const {
+        cardMinHeight,
+        compactHeight,
+        minWidth,
+        cardDefaultWidth,
+        compactWidth = COMPACT_NODE_WIDTH,
+        resizing,
+    } = opts;
+    const prevCompactRef = React.useRef<boolean | null>(null);
 
     React.useEffect(() => {
         if (resizing) return;
         const s = node.getSize();
-        const w = Math.max(s.width, minWidth);
+        const data = (node.getData() as any) || {};
+        const wasCompact = prevCompactRef.current;
+        prevCompactRef.current = isCompact;
+
         if (isCompact) {
-            if (Math.abs(s.height - compactHeight) > 0.5) {
-                node.resize(w, compactHeight);
+            // 从 card 切入：刷新缓存宽度；首次挂载已是极简且仍偏宽时补缓存
+            if (wasCompact === false) {
+                node.setData(
+                    { ...data, [CARD_WIDTH_DATA_KEY]: s.width },
+                    { overwrite: true },
+                );
+            } else if (wasCompact === null && s.width > compactWidth + 0.5) {
+                if (!(Number(data[CARD_WIDTH_DATA_KEY]) > 0)) {
+                    node.setData(
+                        { ...data, [CARD_WIDTH_DATA_KEY]: s.width },
+                        { overwrite: true },
+                    );
+                }
             }
-        } else if (s.height < cardMinHeight) {
-            node.resize(w, cardMinHeight);
+            if (
+                Math.abs(s.width - compactWidth) > 0.5
+                || Math.abs(s.height - compactHeight) > 0.5
+            ) {
+                node.resize(compactWidth, compactHeight);
+            }
+            return;
         }
-    }, [isCompact, compactHeight, cardMinHeight, minWidth, node, resizing]);
+
+        // 仅在从 compact 切回 card 时恢复宽度，避免打断用户在 card 下的手动缩放
+        if (wasCompact === true) {
+            const cached = Number(data[CARD_WIDTH_DATA_KEY]);
+            const restoreW = cached > 0
+                ? Math.max(cached, minWidth)
+                : Math.max(cardDefaultWidth ?? minWidth, minWidth);
+            const targetH = Math.max(s.height, cardMinHeight);
+            node.resize(restoreW, targetH);
+            return;
+        }
+
+        if (s.height < cardMinHeight - 0.5) {
+            node.resize(Math.max(s.width, minWidth), cardMinHeight);
+        }
+    }, [
+        isCompact,
+        compactHeight,
+        compactWidth,
+        cardMinHeight,
+        minWidth,
+        cardDefaultWidth,
+        node,
+        resizing,
+    ]);
 
     return { isCompact, mode };
+}
+
+function applyMode(graph: Graph | null | undefined, m: NodeViewMode) {
+    publishMode(m);
+    try {
+        localStorage.setItem(STORAGE_KEY, m);
+    } catch {
+        /* ignore */
+    }
+    if (!graph) return;
+    graphSet(graph, GRAPH_NODE_VIEW_MODE_KEY, m);
+    graph.getNodes().forEach((n) => {
+        n.setData({ ...n.getData(), __viewModeTick: Date.now() }, { overwrite: true });
+    });
 }
 
 export function NodeViewModeProvider({
@@ -84,29 +207,21 @@ export function NodeViewModeProvider({
     graph: Graph | null;
     children: React.ReactNode;
 }) {
-    const [mode, setModeState] = React.useState<NodeViewMode>(readStored);
+    const [mode, setModeState] = React.useState<NodeViewMode>(() => sharedMode);
 
     const setMode = React.useCallback(
         (m: NodeViewMode) => {
             setModeState(m);
-            try {
-                localStorage.setItem(STORAGE_KEY, m);
-            } catch {
-                /* ignore */
-            }
-            if (graph) {
-                graphSet(graph, GRAPH_NODE_VIEW_MODE_KEY, m);
-                graph.getNodes().forEach((n) => {
-                    n.setData({ ...n.getData(), __viewModeTick: Date.now() }, { overwrite: true });
-                });
-            }
+            applyMode(graph, m);
         },
         [graph],
     );
 
     React.useEffect(() => {
-        if (graph) graphSet(graph, GRAPH_NODE_VIEW_MODE_KEY, mode);
-    }, [graph, mode]);
+        // graph 就绪时把当前模式写上；并订阅其它入口对 store 的变更
+        if (graph) graphSet(graph, GRAPH_NODE_VIEW_MODE_KEY, sharedMode);
+        return subscribeMode(() => setModeState(sharedMode));
+    }, [graph]);
 
     React.useEffect(() => {
         if (!graph) return;
@@ -126,12 +241,27 @@ export function NodeViewModeProvider({
     );
 }
 
+/** 跨 x6-react-shape 独立根也可订阅（读模块 store，不依赖 Context） */
 export function useNodeViewMode(): NodeViewMode {
-    return React.useContext(NodeViewModeContext).mode;
+    const [mode, setMode] = React.useState<NodeViewMode>(() => sharedMode);
+    React.useEffect(() => {
+        setMode(sharedMode);
+        return subscribeMode(() => setMode(sharedMode));
+    }, []);
+    return mode;
 }
 
 export function useNodeViewModeControls() {
-    return React.useContext(NodeViewModeContext);
+    const ctx = React.useContext(NodeViewModeContext);
+    const mode = useNodeViewMode();
+    return React.useMemo(
+        () => ({
+            mode,
+            // Provider 内用 ctx.setMode（会写 graph + tick）；否则直接写 store
+            setMode: ctx.setMode,
+        }),
+        [mode, ctx.setMode],
+    );
 }
 
 /** 多出口端口的友好标签（用于边标签） */
@@ -213,63 +343,3 @@ export function syncEdgePortLabels(graph: Graph, mode: NodeViewMode) {
     });
 }
 
-export const COMPACT_HEADER_HEIGHT = 52;
-/** 极简模式下单出口条高度 */
-export const COMPACT_FOOTER_HEIGHT = 32;
-/** 极简多出口每行高度 */
-export const COMPACT_EXIT_ROW = 22;
-
-/** Switch：cases + Default 的极简 footer 高度 */
-export function switchCompactFooterHeight(caseCount: number): number {
-    const n = Math.max(1, caseCount) + 1;
-    return Math.max(COMPACT_FOOTER_HEIGHT, n * COMPACT_EXIT_ROW + 4);
-}
-
-/** If：THEN / ELSE */
-export const IF_COMPACT_FOOTER_HEIGHT = COMPACT_EXIT_ROW * 2 + 8;
-
-/** HttpRequest：success / fail */
-export const HTTP_COMPACT_FOOTER_HEIGHT = COMPACT_EXIT_ROW * 2 + 8;
-
-/** 极简多出口右侧标签条 */
-export function CompactExitLabels({
-    exits,
-    height,
-}: {
-    exits: { id: string; label: string; color?: string }[];
-    height: number;
-}) {
-    const rowH = exits.length > 0 ? (height - 4) / exits.length : COMPACT_EXIT_ROW;
-    return (
-        <div
-            style={{
-                height,
-                flexShrink: 0,
-                borderTop: '1px solid #f0f0f0',
-                boxSizing: 'border-box',
-                padding: '2px 10px 2px 0',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                pointerEvents: 'none',
-            }}
-        >
-            {exits.map((e) => (
-                <div
-                    key={e.id}
-                    style={{
-                        height: rowH,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-end',
-                        fontSize: 10,
-                        color: e.color || '#8c8c8c',
-                        lineHeight: 1,
-                    }}
-                >
-                    {e.label}
-                </div>
-            ))}
-        </div>
-    );
-}

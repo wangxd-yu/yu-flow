@@ -204,19 +204,24 @@ export function useNodeVariables(node: Node, options: UseNodeVariablesOptions) {
             if ((edge as any).__pv) return;
             (edge as any).__pv = true;
 
-            // 连线后 UI 只写简写 $，保存时由 FlowParser 展开
-            const updated = [...curVars];
-            if (!updated[updated.length - 1].name) {
+            // 仅「末行占位」连线才升级并追加新占位；契约固定行连线不得增高
+            const isPlaceholderRow = !last.name?.trim() && !last.fromContract;
+            if (isPlaceholderRow) {
+                const updated = [...curVars];
                 updated[updated.length - 1] = {
                     ...last,
                     name: `var${updated.length}`,
                     extractPath: last.extractPath?.trim() ? last.extractPath : '$',
                 };
-            } else if (!updated[updated.length - 1].extractPath?.trim()) {
-                updated[updated.length - 1] = { ...updated[updated.length - 1], extractPath: '$' };
+                updated.push({ id: createId('var'), name: '', extractPath: '$' });
+                syncRef.current(updated);
+            } else if (!last.extractPath?.trim()) {
+                syncRef.current(
+                    curVars.map((v, i) =>
+                        i === curVars.length - 1 ? { ...v, extractPath: '$' } : v,
+                    ),
+                );
             }
-            updated.push({ id: createId('var'), name: '', extractPath: '$' });
-            syncRef.current(updated);
 
             setTimeout(() => {
                 try {

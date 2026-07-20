@@ -1,8 +1,5 @@
 // ============================================================================
 // TemplateNodeComponent.tsx — Template 节点（对齐 Postman / Evaluate 布局）
-// · 左上角 in:payload 总入口
-// · 变量行 + in:var 连线（与 Evaluate 相同）
-// · 下方模板正文 {{key}}；Footer Output + Resize 安全区
 // ============================================================================
 
 import React from 'react';
@@ -16,9 +13,10 @@ import {
     NODE_FOOTER_HEIGHT,
     NODE_FOOTER_PORT_OFFSET_Y,
 } from '../../shared/useNodeSelection';
-
 import {
     COMPACT_FOOTER_HEIGHT,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
 } from '../../shared/NodeViewMode';
 
@@ -45,13 +43,11 @@ export const TEMPLATE_LAYOUT = {
     },
 };
 
-function activeFooterHeight(node: Node) {
-    return getGraphNodeViewMode(node) === 'compact' ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
-}
-
 function outPortY(node: Node, height: number) {
-    const fh = activeFooterHeight(node);
-    return height - fh + fh / 2;
+    if (getGraphNodeViewMode(node) === 'compact') {
+        return compactSingleOutPortY(height);
+    }
+    return height - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
 }
 
 const handlePortSync = (node: Node, size: { width: number; height: number }) => {
@@ -74,7 +70,6 @@ const handlePortSync = (node: Node, size: { width: number; height: number }) => 
         node.setPortProp('out', 'args', { x: outX, y: outY, dx: 0 });
     }
 
-    // 历史控制流 in 移除；总入口仅用左上角 in:payload
     if (existing.has('in')) node.removePort('in');
 };
 
@@ -111,8 +106,8 @@ export const TemplateNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
             onPortSync={handlePortSync}
             onResize={handleResize}
             onPortPositionSync={handlePortPositionSync}
-            bottomContent={
-                <NodeOutFooter label="Output" />
+            bottomContent={({ isCompact }) =>
+                isCompact ? <CompactOutFooter label="Output" /> : <NodeOutFooter label="Output" />
             }
         />
     );

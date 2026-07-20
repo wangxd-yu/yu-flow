@@ -59,6 +59,7 @@ import { recordNodeRegistration } from './nodes/record';
 import { responseNodeRegistration } from './nodes/response';
 import { requestNodeRegistration } from './nodes/request';
 import { scheduleNodeRegistration } from './nodes/schedule';
+import { serviceNodeRegistration } from './nodes/service';
 import { templateNodeRegistration } from './nodes/template'; // React Shape（{{key}} 长文本）
 import { collectNodeReactRegistration } from './nodes/collect-node'; // Scatter-Gather Collect (React)
 import { databaseNodeRegistration } from './nodes/database';
@@ -83,6 +84,7 @@ const BUILTIN_NODES = [
     responseNodeRegistration,
     requestNodeRegistration,
     scheduleNodeRegistration,      // 定时调度入口节点（任务管理专用）
+    serviceNodeRegistration,       // 内部服务编排入口节点（服务编排专用）
     templateNodeRegistration,
     collectNodeReactRegistration,  // Scatter-Gather: 汇聚屏障
     databaseNodeRegistration,

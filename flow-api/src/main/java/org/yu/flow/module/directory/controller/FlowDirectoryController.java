@@ -27,11 +27,13 @@ public class FlowDirectoryController {
     private FlowDirectoryService flowDirectoryService;
 
     /**
-     * 获取目录树结构
+     * 获取目录树结构。
+     *
+     * @param bizType 可选业务域过滤：api / task / service / model / page
      */
     @GetMapping("/tree")
-    public R<List<FlowDirectoryDTO>> getTree() {
-        return R.ok(flowDirectoryService.getTree());
+    public R<List<FlowDirectoryDTO>> getTree(@RequestParam(required = false) String bizType) {
+        return R.ok(flowDirectoryService.getTree(bizType));
     }
 
     /**

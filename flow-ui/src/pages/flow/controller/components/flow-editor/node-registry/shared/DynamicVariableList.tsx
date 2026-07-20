@@ -37,6 +37,10 @@ export interface DynamicVariableListProps {
     namePlaceholder?: string;
     /** 路径输入框 placeholder */
     pathPlaceholder?: string;
+    /** 隐藏底部新增行（如服务契约入参已固定） */
+    hideAdd?: boolean;
+    /** 隐藏删除（契约锁定时） */
+    hideRemove?: boolean;
 }
 
 export function DynamicVariableList(props: DynamicVariableListProps) {
@@ -53,14 +57,18 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
         addLabel = '输入变量',
         namePlaceholder,
         pathPlaceholder = '$ 或 $.字段',
+        hideAdd = false,
+        hideRemove = false,
     } = props;
 
     return (
         <div style={{ padding: '4px 0', pointerEvents: 'auto', position: 'relative', flexShrink: 0 }}>
             {variables.map((v, idx) => {
-                const isPlaceholder = idx === variables.length - 1;
+                // 未锁定时末行空名占位为「+」；锁定契约时所有行都是真实入参
+                const isPlaceholder = !hideAdd && idx === variables.length - 1;
                 const isDragging = dragState?.index === idx;
                 const isHovering = hoverRowIndex === idx;
+                const canRemove = !hideRemove && !v.fromContract;
 
                 let transform = 'translateY(0)';
                 let zIndex = 1;
@@ -79,7 +87,7 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
                                 height: rowHeight,
                                 display: 'flex',
                                 alignItems: 'center',
-                                padding: '0 4px 0 16px',
+                                padding: '0 4px 0 2px',
                                 gap: 6,
                                 cursor: 'pointer',
                             }}
@@ -103,8 +111,8 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
                             height: rowHeight,
                             display: 'flex',
                             alignItems: 'center',
-                            padding: '0 4px 0 16px',
-                            gap: 6,
+                            padding: '0 4px 0 2px',
+                            gap: 4,
                             transform,
                             zIndex,
                             position: 'relative',
@@ -119,7 +127,9 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
                                 color: isDragging ? '#1677ff' : '#bfbfbf',
                                 display: 'flex',
                                 cursor: isDragging ? 'grabbing' : 'grab',
-                                padding: '4px',
+                                padding: '4px 0',
+                                marginLeft: 0,
+                                flexShrink: 0,
                                 transition: 'color 0.2s',
                             }}
                         >
@@ -170,7 +180,7 @@ export function DynamicVariableList(props: DynamicVariableListProps) {
                             onMouseDown={(e) => e.stopPropagation()}
                             style={{ flex: 1.5, fontSize: 12, height: 32, backgroundColor: '#f0f0f0', borderRadius: 4 }}
                         />
-                        {isHovering && !dragState && (
+                        {isHovering && !dragState && canRemove && (
                             <div
                                 onClick={(e) => {
                                     e.stopPropagation();

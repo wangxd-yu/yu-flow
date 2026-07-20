@@ -19,6 +19,9 @@ import {
 import { commitFlowNodeIdChange } from '../../shared/nodeIdUtils';
 import {
     COMPACT_FOOTER_HEIGHT,
+    COMPACT_NODE_WIDTH,
+    CompactOutFooter,
+    compactSingleOutPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
@@ -57,7 +60,9 @@ export const DelayNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const { isCompact } = useCompactNodeResize(node, {
         cardMinHeight: DELAY_LAYOUT.height,
         compactHeight,
-        minWidth: 160,
+        minWidth: DELAY_LAYOUT.width,
+        cardDefaultWidth: DELAY_LAYOUT.width,
+        compactWidth: COMPACT_NODE_WIDTH,
     });
 
     const setDelayMs = (val: number | null) => {
@@ -74,9 +79,10 @@ export const DelayNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
         const w = size.width || DELAY_LAYOUT.width;
         const h = size.height;
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const fh = isCompactMode ? COMPACT_FOOTER_HEIGHT : NODE_FOOTER_HEIGHT;
         const inY = isCompactMode ? NODE_HEADER_WITH_ID_HEIGHT / 2 : DELAY_LAYOUT.inPortY;
-        const outY = isCompactMode ? h - fh + fh / 2 : h - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
+        const outY = isCompactMode
+            ? compactSingleOutPortY(h)
+            : h - NODE_FOOTER_HEIGHT + NODE_FOOTER_PORT_OFFSET_Y;
 
         const ensure = (id: string, group: string, x: number, y: number) => {
             if (!node.hasPort(id)) {
@@ -134,14 +140,17 @@ export const DelayNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                     <span>ms</span>
                 </div>
             )}
-            <NodeOutFooter
-                label="out"
-                color={theme.primary}
-                borderColor={theme.headerBorder}
-                style={{ height: isCompact ? COMPACT_FOOTER_HEIGHT : undefined }}
-            />
+            {isCompact ? (
+                <CompactOutFooter label="out" />
+            ) : (
+                <NodeOutFooter
+                    label="out"
+                    color={theme.primary}
+                    borderColor={theme.headerBorder}
+                />
+            )}
             {!isCompact && (
-                <ResizeHandle node={node} axes="x" minWidth={160} minHeight={DELAY_LAYOUT.height} />
+                <ResizeHandle node={node} axes="x" minWidth={DELAY_LAYOUT.width} minHeight={DELAY_LAYOUT.height} />
             )}
         </NodeWrapper>
     );
