@@ -2,7 +2,6 @@ package org.yu.flow.module.api.service;
 
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.module.api.domain.FlowApiDO;
-import org.yu.flow.module.api.domain.FlowServiceDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.springframework.data.domain.Page;
@@ -74,23 +73,20 @@ public interface FlowApiCrudService {
     /** 根据名称查询 */
     FlowApiDTO findByName(String name);
 
-    /** 根据 ID 查询 FlowServiceDO */
-    FlowServiceDO findFlowServiceDOById(String id);
-
-    /** 保存 FlowServiceDO */
-    void saveFlowServiceDO(FlowServiceDO flowServiceDO);
-
-    /** 更新 FlowServiceDO */
-    void updateFlowServiceDO(FlowServiceDO flowServiceDO);
-
     /**
-     * 校验是否已存在指定的 URL 和 Method 的 API 记录
+     * 校验路径是否与<strong>已发布</strong>接口路由冲突。
      *
-     * @param url    API 路径
-     * @param method 请求方法
+     * @param url       待检查路径
+     * @param method    请求方法
+     * @param excludeId 排除自身（编辑草稿时）
      * @return true-已占用/存在冲突, false-可用
      */
-    boolean existsByUrlAndMethod(String url, String method);
+    boolean existsByUrlAndMethod(String url, String method, String excludeId);
+
+    /** @deprecated 请使用 {@link #existsByUrlAndMethod(String, String, String)} */
+    default boolean existsByUrlAndMethod(String url, String method) {
+        return existsByUrlAndMethod(url, method, null);
+    }
 
     /** 发布 API：将草稿内容冻结为发布快照 */
     FlowApiDO publish(String id);

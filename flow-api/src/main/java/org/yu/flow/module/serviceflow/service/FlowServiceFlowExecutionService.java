@@ -1,18 +1,20 @@
 package org.yu.flow.module.serviceflow.service;
 
 import cn.hutool.core.util.StrUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.yu.flow.config.ContractParamTypeConverter;
+import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.TracePersistUtil;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.log.service.domain.FlowServiceLogDO;
 import org.yu.flow.log.service.service.FlowServiceLogService;
+import org.yu.flow.module.serviceflow.cache.ServiceResolvedContentCache;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 
@@ -43,6 +45,12 @@ public class FlowServiceFlowExecutionService {
 
     @Resource
     private ContractParamTypeConverter contractParamTypeConverter;
+
+    @Resource
+    private YuFlowProperties yuFlowProperties;
+
+    @Resource
+    private ServiceResolvedContentCache serviceResolvedContentCache;
 
     /**
      * 按服务 ID 执行，返回业务输出（解包 ExecutionResult / FlowTrace）。
@@ -76,8 +84,8 @@ public class FlowServiceFlowExecutionService {
             }
         }
 
-        ResolvedContent resolved = resolveContent(svc, callMode);
-        if (StrUtil.isBlank(resolved.dslContent)) {
+        ServiceResolvedContentCache.ResolvedContent resolved = resolveContent(svc, callMode);
+        if (StrUtil.isBlank(resolved.dslContent())) {
             throw new FlowException("SERVICE_DSL_EMPTY", "内部服务 DSL 为空: " + svc.getName());
         }
 
@@ -98,7 +106,7 @@ public class FlowServiceFlowExecutionService {
             Map<String, Object> typedInput;
             try {
                 typedInput = contractParamTypeConverter.convertAndValidateServiceInputs(
-                        resolved.contract, input);
+                        resolved.contract(), input);
             } catch (SchemaValidationException e) {
                 throw new FlowException("SERVICE_INPUT_INVALID",
                         "内部服务入参校验失败 [" + svc.getName() + "]: " + e.getMessage(), e);
@@ -113,7 +121,7 @@ public class FlowServiceFlowExecutionService {
             // CALL 时不强制开 trace，避免大快照；有 logEnabled 再记 trace
             boolean traceEnabled = logEnabled || "DEBUG".equalsIgnoreCase(triggerType);
             Object result = flowEngine.execute(
-                    resolved.dslContent,
+                    resolved.dslContent(),
                     args,
                     traceEnabled,
                     "SERVICE",
@@ -132,7 +140,10 @@ public class FlowServiceFlowExecutionService {
                 }
                 if (logEnabled) {
                     try {
-                        traceData = OBJECT_MAPPER.writeValueAsString(trace);
+                        TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                                yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+                        traceData = TracePersistUtil.serializeForPersist(
+                                trace, resolved.dslContent(), OBJECT_MAPPER, opts);
                     } catch (Exception ignore) {
                         /* ignore */
                     }
@@ -168,7 +179,7 @@ public class FlowServiceFlowExecutionService {
             }
             long cost = System.currentTimeMillis() - start;
             try {
-                flowServiceLogService.save(FlowServiceLogDO.builder()
+                flowServiceLogService.saveAsync(FlowServiceLogDO.builder()
                         .serviceId(svc.getId())
                         .serviceName(svc.getName())
                         .triggerType(triggerType != null ? triggerType : "MANUAL")
@@ -197,32 +208,17 @@ public class FlowServiceFlowExecutionService {
     }
 
     /**
-     * CALL 优先读 publishedSnapshot；其余走草稿字段。
+     * CALL 优先读 publishedSnapshot（内容哈希缓存）；其余走草稿字段。
      */
-    private ResolvedContent resolveContent(FlowServiceFlowDO svc, boolean usePublished) {
+    private ServiceResolvedContentCache.ResolvedContent resolveContent(FlowServiceFlowDO svc, boolean usePublished) {
         if (usePublished && StrUtil.isNotBlank(svc.getPublishedSnapshot())) {
-            try {
-                JsonNode snap = OBJECT_MAPPER.readTree(svc.getPublishedSnapshot());
-                String dsl = snap.path("dslContent").asText(null);
-                String contract = snap.path("contract").asText(null);
-                if (StrUtil.isNotBlank(dsl)) {
-                    return new ResolvedContent(dsl, contract);
-                }
-            } catch (Exception e) {
-                log.warn("[ServiceFlow] 解析 publishedSnapshot 失败，降级草稿。serviceId={}",
-                        svc.getId(), e);
+            ServiceResolvedContentCache.ResolvedContent cached =
+                    serviceResolvedContentCache.getOrParsePublished(svc.getPublishedSnapshot());
+            if (cached != null && StrUtil.isNotBlank(cached.dslContent())) {
+                return cached;
             }
+            log.warn("[ServiceFlow] 发布快照解析失败，降级草稿。serviceId={}", svc.getId());
         }
-        return new ResolvedContent(svc.getDslContent(), svc.getContract());
-    }
-
-    private static final class ResolvedContent {
-        final String dslContent;
-        final String contract;
-
-        ResolvedContent(String dslContent, String contract) {
-            this.dslContent = dslContent;
-            this.contract = contract;
-        }
+        return new ServiceResolvedContentCache.ResolvedContent(svc.getDslContent(), svc.getContract());
     }
 }

@@ -24,6 +24,7 @@ public interface FlowApiRepository extends JpaRepository<FlowApiDO, String>, Jpa
 
     /**
      * 判断是否已存在指定的 URL 和 Method 的 API 记录
+     * @deprecated 路由冲突请用服务层基于发布快照的查重
      */
     boolean existsByUrlAndMethod(String url, String method);
 

@@ -199,6 +199,61 @@ public class YuFlowProperties {
          */
         private int groovyScriptCacheSize = 256;
 
+        /**
+         * DSL → FlowDefinition 编译缓存上限（按内容 SHA-256 去重）。
+         */
+        private int definitionCacheMaxSize = 256;
+
+        /**
+         * DSL 编译缓存：多久未访问后过期（分钟）。
+         */
+        private long definitionCacheExpireMinutes = 60;
+
+        /** Trace 变量快照最大嵌套深度 */
+        private int traceSnapshotMaxDepth = 6;
+
+        /** Trace 快照中集合最大元素数 */
+        private int traceSnapshotMaxCollectionSize = 32;
+
+        /** Trace 快照中单个字符串最大长度 */
+        private int traceSnapshotMaxStringLength = 1024;
+
+        /** Trace 快照中 Map 最大条目数 */
+        private int traceSnapshotMaxMapEntries = 64;
+
+        /**
+         * 落库时是否仅保留失败步的 inputs/outputs（成功步只留状态与耗时）。
+         */
+        private boolean tracePersistFailedStepsOnly = false;
+
+        /**
+         * traceData JSON 最大字节数；超出则递进收缩。
+         */
+        private int traceDataMaxBytes = 512 * 1024;
+
+        /**
+         * 引擎并行池 core 大小。≤0 表示 {@code CPU * 2}。
+         */
+        private int poolCoreSize = 0;
+
+        /**
+         * 引擎并行池 max 大小。≤0 表示 {@code CPU * 4}。
+         */
+        private int poolMaxSize = 0;
+
+        /** 引擎并行池有界队列容量 */
+        private int poolQueueCapacity = 1024;
+
+        /**
+         * For 节点同时在途分支上限（Semaphore）。≤0 不限制（仅受线程池约束）。
+         */
+        private int forMaxInFlight = 64;
+
+        /**
+         * CALL 用 ResolvedContent 缓存上限（按 publishedSnapshot 内容 hash）。
+         */
+        private int resolvedContentCacheMaxSize = 256;
+
         public String getExpressionEngine() {
             return expressionEngine;
         }
@@ -229,6 +284,110 @@ public class YuFlowProperties {
 
         public void setGroovyScriptCacheSize(int groovyScriptCacheSize) {
             this.groovyScriptCacheSize = groovyScriptCacheSize;
+        }
+
+        public int getDefinitionCacheMaxSize() {
+            return definitionCacheMaxSize;
+        }
+
+        public void setDefinitionCacheMaxSize(int definitionCacheMaxSize) {
+            this.definitionCacheMaxSize = definitionCacheMaxSize;
+        }
+
+        public long getDefinitionCacheExpireMinutes() {
+            return definitionCacheExpireMinutes;
+        }
+
+        public void setDefinitionCacheExpireMinutes(long definitionCacheExpireMinutes) {
+            this.definitionCacheExpireMinutes = definitionCacheExpireMinutes;
+        }
+
+        public int getTraceSnapshotMaxDepth() {
+            return traceSnapshotMaxDepth;
+        }
+
+        public void setTraceSnapshotMaxDepth(int traceSnapshotMaxDepth) {
+            this.traceSnapshotMaxDepth = traceSnapshotMaxDepth;
+        }
+
+        public int getTraceSnapshotMaxCollectionSize() {
+            return traceSnapshotMaxCollectionSize;
+        }
+
+        public void setTraceSnapshotMaxCollectionSize(int traceSnapshotMaxCollectionSize) {
+            this.traceSnapshotMaxCollectionSize = traceSnapshotMaxCollectionSize;
+        }
+
+        public int getTraceSnapshotMaxStringLength() {
+            return traceSnapshotMaxStringLength;
+        }
+
+        public void setTraceSnapshotMaxStringLength(int traceSnapshotMaxStringLength) {
+            this.traceSnapshotMaxStringLength = traceSnapshotMaxStringLength;
+        }
+
+        public int getTraceSnapshotMaxMapEntries() {
+            return traceSnapshotMaxMapEntries;
+        }
+
+        public void setTraceSnapshotMaxMapEntries(int traceSnapshotMaxMapEntries) {
+            this.traceSnapshotMaxMapEntries = traceSnapshotMaxMapEntries;
+        }
+
+        public boolean isTracePersistFailedStepsOnly() {
+            return tracePersistFailedStepsOnly;
+        }
+
+        public void setTracePersistFailedStepsOnly(boolean tracePersistFailedStepsOnly) {
+            this.tracePersistFailedStepsOnly = tracePersistFailedStepsOnly;
+        }
+
+        public int getTraceDataMaxBytes() {
+            return traceDataMaxBytes;
+        }
+
+        public void setTraceDataMaxBytes(int traceDataMaxBytes) {
+            this.traceDataMaxBytes = traceDataMaxBytes;
+        }
+
+        public int getPoolCoreSize() {
+            return poolCoreSize;
+        }
+
+        public void setPoolCoreSize(int poolCoreSize) {
+            this.poolCoreSize = poolCoreSize;
+        }
+
+        public int getPoolMaxSize() {
+            return poolMaxSize;
+        }
+
+        public void setPoolMaxSize(int poolMaxSize) {
+            this.poolMaxSize = poolMaxSize;
+        }
+
+        public int getPoolQueueCapacity() {
+            return poolQueueCapacity;
+        }
+
+        public void setPoolQueueCapacity(int poolQueueCapacity) {
+            this.poolQueueCapacity = poolQueueCapacity;
+        }
+
+        public int getForMaxInFlight() {
+            return forMaxInFlight;
+        }
+
+        public void setForMaxInFlight(int forMaxInFlight) {
+            this.forMaxInFlight = forMaxInFlight;
+        }
+
+        public int getResolvedContentCacheMaxSize() {
+            return resolvedContentCacheMaxSize;
+        }
+
+        public void setResolvedContentCacheMaxSize(int resolvedContentCacheMaxSize) {
+            this.resolvedContentCacheMaxSize = resolvedContentCacheMaxSize;
         }
     }
 
@@ -348,6 +507,8 @@ public class YuFlowProperties {
      *   flow:
      *     task:
      *       lock-ttl-minutes: 30
+     *       lock-renew-interval-seconds: 60
+     *       scheduler-pool-size: 4
      * </pre>
      */
     public static class Task {
@@ -358,12 +519,70 @@ public class YuFlowProperties {
          */
         private int lockTtlMinutes = 30;
 
+        /**
+         * 锁心跳续期间隔（秒）。≤0 关闭续期。
+         * <p>建议为 TTL 的 1/2～1/3，长任务执行期间可防止 TTL 提前丢失导致双跑。</p>
+         */
+        private int lockRenewIntervalSeconds = 60;
+
+        /** Cron / 手动触发共用的 TaskScheduler 池大小 */
+        private int schedulerPoolSize = 4;
+
+        /** flowAsyncExecutor 核心线程数 */
+        private int asyncCorePoolSize = 4;
+
+        /** flowAsyncExecutor 最大线程数 */
+        private int asyncMaxPoolSize = 8;
+
+        /** flowAsyncExecutor 队列容量 */
+        private int asyncQueueCapacity = 200;
+
         public int getLockTtlMinutes() {
             return lockTtlMinutes;
         }
 
         public void setLockTtlMinutes(int lockTtlMinutes) {
             this.lockTtlMinutes = lockTtlMinutes;
+        }
+
+        public int getLockRenewIntervalSeconds() {
+            return lockRenewIntervalSeconds;
+        }
+
+        public void setLockRenewIntervalSeconds(int lockRenewIntervalSeconds) {
+            this.lockRenewIntervalSeconds = lockRenewIntervalSeconds;
+        }
+
+        public int getSchedulerPoolSize() {
+            return schedulerPoolSize;
+        }
+
+        public void setSchedulerPoolSize(int schedulerPoolSize) {
+            this.schedulerPoolSize = schedulerPoolSize;
+        }
+
+        public int getAsyncCorePoolSize() {
+            return asyncCorePoolSize;
+        }
+
+        public void setAsyncCorePoolSize(int asyncCorePoolSize) {
+            this.asyncCorePoolSize = asyncCorePoolSize;
+        }
+
+        public int getAsyncMaxPoolSize() {
+            return asyncMaxPoolSize;
+        }
+
+        public void setAsyncMaxPoolSize(int asyncMaxPoolSize) {
+            this.asyncMaxPoolSize = asyncMaxPoolSize;
+        }
+
+        public int getAsyncQueueCapacity() {
+            return asyncQueueCapacity;
+        }
+
+        public void setAsyncQueueCapacity(int asyncQueueCapacity) {
+            this.asyncQueueCapacity = asyncQueueCapacity;
         }
     }
 }

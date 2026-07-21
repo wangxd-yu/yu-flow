@@ -30,8 +30,9 @@ public interface FlowTaskRepository extends JpaRepository<FlowTaskDO, String>, J
     @Query("UPDATE FlowTaskDO t SET t.deleted = 1 WHERE t.id IN :ids")
     int logicDeleteByIds(@Param("ids") List<String> ids);
 
-    /** 粗筛：DSL 中可能引用某 serviceId 的定时任务 */
+    /** 粗筛：DSL / 发布快照中可能引用某 ID 的定时任务 */
     @Query("SELECT t FROM FlowTaskDO t WHERE "
-            + "t.dslContent IS NOT NULL AND t.dslContent LIKE CONCAT('%', :needle, '%')")
+            + "(t.dslContent IS NOT NULL AND t.dslContent LIKE CONCAT('%', :needle, '%')) "
+            + "OR (t.publishedSnapshot IS NOT NULL AND t.publishedSnapshot LIKE CONCAT('%', :needle, '%'))")
     List<FlowTaskDO> findPossibleServiceFlowRefs(@Param("needle") String needle);
 }

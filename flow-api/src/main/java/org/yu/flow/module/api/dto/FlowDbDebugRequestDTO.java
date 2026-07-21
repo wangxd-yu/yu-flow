@@ -34,4 +34,9 @@ public class FlowDbDebugRequestDTO {
      * 设为 false 时按正式接口逻辑提交。
      */
     private Boolean rollbackTransaction;
+
+    /**
+     * 完整契约 JSON（可选）。有值时按网关同款逻辑转换并校验 Headers / Query / Path / Body。
+     */
+    private String contract;
 }

@@ -1,4 +1,7 @@
 import { request } from '@umijs/max';
+import type { AssetVersionItem } from '../../components/AssetVersionHistoryDrawer';
+
+export type { AssetVersionItem };
 
 export interface FlowController {
   id: string;
@@ -173,6 +176,8 @@ export async function debugRunDbApiConfig(data: {
   sourceName?: string;
   /** 默认 true：调试写操作事务回退，不落库 */
   rollbackTransaction?: boolean;
+  /** 有值时后端按契约校验 */
+  contract?: string;
 }) {
   return request<any>('/flow-api/api/debug/db/run', {
     method: 'POST',
@@ -189,9 +194,27 @@ export async function startDebugSession(data: any) {
   });
 }
 
-export async function getDebugSessionStatus(sessionId: string) {
+export async function getDebugSessionStatus(
+  sessionId: string,
+  opts?: { stepOffset?: number; stepLimit?: number },
+) {
+  const stepOffset = opts?.stepOffset ?? 0;
+  const stepLimit = opts?.stepLimit ?? 100;
   return request<any>(`/flow-api/debug/session/${sessionId}/status`, {
     method: 'GET',
+    params: { stepOffset, stepLimit },
+  });
+}
+
+export async function getDebugSessionStepLogs(
+  sessionId: string,
+  opts?: { stepOffset?: number; stepLimit?: number },
+) {
+  const stepOffset = opts?.stepOffset ?? 0;
+  const stepLimit = opts?.stepLimit ?? 100;
+  return request<any>(`/flow-api/debug/session/${sessionId}/step-logs`, {
+    method: 'GET',
+    params: { stepOffset, stepLimit },
   });
 }
 
@@ -229,16 +252,6 @@ export async function rollbackApi(id: string) {
 /** 重新发布（将最新草稿冻结为快照并上线） */
 export async function republishApi(id: string) {
   return request<FlowController>(`/flow-api/api/${id}/republish`, { method: 'PUT' });
-}
-
-export interface AssetVersionItem {
-  id: string;
-  versionNo: number;
-  source?: string;
-  remark?: string;
-  publisher?: string;
-  publishTime?: string;
-  current?: boolean;
 }
 
 /** 历史版本列表 */

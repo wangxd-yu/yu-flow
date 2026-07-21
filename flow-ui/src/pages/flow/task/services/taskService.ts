@@ -1,4 +1,7 @@
 import { request } from '@umijs/max';
+import type { AssetVersionItem } from '../../components/AssetVersionHistoryDrawer';
+
+export type { AssetVersionItem };
 
 // ── 数据类型 ──
 
@@ -20,16 +23,6 @@ export interface FlowTask {
   tags?: string;
   createTime?: string;
   updateTime?: string;
-}
-
-export interface AssetVersionItem {
-  id: string;
-  versionNo: number;
-  source?: string;
-  remark?: string;
-  publisher?: string;
-  publishTime?: string;
-  current?: boolean;
 }
 
 export interface FlowTaskLog {
@@ -131,7 +124,7 @@ const DEBUG_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 export async function debugRunTask(
   dslContent: string,
-  source?: { sourceRef?: string; sourceName?: string },
+  source?: { sourceRef?: string; sourceName?: string; cron?: string },
 ) {
   return request<any>('/flow-api/task/debug/run', {
     method: 'POST',
@@ -139,6 +132,7 @@ export async function debugRunTask(
       dslContent,
       sourceRef: source?.sourceRef,
       sourceName: source?.sourceName,
+      cron: source?.cron,
     },
     timeout: DEBUG_REQUEST_TIMEOUT_MS,
   });

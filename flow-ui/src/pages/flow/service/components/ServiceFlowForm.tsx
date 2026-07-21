@@ -87,7 +87,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   const [name, setName] = useState<string>(initialValues.name || '');
   const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
-  const [logEnabled, setLogEnabled] = useState<boolean>(initialValues.logEnabled !== false);
+  const [logEnabled, setLogEnabled] = useState<boolean>(!!initialValues.logEnabled);
   const [info, setInfo] = useState<string>(initialValues.info || '');
   const [dslContent, setDslContent] = useState<string>(initialValues.dslContent || '');
   const [contract, setContract] = useState<ServiceContract>(() =>
@@ -121,7 +121,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       setName(initialValues.name || '');
       setDirectoryId(initialValues.directoryId);
       setEnabled(initialValues.enabled !== false);
-      setLogEnabled(initialValues.logEnabled !== false);
+      setLogEnabled(!!initialValues.logEnabled);
       setInfo(initialValues.info || '');
       setContract(nextContract);
       setDslContent(

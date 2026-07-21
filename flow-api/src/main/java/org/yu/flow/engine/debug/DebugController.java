@@ -117,12 +117,26 @@ public class DebugController {
      * @return 当前会话状态（包含挂起节点信息和变量快照）
      */
     @GetMapping("/session/{sessionId}/status")
-    public R<DebugStatusDTO> getSessionStatus(@PathVariable String sessionId) {
+    public R<DebugStatusDTO> getSessionStatus(
+            @PathVariable String sessionId,
+            @RequestParam(value = "stepOffset", required = false, defaultValue = "0") int stepOffset,
+            @RequestParam(value = "stepLimit", required = false, defaultValue = "50") int stepLimit) {
         DebugSession session = debugSessionRegistry.getSession(sessionId);
         if (session == null) {
             return R.fail(404, "调试会话不存在或已过期: " + sessionId);
         }
-        return R.ok(DebugStatusDTO.from(session));
+        return R.ok(DebugStatusDTO.from(session, stepOffset, stepLimit));
+    }
+
+    /**
+     * 分页拉取 stepLogs（长流程调试完成后按需加载）。
+     */
+    @GetMapping("/session/{sessionId}/step-logs")
+    public R<DebugStatusDTO> getStepLogs(
+            @PathVariable String sessionId,
+            @RequestParam(value = "stepOffset", required = false, defaultValue = "0") int stepOffset,
+            @RequestParam(value = "stepLimit", required = false, defaultValue = "50") int stepLimit) {
+        return getSessionStatus(sessionId, stepOffset, stepLimit);
     }
 
     /**

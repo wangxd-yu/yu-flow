@@ -6,17 +6,22 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.auto.service.FlowApiExecutionService;
 import org.yu.flow.auto.util.InputParamsUtil;
 import org.yu.flow.engine.evaluator.executor.*;
 import org.yu.flow.engine.model.*;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.engine.model.step.*;
 import org.yu.flow.engine.service.SqlExecutorService;
+import org.yu.flow.module.api.service.FlowApiCrudService;
+import org.yu.flow.module.serviceflow.service.FlowServiceFlowExecutionService;
 import org.yu.flow.util.ThrowableUtil;
 import org.springframework.stereotype.Component;
 import org.yu.flow.config.DemoModeGuard;
-import org.yu.flow.engine.evaluator.executor.*;
+import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.engine.cache.FlowDefinitionCache;
 import org.yu.flow.engine.debug.DebugSession;
+import org.yu.flow.engine.model.TraceSnapshotLimits;
 import org.yu.flow.engine.model.step.ResponseResult;
 
 import jakarta.annotation.PreDestroy;
@@ -46,6 +51,14 @@ public class FlowEngine {
      */
     private int maxSteps = 0;
 
+    private FlowServiceFlowExecutionService serviceFlowExecutionService;
+    private FlowApiCrudService flowApiCrudService;
+    private FlowApiExecutionService flowApiExecutionService;
+    private FlowDefinitionCache definitionCache;
+    private TraceSnapshotLimits snapshotLimits = TraceSnapshotLimits.DEFAULTS;
+    private int forMaxInFlight = 64;
+    private boolean enginePoolFromSpring;
+
     public FlowEngine() {
         initDefaultExecutor();
         registerExecutors();
@@ -73,14 +86,70 @@ public class FlowEngine {
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Qualifier("flowEngineExecutor")
     public void setExecutorService(ExecutorService executorService) {
         if (executorService != null) {
-            if (this.executorService != null && this.executorService instanceof ThreadPoolExecutor) {
+            if (this.executorService != null && this.executorService instanceof ThreadPoolExecutor
+                    && !enginePoolFromSpring) {
                 this.executorService.shutdown();
             }
             this.executorService = executorService;
+            this.enginePoolFromSpring = true;
             registerExecutors(); // 重新使用新线程池注册
         }
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setApiCallServices(
+            @org.springframework.context.annotation.Lazy FlowServiceFlowExecutionService serviceFlowExecutionService,
+            FlowApiCrudService flowApiCrudService,
+            FlowApiExecutionService flowApiExecutionService) {
+        this.serviceFlowExecutionService = serviceFlowExecutionService;
+        this.flowApiCrudService = flowApiCrudService;
+        this.flowApiExecutionService = flowApiExecutionService;
+        wireApiExecutor();
+    }
+
+    private void wireApiExecutor() {
+        StepExecutor<?> executor = executors.get("api");
+        if (executor instanceof ApiServiceCallStepExecutor api) {
+            api.setServiceFlowExecutionService(serviceFlowExecutionService);
+            api.setFlowApiCrudService(flowApiCrudService);
+            api.setFlowApiExecutionService(flowApiExecutionService);
+        }
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setDefinitionCache(FlowDefinitionCache definitionCache) {
+        this.definitionCache = definitionCache;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setYuFlowProperties(YuFlowProperties properties) {
+        if (properties != null && properties.getEngine() != null) {
+            this.snapshotLimits = TraceSnapshotLimits.from(properties.getEngine());
+            this.forMaxInFlight = properties.getEngine().getForMaxInFlight();
+            // 若尚未注入 Spring 池，按配置重建本地默认池
+            if (!enginePoolFromSpring) {
+                applyEnginePoolConfig(properties.getEngine());
+            }
+            registerExecutors();
+        }
+    }
+
+    private void applyEnginePoolConfig(YuFlowProperties.Engine engine) {
+        int cpu = Runtime.getRuntime().availableProcessors();
+        int core = engine.getPoolCoreSize() > 0 ? engine.getPoolCoreSize() : Math.max(2, cpu * 2);
+        int max = engine.getPoolMaxSize() > 0 ? engine.getPoolMaxSize() : Math.max(core, cpu * 4);
+        int queue = Math.max(16, engine.getPoolQueueCapacity());
+        if (this.executorService != null && this.executorService instanceof ThreadPoolExecutor) {
+            this.executorService.shutdown();
+        }
+        this.executorService = new ThreadPoolExecutor(
+                core, max, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(queue),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
     }
 
     /**
@@ -88,7 +157,7 @@ public class FlowEngine {
      */
     @PreDestroy
     public void shutdown() {
-        if (executorService != null) {
+        if (executorService != null && !enginePoolFromSpring) {
             executorService.shutdown();
         }
     }
@@ -101,7 +170,7 @@ public class FlowEngine {
         executors.put("evaluate", new EvaluateStepExecutor());
         executors.put("request", new RequestStepExecutor());
         executors.put("httpRequest", new HttpRequestStepExecutor());
-        executors.put("for", new ForStepExecutor(this, executorService));
+        executors.put("for", new ForStepExecutor(this, executorService, forMaxInFlight));
         executors.put("forEach", new ForEachStepExecutor(this));
         executors.put("collect", new CollectStepExecutor(this));
         executors.put("template", new TemplateStepExecutor());
@@ -114,6 +183,7 @@ public class FlowEngine {
         executors.put("service", new ServiceStepExecutor());
         executors.put("delay", new DelayStepExecutor());
         executors.put("errorHandler", new ErrorHandlerStepExecutor());
+        wireApiExecutor();
     }
 
     public void setSqlExecutorService(SqlExecutorService sqlExecutorService) {
@@ -198,10 +268,10 @@ public class FlowEngine {
     private <T> T execute(String flowJson, Map<String, Object> args,
                           boolean traceEnabled, DebugSession debugSession,
                           String invokeSource, String sourceRef, String sourceName) throws JsonProcessingException {
-        FlowDefinition flowDefinition = parser.parse(flowJson); // 解析时保存流程定义
+        FlowDefinition flowDefinition = resolveDefinition(flowJson);
 
         // 传递 traceEnabled 标记到上下文
-        ExecutionContext context = new ExecutionContext(args, false, traceEnabled);
+        ExecutionContext context = new ExecutionContext(args, false, traceEnabled, snapshotLimits);
 
         // [防挂死] 将最大步骤数限制传递到执行上下文
         if (maxSteps > 0) {
@@ -212,6 +282,9 @@ public class FlowEngine {
         if (debugSession != null) {
             context.setDebugSession(debugSession);
             context.setInvokeSource("DEBUG");
+            if (context.getFlowTrace() != null) {
+                debugSession.bindLiveTrace(context.getFlowTrace());
+            }
         } else if (invokeSource != null && !invokeSource.isBlank()) {
             context.setInvokeSource(invokeSource);
         }
@@ -222,11 +295,9 @@ public class FlowEngine {
             context.setSourceName(sourceName);
         }
 
-        // 构建父节点映射（用于多父节点汇聚）
-        Map<String, List<String>> parentMap = buildParentMapping(flowDefinition);
-
-        // 构建并行兄弟节点映射（用于区分并行分支和条件分支）
-        Map<String, Set<String>> parallelSiblings = buildParallelSiblingsMapping(flowDefinition);
+        // 拓扑索引：缓存在 Definition 上，子流程复用
+        Map<String, List<String>> parentMap = flowDefinition.getParentMap();
+        Map<String, Set<String>> parallelSiblings = flowDefinition.getParallelSiblings();
 
         //解析flow入参
         if(flowDefinition.getArgs() != null && !flowDefinition.getArgs().isEmpty()) {
@@ -559,8 +630,8 @@ public class FlowEngine {
      * @return 触发的输出端口名称 (Jointer)
      */
     private String executeStep(Step step, ExecutionContext context, FlowDefinition flowDefinition) {
-        log.info("执行步骤 {} [{}]", step.getId(), step.getType());
-        log.info("步骤前变量: {}", context.getVar());
+        log.debug("执行步骤 {} [{}]", step.getId(), step.getType());
+        log.debug("步骤前变量: {}", context.getVar());
 
         // ═══════════════ 调试断点检测 (Debug Hook) ═══════════════
         // 在节点业务逻辑执行前检查断点，若命中则挂起引擎线程等待前端指令。
@@ -647,7 +718,7 @@ public class FlowEngine {
             }
         }
 
-        log.info("步骤后变量: {}", context.getVar());
+        log.debug("步骤后变量: {}", context.getVar());
         return nextPort;
     }
 
@@ -715,9 +786,7 @@ public class FlowEngine {
      */
     public void runSubFlow(String startStepId, ExecutionContext context, FlowDefinition flow) throws Exception {
         Step startStep = findStepById(startStepId, flow);
-        Map<String, List<String>> parentMap = buildParentMapping(flow);
-        Map<String, Set<String>> parallelSiblings = buildParallelSiblingsMapping(flow);
-        runFlow(startStep, context, flow, parentMap, parallelSiblings, true);
+        runFlow(startStep, context, flow, flow.getParentMap(), flow.getParallelSiblings(), true);
     }
 
     /**
@@ -737,10 +806,8 @@ public class FlowEngine {
      */
     public void runBranchFlow(String startStepId, ExecutionContext context, FlowDefinition flow) throws Exception {
         Step startStep = findStepById(startStepId, flow);
-        Map<String, List<String>> parentMap = buildParentMapping(flow);
-        Map<String, Set<String>> parallelSiblings = buildParallelSiblingsMapping(flow);
         // stopAtJoinNodes = false：分支可以直接到达 CollectStep（多父汇聚节点）
-        runFlow(startStep, context, flow, parentMap, parallelSiblings, false);
+        runFlow(startStep, context, flow, flow.getParentMap(), flow.getParallelSiblings(), false);
     }
 
     /**
@@ -756,70 +823,22 @@ public class FlowEngine {
         }
     }
 
+    /** 解析 DSL：优先走编译缓存，未注入缓存时本地 parse + 挂载拓扑。 */
+    private FlowDefinition resolveDefinition(String flowJson) throws JsonProcessingException {
+        if (definitionCache != null) {
+            return definitionCache.getOrParse(flowJson);
+        }
+        FlowDefinition def = parser.parse(flowJson);
+        def.ensureTopologyIndexes();
+        return def;
+    }
+
     private Step findStepById(String stepId, FlowDefinition flowDefinition) throws FlowException {
         Step step = flowDefinition.getStep(stepId);
         if (step != null) {
             return step;
         }
         throw new FlowException("STEP_NOT_FOUND", "找不到步骤: " + stepId);
-    }
-
-    private Map<String, List<String>> buildParentMapping(FlowDefinition flowDefinition) {
-        Map<String, List<String>> parentMap = new HashMap<>();
-
-        // 遍历所有步骤，分析 next 映射，构建反向引用
-        for (Step step : flowDefinition.getSteps()) {
-            String parentId = step.getId();
-
-            // 遍历该步骤的所有出口
-            if (step.getNext() != null) {
-                for (Object nextTarget : step.getNext().values()) {
-                    if (nextTarget instanceof String) {
-                        // 单个子节点
-                        String childId = (String) nextTarget;
-                        parentMap.computeIfAbsent(childId, k -> new ArrayList<>()).add(parentId);
-                    } else if (nextTarget instanceof List) {
-                        // 并行子节点列表
-                        List<String> childIds = (List<String>) nextTarget;
-                        for (String childId : childIds) {
-                            parentMap.computeIfAbsent(childId, k -> new ArrayList<>()).add(parentId);
-                        }
-                    }
-                }
-            }
-        }
-
-        log.info("父节点映射: {}", parentMap);
-        return parentMap;
-    }
-
-    /**
-     * 构建并行兄弟节点映射
-     * Key: 节点ID, Value: 与该节点从同一个并行分支出来的兄弟节点集合
-     */
-    private Map<String, Set<String>> buildParallelSiblingsMapping(FlowDefinition flowDefinition) {
-        Map<String, Set<String>> siblingsMap = new HashMap<>();
-
-        // 遍历所有步骤，查找并行分支（next值为List的情况）
-        for (Step step : flowDefinition.getSteps()) {
-            if (step.getNext() != null) {
-                for (Object nextTarget : step.getNext().values()) {
-                    if (nextTarget instanceof List) {
-                        // 这是一个并行分支，List中的所有节点互为兄弟
-                        List<String> parallelBranches = (List<String>) nextTarget;
-                        Set<String> siblingsSet = new HashSet<>(parallelBranches);
-
-                        // 为每个并行分支节点记录其兄弟节点
-                        for (String branchId : parallelBranches) {
-                            siblingsMap.put(branchId, siblingsSet);
-                        }
-                    }
-                }
-            }
-        }
-
-        log.info("并行兄弟节点映射: {}", siblingsMap);
-        return siblingsMap;
     }
 
     /**

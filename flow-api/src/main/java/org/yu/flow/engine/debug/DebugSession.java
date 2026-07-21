@@ -90,6 +90,10 @@ public class DebugSession {
     @Getter
     private volatile FlowTrace finalTrace;
 
+    /** 执行中实时 Trace（与 ExecutionContext 共享，供轮询分页 stepLogs） */
+    @Getter
+    private volatile FlowTrace liveTrace;
+
     /** 终态的错误信息（如果有） */
     @Getter
     private volatile String errorMessage;
@@ -185,12 +189,27 @@ public class DebugSession {
     }
 
     /**
+     * 绑定执行中的 live Trace（引擎启动时调用）。
+     */
+    public void bindLiveTrace(FlowTrace trace) {
+        this.liveTrace = trace;
+    }
+
+    /**
+     * 当前可用于分页的 Trace：优先 final，其次 live。
+     */
+    public FlowTrace getActiveTrace() {
+        return finalTrace != null ? finalTrace : liveTrace;
+    }
+
+    /**
      * 引擎执行完毕时调用，标记会话为已完成并存储最终 Trace 报告。
      *
      * @param trace 最终 FlowTrace
      */
     public void markCompleted(FlowTrace trace) {
         this.finalTrace = trace;
+        this.liveTrace = trace;
         this.status = Status.COMPLETED;
         this.suspendedNodeId = null;
         this.suspendedVariables = null;
@@ -204,6 +223,7 @@ public class DebugSession {
     public void markError(String errorMsg, FlowTrace trace) {
         this.errorMessage = errorMsg;
         this.finalTrace = trace;
+        this.liveTrace = trace;
         this.status = Status.COMPLETED;
         this.suspendedNodeId = null;
         this.suspendedVariables = null;

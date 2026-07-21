@@ -22,8 +22,17 @@ public class FlowTrace {
      */
     private String status;
     private String errorMsg;
+
+    /**
+     * 历史字段：曾内嵌完整 DSL。落库时改为 null，回放请用 {@link #dslContentHash} + 资产当前内容。
+     */
     private String dslSnapshot;
-    
+
+    /**
+     * 执行当时 DSL 的 SHA-256（内容寻址引用，不存全文）。
+     */
+    private String dslContentHash;
+
     private Map<String, Object> globalInputs;
     private Object globalOutputs;
     

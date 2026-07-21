@@ -27,6 +27,7 @@ import {
   restoreTaskVersion,
 } from '../services/taskService';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
+import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
   nodes: [
@@ -51,23 +52,33 @@ function unwrapTask(res: any): FlowTask {
   return (res?.data ?? res) as FlowTask;
 }
 
+function unwrapDebugTrace(result: any) {
+  if (result?.code === 0 && result.data) return result.data;
+  if (result?.data) return result.data;
+  if (result?.traceId || result?.stepLogs) return result;
+  throw new Error(result?.msg || '调试运行失败');
+}
+
 export interface TaskFormProps {
   visible: boolean;
   isEdit: boolean;
   initialValues?: Partial<FlowTask>;
   onCancel: () => void;
   onSubmit: (values: Partial<FlowTask>) => void;
+  /** 发布 / 下线 / 回滚 / 版本恢复后通知列表刷新 */
+  onPublished?: (detail: FlowTask) => void;
 }
 
 const TaskForm: React.FC<TaskFormProps> = ({
-  visible, isEdit, initialValues = {}, onCancel, onSubmit,
+  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished,
 }) => {
   const [form] = Form.useForm();
 
   const [name, setName] = useState<string>(initialValues.name || '');
   const [cron, setCron] = useState<string>(initialValues.cron || '');
+  const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
-  const [logEnabled, setLogEnabled] = useState<boolean>(initialValues.logEnabled !== false);
+  const [logEnabled, setLogEnabled] = useState<boolean>(!!initialValues.logEnabled);
   const [info, setInfo] = useState<string>(initialValues.info || '');
   const [dslContent, setDslContent] = useState<string>(initialValues.dslContent || '');
   const [publishStatus, setPublishStatus] = useState<0 | 1>(
@@ -79,13 +90,16 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [activeTab, setActiveTab] = useState<string>('basic');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [debugReplayOpen, setDebugReplayOpen] = useState(false);
+  const [debugReplayTrace, setDebugReplayTrace] = useState<any>(null);
 
   useEffect(() => {
     if (visible) {
       setName(initialValues.name || '');
       setCron(initialValues.cron || '');
+      setDirectoryId(initialValues.directoryId);
       setEnabled(initialValues.enabled !== false);
-      setLogEnabled(initialValues.logEnabled !== false);
+      setLogEnabled(!!initialValues.logEnabled);
       setInfo(initialValues.info || '');
       setDslContent(initialValues.dslContent || '');
       setPublishStatus(initialValues.publishStatus === 1 ? 1 : 0);
@@ -112,9 +126,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
       logEnabled,
       info: info || undefined,
       dslContent: dslContent?.trim() || DEFAULT_SCHEDULE_DSL,
-      directoryId: initialValues.directoryId,
+      directoryId: directoryId || '',
     };
-  }, [name, cron, enabled, logEnabled, info, dslContent, initialValues.directoryId]);
+  }, [name, cron, enabled, logEnabled, info, dslContent, directoryId]);
 
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
@@ -128,10 +142,12 @@ const TaskForm: React.FC<TaskFormProps> = ({
     if (detail.dslContent != null) setDslContent(detail.dslContent);
     if (detail.name != null) setName(detail.name);
     if (detail.cron != null) setCron(detail.cron);
+    if (detail.directoryId !== undefined) setDirectoryId(detail.directoryId || undefined);
     if (detail.enabled != null) setEnabled(!!detail.enabled);
     if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
     if (detail.info != null) setInfo(detail.info);
-  }, []);
+    onPublished?.(detail);
+  }, [onPublished]);
 
   const handlePublish = useCallback(async () => {
     if (!isEdit || !initialValues.id) {
@@ -197,21 +213,25 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
     const hide = message.loading('正在调试运行...');
     try {
-      const trace = await debugRunTask(dslContent, {
+      const result = await debugRunTask(dslContent, {
         sourceRef: initialValues.id,
         sourceName: name || initialValues.name,
+        cron: cron || undefined,
       });
+      const trace = unwrapDebugTrace(result);
       hide();
+      setDebugReplayTrace(trace);
+      setDebugReplayOpen(true);
       if (trace?.status === 'error') {
-        message.error(`执行失败: ${trace.errorMsg}`);
+        message.error(`执行失败: ${trace.errorMsg || '见 Trace 详情'}`);
       } else {
-        message.success('调试运行成功');
+        message.success('调试运行成功，已打开 Trace');
       }
     } catch (e: any) {
       hide();
       message.error('调试失败: ' + (e?.message || '未知错误'));
     }
-  }, [dslContent, initialValues.id, initialValues.name, name]);
+  }, [dslContent, initialValues.id, initialValues.name, name, cron]);
 
   const headerTitle = (
     <Space>
@@ -232,7 +252,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
 
   const headerExtra = (
     <Space size={8}>
-      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态）">
+      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
         <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
           调试运行
         </Button>
@@ -293,6 +313,21 @@ const TaskForm: React.FC<TaskFormProps> = ({
           />
         </Form.Item>
 
+        <DirectoryTreeSelect
+          bizType="task"
+          name="directoryId"
+          label="所属目录"
+          placeholder="不选默认为根目录"
+          fieldProps={{
+            showSearch: true,
+            treeDefaultExpandAll: true,
+            allowClear: true,
+            value: directoryId,
+            onChange: (v: string | undefined) => setDirectoryId(v || undefined),
+            style: { width: '100%' },
+          }}
+        />
+
         <Form.Item
           label="Cron 表达式"
           required
@@ -302,7 +337,8 @@ const TaskForm: React.FC<TaskFormProps> = ({
               ? '请输入 Cron 表达式'
               : (
                 <span style={{ fontSize: 12, color: '#8c8c8c' }}>
-                  格式：秒 分 时 日 月 周，例如：<code>0 0/5 * * * ?</code>（每5分钟执行一次）
+                  Spring 6 字段格式：秒 分 时 日 月 周，例如：<code>0 0/5 * * * ?</code>（每5分钟）。
+                  非法表达式将在保存/发布时被拒绝。
                 </span>
               )
           }
@@ -373,11 +409,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
               const result = await debugRunTask(payload.dslContent, {
                 sourceRef: initialValues.id,
                 sourceName: name,
+                cron: cron || undefined,
               });
-              if (result?.code === 0 && result.data) return result.data;
-              if (result?.data) return result.data;
-              if (result?.traceId) return result;
-              throw new Error(result?.msg || '调试运行失败');
+              return unwrapDebugTrace(result);
             },
           }}
         />
@@ -474,6 +508,30 @@ const TaskForm: React.FC<TaskFormProps> = ({
             applyDetail(detail);
           }}
         />
+      )}
+
+      {debugReplayOpen && (
+        <Drawer
+          title={`调试 Trace - ${name || initialValues.name || '任务'}`}
+          width="100%"
+          open={debugReplayOpen}
+          onClose={() => {
+            setDebugReplayOpen(false);
+            setDebugReplayTrace(null);
+          }}
+          styles={{ body: { padding: 0 } }}
+          destroyOnClose
+        >
+          {debugReplayTrace ? (
+            <FlowEditor
+              value={dslContent}
+              isEdit={false}
+              readonlyTrace={debugReplayTrace}
+              defaultEntryNode="schedule"
+              editorContext="task"
+            />
+          ) : null}
+        </Drawer>
       )}
     </Drawer>
   );

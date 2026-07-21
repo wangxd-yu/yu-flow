@@ -18,10 +18,12 @@ import org.yu.flow.module.task.service.FlowTaskService;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
+import cn.hutool.core.util.StrUtil;
 import java.text.SimpleDateFormat;
-import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 定时任务管理 REST 控制器
@@ -139,7 +141,7 @@ public class FlowTaskController {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * 手动立即触发一次（异步，不等待结果）
+     * 手动立即触发一次（异步，不等待结果）。仅已发布任务可触发。
      */
     @PostMapping("/{id}/run")
     public R<Void> run(@PathVariable String id) {
@@ -147,18 +149,31 @@ public class FlowTaskController {
         if (task == null) {
             return R.fail("任务不存在: " + id);
         }
+        if (task.getPublishStatus() == null || task.getPublishStatus() != 1
+                || StrUtil.isBlank(task.getPublishedSnapshot())) {
+            return R.fail("任务未发布，无法立即执行。请先发布，或使用「调试运行」验证草稿。");
+        }
         flowTaskScheduler.triggerManually(task);
         return R.ok();
     }
 
     /**
-     * 调试运行（同步，返回 FlowTrace，与接口管理调试逻辑一致）
+     * 调试运行（同步，返回 FlowTrace）。
+     * <p>注入 taskName / cron，与正式调度一致，供 Schedule 节点写入 {@code $.schedule.*}。</p>
      */
     @PostMapping("/debug/run")
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
         try {
+            Map<String, Object> args = new HashMap<>();
+            if (StrUtil.isNotBlank(requestDTO.getSourceName())) {
+                args.put("taskName", requestDTO.getSourceName());
+            }
+            if (StrUtil.isNotBlank(requestDTO.getCron())) {
+                args.put("cron", requestDTO.getCron());
+            }
+
             FlowTrace trace = flowEngine.execute(requestDTO.getDslContent(),
-                    Collections.emptyMap(), true, "DEBUG",
+                    args, true, "DEBUG",
                     requestDTO.getSourceRef(), requestDTO.getSourceName());
             return R.ok(trace != null ? trace : new FlowTrace());
         } catch (Exception e) {

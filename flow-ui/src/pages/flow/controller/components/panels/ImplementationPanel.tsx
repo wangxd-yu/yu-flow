@@ -7,7 +7,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Flex, message, Select, Segmented, Space, Tooltip } from 'antd';
+import { Button, Flex, Typography, message, Select, Segmented, Space, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
 import {
   FullscreenOutlined, FullscreenExitOutlined,
@@ -20,6 +20,8 @@ import CodeEditor from '../flow-editor/components/CodeEditor';
 import { DbDebugger } from '../debugger';
 import { debugRunDbApiConfig } from '../../services/flowController';
 import { queryDataSourceList } from '@/pages/flow/dataSource/services/dataSource';
+
+const { Text } = Typography;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  类型定义
@@ -57,6 +59,14 @@ export interface ImplementationPanelProps {
   apiMethod?: string;
   apiId?: string;
   apiName?: string;
+  /** 契约样例预填（Headers） */
+  defaultTriggerHeaders?: Record<string, string>;
+  /** 契约样例预填（Query + Path） */
+  defaultTriggerQueryParams?: Record<string, string>;
+  /** 契约样例预填 Body */
+  defaultTriggerBody?: string;
+  /** 完整契约 JSON（调试可选校验） */
+  contractJson?: string;
 }
 
 const ENGINE_MODE_OPTIONS: { label: string; value: EngineMode; icon: React.ReactNode }[] = [
@@ -79,6 +89,7 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
   dbDatasource, onDbDatasourceChange,
   responseType, onResponseTypeChange,
   form, isEdit, onSave, onCancel, apiUrl, apiMethod, apiId, apiName,
+  defaultTriggerHeaders, defaultTriggerQueryParams, defaultTriggerBody, contractJson,
 }) => {
   // ─── 全屏状态 ──────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -209,6 +220,10 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
               apiMethod={apiMethod}
               apiId={apiId}
               apiName={apiName}
+              defaultTriggerHeaders={defaultTriggerHeaders}
+              defaultTriggerQueryParams={defaultTriggerQueryParams}
+              defaultTriggerBody={defaultTriggerBody}
+              contractJson={contractJson}
               toolbarLeadingExtra={engineModeSwitcher}
             />
           </div>
@@ -250,6 +265,11 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
                 ]}
               />
               <div style={{ flex: 1 }} />
+              <Text type="secondary" style={{ fontSize: 12, maxWidth: 420 }}>
+                动态参数请用 <Text code>${'{name}'}</Text>；数组 Body 可展开为
+                {' '}<Text code>IN (?, ?, ?)</Text>
+                。勿使用 MyBatis 风格的 <Text code>#{'{name}'}</Text>。
+              </Text>
               <Tooltip title="一键格式化 SQL 代码">
                 <Button icon={<AlignLeftOutlined />} onClick={() => formatContent('DB')}>格式化</Button>
               </Tooltip>
@@ -268,6 +288,10 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
                 responseType={responseType}
                 apiUrl={apiUrl}
                 apiMethod={apiMethod}
+                defaultTriggerHeaders={defaultTriggerHeaders}
+                defaultTriggerQueryParams={defaultTriggerQueryParams}
+                defaultTriggerBody={defaultTriggerBody}
+                contractJson={contractJson}
                 onRun={async (payload) => {
                   const result = await debugRunDbApiConfig({
                     ...payload,

@@ -22,6 +22,7 @@ import {
   FlowTask,
 } from './services/taskService';
 import TaskForm from './components/TaskForm';
+import { confirmTaskPublish } from './components/confirmTaskPublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 
 // ── CRUD 工具函数 ──
@@ -33,9 +34,9 @@ const handleAdd = async (fields: Partial<FlowTask>) => {
     hide();
     message.success('添加成功');
     return true;
-  } catch {
+  } catch (e: any) {
     hide();
-    message.error('添加失败，请重试');
+    message.error(e?.message || '添加失败，请重试');
     return false;
   }
 };
@@ -47,9 +48,9 @@ const handleUpdate = async (id: string, fields: Partial<FlowTask>) => {
     hide();
     message.success('更新成功');
     return true;
-  } catch {
+  } catch (e: any) {
     hide();
-    message.error('更新失败，请重试');
+    message.error(e?.message || '更新失败，请重试');
     return false;
   }
 };
@@ -103,7 +104,10 @@ const TaskManagement: React.FC = () => {
         actionRef.current?.reload();
       }
     } else {
-      const ok = await handleAdd({ ...values, directoryId: currentRow?.directoryId });
+      const ok = await handleAdd({
+        ...values,
+        directoryId: values.directoryId || currentRow?.directoryId,
+      });
       if (ok) {
         setFormVisible(false);
         actionRef.current?.reload();
@@ -169,7 +173,7 @@ const TaskManagement: React.FC = () => {
       title: '发布状态',
       dataIndex: 'publishStatus',
       width: 110,
-      hideInSearch: true,
+      valueType: 'select',
       valueEnum: {
         0: { text: '未发布', status: 'Default' },
         1: { text: '已发布', status: 'Success' },
@@ -243,6 +247,8 @@ const TaskManagement: React.FC = () => {
           <a
             key="publish"
             onClick={async () => {
+              const ok = await confirmTaskPublish(record);
+              if (!ok) return;
               try {
                 await publishTask(record.id);
                 message.success('发布成功');
@@ -256,19 +262,25 @@ const TaskManagement: React.FC = () => {
           </a>
         ),
         <Divider key="d2" type="vertical" />,
-        <a
-          key="run"
-          onClick={async () => {
-            try {
-              await runTaskNow(record.id);
-              message.success('已触发执行，请稍后查看任务日志');
-            } catch {
-              message.error('触发失败');
-            }
-          }}
-        >
-          立即执行
-        </a>,
+        record.publishStatus === 1 ? (
+          <a
+            key="run"
+            onClick={async () => {
+              try {
+                await runTaskNow(record.id);
+                message.success('已触发执行，请稍后查看任务日志');
+              } catch (e: any) {
+                message.error(e?.message || '触发失败');
+              }
+            }}
+          >
+            立即执行
+          </a>
+        ) : (
+          <Tooltip key="run" title="请先发布后再立即执行；草稿可用「调试运行」验证">
+            <span style={{ color: 'rgba(0,0,0,0.25)', cursor: 'not-allowed' }}>立即执行</span>
+          </Tooltip>
+        ),
         <Divider key="d3" type="vertical" />,
         <a
           key="logs"
@@ -437,10 +449,17 @@ const TaskManagement: React.FC = () => {
             ]}
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}) => {
-              const { current, pageSize, directoryId, name } = params as any;
+              const { current, pageSize, directoryId, name, publishStatus } = params as any;
+              const publishParam =
+                publishStatus === 0 || publishStatus === '0'
+                  ? 0
+                  : publishStatus === 1 || publishStatus === '1'
+                    ? 1
+                    : undefined;
               const result = await queryTaskPage({
                 directoryId,
                 name,
+                publishStatus: publishParam,
                 page: (current || 1) - 1,
                 size: pageSize || 20,
               });
@@ -466,6 +485,10 @@ const TaskManagement: React.FC = () => {
           initialValues={currentRow}
           onCancel={() => setFormVisible(false)}
           onSubmit={handleFormSubmit}
+          onPublished={(detail) => {
+            setCurrentRow(detail);
+            actionRef.current?.reload();
+          }}
         />
       )}
     </PageContainer>

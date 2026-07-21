@@ -7,6 +7,7 @@ import org.yu.flow.engine.evaluator.executor.ForStepExecutor;
 import org.yu.flow.engine.model.ContextKeys;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.TraceSnapshotLimits;
 import org.yu.flow.exception.FlowException;
 
 import java.util.*;
@@ -67,18 +68,27 @@ public class ExecutionContext {
      */
     private String sourceName;
 
+    /** Trace 快照限深 / 限长（分支 copy 共享同一配置） */
+    private TraceSnapshotLimits snapshotLimits = TraceSnapshotLimits.DEFAULTS;
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // 构造函数组
     public ExecutionContext() {
-        this(null, false, false);
+        this(null, false, false, TraceSnapshotLimits.DEFAULTS);
     }
 
     public ExecutionContext(Map<String, Object> inputs) {
-        this(inputs, false, false);
+        this(inputs, false, false, TraceSnapshotLimits.DEFAULTS);
     }
 
     public ExecutionContext(Map<String, Object> inputs, boolean readOnly, boolean traceEnabled) {
+        this(inputs, readOnly, traceEnabled, TraceSnapshotLimits.DEFAULTS);
+    }
+
+    public ExecutionContext(Map<String, Object> inputs, boolean readOnly, boolean traceEnabled,
+                            TraceSnapshotLimits snapshotLimits) {
+        this.snapshotLimits = snapshotLimits != null ? snapshotLimits : TraceSnapshotLimits.DEFAULTS;
         this.var = Collections.synchronizedMap(new HashMap<>());
         if (inputs != null) {
             this.var.putAll(deepCopyVariables(inputs));
@@ -90,8 +100,8 @@ public class ExecutionContext {
             this.flowTrace.setStepLogs(Collections.synchronizedList(new ArrayList<>()));
             this.flowTrace.setStartTime(System.currentTimeMillis());
             this.flowTrace.setTraceId(UUID.randomUUID().toString());
-            // 保存初始入参的快照
-            this.flowTrace.setGlobalInputs(deepCopyVariables(this.var));
+            // 限深快照，避免超大入参直接撑爆 Trace
+            this.flowTrace.setGlobalInputs(snapshotVarsForTrace());
         }
     }
 
@@ -150,7 +160,7 @@ public class ExecutionContext {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> snapshotVarsForTrace() {
-        Object snap = snapshotValueForTrace(var);
+        Object snap = snapshotValueForTrace(var, 0, snapshotLimits);
         if (snap instanceof Map) {
             return (Map<String, Object>) snap;
         }
@@ -158,16 +168,33 @@ public class ExecutionContext {
     }
 
     @SuppressWarnings("unchecked")
-    private static Object snapshotValueForTrace(Object value) {
+    private static Object snapshotValueForTrace(Object value, int depth, TraceSnapshotLimits limits) {
         if (value == null) {
             return null;
+        }
+        if (depth > limits.maxDepth()) {
+            return "...(maxDepth=" + limits.maxDepth() + ")";
         }
         if (value instanceof ForStepExecutor.LoopBarrier) {
             return summarizeBarrier((ForStepExecutor.LoopBarrier) value);
         }
+        if (value instanceof CharSequence) {
+            String s = value.toString();
+            int maxLen = limits.maxStringLength();
+            if (s.length() > maxLen) {
+                return s.substring(0, maxLen) + "...(truncated,len=" + s.length() + ")";
+            }
+            return s;
+        }
         if (value instanceof Map) {
             Map<String, Object> out = new LinkedHashMap<>();
+            int count = 0;
+            int maxEntries = limits.maxMapEntries();
             for (Map.Entry<?, ?> e : ((Map<?, ?>) value).entrySet()) {
+                if (count >= maxEntries) {
+                    out.put("_truncated", "+" + (((Map<?, ?>) value).size() - maxEntries) + " entries");
+                    break;
+                }
                 String key = e.getKey() == null ? "null" : e.getKey().toString();
                 Object v = e.getValue();
                 if (key.startsWith(ContextKeys.BARRIER_PREFIX) || v instanceof ForStepExecutor.LoopBarrier) {
@@ -175,22 +202,37 @@ public class ExecutionContext {
                             ? summarizeBarrier((ForStepExecutor.LoopBarrier) v)
                             : String.valueOf(v));
                 } else {
-                    out.put(key, snapshotValueForTrace(v));
+                    out.put(key, snapshotValueForTrace(v, depth + 1, limits));
                 }
+                count++;
             }
             return out;
         }
         if (value instanceof Collection) {
+            Collection<?> col = (Collection<?>) value;
             List<Object> list = new ArrayList<>();
-            for (Object item : (Collection<?>) value) {
-                list.add(snapshotValueForTrace(item));
+            int i = 0;
+            int maxSize = limits.maxCollectionSize();
+            for (Object item : col) {
+                if (i >= maxSize) {
+                    list.add("...(+" + (col.size() - maxSize) + " more)");
+                    break;
+                }
+                list.add(snapshotValueForTrace(item, depth + 1, limits));
+                i++;
             }
             return list;
         }
         if (value instanceof Object[]) {
+            Object[] arr = (Object[]) value;
             List<Object> list = new ArrayList<>();
-            for (Object item : (Object[]) value) {
-                list.add(snapshotValueForTrace(item));
+            int maxSize = limits.maxCollectionSize();
+            for (int i = 0; i < arr.length; i++) {
+                if (i >= maxSize) {
+                    list.add("...(+" + (arr.length - maxSize) + " more)");
+                    break;
+                }
+                list.add(snapshotValueForTrace(arr[i], depth + 1, limits));
             }
             return list;
         }
@@ -198,10 +240,19 @@ public class ExecutionContext {
         if (value instanceof AtomicInteger) {
             return ((AtomicInteger) value).get();
         }
+        if (value instanceof Number || value instanceof Boolean) {
+            return value;
+        }
         String cn = value.getClass().getName();
         if (cn.startsWith("java.util.concurrent.")
                 || cn.startsWith("org.yu.flow.engine.evaluator.ExecutionContext")) {
             return value.getClass().getSimpleName() + "@" + Integer.toHexString(System.identityHashCode(value));
+        }
+        // 未知类型：避免把巨大 POJO 原样塞进 Trace
+        String asStr = String.valueOf(value);
+        int maxLen = limits.maxStringLength();
+        if (asStr.length() > maxLen) {
+            return asStr.substring(0, maxLen) + "...(" + value.getClass().getSimpleName() + ")";
         }
         return value;
     }
@@ -259,7 +310,7 @@ public class ExecutionContext {
 
     // 上下文拷贝（支持深拷贝）
     public ExecutionContext copy(boolean deepCopy) {
-        ExecutionContext copy = new ExecutionContext(null, this.isReadOnly, this.traceEnabled);
+        ExecutionContext copy = new ExecutionContext(null, this.isReadOnly, this.traceEnabled, this.snapshotLimits);
         if (deepCopy) {
             copy.var.putAll(deepCopyVariables(this.var));
             copy.output = deepCopyIfNeeded(this.output);
@@ -281,18 +332,20 @@ public class ExecutionContext {
         copy.invokeSource = this.invokeSource;
         copy.sourceRef = this.sourceRef;
         copy.sourceName = this.sourceName;
+        copy.snapshotLimits = this.snapshotLimits;
         return copy;
     }
 
     // 创建只读视图
     public ExecutionContext asReadOnly() {
-        ExecutionContext readOnlyCtx = new ExecutionContext(this.var, true, this.traceEnabled);
+        ExecutionContext readOnlyCtx = new ExecutionContext(this.var, true, this.traceEnabled, this.snapshotLimits);
         if (this.traceEnabled) {
             readOnlyCtx.flowTrace = this.flowTrace;
         }
         readOnlyCtx.invokeSource = this.invokeSource;
         readOnlyCtx.sourceRef = this.sourceRef;
         readOnlyCtx.sourceName = this.sourceName;
+        readOnlyCtx.snapshotLimits = this.snapshotLimits;
         return readOnlyCtx;
     }
 

@@ -13,6 +13,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
@@ -27,6 +28,7 @@ import org.yu.flow.module.serviceflow.query.FlowServiceFlowQueryDTO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowService;
 import org.yu.flow.module.serviceflow.service.ServiceFlowReferenceChecker;
+import org.yu.flow.module.assetref.FlowReferenceIndex;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
@@ -61,17 +63,22 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Resource
     private FlowAssetVersionService flowAssetVersionService;
 
+    @Resource
+    private FlowReferenceIndex flowReferenceIndex;
+
     @Override
     @Transactional
     public FlowServiceFlowDO save(FlowServiceFlowDO entity) {
         if (entity.getEnabled() == null) entity.setEnabled(true);
-        if (entity.getLogEnabled() == null) entity.setLogEnabled(true);
+        if (entity.getLogEnabled() == null) entity.setLogEnabled(false);
         if (entity.getPublishStatus() == null) entity.setPublishStatus(0);
         if (entity.getDeleted() == null) entity.setDeleted(0);
         LocalDateTime now = LocalDateTime.now();
         entity.setCreateTime(now);
         entity.setUpdateTime(now);
-        return flowServiceFlowRepository.save(entity);
+        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        return saved;
     }
 
     @Override
@@ -93,7 +100,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
             existing.setDirectoryId(StrUtil.isBlank(entity.getDirectoryId()) ? null : entity.getDirectoryId());
         }
         existing.setUpdateTime(LocalDateTime.now());
-        return flowServiceFlowRepository.save(existing);
+        FlowServiceFlowDO saved = flowServiceFlowRepository.save(existing);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        return saved;
     }
 
     @Override
@@ -102,6 +111,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         demoModeGuard.checkModifyOrDelete(id, "内部服务");
         serviceFlowReferenceChecker.assertDeletable(id);
         flowServiceFlowRepository.deleteById(id);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
 
     @Override
@@ -115,6 +125,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
             serviceFlowReferenceChecker.assertDeletable(id);
         });
         flowServiceFlowRepository.logicDeleteByIds(ids);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
 
     @Override
@@ -205,7 +216,8 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         entity.setPublishTime(now);
         entity.setUpdateTime(now);
         FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
-        flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, null);
+        flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
         return saved;
     }
 
@@ -217,7 +229,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         entity.setPublishStatus(0);
         entity.setPublishedSnapshot(null);
         entity.setUpdateTime(LocalDateTime.now());
-        return flowServiceFlowRepository.save(entity);
+        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        return saved;
     }
 
     @Override
@@ -241,7 +255,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         } else {
             entity.setUpdateTime(LocalDateTime.now());
         }
-        return flowServiceFlowRepository.save(entity);
+        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        return saved;
     }
 
     @Override
@@ -272,7 +288,8 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
         flowAssetVersionService.append(
                 AssetBizType.SERVICE, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
-                "回退至 v" + version.getVersionNo(), null);
+                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
         return saved;
     }
 

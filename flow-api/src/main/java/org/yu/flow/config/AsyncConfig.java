@@ -1,5 +1,6 @@
 package org.yu.flow.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
@@ -7,53 +8,83 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
- * 异步线程池配置
+ * 异步 / 调度 / 引擎并行线程池配置（均从 {@link YuFlowProperties} 读取，可运维调参）。
  *
- * <p>绑定 {@code @Async("flowAsyncExecutor")}，替代 Spring 默认的 {@code SimpleAsyncTaskExecutor}。
- * <p>默认的 SimpleAsyncTaskExecutor 每次都创建新线程，在高并发下会导致线程数爆炸（OOM）。
- * <p>本配置采用有界线程池：核心线程 4，最大线程 8，队列容量 200，超出时使用调用方线程执行（CallerRunsPolicy）。
+ * <p>JDK 17 暂不启用虚拟线程；升级 JDK 21+ 后可评估 I/O 密集路径切 VT。</p>
  */
+@Slf4j
 @Configuration
 public class AsyncConfig {
 
     @Bean("flowAsyncExecutor")
-    public Executor flowAsyncExecutor() {
+    public Executor flowAsyncExecutor(YuFlowProperties properties) {
+        YuFlowProperties.Task task = properties.getTask();
+        int core = Math.max(1, task.getAsyncCorePoolSize());
+        int max = Math.max(core, task.getAsyncMaxPoolSize());
+        int queue = Math.max(1, task.getAsyncQueueCapacity());
+
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        // 核心线程数：始终保持存活，处理常规异步任务
-        executor.setCorePoolSize(4);
-        // 最大线程数：队列满时最多扩展到此值
-        executor.setMaxPoolSize(8);
-        // 队列容量：超过此值后才会扩展线程数
-        executor.setQueueCapacity(200);
-        // 空闲线程存活时间（超过 core 数量的线程）
+        executor.setCorePoolSize(core);
+        executor.setMaxPoolSize(max);
+        executor.setQueueCapacity(queue);
         executor.setKeepAliveSeconds(60);
-        // 线程名前缀，便于排查日志
         executor.setThreadNamePrefix("flow-async-");
-        // 拒绝策略：队列满且线程数达上限时，由调用方线程同步执行，确保日志不丢失
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        // 应用关闭时等待正在执行的任务完成
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();
+        log.info("[AsyncConfig] flowAsyncExecutor: core={}, max={}, queue={}", core, max, queue);
         return executor;
     }
 
     /**
      * 定时任务调度器（注入 FlowTaskScheduler）
-     *
-     * <p>使用有界线程池，防止异常 Cron 导致线程泄漏。
      */
     @Bean
-    public TaskScheduler taskScheduler() {
+    public TaskScheduler taskScheduler(YuFlowProperties properties) {
+        int poolSize = Math.max(1, properties.getTask().getSchedulerPoolSize());
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(4);
+        scheduler.setPoolSize(poolSize);
         scheduler.setThreadNamePrefix("flow-task-scheduler-");
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
         scheduler.setAwaitTerminationSeconds(30);
         scheduler.initialize();
+        log.info("[AsyncConfig] taskScheduler: poolSize={}", poolSize);
         return scheduler;
+    }
+
+    /**
+     * 引擎 For / Parallel 等并行执行池。
+     */
+    @Bean(name = "flowEngineExecutor", destroyMethod = "shutdown")
+    public ExecutorService flowEngineExecutor(YuFlowProperties properties) {
+        YuFlowProperties.Engine engine = properties.getEngine();
+        int cpu = Runtime.getRuntime().availableProcessors();
+        int core = engine.getPoolCoreSize() > 0 ? engine.getPoolCoreSize() : Math.max(2, cpu * 2);
+        int max = engine.getPoolMaxSize() > 0 ? engine.getPoolMaxSize() : Math.max(core, cpu * 4);
+        int queue = Math.max(16, engine.getPoolQueueCapacity());
+
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(
+                core,
+                max,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(queue),
+                r -> {
+                    Thread t = new Thread(r);
+                    t.setName("flow-engine-" + t.getId());
+                    t.setDaemon(false);
+                    return t;
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        log.info("[AsyncConfig] flowEngineExecutor: core={}, max={}, queue={} (JDK17 平台线程；VT 待 JDK21+)",
+                core, max, queue);
+        return pool;
     }
 }

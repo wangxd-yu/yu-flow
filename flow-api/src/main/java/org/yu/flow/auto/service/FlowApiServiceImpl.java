@@ -33,11 +33,13 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
+import org.yu.flow.engine.model.TracePersistUtil;
 import org.yu.flow.engine.model.step.ResponseResult;
 import org.yu.flow.log.execution.domain.FlowExecutionLogDO;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.SchemaValidatorService;
+import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.log.execution.service.FlowExecutionLogService;
 
 /**
@@ -67,6 +69,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Resource
     private SchemaValidatorService schemaValidatorService;
+
+    @Resource
+    private YuFlowProperties yuFlowProperties;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -318,6 +323,25 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             request.getHeaders().forEach(headers::put);
         }
 
+        Map<String, Object> execQuery = new LinkedHashMap<>(queryParams);
+        Map<String, Object> execBody = bodyParams;
+        Map<String, Object> execHeaders = headers;
+        Map<String, Object> execPath = new LinkedHashMap<>();
+
+        if (StrUtil.isNotBlank(request.getContract())) {
+            String contract = request.getContract();
+            try {
+                execQuery = contractParamTypeConverter.convertSection(contract, "query", queryParams);
+                execBody = contractParamTypeConverter.convertSection(contract, "body", bodyParams);
+                execHeaders = contractParamTypeConverter.convertSection(contract, "headers", headers);
+                execPath = contractParamTypeConverter.convertSection(contract, "pathParams", queryParams);
+                schemaValidatorService.validateFromContract(
+                        contract, execBody, execQuery, execPath, execHeaders);
+            } catch (Exception e) {
+                return buildDbDebugErrorTrace(startMs, startTimeStr, e.getMessage(), null, null);
+            }
+        }
+
         int page = resolveInt(request.getPage(), queryParams.get("page"), 0);
         int size = resolveInt(request.getSize(), queryParams.get("size"), 10);
         if (size <= 0) {
@@ -326,14 +350,14 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         Pageable pageable = PageRequest.of(Math.max(page, 0), size);
 
         Map<String, Object> inputParamsMap = new HashMap<>(8);
-        inputParamsMap.put("@QP", new LinkedHashMap<>(queryParams));
-        inputParamsMap.put("@BP", bodyParams);
-        inputParamsMap.put("@PP", new LinkedHashMap<>());
-        inputParamsMap.put("headers", headers);
-        inputParamsMap.put("params", new LinkedHashMap<>(queryParams));
-        inputParamsMap.put("queryParams", new LinkedHashMap<>(queryParams));
-        inputParamsMap.put("body", bodyParams);
-        inputParamsMap.put("bodyParams", bodyParams);
+        inputParamsMap.put("@QP", execQuery);
+        inputParamsMap.put("@BP", execBody);
+        inputParamsMap.put("@PP", execPath);
+        inputParamsMap.put("headers", execHeaders);
+        inputParamsMap.put("params", execQuery);
+        inputParamsMap.put("queryParams", execQuery);
+        inputParamsMap.put("body", execBody);
+        inputParamsMap.put("bodyParams", execBody);
 
         RuntimeLogContext runtimeLogContext = new RuntimeLogContext();
         boolean rollbackTransaction = request.getRollbackTransaction() == null
@@ -502,11 +526,12 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             FlowTrace trace = (FlowTrace) result;
             if (logDO != null) {
                 try {
-                    // 保存当时执行的 DSL 快照，供排障回放时精确还原现场
-                    if ("FLOW".equals(flowApiDO.getServiceType())) {
-                        trace.setDslSnapshot(flowApiDO.getDslContent());
-                    }
-                    logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+                    String dsl = "FLOW".equals(flowApiDO.getServiceType())
+                            ? flowApiDO.getDslContent() : null;
+                    TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                            yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+                    logDO.setTraceData(TracePersistUtil.serializeForPersist(
+                            trace, dsl, OBJECT_MAPPER, opts));
                 } catch (Exception ignored) {}
             }
 
@@ -635,8 +660,10 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             
             trace.setStepLogs(Collections.singletonList(stepLog));
             trace.setGlobalOutputs(result);
-            
-            logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+
+            TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                    yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+            logDO.setTraceData(TracePersistUtil.serializeForPersist(trace, null, OBJECT_MAPPER, opts));
         } catch (Exception ignored) {}
     }
 
@@ -671,7 +698,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             stepLog.setInputs(inputs);
             
             trace.setStepLogs(Collections.singletonList(stepLog));
-            logDO.setTraceData(OBJECT_MAPPER.writeValueAsString(trace));
+            TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                    yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+            logDO.setTraceData(TracePersistUtil.serializeForPersist(trace, null, OBJECT_MAPPER, opts));
         } catch (Exception ignored) {}
     }
 

@@ -130,10 +130,7 @@ public abstract class AbstractStepExecutor<T extends Step> implements StepExecut
         }
         String nodeId = matcher.group(1);
 
-        Step sourceStep = flow.getAllSteps().stream()
-                .filter(s -> nodeId.equals(s.getId()))
-                .findFirst()
-                .orElse(null);
+        Step sourceStep = flow.getStep(nodeId);
 
         if (sourceStep instanceof SystemVarStep) {
             SystemVarStep sysStep = (SystemVarStep) sourceStep;

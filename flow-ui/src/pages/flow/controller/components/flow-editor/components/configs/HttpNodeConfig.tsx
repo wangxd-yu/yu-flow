@@ -32,14 +32,14 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
             method: 'GET',
             bodyType: 'json',
             timeout: 30000,
-            logEnabled: true,
+            logEnabled: false,
             ignoreSsl: true,
             apiType: '',
             params: [],
             headers: [],
             formData: [],
             ...d,
-            logEnabled: d.logEnabled !== false,
+            logEnabled: !!d.logEnabled,
             ignoreSsl: d.ignoreSsl !== false,
             body: typeof d.body === 'object' ? JSON.stringify(d.body, null, 2) : (d.body || '')
         });
@@ -224,7 +224,7 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
                 layout="vertical"
                 onValuesChange={handleValuesChange}
                 style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-                initialValues={{ method: 'GET', bodyType: 'json', timeout: 30000, logEnabled: true }}
+                initialValues={{ method: 'GET', bodyType: 'json', timeout: 30000, logEnabled: false }}
             >
                 <Tabs
                     items={items}

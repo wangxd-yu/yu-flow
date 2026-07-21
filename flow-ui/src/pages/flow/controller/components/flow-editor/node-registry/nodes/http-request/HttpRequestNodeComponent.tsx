@@ -181,9 +181,9 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             changed = true;
         }
 
-        // 历史节点无 logEnabled 时默认开启
+        // 历史节点无 logEnabled：与后端一致，默认关闭（不自动补 true）
         if (d.logEnabled === undefined) {
-            updates.logEnabled = true;
+            updates.logEnabled = false;
             changed = true;
         }
 

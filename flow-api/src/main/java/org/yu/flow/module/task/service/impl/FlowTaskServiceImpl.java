@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.scheduling.support.CronExpression;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.module.assetversion.AssetBizType;
@@ -21,12 +22,14 @@ import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
+import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.dto.FlowTaskDTO;
 import org.yu.flow.module.task.query.FlowTaskQueryDTO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.module.task.scheduler.FlowTaskScheduler;
 import org.yu.flow.module.task.service.FlowTaskService;
+import org.yu.flow.module.assetref.FlowReferenceIndex;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
@@ -66,6 +69,13 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Resource
     private FlowAssetVersionService flowAssetVersionService;
 
+    @Resource
+    private FlowReferenceIndex flowReferenceIndex;
+
+    private void notifyRefIndex() {
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // CRUD
     // ─────────────────────────────────────────────────────────────────────────
@@ -73,8 +83,9 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Override
     @Transactional
     public FlowTaskDO save(FlowTaskDO taskDO) {
+        validateCronExpression(taskDO.getCron());
         if (taskDO.getEnabled() == null) taskDO.setEnabled(true);
-        if (taskDO.getLogEnabled() == null) taskDO.setLogEnabled(true);
+        if (taskDO.getLogEnabled() == null) taskDO.setLogEnabled(false);
         if (taskDO.getPublishStatus() == null) taskDO.setPublishStatus(0);
         if (taskDO.getDeleted() == null) taskDO.setDeleted(0);
         LocalDateTime now = LocalDateTime.now();
@@ -85,6 +96,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         if (isSchedulable(saved)) {
             flowTaskScheduler.schedule(saved);
         }
+        notifyRefIndex();
         return saved;
     }
 
@@ -98,7 +110,10 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         boolean wasSchedulable = isSchedulable(existing);
 
         if (taskDO.getName() != null) existing.setName(taskDO.getName());
-        if (taskDO.getCron() != null) existing.setCron(taskDO.getCron());
+        if (taskDO.getCron() != null) {
+            validateCronExpression(taskDO.getCron());
+            existing.setCron(taskDO.getCron());
+        }
         if (taskDO.getEnabled() != null) existing.setEnabled(taskDO.getEnabled());
         if (taskDO.getLogEnabled() != null) existing.setLogEnabled(taskDO.getLogEnabled());
         if (taskDO.getDslContent() != null) existing.setDslContent(taskDO.getDslContent());
@@ -118,6 +133,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         } else if (!wasSchedulable) {
             flowTaskScheduler.schedule(updated);
         }
+        notifyRefIndex();
         return updated;
     }
 
@@ -127,6 +143,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         demoModeGuard.checkModifyOrDelete(id, "定时任务");
         flowTaskScheduler.cancel(id);
         flowTaskRepository.deleteById(id);
+        notifyRefIndex();
     }
 
     @Override
@@ -138,6 +155,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "定时任务"));
         ids.forEach(flowTaskScheduler::cancel);
         flowTaskRepository.logicDeleteByIds(ids);
+        notifyRefIndex();
     }
 
     @Override
@@ -167,6 +185,9 @@ public class FlowTaskServiceImpl implements FlowTaskService {
             }
             if (queryDTO.getEnabled() != null) {
                 predicates.add(cb.equal(root.get("enabled"), queryDTO.getEnabled()));
+            }
+            if (queryDTO.getPublishStatus() != null) {
+                predicates.add(cb.equal(root.get("publishStatus"), queryDTO.getPublishStatus()));
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -229,6 +250,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         if (StrUtil.isBlank(task.getDslContent())) {
             throw new RuntimeException("任务 DSL 为空，无法发布");
         }
+        validateCronExpression(task.getCron());
         String snapshot = buildSnapshot(task);
         LocalDateTime now = LocalDateTime.now();
         task.setPublishedSnapshot(snapshot);
@@ -236,10 +258,11 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         task.setPublishTime(now);
         task.setUpdateTime(now);
         FlowTaskDO saved = flowTaskRepository.save(task);
-        flowAssetVersionService.append(AssetBizType.TASK, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, null);
+        flowAssetVersionService.append(AssetBizType.TASK, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
         if (isSchedulable(saved)) {
             flowTaskScheduler.reschedule(saved);
         }
+        notifyRefIndex();
         return saved;
     }
 
@@ -253,6 +276,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         task.setUpdateTime(LocalDateTime.now());
         FlowTaskDO saved = flowTaskRepository.save(task);
         flowTaskScheduler.cancel(id);
+        notifyRefIndex();
         return saved;
     }
 
@@ -264,7 +288,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         if (StrUtil.isBlank(task.getPublishedSnapshot())) {
             throw new RuntimeException("该任务没有发布快照，无法回滚");
         }
-        applySnapshotToDraft(task, task.getPublishedSnapshot());
+        applySnapshotToDraft(task, task.getPublishedSnapshot(), true);
         if (task.getPublishTime() != null) {
             task.setUpdateTime(task.getPublishTime());
         } else {
@@ -276,6 +300,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         } else {
             flowTaskScheduler.cancel(id);
         }
+        notifyRefIndex();
         return saved;
     }
 
@@ -298,8 +323,13 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         demoModeGuard.checkModifyOrDelete(id, "定时任务");
         FlowTaskDO task = requireTask(id);
         FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.TASK, id);
+        // 恢复内容字段；不覆盖当前启用/日志开关，避免历史版本意外重新调度
+        Boolean keepEnabled = task.getEnabled();
+        Boolean keepLogEnabled = task.getLogEnabled();
         LocalDateTime now = LocalDateTime.now();
-        applySnapshotToDraft(task, version.getSnapshot());
+        applySnapshotToDraft(task, version.getSnapshot(), false);
+        task.setEnabled(keepEnabled);
+        task.setLogEnabled(keepLogEnabled);
         task.setPublishedSnapshot(version.getSnapshot());
         task.setPublishStatus(1);
         task.setPublishTime(now);
@@ -307,12 +337,13 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         FlowTaskDO saved = flowTaskRepository.save(task);
         flowAssetVersionService.append(
                 AssetBizType.TASK, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
-                "回退至 v" + version.getVersionNo(), null);
+                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
         if (isSchedulable(saved)) {
             flowTaskScheduler.reschedule(saved);
         } else {
             flowTaskScheduler.cancel(id);
         }
+        notifyRefIndex();
         return saved;
     }
 
@@ -349,8 +380,8 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         }
     }
 
-    /** 兼容旧快照：缺字段时不覆盖现有值 */
-    private void applySnapshotToDraft(FlowTaskDO task, String snapshotJson) {
+    /** 兼容旧快照：缺字段时不覆盖现有值。{@code applyOpsFields} 为 true 时同时恢复 enabled/logEnabled。 */
+    private void applySnapshotToDraft(FlowTaskDO task, String snapshotJson, boolean applyOpsFields) {
         try {
             JsonNode snap = SNAPSHOT_MAPPER.readTree(snapshotJson);
             applyText(snap, "name", task::setName);
@@ -358,16 +389,28 @@ public class FlowTaskServiceImpl implements FlowTaskService {
             applyText(snap, "dslContent", task::setDslContent);
             applyText(snap, "info", task::setInfo);
             applyText(snap, "tags", task::setTags);
-            if (snap.has("enabled") && !snap.get("enabled").isNull()) {
-                task.setEnabled(snap.get("enabled").asBoolean());
-            }
-            if (snap.has("logEnabled") && !snap.get("logEnabled").isNull()) {
-                task.setLogEnabled(snap.get("logEnabled").asBoolean());
+            if (applyOpsFields) {
+                if (snap.has("enabled") && !snap.get("enabled").isNull()) {
+                    task.setEnabled(snap.get("enabled").asBoolean());
+                }
+                if (snap.has("logEnabled") && !snap.get("logEnabled").isNull()) {
+                    task.setLogEnabled(snap.get("logEnabled").asBoolean());
+                }
             }
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("解析历史版本快照失败", e);
+        }
+    }
+
+    /** Spring 6 字段 Cron（秒 分 时 日 月 周）语法校验 */
+    private static void validateCronExpression(String cron) {
+        if (StrUtil.isBlank(cron)) {
+            throw new RuntimeException("Cron 表达式不能为空");
+        }
+        if (!CronExpression.isValidExpression(cron.trim())) {
+            throw new RuntimeException("Cron 表达式不合法，请使用 Spring 6 字段格式（秒 分 时 日 月 周），例如：0 0/5 * * * ?");
         }
     }
 

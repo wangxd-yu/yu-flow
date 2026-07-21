@@ -115,7 +115,7 @@ const ExecutionLog: React.FC = () => {
           if (nodeType === 'database') detectedType = 'DB';
           else if (nodeType === 'json') detectedType = 'JSON';
           else if (nodeType === 'string') detectedType = 'STRING';
-          else if (trace?.dslSnapshot) detectedType = 'FLOW';
+          else if (trace?.dslSnapshot || trace?.dslContentHash) detectedType = 'FLOW';
         } catch { /* ignore */ }
       }
 
@@ -125,7 +125,7 @@ const ExecutionLog: React.FC = () => {
 
       if (detectedType === 'FLOW' || !detectedType) {
         // FLOW 类型：走 X6 画布回放
-        const trace: FlowTrace & { dslSnapshot?: string } = JSON.parse(detail.traceData);
+        const trace: FlowTrace & { dslSnapshot?: string; dslContentHash?: string } = JSON.parse(detail.traceData);
         let dslContent = trace.dslSnapshot || '';
         if (!dslContent) {
           try {

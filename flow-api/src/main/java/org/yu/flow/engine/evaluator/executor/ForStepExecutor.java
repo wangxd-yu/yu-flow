@@ -68,10 +68,17 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
 
     private final FlowEngine engine;
     private final ExecutorService executorService;
+    /** For 在途分支上限；≤0 表示不限制 */
+    private final int maxInFlight;
 
     public ForStepExecutor(FlowEngine engine, ExecutorService executorService) {
+        this(engine, executorService, 0);
+    }
+
+    public ForStepExecutor(FlowEngine engine, ExecutorService executorService, int maxInFlight) {
         this.engine = engine;
         this.executorService = executorService;
+        this.maxInFlight = maxInFlight;
     }
 
     @Override
@@ -146,8 +153,10 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
         //   d) 若此分支为"最后一条"（CollectStepExecutor 已接管主流程），
         //      则分支任务 lambda 结束时将 branchContext 的输出合并回 mainContext
         // ====================================================================
-        log.info("ForStep [{}]: 发射 {} 条并发分支，item 端口首节点=[{}]",
-                step.getId(), totalCount, itemStartStepId);
+        log.info("ForStep [{}]: 发射 {} 条并发分支，item 端口首节点=[{}]，maxInFlight={}",
+                step.getId(), totalCount, itemStartStepId, maxInFlight > 0 ? maxInFlight : "unlimited");
+
+        Semaphore inFlight = maxInFlight > 0 ? new Semaphore(maxInFlight) : null;
 
         for (int i = 0; i < totalCount; i++) {
             final int index = i;
@@ -155,6 +164,16 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
             final String branchStartId = itemStartStepId;
 
             final boolean noCollect = collectStepId == null || collectStepId.isBlank();
+
+            if (inFlight != null) {
+                try {
+                    inFlight.acquire();
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new FlowException("FOR_INTERRUPTED",
+                            "ForStep [" + step.getId() + "] 等待在途许可时被中断", ie);
+                }
+            }
 
             executorService.submit(() -> {
                 try {
@@ -171,12 +190,6 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
                     log.debug("ForStep [{}]: 分支[{}] 开始执行, item={}", step.getId(), index, item);
 
                     // ---- c) 全程执行（不 stopAtJoinNodes），直到 CollectStep 或流程末尾 ----
-                    // runBranchFlow 内部使用 stopAtJoinNodes=false，让分支真正到达 CollectStep。
-                    // CollectStepExecutor 决定：
-                    //   - 非最后线程 → return null → runBranchFlow 提前退出
-                    //   - 最后线程   → 在 CollectStepExecutor 内部调用 engine.runBranchFlow
-                    //                  继续执行 CollectStep 的下游节点（"线程接力"）
-                    //                  → CollectStepExecutor 也 return null
                     engine.runBranchFlow(branchStartId, branchCtx, flow);
 
                     log.debug("ForStep [{}]: 分支[{}] runBranchFlow 已退出", step.getId(), index);
@@ -195,6 +208,10 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
                             step.getId(), index, e.getMessage(), e);
                     // 向屏障提交 ERROR 哨兵，确保计数器递增，防止 CollectStep 永久挂起
                     barrier.submitError(index, e);
+                } finally {
+                    if (inFlight != null) {
+                        inFlight.release();
+                    }
                 }
             });
         }

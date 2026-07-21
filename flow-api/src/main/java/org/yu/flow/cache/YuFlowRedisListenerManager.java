@@ -14,6 +14,8 @@ import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 import org.yu.flow.module.sysconfig.cache.SysConfigMessageListener;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 import org.yu.flow.module.sysmacro.cache.SysMacroMessageListener;
+import org.yu.flow.module.assetref.FlowReferenceIndex;
+import org.yu.flow.module.assetref.FlowReferenceIndexMessageListener;
 
 import jakarta.annotation.Resource;
 
@@ -76,6 +78,9 @@ public class YuFlowRedisListenerManager implements InitializingBean, DisposableB
     @Resource
     private SysMacroMessageListener sysMacroMessageListener;
 
+    @Resource
+    private FlowReferenceIndexMessageListener flowReferenceIndexMessageListener;
+
     // ===================== 内部持有，绝不暴露为 Bean =====================
 
     /**
@@ -125,15 +130,22 @@ public class YuFlowRedisListenerManager implements InitializingBean, DisposableB
                 new ChannelTopic(SysMacroCacheManager.REFRESH_TOPIC)
         );
 
+        // 4. 资产引用倒排索引刷新
+        container.addMessageListener(
+                new MessageListenerAdapter(flowReferenceIndexMessageListener, "onMessage"),
+                new ChannelTopic(FlowReferenceIndex.REFRESH_TOPIC)
+        );
+
         // ---- 手动驱动 Spring Lifecycle ----
         container.afterPropertiesSet();
         container.start();
 
-        log.info("[YuFlowRedisListenerManager] Redis 消息监听容器启动完成。已注册 3 个监听器，" +
-                "订阅频道: [{}, {}, {}]",
+        log.info("[YuFlowRedisListenerManager] Redis 消息监听容器启动完成。已注册 4 个监听器，" +
+                "订阅频道: [{}, {}, {}, {}]",
                 FlowApiCacheManager.REFRESH_TOPIC,
                 SysConfigCacheManager.REFRESH_TOPIC,
-                SysMacroCacheManager.REFRESH_TOPIC);
+                SysMacroCacheManager.REFRESH_TOPIC,
+                FlowReferenceIndex.REFRESH_TOPIC);
     }
 
     /**

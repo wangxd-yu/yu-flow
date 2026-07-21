@@ -14,6 +14,7 @@ import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.TracePersistUtil;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
@@ -113,7 +114,8 @@ public class FlowTaskScheduler {
             cancel(task.getId());
             return;
         }
-        String publishedCron = resolvePublishedCron(task);
+        PublishedSnapshot snap = resolvePublishedSnapshot(task);
+        String publishedCron = snap.cron();
         if (StrUtil.isBlank(publishedCron)) {
             log.warn("[FlowTaskScheduler] 发布快照中 Cron 为空，跳过注册: taskId={}", task.getId());
             cancel(task.getId());
@@ -130,7 +132,7 @@ public class FlowTaskScheduler {
                     () -> executeById(taskId, TRIGGER_CRON), trigger);
             futures.put(task.getId(), future);
             log.info("[FlowTaskScheduler] 任务已注册: taskId={}, name={}, cron(published)={}",
-                    task.getId(), task.getName(), publishedCron);
+                    task.getId(), snap.name() != null ? snap.name() : task.getName(), publishedCron);
         } catch (Exception e) {
             log.error("[FlowTaskScheduler] 任务注册失败: taskId={}, cron={}, error={}",
                     task.getId(), publishedCron, e.getMessage());
@@ -192,10 +194,11 @@ public class FlowTaskScheduler {
         // 仅 Cron 抢分布式锁；MANUAL / debug 不走锁
         String lockKey = null;
         String lockValue = null;
+        ScheduledFuture<?> renewFuture = null;
+        int ttlMinutes = Math.max(1, yuFlowProperties.getTask().getLockTtlMinutes());
         if (TRIGGER_CRON.equals(triggerType)) {
             lockKey = TASK_LOCK_KEY_PREFIX + taskId;
             lockValue = UUID.randomUUID().toString();
-            int ttlMinutes = Math.max(1, yuFlowProperties.getTask().getLockTtlMinutes());
             try {
                 boolean acquired = FlowRedisUtil.setIfAbsent(lockKey, lockValue, ttlMinutes, TimeUnit.MINUTES);
                 if (!acquired) {
@@ -211,11 +214,33 @@ public class FlowTaskScheduler {
                 saveSkippedLog(latestTask, triggerType, "Redis 不可用，fail-closed 跳过执行: " + e.getMessage());
                 return;
             }
+
+            // 心跳续期：长任务执行期间防止 TTL 提前丢失导致双跑
+            int renewSec = yuFlowProperties.getTask().getLockRenewIntervalSeconds();
+            if (renewSec > 0) {
+                final String renewKey = lockKey;
+                final String renewVal = lockValue;
+                final int renewTtl = ttlMinutes;
+                renewFuture = taskScheduler.scheduleAtFixedRate(
+                        () -> {
+                            boolean ok = FlowRedisUtil.renewLock(renewKey, renewVal, renewTtl, TimeUnit.MINUTES);
+                            if (!ok) {
+                                log.warn("[FlowTaskScheduler] 锁续期失败（可能已丢失）: lockKey={}", renewKey);
+                            } else {
+                                log.debug("[FlowTaskScheduler] 锁续期成功: lockKey={}, ttl={}min", renewKey, renewTtl);
+                            }
+                        },
+                        java.time.Instant.now().plusSeconds(renewSec),
+                        java.time.Duration.ofSeconds(renewSec));
+            }
         }
 
         try {
             executeTaskWithTriggerType(latestTask, triggerType);
         } finally {
+            if (renewFuture != null) {
+                renewFuture.cancel(false);
+            }
             if (lockKey != null && lockValue != null) {
                 boolean unlocked = FlowRedisUtil.unlock(lockKey, lockValue);
                 if (!unlocked) {
@@ -232,21 +257,22 @@ public class FlowTaskScheduler {
         String errorMsg = null;
         String traceData = null;
 
+        PublishedSnapshot snap = resolvePublishedSnapshot(latestTask);
+        String publishedName = snap.name() != null ? snap.name() : latestTask.getName();
+
         log.info("[FlowTaskScheduler] 开始执行任务: taskId={}, name={}, triggerType={}",
-                latestTask.getId(), latestTask.getName(), triggerType);
+                latestTask.getId(), publishedName, triggerType);
 
         try {
-            String dsl = resolvePublishedDsl(latestTask);
+            String dsl = snap.dsl();
             if (StrUtil.isBlank(dsl)) {
                 throw new IllegalStateException("任务未发布或发布快照为空，跳过执行");
             }
 
             // 透传已发布快照中的元信息，供 ScheduleStepExecutor 写入 $.schedule.*
-            String publishedName = resolvePublishedName(latestTask);
-            String publishedCron = resolvePublishedCron(latestTask);
             Map<String, Object> args = new HashMap<>();
             args.put("taskName", publishedName);
-            args.put("cron", publishedCron);
+            args.put("cron", snap.cron());
 
             boolean logEnabled = Boolean.TRUE.equals(latestTask.getLogEnabled());
             Object result = flowEngine.execute(dsl, args, logEnabled,
@@ -261,7 +287,10 @@ public class FlowTaskScheduler {
                     status = "SUCCESS";
                 }
                 if (trace != null) {
-                    traceData = objectMapper.writeValueAsString(trace);
+                    // DSL 用内容哈希引用；超限递进截断
+                    TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                            yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+                    traceData = TracePersistUtil.serializeForPersist(trace, dsl, objectMapper, opts);
                 }
             } else if (result instanceof ExecutionResult) {
                 ExecutionResult er = (ExecutionResult) result;
@@ -276,7 +305,7 @@ public class FlowTaskScheduler {
             status = "FAILED";
             errorMsg = e.getMessage();
             log.error("[FlowTaskScheduler] 任务执行失败: taskId={}, name={}, error={}",
-                    latestTask.getId(), latestTask.getName(), e.getMessage(), e);
+                    latestTask.getId(), publishedName, e.getMessage(), e);
         }
 
         // 写入日志（始终记录摘要；trace 仅在 logEnabled 时写入）
@@ -284,14 +313,14 @@ public class FlowTaskScheduler {
         try {
             FlowTaskLogDO logDO = FlowTaskLogDO.builder()
                     .taskId(latestTask.getId())
-                    .taskName(resolvePublishedName(latestTask))
+                    .taskName(publishedName)
                     .triggerType(triggerType)
                     .status(status)
                     .costTimeMs(costTimeMs)
                     .errorMsg(errorMsg)
                     .traceData(traceData)
                     .build();
-            flowTaskLogService.save(logDO);
+            flowTaskLogService.saveAsync(logDO);
         } catch (Exception e) {
             log.error("[FlowTaskScheduler] 日志写入失败: taskId={}, error={}", latestTask.getId(), e.getMessage());
         }
@@ -310,45 +339,43 @@ public class FlowTaskScheduler {
                     .costTimeMs(0L)
                     .errorMsg(reason)
                     .build();
-            flowTaskLogService.save(logDO);
+            flowTaskLogService.saveAsync(logDO);
         } catch (Exception e) {
             log.error("[FlowTaskScheduler] SKIPPED 日志写入失败: taskId={}, error={}",
                     task.getId(), e.getMessage());
         }
     }
 
+    /** 已发布快照字段（一次 JSON 解析） */
+    private record PublishedSnapshot(String dsl, String name, String cron) {}
+
     /** 调度运行时只读已发布快照；MANUAL 也走快照，保证与线上一致。 */
-    private String resolvePublishedDsl(FlowTaskDO task) {
-        return resolvePublishedText(task, "dslContent");
-    }
-
-    /** 线上触发器用的 Cron，取自发布快照（非草稿 cron 字段）。 */
-    private String resolvePublishedCron(FlowTaskDO task) {
-        String cron = resolvePublishedText(task, "cron");
-        // 兼容极旧快照缺 cron：降级草稿字段，避免已发布任务无法注册
-        if (StrUtil.isBlank(cron)) {
-            return task.getCron();
-        }
-        return cron;
-    }
-
-    private String resolvePublishedName(FlowTaskDO task) {
-        String name = resolvePublishedText(task, "name");
-        return StrUtil.isNotBlank(name) ? name : task.getName();
-    }
-
-    private String resolvePublishedText(FlowTaskDO task, String field) {
+    private PublishedSnapshot resolvePublishedSnapshot(FlowTaskDO task) {
         if (task.getPublishStatus() == null || task.getPublishStatus() != 1
                 || StrUtil.isBlank(task.getPublishedSnapshot())) {
-            return null;
+            return new PublishedSnapshot(null, task.getName(), task.getCron());
         }
         try {
             JsonNode snap = objectMapper.readTree(task.getPublishedSnapshot());
-            JsonNode node = snap.get(field);
-            return node != null && !node.isNull() ? node.asText() : null;
+            String dsl = textOrNull(snap, "dslContent");
+            String name = textOrNull(snap, "name");
+            String cron = textOrNull(snap, "cron");
+            if (StrUtil.isBlank(name)) {
+                name = task.getName();
+            }
+            // 兼容极旧快照缺 cron：降级草稿字段，避免已发布任务无法注册
+            if (StrUtil.isBlank(cron)) {
+                cron = task.getCron();
+            }
+            return new PublishedSnapshot(dsl, name, cron);
         } catch (Exception e) {
-            log.warn("[FlowTaskScheduler] 解析 publishedSnapshot.{} 失败: taskId={}", field, task.getId(), e);
-            return null;
+            log.warn("[FlowTaskScheduler] 解析 publishedSnapshot 失败: taskId={}", task.getId(), e);
+            return new PublishedSnapshot(null, task.getName(), task.getCron());
         }
+    }
+
+    private static String textOrNull(JsonNode snap, String field) {
+        JsonNode node = snap.get(field);
+        return node != null && !node.isNull() ? node.asText() : null;
     }
 }

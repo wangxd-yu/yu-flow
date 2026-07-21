@@ -50,4 +50,35 @@ public class JwtTokenUtil {
         info.put("username", username);
         return JWTUtil.createToken(info, secretKey.getBytes(StandardCharsets.UTF_8));
     }
+
+    /** 从 JWT 解析 username（不校验签名；调用方应先 validateToken） */
+    public static String getUsername(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        try {
+            Object username = JWTUtil.parseToken(token).getPayload("username");
+            return username != null ? username.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 从当前请求解析登录用户名；无请求 / 无 Token / 解析失败时返回 null。
+     */
+    public static String currentUsername() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attrs =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                            org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attrs == null) {
+                return null;
+            }
+            String token = resolveToken(attrs.getRequest());
+            return getUsername(token);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }

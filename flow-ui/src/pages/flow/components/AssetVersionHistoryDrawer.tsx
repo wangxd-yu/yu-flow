@@ -108,6 +108,13 @@ const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
       width: 170,
     },
     {
+      title: '发布人',
+      dataIndex: 'publisher',
+      width: 100,
+      ellipsis: true,
+      render: (t) => t || '-',
+    },
+    {
       title: '备注',
       dataIndex: 'remark',
       ellipsis: true,
@@ -142,7 +149,7 @@ const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
   return (
     <Drawer
       title={title ? `历史版本 · ${title}` : '历史版本'}
-      width={720}
+      width={800}
       open={open}
       onClose={onClose}
       destroyOnClose

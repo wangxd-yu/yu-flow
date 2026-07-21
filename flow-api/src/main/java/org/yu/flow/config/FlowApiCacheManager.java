@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
+import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -175,8 +176,9 @@ public class FlowApiCacheManager {
             int patternCount = 0;
 
             for (FlowApiDO api : publishedApis) {
-                String originalUrl = api.getUrl();
-                String method = api.getMethod();
+                // 路由键取发布快照，避免草稿改 URL 污染线上匹配
+                String originalUrl = PublishedApiSnapshot.resolveUrl(api);
+                String method = PublishedApiSnapshot.resolveMethod(api);
 
                 if (originalUrl == null || method == null) {
                     log.warn("[FlowApiCacheManager] 跳过无效 API 记录：id={}, url={}, method={}",
@@ -189,7 +191,9 @@ public class FlowApiCacheManager {
                 if (!url.startsWith("/")) {
                     url = "/" + url;
                 }
-                api.setUrl(url); // 规范化内存中的定义
+                // 内存路由对象使用发布 URL/Method，与网关匹配一致
+                api.setUrl(url);
+                api.setMethod(method.toUpperCase());
 
                 // 构建缓存 Key：METHOD-/path（与 FlowApiInterceptor 中的格式一致）
                 String cacheKey = method.toUpperCase() + "-" + url;

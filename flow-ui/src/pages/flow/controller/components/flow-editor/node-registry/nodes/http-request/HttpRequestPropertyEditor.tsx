@@ -185,7 +185,7 @@ export function HttpRequestPropertyEditor({ data, onChange }: PropertyEditorProp
                     control={
                         <Switch
                             size="small"
-                            checked={data.logEnabled !== false}
+                            checked={!!data.logEnabled}
                             onChange={(checked) => onChange({ logEnabled: checked })}
                         />
                     }

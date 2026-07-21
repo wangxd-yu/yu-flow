@@ -69,6 +69,8 @@ export type FlowEditorDebugAdapters = {
         headers: Record<string, string>;
         queryParams: Record<string, string>;
         body: string;
+        /** 有值时后端按契约校验（接口调试） */
+        contract?: string;
     }) => Promise<any>;
     /** 不提供则隐藏步进「调试」按钮 */
     onDebugStart?: (payload: {
@@ -78,7 +80,10 @@ export type FlowEditorDebugAdapters = {
         body: string;
         breakpoints: string[];
     }) => Promise<{ sessionId: string }>;
-    onDebugStatus?: (sessionId: string) => Promise<any>;
+    onDebugStatus?: (
+        sessionId: string,
+        opts?: { stepOffset?: number; stepLimit?: number },
+    ) => Promise<any>;
     onDebugResume?: (sessionId: string, inputs?: any) => Promise<void>;
     onDebugCancel?: (sessionId: string) => Promise<void>;
 };
@@ -113,6 +118,12 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
     triggerMode?: 'http' | 'service';
     /** 预填触发器 Body / 服务入参 JSON */
     defaultTriggerBody?: string;
+    /** 预填 Headers（契约样例） */
+    defaultTriggerHeaders?: Record<string, string>;
+    /** 预填 Query（可含 Path 样例合并） */
+    defaultTriggerQueryParams?: Record<string, string>;
+    /** 完整契约 JSON：调试可选「按契约校验」时提交给后端 */
+    contractJson?: string;
     /** 工具条左侧插槽（如引擎模式切换），与设计/代码同一行 */
     toolbarLeadingExtra?: React.ReactNode;
     /**
@@ -147,6 +158,9 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         editorContext: editorContextProp,
         triggerMode = 'http',
         defaultTriggerBody,
+        defaultTriggerHeaders,
+        defaultTriggerQueryParams,
+        contractJson,
         toolbarLeadingExtra,
         debugAdapters,
     } = props;
@@ -1508,6 +1522,9 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 apiMethod={apiMethod}
                                 triggerMode={triggerMode}
                                 defaultTriggerBody={defaultTriggerBody}
+                                defaultTriggerHeaders={defaultTriggerHeaders}
+                                defaultTriggerQueryParams={defaultTriggerQueryParams}
+                                contractJson={contractJson}
                                 onZoomIn={() => graphRef.current?.zoom(0.1)}
                                 onZoomOut={() => graphRef.current?.zoom(-0.1)}
                                 onFitView={() => graphRef.current?.centerContent()}
@@ -1565,8 +1582,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 onDebugStatus={
                                     debugAdapters
                                         ? debugAdapters.onDebugStatus
-                                        : async (sessionId) => {
-                                            const res = await getDebugSessionStatus(sessionId);
+                                        : async (sessionId, opts) => {
+                                            const res = await getDebugSessionStatus(sessionId, opts);
                                             return res?.data || res;
                                         }
                                 }

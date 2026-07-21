@@ -18,7 +18,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   Button, Tooltip, Badge, Tag, Tabs, Empty, Spin,
-  Input, Select, Collapse, Space, Typography,
+  Input, Select, Collapse, Space, Typography, Switch,
 } from 'antd';
 import {
   CaretRightOutlined, UndoOutlined, RedoOutlined,
@@ -31,6 +31,7 @@ import {
 } from '@ant-design/icons';
 import './FlowDebugger.less';
 import CodeEditor from '../flow-editor/components/CodeEditor';
+import { recordToKvEntries } from './apiTriggerPrefill';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -93,6 +94,14 @@ export interface FlowDebuggerProps {
   triggerMode?: FlowDebuggerTriggerMode;
   /** 预填触发器 Body / 服务入参 JSON（契约样例等） */
   defaultTriggerBody?: string;
+  /** 预填 Headers（契约样例） */
+  defaultTriggerHeaders?: Record<string, string>;
+  /** 预填 Query（可含 Path 样例合并） */
+  defaultTriggerQueryParams?: Record<string, string>;
+  /**
+   * 可选：按契约校验。传入完整 contract JSON 时，运行会一并提交给后端校验。
+   */
+  contractJson?: string;
   /** 画布操作回调 */
   onZoomIn?: () => void;
   onZoomOut?: () => void;
@@ -107,6 +116,8 @@ export interface FlowDebuggerProps {
     headers: Record<string, string>;
     queryParams: Record<string, string>;
     body: string;
+    /** 有值时后端按契约校验 */
+    contract?: string;
   }) => Promise<FlowTrace>;
   /** 控制台打开/关闭回调，供父容器感知高度变化 */
   onConsoleOpenChange?: (open: boolean) => void;
@@ -124,7 +135,10 @@ export interface FlowDebuggerProps {
     body: string;
     breakpoints: string[];
   }) => Promise<{ sessionId: string }>;
-  onDebugStatus?: (sessionId: string) => Promise<any>;
+  onDebugStatus?: (
+    sessionId: string,
+    opts?: { stepOffset?: number; stepLimit?: number },
+  ) => Promise<any>;
   onDebugResume?: (sessionId: string, inputs?: any) => Promise<void>;
   onDebugCancel?: (sessionId: string) => Promise<void>;
   breakpoints?: string[];
@@ -324,6 +338,9 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   apiMethod = 'GET',
   triggerMode = 'http',
   defaultTriggerBody,
+  defaultTriggerHeaders,
+  defaultTriggerQueryParams,
+  contractJson,
   onZoomIn,
   onZoomOut,
   onFitView,
@@ -390,11 +407,16 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   }, [executionLogs, onSelectedLogChange]);
 
   // ─── Trigger Panel 的输入状态 ──────────────────────────────────────
-  const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>([createEmptyKV()]);
-  const [triggerParams, setTriggerParams] = useState<KVEntry[]>([createEmptyKV()]);
+  const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>(() =>
+    recordToKvEntries(defaultTriggerHeaders, uid),
+  );
+  const [triggerParams, setTriggerParams] = useState<KVEntry[]>(() =>
+    recordToKvEntries(defaultTriggerQueryParams, uid),
+  );
   const [triggerBody, setTriggerBody] = useState<string>(
     defaultTriggerBody && defaultTriggerBody.trim() ? defaultTriggerBody : '{\n  \n}',
   );
+  const [validateAgainstContract, setValidateAgainstContract] = useState(true);
   const [triggerActiveTab, setTriggerActiveTab] = useState<string>(
     isServiceMode
       ? 'input'
@@ -411,12 +433,22 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
     }
   }, [isServiceMode, isGetMethod, triggerActiveTab]);
 
-  // 契约样例变更时同步预填（服务模式 / HTTP Body）
+  // 契约样例变更时同步预填
   useEffect(() => {
     if (defaultTriggerBody == null) return;
     const next = defaultTriggerBody.trim() ? defaultTriggerBody : '{\n  \n}';
     setTriggerBody(next);
   }, [defaultTriggerBody]);
+
+  useEffect(() => {
+    if (defaultTriggerHeaders == null) return;
+    setTriggerHeaders(recordToKvEntries(defaultTriggerHeaders, uid));
+  }, [defaultTriggerHeaders]);
+
+  useEffect(() => {
+    if (defaultTriggerQueryParams == null) return;
+    setTriggerParams(recordToKvEntries(defaultTriggerQueryParams, uid));
+  }, [defaultTriggerQueryParams]);
 
   // ─── Console 的 Inspector Tab ──────────────────────────────────────
   const [inspectorTab, setInspectorTab] = useState<string>('input');
@@ -493,12 +525,27 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       if (res && res.status) {
         const currentStatus = res.status.toLowerCase();
         setDebugStatus(currentStatus);
-        
+
         if (res.trace && res.trace.stepLogs) {
-          updateLogs(res.trace.stepLogs);
+          let logs: ExecutionLog[] = [...(res.trace.stepLogs || [])];
+          // 完成后若还有更多页，按页追加拉取（默认每页 100）
+          if (
+            (currentStatus === 'completed' || currentStatus === 'finished' || currentStatus === 'error') &&
+            res.stepLogHasMore
+          ) {
+            let offset = (res.stepLogOffset ?? 0) + (res.stepLogLimit ?? logs.length);
+            const pageSize = res.stepLogLimit ?? 100;
+            for (let i = 0; i < 20 && offset < (res.stepLogTotal ?? offset + 1); i++) {
+              const more = await onDebugStatus(debugSessionId, { stepOffset: offset, stepLimit: pageSize });
+              const chunk = more?.trace?.stepLogs || [];
+              if (!chunk.length) break;
+              logs = logs.concat(chunk);
+              if (!more?.stepLogHasMore) break;
+              offset += pageSize;
+            }
+          }
+          updateLogs(logs);
         } else if (currentStatus === 'suspended' && res.suspendedNodeId) {
-          // 在挂起状态下，后端不返回完整 trace，只返回当前快照。
-          // 我们伪造一条日志记录，以便在左侧列表中显示当前挂起的节点，并在右侧查看其上下文变量。
           updateLogs([{
             id: res.suspendedNodeId,
             nodeId: res.suspendedNodeId,
@@ -507,7 +554,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             status: 'running',
             startTime: new Date().toLocaleTimeString(),
             duration: 0,
-            inputs: res.variables || {}, // 将上下文变量展示在 "输入" 面板中
+            inputs: res.variables || {},
             outputs: {},
             error: null,
           }]);
@@ -561,12 +608,15 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       headers: isServiceMode ? {} : kvToRecord(triggerHeaders),
       queryParams: isServiceMode ? {} : kvToRecord(triggerParams),
       body: isServiceMode || !isGetMethod ? triggerBody : '',
+      contract: (!isServiceMode && validateAgainstContract && contractJson)
+        ? contractJson
+        : undefined,
     };
 
     try {
       let logs: ExecutionLog[] = [];
       let trace: FlowTrace | null = null;
-      
+
       if (onRun) {
         trace = await onRun(payload);
         logs = trace.stepLogs || [];
@@ -643,7 +693,11 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       }]);
       updateSelectedLog('err_global');
     }
-  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, isServiceMode, onRun, kvToRecord, onConsoleOpenChange, updateLogs, updateSelectedLog]);
+  }, [
+    dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, isServiceMode,
+    validateAgainstContract, contractJson, onRun, kvToRecord, onConsoleOpenChange,
+    updateLogs, updateSelectedLog,
+  ]);
 
   /** 切换 Trigger Panel */
   const toggleTriggerPanel = useCallback(() => {
@@ -1002,6 +1056,22 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
               }] : []),
             ]}
           />
+          )}
+
+          {!isServiceMode && !!contractJson && (
+            <div className="pfd-trigger-option">
+              <div className="pfd-trigger-option-row">
+                <span>按契约校验</span>
+                <Switch
+                  size="small"
+                  checked={validateAgainstContract}
+                  onChange={setValidateAgainstContract}
+                />
+              </div>
+              <Text className="pfd-trigger-option-desc">
+                开启后，运行前按当前草稿契约校验 Headers / Query / Path / Body（与网关一致）；关闭则仅执行流程。
+              </Text>
+            </div>
           )}
 
           {/* 与底部悬浮「运行」同一逻辑 */}

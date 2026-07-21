@@ -10,6 +10,9 @@ public interface FlowServiceLogService {
 
     FlowServiceLogDO save(FlowServiceLogDO log);
 
+    /** 异步落库（对齐第三方日志，不阻塞请求线程） */
+    void saveAsync(FlowServiceLogDO log);
+
     Page<FlowServiceLogListDTO> pageList(FlowServiceLogQueryDTO queryDTO);
 
     FlowServiceLogDTO getById(String id);

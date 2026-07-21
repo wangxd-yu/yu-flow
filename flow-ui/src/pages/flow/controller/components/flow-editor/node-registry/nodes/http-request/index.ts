@@ -96,7 +96,7 @@ export const httpRequestNodeRegistration: NodeRegistration = {
             retryIntervalMs: 1000,
             bodyType: 'json',
             successCondition: 'status == 200',
-            logEnabled: true,
+            logEnabled: false,
             apiType: '',
             ignoreSsl: true,
             authType: 'none',

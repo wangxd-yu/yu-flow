@@ -94,7 +94,47 @@ public class FlowRedisUtil {
         }
     }
 
+    /**
+     * 锁心跳续期：仅当 value 仍匹配时刷新 TTL（Lua 原子），防止长任务执行期间锁提前过期。
+     *
+     * <p>TTL 参数以明文毫秒写入 ARGV（不经 Jackson），避免 JSON 序列化导致 tonumber 失败。</p>
+     *
+     * @return true=续期成功；false=锁已丢失或不属于本持有者
+     */
+    public static boolean renewLock(String key, Object expectedValue, long time, TimeUnit unit) {
+        try {
+            long ttlMs = unit.toMillis(time);
+            Long result = redisUtil.redisTemplate.execute(
+                    (org.springframework.data.redis.core.RedisCallback<Long>) connection -> {
+                        byte[] rawKey = redisUtil.redisTemplate.getStringSerializer().serialize(key);
+                        @SuppressWarnings("unchecked")
+                        org.springframework.data.redis.serializer.RedisSerializer<Object> valueSer =
+                                (org.springframework.data.redis.serializer.RedisSerializer<Object>)
+                                        redisUtil.redisTemplate.getValueSerializer();
+                        byte[] rawVal = valueSer.serialize(expectedValue);
+                        byte[] rawTtl = String.valueOf(ttlMs).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        if (rawKey == null || rawVal == null) {
+                            return 0L;
+                        }
+                        Object evalResult = connection.scriptingCommands().eval(
+                                RENEW_SCRIPT_BYTES,
+                                org.springframework.data.redis.connection.ReturnType.INTEGER,
+                                1,
+                                rawKey, rawVal, rawTtl);
+                        return evalResult instanceof Number ? ((Number) evalResult).longValue() : 0L;
+                    });
+            return result != null && result > 0;
+        } catch (Exception e) {
+            log.error("[FlowRedisUtil] renewLock 失败: key={}, ttl={} {}", key, time, unit, e);
+            return false;
+        }
+    }
+
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>();
+    private static final byte[] RENEW_SCRIPT_BYTES =
+            ("if redis.call('get', KEYS[1]) == ARGV[1] then "
+                    + "return redis.call('pexpire', KEYS[1], tonumber(ARGV[2])) else return 0 end")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
     static {
         UNLOCK_SCRIPT.setResultType(Long.class);

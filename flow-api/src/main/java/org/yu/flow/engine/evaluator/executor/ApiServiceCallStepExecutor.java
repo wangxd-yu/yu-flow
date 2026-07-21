@@ -28,6 +28,43 @@ public class ApiServiceCallStepExecutor extends AbstractStepExecutor<ApiServiceC
 
     private static final String PAYLOAD_KEY = "payload";
 
+    private FlowServiceFlowExecutionService serviceFlowExecutionService;
+    private FlowApiCrudService flowApiCrudService;
+    private FlowApiExecutionService flowApiExecutionService;
+
+    public void setServiceFlowExecutionService(FlowServiceFlowExecutionService serviceFlowExecutionService) {
+        this.serviceFlowExecutionService = serviceFlowExecutionService;
+    }
+
+    public void setFlowApiCrudService(FlowApiCrudService flowApiCrudService) {
+        this.flowApiCrudService = flowApiCrudService;
+    }
+
+    public void setFlowApiExecutionService(FlowApiExecutionService flowApiExecutionService) {
+        this.flowApiExecutionService = flowApiExecutionService;
+    }
+
+    private FlowServiceFlowExecutionService serviceExec() {
+        if (serviceFlowExecutionService != null) {
+            return serviceFlowExecutionService;
+        }
+        return SpringUtil.getBean(FlowServiceFlowExecutionService.class);
+    }
+
+    private FlowApiCrudService apiCrud() {
+        if (flowApiCrudService != null) {
+            return flowApiCrudService;
+        }
+        return SpringUtil.getBean(FlowApiCrudService.class);
+    }
+
+    private FlowApiExecutionService apiExec() {
+        if (flowApiExecutionService != null) {
+            return flowApiExecutionService;
+        }
+        return SpringUtil.getBean(FlowApiExecutionService.class);
+    }
+
     @Override
     public String execute(ApiServiceCallStep step, ExecutionContext context, FlowDefinition flow) {
         if (step.getServiceId() == null || step.getServiceId().isBlank()) {
@@ -41,8 +78,7 @@ public class ApiServiceCallStepExecutor extends AbstractStepExecutor<ApiServiceC
         try {
             Object ret;
             if (callService) {
-                FlowServiceFlowExecutionService svcExec =
-                        SpringUtil.getBean(FlowServiceFlowExecutionService.class);
+                FlowServiceFlowExecutionService svcExec = serviceExec();
                 Map<String, Object> prepared = prepareInputs(step, context, flow);
                 Map<String, Object> input = new LinkedHashMap<>();
                 for (Map.Entry<String, Object> e : prepared.entrySet()) {
@@ -64,8 +100,8 @@ public class ApiServiceCallStepExecutor extends AbstractStepExecutor<ApiServiceC
                 }
                 ret = svcExec.executeById(step.getServiceId(), input, "CALL", true);
             } else {
-                FlowApiCrudService crudService = SpringUtil.getBean(FlowApiCrudService.class);
-                FlowApiExecutionService executionService = SpringUtil.getBean(FlowApiExecutionService.class);
+                FlowApiCrudService crudService = apiCrud();
+                FlowApiExecutionService executionService = apiExec();
                 FlowApiDO api = crudService.findById(step.getServiceId());
                 if (api == null) {
                     throw new FlowException("API_NOT_FOUND",

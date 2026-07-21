@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.yu.flow.log.service.domain.FlowServiceLogDO;
@@ -48,6 +49,17 @@ public class FlowServiceLogServiceImpl implements FlowServiceLogService {
             log.error("[ServiceLog] 日志入库失败, serviceId={}, status={}, error={}",
                     logDO.getServiceId(), logDO.getStatus(), e.getMessage(), e);
             return logDO;
+        }
+    }
+
+    @Async("flowAsyncExecutor")
+    @Override
+    public void saveAsync(FlowServiceLogDO logDO) {
+        try {
+            flowServiceLogRepository.save(logDO);
+        } catch (Exception e) {
+            log.error("[ServiceLog] 异步入库失败, serviceId={}, status={}, error={}",
+                    logDO.getServiceId(), logDO.getStatus(), e.getMessage(), e);
         }
     }
 

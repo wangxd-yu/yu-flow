@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import CodeEditor from '../flow-editor/components/CodeEditor';
 import type { ExecutionLog, FlowTrace, RunStatus } from './FlowDebugger';
+import { recordToKvEntries } from './apiTriggerPrefill';
 import './FlowDebugger.less';
 
 const { Text } = Typography;
@@ -33,6 +34,14 @@ export interface DbDebuggerProps {
   responseType?: string;
   apiUrl?: string;
   apiMethod?: string;
+  /** 预填 Headers（契约样例） */
+  defaultTriggerHeaders?: Record<string, string>;
+  /** 预填 Query（可含 Path 样例合并） */
+  defaultTriggerQueryParams?: Record<string, string>;
+  /** 预填 Body JSON */
+  defaultTriggerBody?: string;
+  /** 完整契约 JSON：开启「按契约校验」时提交给后端 */
+  contractJson?: string;
   onRun?: (payload: {
     sqlContent: string;
     datasource?: string;
@@ -41,6 +50,7 @@ export interface DbDebuggerProps {
     queryParams: Record<string, string>;
     body: string;
     rollbackTransaction: boolean;
+    contract?: string;
   }) => Promise<FlowTrace>;
 }
 
@@ -158,6 +168,10 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
   responseType,
   apiUrl = '',
   apiMethod = 'GET',
+  defaultTriggerHeaders,
+  defaultTriggerQueryParams,
+  defaultTriggerBody,
+  contractJson,
   onRun,
 }) => {
   const [isTriggerPanelOpen, setIsTriggerPanelOpen] = useState(false);
@@ -168,19 +182,22 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [inspectorTab, setInspectorTab] = useState('output');
   const [triggerActiveTab, setTriggerActiveTab] = useState('params');
-  const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>([createEmptyKV()]);
+  const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>(() =>
+    recordToKvEntries(defaultTriggerHeaders, uid),
+  );
   const [triggerParams, setTriggerParams] = useState<KVEntry[]>(() => {
+    const base: Record<string, string> = { ...(defaultTriggerQueryParams || {}) };
     if (responseType === 'PAGE') {
-      return [
-        { key: 'page', value: '0', enabled: true, id: uid() },
-        { key: 'size', value: '10', enabled: true, id: uid() },
-        createEmptyKV(),
-      ];
+      if (base.page == null) base.page = '0';
+      if (base.size == null) base.size = '10';
     }
-    return [createEmptyKV()];
+    return recordToKvEntries(base, uid);
   });
-  const [triggerBody, setTriggerBody] = useState('{\n  \n}');
+  const [triggerBody, setTriggerBody] = useState(
+    defaultTriggerBody && defaultTriggerBody.trim() ? defaultTriggerBody : '{\n  \n}',
+  );
   const [rollbackTransaction, setRollbackTransaction] = useState(true);
+  const [validateAgainstContract, setValidateAgainstContract] = useState(true);
   const [consoleHeight] = useState(300);
 
   const isGetMethod = (apiMethod || 'GET').toUpperCase() === 'GET';
@@ -190,6 +207,26 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
       setTriggerActiveTab('params');
     }
   }, [isGetMethod, triggerActiveTab]);
+
+  useEffect(() => {
+    if (defaultTriggerHeaders == null) return;
+    setTriggerHeaders(recordToKvEntries(defaultTriggerHeaders, uid));
+  }, [defaultTriggerHeaders]);
+
+  useEffect(() => {
+    if (defaultTriggerQueryParams == null && responseType !== 'PAGE') return;
+    const base: Record<string, string> = { ...(defaultTriggerQueryParams || {}) };
+    if (responseType === 'PAGE') {
+      if (base.page == null) base.page = '0';
+      if (base.size == null) base.size = '10';
+    }
+    setTriggerParams(recordToKvEntries(base, uid));
+  }, [defaultTriggerQueryParams, responseType]);
+
+  useEffect(() => {
+    if (defaultTriggerBody == null) return;
+    setTriggerBody(defaultTriggerBody.trim() ? defaultTriggerBody : '{\n  \n}');
+  }, [defaultTriggerBody]);
 
   const kvToRecord = useCallback((entries: KVEntry[]): Record<string, string> => {
     const result: Record<string, string> = {};
@@ -239,6 +276,7 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
       queryParams: kvToRecord(triggerParams),
       body: isGetMethod ? '' : triggerBody,
       rollbackTransaction,
+      contract: (validateAgainstContract && contractJson) ? contractJson : undefined,
     };
 
     try {
@@ -277,6 +315,7 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
     }
   }, [
     sqlContent, datasource, responseType, isGetMethod, rollbackTransaction,
+    validateAgainstContract, contractJson,
     triggerHeaders, triggerParams, triggerBody, onRun, kvToRecord,
   ]);
 
@@ -447,6 +486,22 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
               关闭后按正式接口逻辑提交，请谨慎使用。
             </Text>
           </div>
+
+          {!!contractJson && (
+            <div className="pfd-trigger-option">
+              <div className="pfd-trigger-option-row">
+                <span>按契约校验</span>
+                <Switch
+                  size="small"
+                  checked={validateAgainstContract}
+                  onChange={setValidateAgainstContract}
+                />
+              </div>
+              <Text className="pfd-trigger-option-desc">
+                开启后，运行前按当前草稿契约校验 Headers / Query / Path / Body（与网关一致）。
+              </Text>
+            </div>
+          )}
 
           <div className="pfd-trigger-footer">
             <Button

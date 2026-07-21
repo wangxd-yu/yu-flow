@@ -1,4 +1,7 @@
 import { request } from '@umijs/max';
+import type { AssetVersionItem } from '../../components/AssetVersionHistoryDrawer';
+
+export type { AssetVersionItem };
 
 export interface FlowServiceFlow {
   id: string;
@@ -107,16 +110,6 @@ export async function republishServiceFlow(id: string) {
 
 export async function rollbackServiceFlow(id: string) {
   return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/rollback`, { method: 'PUT' });
-}
-
-export interface AssetVersionItem {
-  id: string;
-  versionNo: number;
-  source?: string;
-  remark?: string;
-  publisher?: string;
-  publishTime?: string;
-  current?: boolean;
 }
 
 export async function listServiceFlowVersions(id: string) {

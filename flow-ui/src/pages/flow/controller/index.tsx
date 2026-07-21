@@ -33,6 +33,7 @@ import ApiConfigForm from './components/ControllerForm';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import CodeEditor from './components/flow-editor/components/CodeEditor';
+import { buildApiCurl, copyText } from './utils/apiDocsActions';
 
 /** 超过该字符数关闭自动换行，减轻大 JSON 渲染压力 */
 const CACHE_VIEW_WORDWRAP_LIMIT = 200_000;
@@ -388,7 +389,7 @@ const AutoApiConfigList: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 360,
+      width: 460,
       render: (_, record) => (
         <>
           <a onClick={() => handleEdit(record)}>编辑</a>
@@ -422,6 +423,19 @@ const AutoApiConfigList: React.FC = () => {
               发布
             </a>
           )}
+          <Divider type="vertical" />
+          <a
+            onClick={async () => {
+              const curl = buildApiCurl(record.method, record.url);
+              const ok = await copyText(curl);
+              if (ok) message.success('cURL 已复制');
+              else message.error('复制失败');
+            }}
+          >
+            复制 cURL
+          </a>
+          <Divider type="vertical" />
+          <a onClick={() => history.push('/api-docs')}>文档</a>
           <Divider type="vertical" />
           <a onClick={() => history.push(`/log/execution?apiId=${record.id}`)}>
             查看日志

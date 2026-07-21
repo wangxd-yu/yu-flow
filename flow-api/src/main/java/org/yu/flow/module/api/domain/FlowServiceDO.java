@@ -6,9 +6,11 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * @author yu-flow
- * @date 2025-05-08 18:35
+ * @deprecated 遗留 {@code flow_service} 表实体；现代服务资产请使用
+ * {@link org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO}（{@code flow_service_info}）。
+ * Hutool CRUD 已从 {@code FlowApiCrudService} 移除，本类仅保留兼容引用。
  */
+@Deprecated
 @Data
 @NoArgsConstructor
 public class FlowServiceDO{

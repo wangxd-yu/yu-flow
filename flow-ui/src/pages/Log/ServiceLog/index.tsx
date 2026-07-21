@@ -51,7 +51,7 @@ const ServiceLogPage: React.FC = () => {
         return;
       }
 
-      const trace: FlowTrace & { dslSnapshot?: string } = JSON.parse(log.traceData);
+      const trace: FlowTrace & { dslSnapshot?: string; dslContentHash?: string } = JSON.parse(log.traceData);
       let dslContent = trace.dslSnapshot || '';
       if (!dslContent && log.serviceId) {
         try {

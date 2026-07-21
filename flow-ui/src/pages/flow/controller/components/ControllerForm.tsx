@@ -16,15 +16,16 @@ import {
   Space, Tag, Dropdown, Tooltip, Popover
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined } from '@ant-design/icons';
+import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined, FileTextOutlined, CodeOutlined } from '@ant-design/icons';
 import { merge } from 'lodash';
 import { PageContainer } from '@ant-design/pro-components';
-import { request } from '@umijs/max';
+import { history, request } from '@umijs/max';
 import {
   addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi,
   listApiVersions, restoreApiVersion, queryAutoApiConfigDetail,
 } from '../services/flowController';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
+import { buildApiCurl, copyText } from '../utils/apiDocsActions';
 
 // ── Panel 子组件 ──
 import ImplementationPanel from './panels/ImplementationPanel';
@@ -33,6 +34,7 @@ import ResSchemaPanel from './panels/ResSchemaPanel';
 import BasicInfoPanel from './panels/BasicInfoPanel';
 import type { EngineMode } from './panels/ImplementationPanel';
 import type { SchemaNode, BodyType } from './ApiContractDesigner/types';
+import { buildApiTriggerPrefillFromContract } from './debugger/apiTriggerPrefill';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -230,10 +232,14 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       try {
         const res = await request<any>('/flow-api/api/check-exact', {
           method: 'GET',
-          params: { method, url },
+          params: {
+            method,
+            url,
+            excludeId: isEdit ? values?.id : undefined,
+          },
         });
         if (res?.data === true || res === true) {
-          setUrlConflictMsg('接口路径已存在/冲突');
+          setUrlConflictMsg('与已发布接口路径冲突');
         } else {
           setUrlConflictMsg(null);
         }
@@ -243,7 +249,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [method, url, isEdit, processedValues]);
+  }, [method, url, isEdit, processedValues, values?.id]);
 
   // ─── 从 URL 自动提取 Path 参数 ─────────────────────────────
   useEffect(() => {
@@ -317,6 +323,29 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   // ─── DB 模式相关 ──────────────────────────────────────────────────
   const [dbDatasource, setDbDatasource] = useState<string | undefined>(undefined);
   const [responseType, setResponseType] = useState<string | undefined>(undefined);
+
+  /** 契约 → 调试触发器预填 + 完整契约 JSON（可选校验） */
+  const triggerPrefill = useMemo(
+    () => buildApiTriggerPrefillFromContract({
+      query: queryParams,
+      pathParams,
+      headers,
+      body: bodyNodes,
+      bodyType,
+      rawBody,
+    }),
+    [queryParams, pathParams, headers, bodyNodes, bodyType, rawBody],
+  );
+
+  const draftContractJson = useMemo(
+    () => JSON.stringify({
+      request: { query: queryParams, pathParams, headers, body: bodyNodes, bodyType, rawBody },
+      responses: {
+        '200': { body: responseBody, description: responseDesc, statusCode },
+      },
+    }),
+    [queryParams, pathParams, headers, bodyNodes, bodyType, rawBody, responseBody, responseDesc, statusCode],
+  );
 
   // ═══════════════════════════════════════════════════════════════════
   //  初始化：Drawer 打开时还原数据
@@ -567,12 +596,21 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           </Select.Option>
         ))}
       </Select>
-      <Popover content={urlConflictMsg} open={!!urlConflictMsg} placement="bottomLeft" overlayInnerStyle={{ color: '#ff4d4f' }}>
+      <Popover
+        content={
+          urlConflictMsg ||
+          (publishStatus === 1
+            ? '可修改草稿路径；重新发布后线上路由才会切换'
+            : undefined)
+        }
+        open={!!urlConflictMsg}
+        placement="bottomLeft"
+        overlayInnerStyle={urlConflictMsg ? { color: '#ff4d4f' } : undefined}
+      >
         <ApiPathInput
           size={headerCtrlSize}
           value={url}
           onChange={setUrl}
-          disabled={publishStatus === 1}
           status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
         />
       </Popover>
@@ -612,6 +650,31 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           onClick={() => setHistoryOpen(true)}
         />
       )}
+
+      <Tooltip title="打开 OpenAPI 文档页">
+        <Button
+          size={headerCtrlSize}
+          icon={<FileTextOutlined />}
+          onClick={() => history.push('/api-docs')}
+        >
+          文档
+        </Button>
+      </Tooltip>
+
+      <Tooltip title="复制当前 Method + URL 的 cURL 模板">
+        <Button
+          size={headerCtrlSize}
+          icon={<CodeOutlined />}
+          onClick={async () => {
+            const curl = buildApiCurl(method, url);
+            const ok = await copyText(curl);
+            if (ok) message.success('cURL 已复制');
+            else message.error('复制失败');
+          }}
+        >
+          cURL
+        </Button>
+      </Tooltip>
 
       {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
@@ -712,6 +775,10 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               apiMethod={method}
               apiId={values?.id}
               apiName={name}
+              defaultTriggerHeaders={triggerPrefill.headers}
+              defaultTriggerQueryParams={triggerPrefill.queryParams}
+              defaultTriggerBody={triggerPrefill.body}
+              contractJson={draftContractJson}
             />
           </div>
         );

@@ -220,7 +220,7 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
     }
 
     private boolean isLogEnabled(HttpRequestStep step) {
-        return step.getLogEnabled() == null || Boolean.TRUE.equals(step.getLogEnabled());
+        return Boolean.TRUE.equals(step.getLogEnabled());
     }
 
     private String resolveApiType(HttpRequestStep step) {

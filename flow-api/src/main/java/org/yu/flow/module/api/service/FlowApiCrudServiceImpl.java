@@ -3,27 +3,24 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.yu.flow.config.DemoModeGuard;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.db.Db;
-import cn.hutool.db.Entity;
 import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.config.FlowApiCacheManager;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
-import org.yu.flow.module.api.domain.FlowServiceDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
+import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
+import org.yu.flow.module.assetref.FlowReferenceIndex;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
-import org.yu.flow.util.BeanMergeUtil;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -35,7 +32,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
-import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -47,9 +43,6 @@ import java.util.stream.Collectors;
  */
 @Service
 public class FlowApiCrudServiceImpl implements FlowApiCrudService {
-
-    @Resource
-    private DataSource dataSource;
 
     @Resource
     private FlowApiReferenceChecker flowApiReferenceChecker;
@@ -75,6 +68,13 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Resource
     private FlowAssetVersionService flowAssetVersionService;
 
+    @Resource
+    private FlowReferenceIndex flowReferenceIndex;
+
+    private void notifyRefIndex() {
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+    }
+
     // ============================= FlowApiDO CRUD =============================
 
     @Override
@@ -92,6 +92,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (flowApiDO.getPublishStatus() != null && flowApiDO.getPublishStatus().equals(1)) {
             flowApiCacheManager.publishRefreshEvent();
         }
+        notifyRefIndex();
         return flowApiDO;
     }
 
@@ -106,6 +107,10 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         boolean needRefreshCache = false;
 
         for (FlowApiDO api : flowApiDOList) {
+            if (StrUtil.isNotBlank(api.getId())) {
+                demoModeGuard.checkModifyOrDelete(api.getId(), "API 接口");
+            }
+            demoModeGuard.checkApiResponseType(api.getResponseType());
             if (api.getLogEnabled() == null) {
                 api.setLogEnabled(true);
             }
@@ -123,7 +128,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (needRefreshCache) {
             flowApiCacheManager.publishRefreshEvent();
         }
-
+        notifyRefIndex();
         return savedList;
     }
 
@@ -170,6 +175,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (cacheConfigChanged && (cacheWasEnabled || cacheNowEnabled)) {
             apiResponseCacheService.evictAll(flowApiDO.getId());
         }
+        notifyRefIndex();
         return flowApiDO;
     }
 
@@ -181,6 +187,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         flowApiRepository.deleteById(id);
         apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
+        notifyRefIndex();
     }
 
     @Override
@@ -193,6 +200,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             flowApiRepository.logicDeleteByIds(ids);
             ids.forEach(apiResponseCacheService::evictAll);
             flowApiCacheManager.publishRefreshEvent();
+            notifyRefIndex();
         }
     }
 
@@ -369,8 +377,37 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     }
 
     @Override
-    public boolean existsByUrlAndMethod(String url, String method) {
-        return flowApiRepository.existsByUrlAndMethod(url, method);
+    public boolean existsByUrlAndMethod(String url, String method, String excludeId) {
+        if (StrUtil.isBlank(url) || StrUtil.isBlank(method)) {
+            return false;
+        }
+        String normalizedUrl = normalizeApiUrl(url);
+        String normalizedMethod = method.trim().toUpperCase();
+        for (FlowApiDO api : flowApiRepository.findByPublishStatus(1)) {
+            if (StrUtil.isNotBlank(excludeId) && excludeId.equals(api.getId())) {
+                continue;
+            }
+            String pubUrl = normalizeApiUrl(PublishedApiSnapshot.resolveUrl(api));
+            String pubMethod = PublishedApiSnapshot.resolveMethod(api);
+            if (pubUrl == null || StrUtil.isBlank(pubMethod)) {
+                continue;
+            }
+            if (normalizedUrl.equals(pubUrl) && normalizedMethod.equals(pubMethod.trim().toUpperCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeApiUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        String trimmed = url.trim();
+        if (trimmed.isEmpty()) {
+            return trimmed;
+        }
+        return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
     }
 
     // ============================= 发布/下线/回滚 =============================
@@ -383,8 +420,14 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO publish(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+
+        if (existsByUrlAndMethod(api.getUrl(), api.getMethod(), id)) {
+            throw new RuntimeException("发布失败：路径 " + api.getMethod() + " " + api.getUrl()
+                    + " 与其他已发布接口冲突");
+        }
 
         // 生成快照 JSON
         String snapshot = buildSnapshot(api);
@@ -392,10 +435,12 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         api.setPublishTime(LocalDateTime.now());
         api.setPublishStatus(1);
         flowApiRepository.save(api);
-        flowAssetVersionService.append(AssetBizType.API, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, null);
+        flowAssetVersionService.append(
+                AssetBizType.API, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
 
         // 刷新缓存，线上生效
         flowApiCacheManager.publishRefreshEvent();
+        notifyRefIndex();
         return api;
     }
 
@@ -405,6 +450,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO unpublish(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
 
@@ -414,6 +460,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
         apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
+        notifyRefIndex();
         return api;
     }
 
@@ -423,6 +470,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO rollbackToPublished(String id) {
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
 
@@ -433,6 +481,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         applySnapshotToDraft(api, api.getPublishedSnapshot());
         api.setUpdateTime(api.getPublishTime()); // 将 updateTime 对齐到发布时间，消除变更标记
         flowApiRepository.save(api);
+        notifyRefIndex();
         return api;
     }
 
@@ -456,6 +505,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO restoreVersion(String id, String versionId) {
+        demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
         FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.API, id);
@@ -469,9 +519,10 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         flowApiRepository.save(api);
         flowAssetVersionService.append(
                 AssetBizType.API, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
-                "回退至 v" + version.getVersionNo(), null);
+                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
         apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
+        notifyRefIndex();
         return api;
     }
 
@@ -563,61 +614,6 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private String getSnapText(com.fasterxml.jackson.databind.JsonNode snap, String field) {
         com.fasterxml.jackson.databind.JsonNode node = snap.get(field);
         return node != null && !node.isNull() ? node.asText() : null;
-    }
-
-    // ============================= FlowServiceDO CRUD =============================
-
-    @Override
-    public FlowServiceDO findFlowServiceDOById(String id) {
-        try {
-            Entity entity = Db.use(dataSource).get("flow_service", "id", id);
-            if (entity == null) {
-                throw new RuntimeException("接口服务 未找到ID为" + id + "的记录");
-            }
-            CopyOptions copyOptions = CopyOptions.create()
-                    .ignoreCase()
-                    .setIgnoreNullValue(true)
-                    .setIgnoreError(true);
-
-            return BeanUtil.toBean(entity, FlowServiceDO.class, copyOptions);
-        } catch (Exception e) {
-            throw new RuntimeException("查询FlowService失败", e);
-        }
-    }
-
-    @Override
-    public void saveFlowServiceDO(FlowServiceDO flowServiceDO) {
-        try {
-            Db.use(dataSource).tx(db -> db.insert(Entity.create("flow_service").parseBean(flowServiceDO, true, true)));
-            flowApiCacheManager.publishRefreshEvent();
-        } catch (Exception e) {
-            throw new RuntimeException("保存FlowService失败", e);
-        }
-    }
-
-    @Override
-    public void updateFlowServiceDO(FlowServiceDO flowServiceDO) {
-        try {
-            FlowServiceDO dbFlowService = findFlowServiceDOById(flowServiceDO.getId());
-            if (dbFlowService == null) {
-                throw new RuntimeException("未找到ID为 " + flowServiceDO.getId() + " 的记录");
-            }
-
-            BeanMergeUtil.mergeNonNullProperties(flowServiceDO, dbFlowService, true, "createTime");
-
-            Entity entity = Entity.create("flow_service")
-                    .parseBean(dbFlowService, true, true)
-                    .set("id", dbFlowService.getId());
-
-            Db.use(dataSource).update(
-                    entity,
-                    Entity.create("flow_service").set("id", dbFlowService.getId())
-            );
-
-            flowApiCacheManager.publishRefreshEvent();
-        } catch (Exception e) {
-            throw new RuntimeException("合并更新FlowService失败", e);
-        }
     }
 
     // ============================= 私有方法 =============================

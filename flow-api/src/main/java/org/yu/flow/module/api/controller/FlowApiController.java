@@ -23,13 +23,17 @@ import org.yu.flow.auto.service.FlowApiExecutionService;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.module.api.service.FlowApiCrudService;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
+import org.yu.flow.config.ContractParamTypeConverter;
+import org.yu.flow.config.SchemaValidatorService;
 
 import jakarta.annotation.Resource;
+import cn.hutool.core.util.StrUtil;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -57,24 +61,62 @@ public class FlowApiController {
     @Resource
     private FlowApiExecutionService flowApiExecutionService;
 
+    @Resource
+    private SchemaValidatorService schemaValidatorService;
+
+    @Resource
+    private ContractParamTypeConverter contractParamTypeConverter;
+
     @PostMapping("/debug/run")
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
         try {
             Map<String, Object> args = new HashMap<>();
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("headers", requestDTO.getHeaders() != null ? requestDTO.getHeaders() : new HashMap<>());
-            requestMap.put("params", requestDTO.getQueryParams() != null ? requestDTO.getQueryParams() : new HashMap<>());
+
+            Map<String, String> rawHeaders = requestDTO.getHeaders() != null
+                    ? requestDTO.getHeaders() : new HashMap<>();
+            Map<String, String> rawQuery = requestDTO.getQueryParams() != null
+                    ? requestDTO.getQueryParams() : new HashMap<>();
 
             // Try to parse body as JSON if possible, otherwise keep as string
             Object parsedBody = requestDTO.getBody();
+            Map<String, Object> bodyAsMap = new LinkedHashMap<>();
             if (requestDTO.getBody() != null && !requestDTO.getBody().trim().isEmpty()) {
                 try {
-                    parsedBody = cn.hutool.json.JSONUtil.parse(requestDTO.getBody());
+                    Object parsed = cn.hutool.json.JSONUtil.parse(requestDTO.getBody());
+                    parsedBody = parsed;
+                    if (parsed instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> m = (Map<String, Object>) parsed;
+                        bodyAsMap = new LinkedHashMap<>(m);
+                    }
                 } catch (Exception e) {
                     // Ignore parse error, treat as raw string
                 }
             }
-            requestMap.put("body", parsedBody);
+
+            if (StrUtil.isNotBlank(requestDTO.getContract())) {
+                String contract = requestDTO.getContract();
+                Map<String, Object> typedQuery =
+                        contractParamTypeConverter.convertSection(contract, "query", rawQuery);
+                Map<String, Object> typedBody =
+                        contractParamTypeConverter.convertSection(contract, "body", bodyAsMap);
+                Map<String, Object> typedHeaders =
+                        contractParamTypeConverter.convertSection(contract, "headers", rawHeaders);
+                // Path 无独立调试面板，样例合并在 Query；按契约 path 段转换/校验
+                Map<String, Object> typedPath =
+                        contractParamTypeConverter.convertSection(contract, "pathParams", rawQuery);
+                schemaValidatorService.validateFromContract(
+                        contract, typedBody, typedQuery, typedPath, typedHeaders);
+                requestMap.put("headers", typedHeaders);
+                requestMap.put("params", typedQuery);
+                requestMap.put("body", typedBody);
+                requestMap.put("pathParams", typedPath);
+            } else {
+                requestMap.put("headers", rawHeaders);
+                requestMap.put("params", rawQuery);
+                requestMap.put("body", parsedBody);
+            }
             args.put("request", requestMap);
 
             // Execute flow engine in trace mode（调试运行标记 DEBUG，并带上来源接口信息）
@@ -140,8 +182,11 @@ public class FlowApiController {
      * @return true-已占用/存在冲突, false-可用
      */
     @GetMapping("/check-exact")
-    public R<Boolean> checkExact(@RequestParam String url, @RequestParam String method) {
-        return R.ok(flowApiCrudService.existsByUrlAndMethod(url, method));
+    public R<Boolean> checkExact(
+            @RequestParam String url,
+            @RequestParam String method,
+            @RequestParam(required = false) String excludeId) {
+        return R.ok(flowApiCrudService.existsByUrlAndMethod(url, method, excludeId));
     }
 
     @PutMapping("/{id}")

@@ -47,7 +47,7 @@ public class FlowTaskDTO {
         dto.setDirectoryId(entity.getDirectoryId());
         dto.setCron(entity.getCron());
         dto.setEnabled(entity.getEnabled() != null ? entity.getEnabled() : true);
-        dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : true);
+        dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : false);
         dto.setDslContent(entity.getDslContent());
         dto.setPublishStatus(entity.getPublishStatus() != null ? entity.getPublishStatus() : 0);
         dto.setPublishedSnapshot(entity.getPublishedSnapshot());
