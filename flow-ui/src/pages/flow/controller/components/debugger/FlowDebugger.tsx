@@ -77,6 +77,8 @@ interface KVEntry {
   id: string;
 }
 
+export type FlowDebuggerTriggerMode = 'http' | 'service';
+
 export interface FlowDebuggerProps {
   /** 当前画布的 DSL JSON 字符串 */
   dslContent?: string;
@@ -84,6 +86,13 @@ export interface FlowDebuggerProps {
   apiUrl?: string;
   /** 当前 API 的 HTTP Method */
   apiMethod?: string;
+  /**
+   * 触发器形态：http（Headers/Query/Body）或 service（单一 JSON → $.service.input）。
+   * 默认 http。
+   */
+  triggerMode?: FlowDebuggerTriggerMode;
+  /** 预填触发器 Body / 服务入参 JSON（契约样例等） */
+  defaultTriggerBody?: string;
   /** 画布操作回调 */
   onZoomIn?: () => void;
   onZoomOut?: () => void;
@@ -313,6 +322,8 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   dslContent = '',
   apiUrl = '/api/v1/example',
   apiMethod = 'GET',
+  triggerMode = 'http',
+  defaultTriggerBody,
   onZoomIn,
   onZoomOut,
   onFitView,
@@ -331,6 +342,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   onDebugCancel,
   breakpoints,
 }) => {
+  const isServiceMode = triggerMode === 'service';
   // ─── DOM 引用 ──────────────────────────────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -380,16 +392,31 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   // ─── Trigger Panel 的输入状态 ──────────────────────────────────────
   const [triggerHeaders, setTriggerHeaders] = useState<KVEntry[]>([createEmptyKV()]);
   const [triggerParams, setTriggerParams] = useState<KVEntry[]>([createEmptyKV()]);
-  const [triggerBody, setTriggerBody] = useState<string>('{\n  \n}');
-  const [triggerActiveTab, setTriggerActiveTab] = useState<string>(
-    (apiMethod || 'GET').toUpperCase() === 'GET' ? 'params' : 'body',
+  const [triggerBody, setTriggerBody] = useState<string>(
+    defaultTriggerBody && defaultTriggerBody.trim() ? defaultTriggerBody : '{\n  \n}',
   );
-  const isGetMethod = (apiMethod || 'GET').toUpperCase() === 'GET';
+  const [triggerActiveTab, setTriggerActiveTab] = useState<string>(
+    isServiceMode
+      ? 'input'
+      : ((apiMethod || 'GET').toUpperCase() === 'GET' ? 'params' : 'body'),
+  );
+  const isGetMethod = !isServiceMode && (apiMethod || 'GET').toUpperCase() === 'GET';
   useEffect(() => {
+    if (isServiceMode) {
+      setTriggerActiveTab('input');
+      return;
+    }
     if (isGetMethod && triggerActiveTab === 'body') {
       setTriggerActiveTab('params');
     }
-  }, [isGetMethod, triggerActiveTab]);
+  }, [isServiceMode, isGetMethod, triggerActiveTab]);
+
+  // 契约样例变更时同步预填（服务模式 / HTTP Body）
+  useEffect(() => {
+    if (defaultTriggerBody == null) return;
+    const next = defaultTriggerBody.trim() ? defaultTriggerBody : '{\n  \n}';
+    setTriggerBody(next);
+  }, [defaultTriggerBody]);
 
   // ─── Console 的 Inspector Tab ──────────────────────────────────────
   const [inspectorTab, setInspectorTab] = useState<string>('input');
@@ -444,9 +471,9 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
 
     const payload = {
       dslContent,
-      headers: kvToRecord(triggerHeaders),
-      queryParams: kvToRecord(triggerParams),
-      body: isGetMethod ? '' : triggerBody,
+      headers: isServiceMode ? {} : kvToRecord(triggerHeaders),
+      queryParams: isServiceMode ? {} : kvToRecord(triggerParams),
+      body: isServiceMode || !isGetMethod ? triggerBody : '',
       breakpoints: breakpoints || [],
     };
 
@@ -457,7 +484,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       setRunningStatus('error');
       setDebugStatus('error');
     }
-  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, onDebugStart, kvToRecord, breakpoints, onConsoleOpenChange, updateLogs, updateSelectedLog]);
+  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, isServiceMode, onDebugStart, kvToRecord, breakpoints, onConsoleOpenChange, updateLogs, updateSelectedLog]);
 
   const pollStatus = useCallback(async () => {
     if (!debugSessionId || !onDebugStatus) return;
@@ -531,9 +558,9 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
 
     const payload = {
       dslContent,
-      headers: kvToRecord(triggerHeaders),
-      queryParams: kvToRecord(triggerParams),
-      body: isGetMethod ? '' : triggerBody,
+      headers: isServiceMode ? {} : kvToRecord(triggerHeaders),
+      queryParams: isServiceMode ? {} : kvToRecord(triggerParams),
+      body: isServiceMode || !isGetMethod ? triggerBody : '',
     };
 
     try {
@@ -560,28 +587,33 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
         };
       }
 
-      // 将触发器面板的入参注入到第一个节点（通常为 request）的输入中展示
-      // 直接覆盖 headers / params / body，和后端 request 节点的字段结构保持一致
-      if (logs.length > 0 && logs[0].nodeType === 'request') {
-        let parsedBody: any = {};
-        try {
-          if (payload.body.trim()) {
-            parsedBody = JSON.parse(payload.body);
-          }
-        } catch (e) {
-          // body 非合法 JSON 时原样展示字符串
-          parsedBody = payload.body;
+      let parsedBody: any = {};
+      try {
+        if (payload.body.trim()) {
+          parsedBody = JSON.parse(payload.body);
         }
+      } catch (e) {
+        parsedBody = payload.body;
+      }
 
+      // HTTP：将触发器入参注入 request 节点；服务：注入 service 入口的 input
+      if (logs.length > 0 && logs[0].nodeType === 'request' && !isServiceMode) {
         logs[0] = {
           ...logs[0],
           inputs: {
-            // 用触发器的真实入参覆盖后端返回的空占位，确保展示一致
             method: logs[0].inputs?.method,
             url: logs[0].inputs?.url,
             headers: Object.keys(payload.headers).length > 0 ? payload.headers : logs[0].inputs?.headers,
             params: Object.keys(payload.queryParams).length > 0 ? payload.queryParams : logs[0].inputs?.params,
             body: parsedBody && Object.keys(parsedBody).length > 0 ? parsedBody : logs[0].inputs?.body,
+          },
+        };
+      } else if (logs.length > 0 && (logs[0].nodeType === 'service' || isServiceMode)) {
+        logs[0] = {
+          ...logs[0],
+          inputs: {
+            ...(logs[0].inputs || {}),
+            input: parsedBody && typeof parsedBody === 'object' ? parsedBody : { body: parsedBody },
           },
         };
       }
@@ -611,7 +643,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
       }]);
       updateSelectedLog('err_global');
     }
-  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, onRun, kvToRecord]);
+  }, [dslContent, triggerHeaders, triggerParams, triggerBody, isGetMethod, isServiceMode, onRun, kvToRecord, onConsoleOpenChange, updateLogs, updateSelectedLog]);
 
   /** 切换 Trigger Panel */
   const toggleTriggerPanel = useCallback(() => {
@@ -777,15 +809,18 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             </div>
           ) : (
             <div style={{ display: 'flex', gap: 8, marginLeft: 8 }}>
-              <button
-                className={`pfd-run-btn`}
-                style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
-                onClick={handleDebug}
-                disabled={runningStatus === 'running'}
-              >
-                <BugOutlined />
-                <span style={{marginLeft: 4}}>调试</span>
-              </button>
+              {/* 步进调试仅在提供 onDebugStart 时展示（任务/服务暂无 session 后端） */}
+              {onDebugStart && (
+                <button
+                  className={`pfd-run-btn`}
+                  style={{ background: '#722ed1', borderColor: '#722ed1', color: '#fff' }}
+                  onClick={handleDebug}
+                  disabled={runningStatus === 'running'}
+                >
+                  <BugOutlined />
+                  <span style={{ marginLeft: 4 }}>调试</span>
+                </button>
+              )}
               {/* Run 按钮 */}
               <button
                 className={`pfd-run-btn ${runningStatus === 'running' ? 'pfd-run-btn--running' : ''}`}
@@ -848,29 +883,57 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             </button>
           </div>
 
-          {/* API 信息 */}
+          {/* API / 服务 信息 */}
           <div className="pfd-trigger-api-info">
-            <Tag
-              color={
-                apiMethod === 'GET' ? 'blue'
-                : apiMethod === 'POST' ? 'green'
-                : apiMethod === 'PUT' ? 'orange'
-                : apiMethod === 'DELETE' ? 'red'
-                : 'default'
-              }
-              style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}
-            >
-              {apiMethod}
-            </Tag>
-            <Text
-              code
-              style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
-            >
-              {apiUrl}
-            </Text>
+            {isServiceMode ? (
+              <>
+                <Tag color="purple" style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}>
+                  SERVICE
+                </Tag>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  入参写入 $.service.input
+                </Text>
+              </>
+            ) : (
+              <>
+                <Tag
+                  color={
+                    apiMethod === 'GET' ? 'blue'
+                    : apiMethod === 'POST' ? 'green'
+                    : apiMethod === 'PUT' ? 'orange'
+                    : apiMethod === 'DELETE' ? 'red'
+                    : 'default'
+                  }
+                  style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}
+                >
+                  {apiMethod}
+                </Tag>
+                <Text
+                  code
+                  style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                  {apiUrl}
+                </Text>
+              </>
+            )}
           </div>
 
           {/* 输入区域 Tabs */}
+          {isServiceMode ? (
+            <div style={{ padding: '0 12px 8px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <Text type="secondary" style={{ fontSize: 12, marginBottom: 8, display: 'block' }}>
+                服务入参（JSON）
+              </Text>
+              <CodeEditor
+                value={triggerBody}
+                onChange={setTriggerBody}
+                language="json"
+                height="auto"
+                maxHeight="400px"
+                className="pfd-body-editor"
+              />
+            </div>
+          ) : (
           <Tabs
             activeKey={triggerActiveTab}
             onChange={setTriggerActiveTab}
@@ -939,6 +1002,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
               }] : []),
             ]}
           />
+          )}
 
           {/* 与底部悬浮「运行」同一逻辑 */}
           <div className="pfd-trigger-footer">

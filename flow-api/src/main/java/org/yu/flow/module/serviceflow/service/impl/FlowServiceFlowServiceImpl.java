@@ -88,7 +88,10 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         if (entity.getContract() != null) existing.setContract(entity.getContract());
         if (entity.getInfo() != null) existing.setInfo(entity.getInfo());
         if (entity.getTags() != null) existing.setTags(entity.getTags());
-        if (entity.getDirectoryId() != null) existing.setDirectoryId(entity.getDirectoryId());
+        // 允许空串表示移到根目录（Jackson 会反序列化 ""，blankToNull → null）
+        if (entity.getDirectoryId() != null) {
+            existing.setDirectoryId(StrUtil.isBlank(entity.getDirectoryId()) ? null : entity.getDirectoryId());
+        }
         existing.setUpdateTime(LocalDateTime.now());
         return flowServiceFlowRepository.save(existing);
     }
@@ -194,6 +197,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         if (StrUtil.isBlank(entity.getDslContent())) {
             throw new RuntimeException("服务 DSL 为空，无法发布");
         }
+        assertPublishableServiceDsl(entity.getDslContent());
         String snapshot = buildSnapshot(entity);
         entity.setPublishedSnapshot(snapshot);
         entity.setPublishStatus(1);
@@ -214,6 +218,13 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         entity.setPublishedSnapshot(null);
         entity.setUpdateTime(LocalDateTime.now());
         return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> listReferenceLabels(String id) {
+        require(id);
+        return serviceFlowReferenceChecker.findReferenceLabels(id);
     }
 
     @Override
@@ -324,6 +335,59 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     private FlowServiceFlowDO require(String id) {
         return flowServiceFlowRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("服务不存在: " + id));
+    }
+
+    /**
+     * 发布前校验：必须有且仅有一个 service 入口，且不得混用 request/schedule。
+     */
+    private void assertPublishableServiceDsl(String dslContent) {
+        try {
+            JsonNode root = SNAPSHOT_MAPPER.readTree(dslContent);
+            JsonNode nodes = root.get("nodes");
+            if (nodes == null || !nodes.isArray()) {
+                nodes = root.get("steps");
+            }
+            if (nodes == null || !nodes.isArray() || nodes.isEmpty()) {
+                throw new RuntimeException("服务流程为空，无法发布");
+            }
+            int serviceCount = 0;
+            int requestCount = 0;
+            int scheduleCount = 0;
+            for (JsonNode node : nodes) {
+                if (node == null || !node.isObject()) {
+                    continue;
+                }
+                String type = nodeText(node, "type");
+                if (type == null && node.has("data") && node.get("data").isObject()) {
+                    type = nodeText(node.get("data"), "type");
+                }
+                if ("service".equals(type)) {
+                    serviceCount++;
+                } else if ("request".equals(type)) {
+                    requestCount++;
+                } else if ("schedule".equals(type)) {
+                    scheduleCount++;
+                }
+            }
+            if (serviceCount == 0) {
+                throw new RuntimeException("缺少 Service 入口节点，无法发布");
+            }
+            if (serviceCount > 1) {
+                throw new RuntimeException("只能有一个 Service 入口节点，无法发布");
+            }
+            if (requestCount > 0 || scheduleCount > 0) {
+                throw new RuntimeException("服务流程不能包含 request / schedule 入口节点，无法发布");
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("服务 DSL 格式不正确，无法发布: " + e.getMessage());
+        }
+    }
+
+    private static String nodeText(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        return v != null && !v.isNull() ? v.asText() : null;
     }
 
     private void enrichDirectoryNames(List<FlowServiceFlowDTO> dtoList) {

@@ -21,6 +21,11 @@ import {
     addSingleNodeToGraph,
     EDGE_CONFIG,
 } from '../adapter';
+import {
+    isPaletteNodeAllowed,
+    resolveEditorContext,
+    type FlowEditorContext,
+} from '../editorContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -39,6 +44,8 @@ export interface QuickAddPopoverProps {
     direction: 'forward' | 'reverse';
     /** 单例检查 */
     canCreate?: (type: DslNodeType) => { ok: boolean; reason?: string };
+    /** 资产上下文：隐藏异类入口节点 */
+    editorContext?: FlowEditorContext;
     /** 节点创建成功后的回调 (用于触发选中状态、emitChange 等) */
     onNodeCreated?: (nodeId: string, type: DslNodeType) => void;
     /** 关闭弹窗回调 */
@@ -118,6 +125,7 @@ export default function QuickAddPopover({
     canvasPosition,
     direction,
     canCreate,
+    editorContext,
     onNodeCreated,
     onClose,
 }: QuickAddPopoverProps) {
@@ -125,6 +133,10 @@ export default function QuickAddPopover({
     const inputRef = useRef<any>(null);
     const [search, setSearch] = useState('');
     const [highlightIndex, setHighlightIndex] = useState(0);
+    const resolvedContext = useMemo(
+        () => resolveEditorContext(editorContext),
+        [editorContext],
+    );
 
     // ── 自动聚焦 ──
     useEffect(() => {
@@ -173,6 +185,8 @@ export default function QuickAddPopover({
             .map(([category, regs]) => {
                 const filtered = regs
                     .filter((r) => {
+                        if (!isPaletteNodeAllowed(r.type, resolvedContext)) return false;
+
                         // ── 极性过滤 ──
                         if (direction === 'forward') {
                             // 正向拉线：隐藏仅有输出、无输入端口的节点
@@ -208,7 +222,7 @@ export default function QuickAddPopover({
                 const wb = CATEGORY_WEIGHTS[b[0]] ?? 0;
                 return wb - wa;
             });
-    }, [search, direction]);
+    }, [search, direction, resolvedContext]);
 
     // 扁平化列表，用于键盘导航
     const flatItems = useMemo(() => {

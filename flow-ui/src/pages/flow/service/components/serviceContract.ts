@@ -35,6 +35,61 @@ export function stringifyServiceContract(c: ServiceContract): string {
   });
 }
 
+/** 由契约 inputs 生成调试用样例 JSON（默认值优先，否则按类型占位） */
+export function buildSampleInputFromContract(contract: ServiceContract): string {
+  const sample = buildSampleObjectFromNodes(contract?.inputs || []);
+  return JSON.stringify(sample, null, 2);
+}
+
+function buildSampleObjectFromNodes(nodes: SchemaNode[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const n of nodes || []) {
+    const raw = (n.name || '').trim();
+    if (!raw || raw === '根节点') {
+      if (n.children?.length) {
+        Object.assign(result, buildSampleObjectFromNodes(n.children));
+      }
+      continue;
+    }
+    result[raw] = sampleValueForNode(n);
+  }
+  return result;
+}
+
+function sampleValueForNode(node: SchemaNode): unknown {
+  if (node.defaultValue !== undefined && node.defaultValue !== '') {
+    return coerceDefault(node.defaultValue, node.type);
+  }
+  switch (node.type) {
+    case 'integer':
+      return 0;
+    case 'number':
+      return 0;
+    case 'boolean':
+      return false;
+    case 'null':
+      return null;
+    case 'array':
+      return [];
+    case 'object':
+      return node.children?.length ? buildSampleObjectFromNodes(node.children) : {};
+    default:
+      return '';
+  }
+}
+
+function coerceDefault(value: string | number, type: SchemaNode['type']): unknown {
+  if (type === 'integer' || type === 'number') {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : value;
+  }
+  if (type === 'boolean') {
+    if (typeof value === 'boolean') return value;
+    return String(value).toLowerCase() === 'true';
+  }
+  return value;
+}
+
 /** 扁平化入参名摘要（供入口节点卡片展示） */
 export function summarizeInputNames(inputs: SchemaNode[], max = 8): string[] {
   const names: string[] = [];

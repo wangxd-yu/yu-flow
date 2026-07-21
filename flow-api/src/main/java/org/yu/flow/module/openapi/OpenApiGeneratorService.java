@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
+import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.util.FlowObjectMapperUtil;
@@ -30,13 +31,13 @@ import com.github.benmanes.caffeine.cache.Caffeine;
  *
  * <h3>映射关系</h3>
  * <ul>
- *   <li>{@code FlowApiDO.url} → OpenAPI path</li>
- *   <li>{@code FlowApiDO.method} → HTTP method</li>
- *   <li>{@code FlowApiDO.name} → operation summary</li>
- *   <li>{@code FlowApiDO.info} → operation description</li>
- *   <li>{@code FlowApiDO.tags} → operation tags（逗号分隔）</li>
+ *   <li>已发布快照 {@code url} → OpenAPI path（草稿 URL 不暴露）</li>
+ *   <li>已发布快照 {@code method} → HTTP method</li>
+ *   <li>已发布快照 {@code name} → operation summary</li>
+ *   <li>已发布快照 {@code info} → operation description</li>
+ *   <li>已发布快照 {@code tags} → operation tags（逗号分隔）</li>
  *   <li>{@code FlowApiDO.directoryId} → 按目录分组的 tag</li>
- *   <li>{@code FlowApiDO.contract} → parameters / requestBody / responses</li>
+ *   <li>已发布快照 {@code contract} → parameters / requestBody / responses</li>
  * </ul>
  *
  * <h3>Contract JSON 结构（前端 ControllerForm 生成）</h3>
@@ -166,10 +167,12 @@ public class OpenApiGeneratorService {
         Set<String> tagNames = new LinkedHashSet<>();
 
         for (FlowApiDO api : publishedApis) {
-            if (api.getUrl() == null || api.getMethod() == null) continue;
+            String publishedUrl = PublishedApiSnapshot.resolveUrl(api);
+            String publishedMethod = PublishedApiSnapshot.resolveMethod(api);
+            if (publishedUrl == null || publishedMethod == null) continue;
 
-            String path = normalizePathToOpenApi(api.getUrl());
-            String method = api.getMethod().toLowerCase();
+            String path = normalizePathToOpenApi(publishedUrl);
+            String method = publishedMethod.toLowerCase();
 
             // 确保 path 对象存在
             ObjectNode pathItem;
@@ -180,7 +183,7 @@ public class OpenApiGeneratorService {
                 paths.set(path, pathItem);
             }
 
-            // 构建 operation
+            // 构建 operation（契约/摘要均取发布快照）
             ObjectNode operation = buildOperation(api, directoryNameMap, tagNames);
             pathItem.set(method, operation);
         }
@@ -206,12 +209,16 @@ public class OpenApiGeneratorService {
     private ObjectNode buildOperation(FlowApiDO api, Map<String, String> directoryNameMap, Set<String> tagNames) {
         ObjectNode operation = objectMapper.createObjectNode();
 
+        String summary = PublishedApiSnapshot.resolveName(api);
+        String description = PublishedApiSnapshot.resolveInfo(api);
+        String tagsCsv = PublishedApiSnapshot.resolveTags(api);
+
         // ── summary / description ──
-        if (StrUtil.isNotBlank(api.getName())) {
-            operation.put("summary", api.getName());
+        if (StrUtil.isNotBlank(summary)) {
+            operation.put("summary", summary);
         }
-        if (StrUtil.isNotBlank(api.getInfo())) {
-            operation.put("description", api.getInfo());
+        if (StrUtil.isNotBlank(description)) {
+            operation.put("description", description);
         }
 
         // ── operationId ──
@@ -219,9 +226,9 @@ public class OpenApiGeneratorService {
 
         // ── tags ──
         ArrayNode tagsArr = objectMapper.createArrayNode();
-        // 优先使用用户自定义 tags
-        if (StrUtil.isNotBlank(api.getTags())) {
-            for (String t : api.getTags().split(",")) {
+        // 优先使用用户自定义 tags（发布快照）
+        if (StrUtil.isNotBlank(tagsCsv)) {
+            for (String t : tagsCsv.split(",")) {
                 String trimmed = t.trim();
                 if (!trimmed.isEmpty()) {
                     tagsArr.add(trimmed);
@@ -245,8 +252,8 @@ public class OpenApiGeneratorService {
         }
         operation.set("tags", tagsArr);
 
-        // ── 解析 contract ──
-        JsonNode contract = parseContract(api.getContract());
+        // ── 解析 contract（已发布快照优先） ──
+        JsonNode contract = parseContract(PublishedApiSnapshot.resolveContract(api));
 
         if (contract != null) {
             JsonNode requestNode = contract.path("request");
@@ -557,8 +564,12 @@ public class OpenApiGeneratorService {
      * 生成唯一的 operationId
      */
     private String generateOperationId(FlowApiDO api) {
-        String method = api.getMethod() != null ? api.getMethod().toLowerCase() : "get";
-        String path = api.getUrl() != null ? api.getUrl() : "";
+        String methodRaw = PublishedApiSnapshot.resolveMethod(api);
+        String method = methodRaw != null ? methodRaw.toLowerCase() : "get";
+        String path = PublishedApiSnapshot.resolveUrl(api);
+        if (path == null) {
+            path = "";
+        }
         // 将 /api/user/{id} → api_user_id
         String pathPart = path
                 .replaceAll("[{}]", "")

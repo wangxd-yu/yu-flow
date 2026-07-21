@@ -83,7 +83,7 @@ public class YuFlowExceptionHandler {
     // ========== 通用异常 ==========
 
     /**
-     * 处理参数校验失败（如 ValidationRule 主动抛出的 IllegalArgumentException）
+     * 处理参数校验失败（如业务主动抛出的 IllegalArgumentException）
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<R<?>> handleIllegalArgumentException(IllegalArgumentException ex, WebRequest request) {

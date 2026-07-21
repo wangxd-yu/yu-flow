@@ -31,7 +31,7 @@ const SOURCE_LABEL: Record<string, { text: string; color: string }> = {
 
 /**
  * 三端共用：历史版本抽屉。
- * 「回退线上」只切换 published_snapshot，不覆盖草稿。
+ * 「回退」会同步覆盖草稿与线上快照（published_snapshot）。
  */
 const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
   open,
@@ -117,7 +117,13 @@ const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
       title: '操作',
       width: 120,
       render: (_, record) => (
-        <Tooltip title={record.current ? '当前线上版本' : '将线上运行版本与编辑草稿同步为该历史版本'}>
+        <Tooltip
+          title={
+            record.current
+              ? '当前线上版本'
+              : '回退将同时覆盖线上快照与编辑草稿为该历史版本'
+          }
+        >
           <Button
             type="link"
             size="small"

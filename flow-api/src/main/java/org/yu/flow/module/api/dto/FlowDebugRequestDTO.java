@@ -16,6 +16,12 @@ public class FlowDebugRequestDTO {
     private String body;
 
     /**
+     * 服务契约 JSON（可选）。服务调试时用于与 CALL 一致的入参转换/必填校验；
+     * 未传时可按 {@link #sourceRef} 回退加载草稿契约。
+     */
+    private String contract;
+
+    /**
      * 断点节点 ID 集合（交互式调试模式需要）。
      * <p>为空或 null 时退化为非交互式一次性运行模式（即现有的 /debug/run 行为）。</p>
      */

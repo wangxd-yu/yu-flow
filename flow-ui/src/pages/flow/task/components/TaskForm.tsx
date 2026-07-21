@@ -2,7 +2,7 @@
  * TaskForm.tsx
  * 任务管理 · 核心配置页面
  * - 草稿 + 发布快照；调度仅跑已发布版本
- * - 支持历史版本回退线上
+ * - 支持历史版本回退（同步草稿与线上快照）
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -365,6 +365,21 @@ const TaskForm: React.FC<TaskFormProps> = ({
           isEdit={isEdit}
           height="100%"
           defaultEntryNode="schedule"
+          editorContext="task"
+          apiId={initialValues.id}
+          apiName={name}
+          debugAdapters={{
+            onRun: async (payload) => {
+              const result = await debugRunTask(payload.dslContent, {
+                sourceRef: initialValues.id,
+                sourceName: name,
+              });
+              if (result?.code === 0 && result.data) return result.data;
+              if (result?.data) return result.data;
+              if (result?.traceId) return result;
+              throw new Error(result?.msg || '调试运行失败');
+            },
+          }}
         />
       </div>
     );

@@ -25,6 +25,7 @@ import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.module.api.cache.ApiCacheConfig;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.util.FlowObjectMapperUtil;
 import org.yu.flow.util.ThrowableUtil;
 
@@ -216,8 +217,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         // 2. 提取分页对象
         Pageable pageable = extractPageable(request);
 
-        // 3. 根据 API 契约转换参数类型，并使用转换后的值执行 JSON Schema 校验。
-        String contractRule = flowApiDO.getContract();
+        // 3. 根据已发布契约转换参数类型，并校验 Body / Query / Path / Headers。
+        String contractRule = PublishedApiSnapshot.resolveContract(flowApiDO);
         Map<String, Object> typedQueryParams;
         Map<String, Object> typedBodyParams;
         Map<String, Object> typedHeaders;
@@ -228,7 +229,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                 typedBodyParams = contractParamTypeConverter.convertSection(contractRule, "body", bodyParams);
                 typedHeaders = contractParamTypeConverter.convertSection(contractRule, "headers", headers);
                 typedPathParams = contractParamTypeConverter.convertSection(contractRule, "pathParams", pathParams);
-                schemaValidatorService.validateFromContract(contractRule, typedBodyParams, typedQueryParams);
+                schemaValidatorService.validateFromContract(
+                        contractRule, typedBodyParams, typedQueryParams, typedPathParams, typedHeaders);
             } catch (SchemaValidationException e) {
                 writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(),
                         R.fail(400, e.getMessage()));

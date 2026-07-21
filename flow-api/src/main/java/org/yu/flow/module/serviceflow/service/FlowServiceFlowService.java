@@ -39,6 +39,9 @@ public interface FlowServiceFlowService {
     /** 重新发布（等同 publish） */
     FlowServiceFlowDO republish(String id);
 
+    /** 查询仍引用该服务的可读标签（供下线确认） */
+    List<String> listReferenceLabels(String id);
+
     java.util.List<org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO> listVersions(String id);
 
     FlowServiceFlowDO restoreVersion(String id, String versionId);

@@ -87,19 +87,26 @@ export async function updateServiceFlowLogEnabled(id: string, enabled: boolean) 
 }
 
 export async function publishServiceFlow(id: string) {
-  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/publish`, { method: 'POST' });
+  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/publish`, { method: 'PUT' });
 }
 
 export async function unpublishServiceFlow(id: string) {
-  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/unpublish`, { method: 'POST' });
+  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/unpublish`, { method: 'PUT' });
+}
+
+/** 仍引用该服务的可读标签（下线确认） */
+export async function listServiceFlowReferences(id: string): Promise<string[]> {
+  const res = await request<any>(`/flow-api/service-flow/${id}/references`, { method: 'GET' });
+  const data = res?.data ?? res;
+  return Array.isArray(data) ? data : [];
 }
 
 export async function republishServiceFlow(id: string) {
-  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/republish`, { method: 'POST' });
+  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/republish`, { method: 'PUT' });
 }
 
 export async function rollbackServiceFlow(id: string) {
-  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/rollback`, { method: 'POST' });
+  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/rollback`, { method: 'PUT' });
 }
 
 export interface AssetVersionItem {
@@ -116,19 +123,34 @@ export async function listServiceFlowVersions(id: string) {
   return request<AssetVersionItem[]>(`/flow-api/service-flow/${id}/versions`, { method: 'GET' });
 }
 
+/** 回退：同步覆盖草稿与线上快照 */
 export async function restoreServiceFlowVersion(id: string, versionId: string) {
   return request<FlowServiceFlow>(
     `/flow-api/service-flow/${id}/versions/${versionId}/restore`,
-    { method: 'POST' },
+    { method: 'PUT' },
   );
 }
 
 const DEBUG_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+const RUN_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * 手动同步调用（返回业务输出，非 FlowTrace）。
+ * 后端 triggerType=MANUAL：走已保存草稿 DSL + 草稿契约校验。
+ */
+export async function runServiceFlow(id: string, input?: Record<string, unknown>) {
+  return request<any>(`/flow-api/service-flow/${id}/run`, {
+    method: 'POST',
+    data: input ?? {},
+    timeout: RUN_REQUEST_TIMEOUT_MS,
+  });
+}
 
 export async function debugRunServiceFlow(
   dslContent: string,
   source?: { sourceRef?: string; sourceName?: string },
   body?: string,
+  contract?: string,
 ) {
   return request<any>('/flow-api/service-flow/debug/run', {
     method: 'POST',
@@ -137,6 +159,7 @@ export async function debugRunServiceFlow(
       sourceRef: source?.sourceRef,
       sourceName: source?.sourceName,
       body,
+      contract,
     },
     timeout: DEBUG_REQUEST_TIMEOUT_MS,
   });

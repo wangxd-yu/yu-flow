@@ -3,17 +3,24 @@
 // 接收 graphRef (MutableRefObject) 而非 graph 值，确保拖拽始终能拿到最新 graph
 // ============================================================================
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Collapse, Tooltip, message, theme } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import type { Graph } from '@antv/x6';
 import type { DslNodeType } from '../types';
 import { getRegistrationsByCategory } from '../node-registry';
+import {
+    isPaletteNodeAllowed,
+    resolveEditorContext,
+    type FlowEditorContext,
+} from '../editorContext';
 
 export type DslPaletteProps = {
     graphRef: React.MutableRefObject<Graph | null>;
     onAddNode: (type: DslNodeType, position?: { x: number; y: number }) => void;
     canCreate?: (type: DslNodeType) => { ok: boolean; reason?: string };
+    /** 资产上下文：隐藏异类入口节点 */
+    editorContext?: FlowEditorContext;
 };
 
 type PaletteItem = { type: DslNodeType; label: string; color: string };
@@ -55,16 +62,24 @@ const NODE_WEIGHTS: Partial<Record<DslNodeType, number>> = {
     database: 80,
 };
 
-export default function DslPalette({ graphRef, onAddNode, canCreate }: DslPaletteProps) {
+export default function DslPalette({
+    graphRef,
+    onAddNode,
+    canCreate,
+    editorContext,
+}: DslPaletteProps) {
     const { token } = theme.useToken();
+    const resolvedContext = useMemo(
+        () => resolveEditorContext(editorContext),
+        [editorContext],
+    );
 
-    // 从 node-registry 读取面板分组
-    // 直接调用（非 useMemo）确保始终读取最新注册表状态
+    // 从 node-registry 读取面板分组，并按资产上下文过滤入口节点
     const paletteGroups: [string, PaletteItem[]][] = getRegistrationsByCategory()
         .map(
             ([category, regs]) => {
-                // 组内节点排序
                 const sortedItems = regs
+                    .filter((r) => isPaletteNodeAllowed(r.type, resolvedContext))
                     .map((r) => ({ type: r.type, label: r.label, color: r.color, sortOrder: r.sortOrder }))
                     .sort((a, b) => {
                         const weightA = a.sortOrder ?? NODE_WEIGHTS[a.type] ?? 0;
@@ -75,6 +90,7 @@ export default function DslPalette({ graphRef, onAddNode, canCreate }: DslPalett
                 return [category, sortedItems] as [string, PaletteItem[]];
             }
         )
+        .filter(([, list]) => list.length > 0)
         // 组间排序
         .sort((a, b) => {
             const weightA = CATEGORY_WEIGHTS[a[0]] ?? 0;

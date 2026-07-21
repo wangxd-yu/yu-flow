@@ -3,12 +3,12 @@
  * - 基本信息 / 服务契约 / 流程编排
  * - 契约在独立 Tab 编辑；Service 卡片同步展示入参摘要
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Drawer, message, Button, Form, Input, Switch, Space, Tooltip, Typography, Tag,
 } from 'antd';
 import {
-  SaveOutlined, CloseOutlined, PlayCircleOutlined,
+  SaveOutlined, CloseOutlined, PlayCircleOutlined, ThunderboltOutlined,
   CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
@@ -32,8 +32,19 @@ import {
   parseServiceContract,
   stringifyServiceContract,
   injectContractIntoServiceDsl,
+  buildSampleInputFromContract,
   type ServiceContract,
 } from './serviceContract';
+import ServiceManualRunModal from './ServiceManualRunModal';
+import { confirmServiceUnpublish } from './confirmServiceUnpublish';
+import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+
+function unwrapDebugTrace(result: any) {
+  if (result?.code === 0 && result.data) return result.data;
+  if (result?.data) return result.data;
+  if (result?.traceId || result?.stepLogs) return result;
+  throw new Error(result?.msg || '调试运行失败');
+}
 
 const { Text } = Typography;
 
@@ -74,6 +85,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
 }) => {
   const [form] = Form.useForm();
   const [name, setName] = useState<string>(initialValues.name || '');
+  const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
   const [logEnabled, setLogEnabled] = useState<boolean>(initialValues.logEnabled !== false);
   const [info, setInfo] = useState<string>(initialValues.info || '');
@@ -90,11 +102,24 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   const [activeTab, setActiveTab] = useState<string>('basic');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [debugReplayOpen, setDebugReplayOpen] = useState(false);
+  const [debugReplayTrace, setDebugReplayTrace] = useState<any>(null);
+  const [manualRunOpen, setManualRunOpen] = useState(false);
+
+  const sampleInputJson = useMemo(
+    () => buildSampleInputFromContract(contract),
+    [contract],
+  );
+  const contractJson = useMemo(
+    () => stringifyServiceContract(contract),
+    [contract],
+  );
 
   useEffect(() => {
     if (visible) {
       const nextContract = parseServiceContract(initialValues.contract);
       setName(initialValues.name || '');
+      setDirectoryId(initialValues.directoryId);
       setEnabled(initialValues.enabled !== false);
       setLogEnabled(initialValues.logEnabled !== false);
       setInfo(initialValues.info || '');
@@ -134,9 +159,9 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       info: info || undefined,
       dslContent: injectContractIntoServiceDsl(baseDsl, contract),
       contract: stringifyServiceContract(contract),
-      directoryId: initialValues.directoryId,
+      directoryId: directoryId || '',
     };
-  }, [name, enabled, logEnabled, info, dslContent, contract, initialValues.directoryId]);
+  }, [name, enabled, logEnabled, info, dslContent, contract, directoryId]);
 
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
@@ -153,6 +178,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       setDslContent(injectContractIntoServiceDsl(detail.dslContent, nextContract));
     }
     if (detail.name != null) setName(detail.name);
+    if (detail.directoryId !== undefined) setDirectoryId(detail.directoryId || undefined);
     if (detail.enabled != null) setEnabled(!!detail.enabled);
     if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
     if (detail.info != null) setInfo(detail.info);
@@ -188,6 +214,8 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
 
   const handleUnpublish = useCallback(async () => {
     if (!initialValues.id) return;
+    const ok = await confirmServiceUnpublish(initialValues.id, name || initialValues.name);
+    if (!ok) return;
     const hide = message.loading('正在下线...');
     try {
       await unpublishServiceFlow(initialValues.id);
@@ -199,7 +227,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       hide();
       message.error(e?.message || '下线失败');
     }
-  }, [initialValues.id, applyDetail]);
+  }, [initialValues.id, initialValues.name, name, applyDetail]);
 
   const handleRollback = useCallback(async () => {
     if (!initialValues.id) return;
@@ -223,21 +251,29 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
     }
     const hide = message.loading('正在调试运行...');
     try {
-      const trace = await debugRunServiceFlow(dslContent, {
-        sourceRef: initialValues.id,
-        sourceName: name || initialValues.name,
-      });
+      const result = await debugRunServiceFlow(
+        dslContent,
+        {
+          sourceRef: initialValues.id,
+          sourceName: name || initialValues.name,
+        },
+        sampleInputJson,
+        contractJson,
+      );
+      const trace = unwrapDebugTrace(result);
       hide();
+      setDebugReplayTrace(trace);
+      setDebugReplayOpen(true);
       if (trace?.status === 'error') {
-        message.error(`执行失败: ${trace.errorMsg}`);
+        message.error(`执行失败: ${trace.errorMsg || '见 Trace 详情'}`);
       } else {
-        message.success('调试运行成功');
+        message.success('调试运行成功，已打开 Trace');
       }
     } catch (e: any) {
       hide();
       message.error('调试失败: ' + (e?.message || '未知错误'));
     }
-  }, [dslContent, initialValues.id, initialValues.name, name]);
+  }, [dslContent, initialValues.id, initialValues.name, name, sampleInputJson, contractJson]);
 
   const headerTitle = (
     <Space>
@@ -258,11 +294,22 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
 
   const headerExtra = (
     <Space size={8}>
-      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态）">
+      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
         <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
           调试运行
         </Button>
       </Tooltip>
+
+      {isEdit && initialValues.id && (
+        <Tooltip title="手动调用：执行服务端已保存草稿，返回业务输出（非 Trace）">
+          <Button
+            icon={<ThunderboltOutlined />}
+            onClick={() => setManualRunOpen(true)}
+          >
+            手动调用
+          </Button>
+        </Tooltip>
+      )}
 
       {isEdit && (
         <HistoryVersionButton
@@ -318,6 +365,21 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
             placeholder="请输入服务名称，如：生成 Token、通用查询"
           />
         </Form.Item>
+
+        <DirectoryTreeSelect
+          bizType="service"
+          name="directoryId"
+          label="所属目录"
+          placeholder="不选默认为根目录"
+          fieldProps={{
+            showSearch: true,
+            treeDefaultExpandAll: true,
+            allowClear: true,
+            value: directoryId,
+            onChange: (v: string | undefined) => setDirectoryId(v || undefined),
+            style: { width: '100%' },
+          }}
+        />
 
         <Form.Item label="启用状态">
           <Switch
@@ -409,6 +471,21 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
           isEdit={isEdit}
           height="100%"
           defaultEntryNode="service"
+          editorContext="service"
+          triggerMode="service"
+          defaultTriggerBody={sampleInputJson}
+          apiId={initialValues.id}
+          apiName={name}
+          debugAdapters={{
+            onRun: async (payload) => {
+              return debugRunServiceFlow(
+                payload.dslContent,
+                { sourceRef: initialValues.id, sourceName: name },
+                payload.body,
+                contractJson,
+              );
+            },
+          }}
         />
       </div>
     );
@@ -505,6 +582,38 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
           }}
         />
       )}
+
+      {debugReplayOpen && (
+        <Drawer
+          title={`调试 Trace - ${name || initialValues.name || '服务'}`}
+          width="100%"
+          open={debugReplayOpen}
+          onClose={() => {
+            setDebugReplayOpen(false);
+            setDebugReplayTrace(null);
+          }}
+          styles={{ body: { padding: 0 } }}
+          destroyOnClose
+        >
+          {debugReplayTrace ? (
+            <FlowEditor
+              value={dslContent}
+              isEdit={false}
+              readonlyTrace={debugReplayTrace}
+              defaultEntryNode="service"
+              editorContext="service"
+              triggerMode="service"
+            />
+          ) : null}
+        </Drawer>
+      )}
+
+      <ServiceManualRunModal
+        open={manualRunOpen}
+        serviceId={initialValues.id}
+        serviceName={name || initialValues.name}
+        onClose={() => setManualRunOpen(false)}
+      />
     </Drawer>
   );
 };

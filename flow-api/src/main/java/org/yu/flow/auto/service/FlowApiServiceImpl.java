@@ -13,11 +13,11 @@ import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.auto.dto.SqlAndParams;
 
 import org.yu.flow.auto.util.RegularSqlParseUtil;
-import org.yu.flow.auto.util.ValidationRule;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.service.SqlExecutorService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.FlowDbDebugRequestDTO;
+import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.datasource.service.DynamicDataSourceService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
@@ -31,13 +31,13 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.regex.Pattern;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.step.ResponseResult;
 import org.yu.flow.log.execution.domain.FlowExecutionLogDO;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.config.SchemaValidatorService;
 import org.yu.flow.log.execution.service.FlowExecutionLogService;
 
 /**
@@ -64,6 +64,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Resource
     private ContractParamTypeConverter contractParamTypeConverter;
+
+    @Resource
+    private SchemaValidatorService schemaValidatorService;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -681,21 +684,26 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                              Map<String, Object> mergeParamsMap, Pageable pageable,
                              HttpServletResponse response, FlowApiDO flowApiDO,
                              RuntimeLogContext runtimeLogContext) throws Exception {
-        // 参数校验 / 类型转换：已发布时读快照契约，避免草稿污染线上
+        // 参数类型转换 + JSON Schema 校验：已发布时读快照契约，避免草稿污染线上
         String runtimeContract = resolveContract(flowApiDO);
-        if (StrUtil.isNotBlank(runtimeContract)) {
-            Map<String, List<ValidationRule>> validationRules = OBJECT_MAPPER.readValue(
-                    runtimeContract,
-                    new TypeReference<Map<String, List<ValidationRule>>>() {}
-            );
-            validateParams(queryParams, bodyParams, mergeParamsMap, validationRules);
-        }
-
         Map<String, Object> typedQueryParams =
                 contractParamTypeConverter.convertSection(runtimeContract, "query", queryParams);
         Map<String, Object> typedBodyParams =
                 contractParamTypeConverter.convertSection(runtimeContract, "body", bodyParams);
-        Map<String, Object> typedMergeParams = new HashMap<>(mergeParamsMap);
+        Map<String, Object> typedPathParams = contractParamTypeConverter.convertSection(
+                runtimeContract, "pathParams",
+                toObjectMap(firstPresent(mergeParamsMap, "pathParams", "@PP")));
+        Map<String, Object> typedHeaders = contractParamTypeConverter.convertSection(
+                runtimeContract, "headers",
+                toObjectMap(firstPresent(mergeParamsMap, "headers")));
+
+        if (StrUtil.isNotBlank(runtimeContract)) {
+            schemaValidatorService.validateFromContract(
+                    runtimeContract, typedBodyParams, typedQueryParams, typedPathParams, typedHeaders);
+        }
+
+        Map<String, Object> typedMergeParams =
+                mergeParamsMap == null ? new HashMap<>() : new HashMap<>(mergeParamsMap);
         typedQueryParams.forEach((key, value) -> {
             typedMergeParams.put("query." + key, value);
             typedMergeParams.putIfAbsent(key, value);
@@ -704,6 +712,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             typedMergeParams.put("body." + key, value);
             typedMergeParams.put(key, value);
         });
+        typedMergeParams.put("@PP", typedPathParams);
+        typedMergeParams.put("pathParams", typedPathParams);
+        typedMergeParams.put("headers", typedHeaders);
 
         // 根据请求类型分发
         return dispatch(flowApiDO, typedMergeParams, pageable, response, () -> {
@@ -881,20 +892,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     /** 已发布时从快照读取契约，保证运行时与内容快照一致 */
     private String resolveContract(FlowApiDO flowApiDO) {
-        if (flowApiDO.getPublishStatus() != null
-                && flowApiDO.getPublishStatus() == 1
-                && StrUtil.isNotBlank(flowApiDO.getPublishedSnapshot())) {
-            try {
-                com.fasterxml.jackson.databind.JsonNode snap = OBJECT_MAPPER.readTree(flowApiDO.getPublishedSnapshot());
-                if (snap.has("contract") && !snap.get("contract").isNull()) {
-                    return snap.get("contract").asText();
-                }
-            } catch (Exception e) {
-                log.warn("[FlowApiService] 解析 publishedSnapshot.contract 失败，降级为草稿契约。apiId={}",
-                        flowApiDO.getId(), e);
-            }
-        }
-        return flowApiDO.getContract();
+        return PublishedApiSnapshot.resolveContract(flowApiDO);
     }
 
     private String resolveContentFromDraft(FlowApiDO flowApiDO) {
@@ -936,50 +934,6 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             throw new UnsupportedOperationException("业务异常：未知的 responseType: " + flowApiDO.getResponseType());
         }
         return strategy.execute(flowApiDO, sqlAndParams, pageable, response);
-    }
-
-    // ============================= 参数校验 =============================
-
-    /**
-     * 校验参数
-     */
-    private static void validateParams(Map<String, String> queryParams, Map<String, Object> bodyParams,
-                                       Map<String, Object> mergeParamsMap,
-                                       Map<String, List<ValidationRule>> validationRules) {
-        for (Map.Entry<String, List<ValidationRule>> entry : validationRules.entrySet()) {
-            String paramName = entry.getKey();
-            List<ValidationRule> rules = entry.getValue();
-            String paramValue = queryParams.get(paramName);
-
-            for (ValidationRule rule : rules) {
-                if (rule.isRequired() && (paramValue == null || paramValue.trim().isEmpty())) {
-                    throw new IllegalArgumentException(rule.getMessage());
-                }
-
-                if (paramValue != null && !paramValue.trim().isEmpty()) {
-                    if (rule.getPattern() != null && !Pattern.matches(rule.getPattern(), paramValue)) {
-                        throw new IllegalArgumentException(rule.getMessage());
-                    }
-                    if (rule.getMin() != null && paramValue.length() < rule.getMin()) {
-                        throw new IllegalArgumentException(rule.getMessage());
-                    }
-                    if (rule.getMax() != null && paramValue.length() > rule.getMax()) {
-                        throw new IllegalArgumentException(rule.getMessage());
-                    }
-                    if (rule.getType() != null) {
-                        switch (rule.getType()) {
-                            case "number":
-                                if (!paramValue.matches("\\d+")) {
-                                    throw new IllegalArgumentException(rule.getMessage());
-                                }
-                                break;
-                            case "date":
-                                break;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // ============================= SQL 执行器（实现 SqlExecutorService） =============================

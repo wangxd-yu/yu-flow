@@ -113,6 +113,7 @@ export async function listTaskVersions(id: string) {
   return request<AssetVersionItem[]>(`/flow-api/task/${id}/versions`, { method: 'GET' });
 }
 
+/** 回退：同步覆盖草稿与线上快照 */
 export async function restoreTaskVersion(id: string, versionId: string) {
   return request<FlowTask>(`/flow-api/task/${id}/versions/${versionId}/restore`, {
     method: 'POST',

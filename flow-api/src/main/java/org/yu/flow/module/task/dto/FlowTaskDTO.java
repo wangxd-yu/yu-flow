@@ -2,6 +2,7 @@ package org.yu.flow.module.task.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
+import org.yu.flow.module.assetversion.UnpublishedChangeDetector;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 
 import java.time.LocalDateTime;
@@ -55,13 +56,7 @@ public class FlowTaskDTO {
         dto.setTags(entity.getTags());
         dto.setCreateTime(entity.getCreateTime());
         dto.setUpdateTime(entity.getUpdateTime());
-        if (dto.getPublishStatus() == 1
-                && entity.getPublishTime() != null
-                && entity.getUpdateTime() != null) {
-            dto.setHasUnpublishedChanges(entity.getUpdateTime().isAfter(entity.getPublishTime()));
-        } else {
-            dto.setHasUnpublishedChanges(false);
-        }
+        dto.setHasUnpublishedChanges(UnpublishedChangeDetector.taskHasUnpublishedChanges(entity));
         return dto;
     }
 }

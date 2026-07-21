@@ -61,7 +61,8 @@ public class FlowApiReferenceChecker {
         }
 
         for (FlowTaskDO task : flowTaskRepository.findPossibleServiceFlowRefs(apiId)) {
-            if (contentReferencesApi(task.getDslContent(), apiId)) {
+            if (contentReferencesApi(task.getDslContent(), apiId)
+                    || contentReferencesApi(task.getPublishedSnapshot(), apiId)) {
                 labels.add("定时任务「" + displayName(task.getName(), task.getId()) + "」");
             }
         }

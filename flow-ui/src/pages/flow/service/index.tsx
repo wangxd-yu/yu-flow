@@ -21,6 +21,8 @@ import {
   FlowServiceFlow,
 } from './services/serviceFlowService';
 import ServiceFlowForm from './components/ServiceFlowForm';
+import ServiceManualRunModal from './components/ServiceManualRunModal';
+import { confirmServiceUnpublish } from './components/confirmServiceUnpublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 
 const handleAdd = async (fields: Partial<FlowServiceFlow>) => {
@@ -73,6 +75,8 @@ const ServiceFlowManagement: React.FC = () => {
   const [currentRow, setCurrentRow] = useState<Partial<FlowServiceFlow>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [selectedRowsState, setSelectedRows] = useState<FlowServiceFlow[]>([]);
+  const [manualRunOpen, setManualRunOpen] = useState(false);
+  const [manualRunTarget, setManualRunTarget] = useState<FlowServiceFlow | null>(null);
 
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
@@ -99,7 +103,10 @@ const ServiceFlowManagement: React.FC = () => {
         actionRef.current?.reload();
       }
     } else {
-      const ok = await handleAdd({ ...values, directoryId: currentRow?.directoryId });
+      const ok = await handleAdd({
+        ...values,
+        directoryId: values.directoryId || currentRow?.directoryId,
+      });
       if (ok) {
         setFormVisible(false);
         actionRef.current?.reload();
@@ -128,7 +135,11 @@ const ServiceFlowManagement: React.FC = () => {
       title: '启用状态',
       dataIndex: 'enabled',
       width: 90,
-      hideInSearch: true,
+      valueType: 'select',
+      valueEnum: {
+        true: { text: '启用' },
+        false: { text: '停用' },
+      },
       render: (_, record) => (
         <Switch
           size="small"
@@ -153,6 +164,7 @@ const ServiceFlowManagement: React.FC = () => {
       title: '发布状态',
       dataIndex: 'publishStatus',
       width: 120,
+      valueType: 'select',
       valueEnum: {
         0: { text: '未发布', status: 'Default' },
         1: { text: '已发布', status: 'Success' },
@@ -201,16 +213,28 @@ const ServiceFlowManagement: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 320,
+      width: 380,
       render: (_, record) => [
         <a key="edit" onClick={() => handleEditAction(record)}>
           编辑
+        </a>,
+        <Divider key="d0" type="vertical" />,
+        <a
+          key="run"
+          onClick={() => {
+            setManualRunTarget(record);
+            setManualRunOpen(true);
+          }}
+        >
+          手动调用
         </a>,
         <Divider key="d1" type="vertical" />,
         record.publishStatus === 1 ? (
           <a
             key="unpublish"
             onClick={async () => {
+              const ok = await confirmServiceUnpublish(record.id, record.name);
+              if (!ok) return;
               try {
                 await unpublishServiceFlow(record.id);
                 message.success('已下线');
@@ -406,10 +430,24 @@ const ServiceFlowManagement: React.FC = () => {
             ]}
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}) => {
-              const { current, pageSize, directoryId, name } = params as any;
+              const { current, pageSize, directoryId, name, enabled, publishStatus } = params as any;
+              const enabledParam =
+                enabled === true || enabled === 'true'
+                  ? true
+                  : enabled === false || enabled === 'false'
+                    ? false
+                    : undefined;
+              const publishParam =
+                publishStatus === 0 || publishStatus === '0'
+                  ? 0
+                  : publishStatus === 1 || publishStatus === '1'
+                    ? 1
+                    : undefined;
               const result = await queryServiceFlowPage({
                 directoryId,
                 name,
+                enabled: enabledParam,
+                publishStatus: publishParam,
                 page: (current || 1) - 1,
                 size: pageSize || 20,
               });
@@ -441,6 +479,16 @@ const ServiceFlowManagement: React.FC = () => {
           }}
         />
       )}
+
+      <ServiceManualRunModal
+        open={manualRunOpen}
+        serviceId={manualRunTarget?.id}
+        serviceName={manualRunTarget?.name}
+        onClose={() => {
+          setManualRunOpen(false);
+          setManualRunTarget(null);
+        }}
+      />
     </PageContainer>
   );
 };

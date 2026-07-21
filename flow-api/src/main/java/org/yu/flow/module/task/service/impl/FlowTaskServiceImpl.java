@@ -95,6 +95,8 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         FlowTaskDO existing = flowTaskRepository.findById(taskDO.getId())
                 .orElseThrow(() -> new RuntimeException("任务不存在: " + taskDO.getId()));
 
+        boolean wasSchedulable = isSchedulable(existing);
+
         if (taskDO.getName() != null) existing.setName(taskDO.getName());
         if (taskDO.getCron() != null) existing.setCron(taskDO.getCron());
         if (taskDO.getEnabled() != null) existing.setEnabled(taskDO.getEnabled());
@@ -106,11 +108,15 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         existing.setUpdateTime(LocalDateTime.now());
 
         FlowTaskDO updated = flowTaskRepository.save(existing);
-        // Cron / 启用 / 发布状态变化时重新调度
-        if (isSchedulable(updated)) {
-            flowTaskScheduler.reschedule(updated);
-        } else {
-            flowTaskScheduler.cancel(updated.getId());
+        // 草稿改 Cron/DSL 不影响线上触发器；仅启停导致可调度性变化时调整调度。
+        // 发布侧 Cron 变更由 publish / republish / restore / rollback 负责 reschedule。
+        boolean nowSchedulable = isSchedulable(updated);
+        if (!nowSchedulable) {
+            if (wasSchedulable) {
+                flowTaskScheduler.cancel(updated.getId());
+            }
+        } else if (!wasSchedulable) {
+            flowTaskScheduler.schedule(updated);
         }
         return updated;
     }

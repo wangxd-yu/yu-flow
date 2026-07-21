@@ -294,7 +294,7 @@ public class FlowApiController {
         return R.ok(flowApiCrudService.listVersions(id));
     }
 
-    /** 回退线上到指定历史版本（不覆盖草稿） */
+    /** 回退至指定历史版本（同步覆盖草稿与线上快照） */
     @PostMapping("/{id}/versions/{versionId}/restore")
     public R<FlowApiDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
         return R.ok(flowApiCrudService.restoreVersion(id, versionId));

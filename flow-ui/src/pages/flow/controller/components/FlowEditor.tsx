@@ -22,6 +22,11 @@ import { validateFlowGraph, validatePortConnection, autoBindLoopNodes } from './
 import { initNodeRegistry, getNodeRegistration } from './flow-editor/node-registry';
 import DslPalette from './flow-editor/components/DslPalette';
 import QuickAddPopover from './flow-editor/components/QuickAddPopover';
+import {
+    isPaletteNodeAllowed,
+    resolveEditorContext,
+    wrongEntryReason,
+} from './flow-editor/editorContext';
 import NodePropertyDrawer from './flow-editor/components/NodePropertyDrawer';
 import { useResizablePanelWidth } from './flow-editor/components/useResizablePanelWidth';
 import ActionToolbar from './flow-editor/components/ActionToolbar';
@@ -57,6 +62,27 @@ function isEditing() {
     return false;
 }
 
+/** 调试运行适配器：接口 / 任务 / 服务注入各自后端，避免写死 /api/debug/run */
+export type FlowEditorDebugAdapters = {
+    onRun: (payload: {
+        dslContent: string;
+        headers: Record<string, string>;
+        queryParams: Record<string, string>;
+        body: string;
+    }) => Promise<any>;
+    /** 不提供则隐藏步进「调试」按钮 */
+    onDebugStart?: (payload: {
+        dslContent: string;
+        headers: Record<string, string>;
+        queryParams: Record<string, string>;
+        body: string;
+        breakpoints: string[];
+    }) => Promise<{ sessionId: string }>;
+    onDebugStatus?: (sessionId: string) => Promise<any>;
+    onDebugResume?: (sessionId: string, inputs?: any) => Promise<void>;
+    onDebugCancel?: (sessionId: string) => Promise<void>;
+};
+
 // 扩展 Props
 export type ExtendedFlowEditorProps = FlowEditorProps & {
     globalForm?: FormInstance;
@@ -76,9 +102,32 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
      * 接口管理用 request；任务管理用 schedule。默认 request。
      */
     defaultEntryNode?: DslNodeType;
+    /**
+     * 资产上下文：调色板/快捷添加隐藏异类入口。
+     * 未传时由 defaultEntryNode 推导（request→api / schedule→task / service→service）。
+     */
+    editorContext?: 'api' | 'task' | 'service';
+    /**
+     * 调试触发器形态：http（默认）或 service（单一 JSON → $.service.input）。
+     */
+    triggerMode?: 'http' | 'service';
+    /** 预填触发器 Body / 服务入参 JSON */
+    defaultTriggerBody?: string;
     /** 工具条左侧插槽（如引擎模式切换），与设计/代码同一行 */
     toolbarLeadingExtra?: React.ReactNode;
+    /**
+     * 调试后端适配。未传时默认走接口管理 `/flow-api/api/debug/*`。
+     * 任务 / 服务必须传入，避免误打到 API debug。
+     */
+    debugAdapters?: FlowEditorDebugAdapters;
 };
+
+function unwrapDebugResult(result: any, fallbackMsg: string) {
+    if (result?.code === 0 && result.data) return result.data;
+    if (result?.data) return result.data;
+    if (result?.traceId || result?.sessionId || result?.stepLogs) return result;
+    throw new Error(result?.msg || fallbackMsg);
+}
 
 export default function FlowEditor(props: ExtendedFlowEditorProps) {
     const {
@@ -95,8 +144,17 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
         onCancel,
         readonlyTrace,
         defaultEntryNode = 'request',
+        editorContext: editorContextProp,
+        triggerMode = 'http',
+        defaultTriggerBody,
         toolbarLeadingExtra,
+        debugAdapters,
     } = props;
+
+    const editorContext = React.useMemo(
+        () => resolveEditorContext(editorContextProp, defaultEntryNode),
+        [editorContextProp, defaultEntryNode],
+    );
 
     // ── 只读快照模式标识 ──
     const isReadonlySnapshot = !!readonlyTrace;
@@ -1041,6 +1099,10 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
             const graph = graphRef.current;
             if (!graph) return { ok: false, reason: '画布未就绪' };
 
+            if (!isPaletteNodeAllowed(type, editorContext)) {
+                return { ok: false, reason: wrongEntryReason(type, editorContext) };
+            }
+
             const config = getNodeRegistration(type);
             if (config?.singleton) {
                 const exists = graph.getNodes().some((n) => {
@@ -1345,6 +1407,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                     graphRef={graphRef}
                                     onAddNode={handleAddNode}
                                     canCreate={canCreate}
+                                    editorContext={editorContext}
                                 />
                             </div>
                             {/* 收起/展开按钮 */}
@@ -1416,6 +1479,7 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 canvasPosition={quickAddMenu.canvasPosition}
                                 direction={quickAddMenu.direction}
                                 canCreate={canCreate}
+                                editorContext={editorContext}
                                 onNodeCreated={(nodeId) => {
                                     // 选中新建节点
                                     setSelectedNodeId(nodeId);
@@ -1442,6 +1506,8 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 dslContent={value}
                                 apiUrl={apiUrl}
                                 apiMethod={apiMethod}
+                                triggerMode={triggerMode}
+                                defaultTriggerBody={defaultTriggerBody}
                                 onZoomIn={() => graphRef.current?.zoom(0.1)}
                                 onZoomOut={() => graphRef.current?.zoom(-0.1)}
                                 onFitView={() => graphRef.current?.centerContent()}
@@ -1450,45 +1516,74 @@ export default function FlowEditor(props: ExtendedFlowEditorProps) {
                                 canUndo={canUndo}
                                 canRedo={canRedo}
                                 onRun={async (payload) => {
-                                    const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
-                                    const result = await debugRunAutoApiConfig({
-                                        ...payload,
-                                        dslContent: currentDslStr,
-                                        sourceRef: apiId,
-                                        sourceName: apiName,
-                                    });
-                                    if (result?.code === 0 && result.data) {
-                                        return result.data;
-                                    } else if (result?.data) {
-                                        return result.data;
-                                    } else if (result?.traceId) { // Just in case umi request unwraps it
-                                        return result;
+                                    const currentDslStr = graphRef.current
+                                        ? JSON.stringify(exportGraphToDsl(graphRef.current))
+                                        : payload.dslContent;
+                                    const runPayload = { ...payload, dslContent: currentDslStr };
+                                    if (debugAdapters?.onRun) {
+                                        return unwrapDebugResult(
+                                            await debugAdapters.onRun(runPayload),
+                                            'Run failed',
+                                        );
                                     }
-                                    throw new Error(result?.msg || 'Run failed');
-                                }}
-                                onDebugStart={async (payload) => {
-                                    const currentDslStr = graphRef.current ? JSON.stringify(exportGraphToDsl(graphRef.current)) : payload.dslContent;
-                                    const result = await startDebugSession({
-                                        ...payload,
-                                        dslContent: currentDslStr,
+                                    const result = await debugRunAutoApiConfig({
+                                        ...runPayload,
                                         sourceRef: apiId,
                                         sourceName: apiName,
                                     });
-                                    if (result?.code === 0 && result.data) return result.data;
-                                    if (result?.data) return result.data;
-                                    if (result?.sessionId) return result;
-                                    throw new Error(result?.msg || 'Debug start failed');
+                                    return unwrapDebugResult(result, 'Run failed');
                                 }}
-                                onDebugStatus={async (sessionId) => {
-                                    const res = await getDebugSessionStatus(sessionId);
-                                    return res?.data || res;
-                                }}
-                                onDebugResume={async (sessionId, inputs) => {
-                                    await resumeDebugSession(sessionId, inputs || {});
-                                }}
-                                onDebugCancel={async (sessionId) => {
-                                    await cancelDebugSession(sessionId);
-                                }}
+                                onDebugStart={
+                                    debugAdapters
+                                        ? (debugAdapters.onDebugStart
+                                            ? async (payload) => {
+                                                const currentDslStr = graphRef.current
+                                                    ? JSON.stringify(exportGraphToDsl(graphRef.current))
+                                                    : payload.dslContent;
+                                                return unwrapDebugResult(
+                                                    await debugAdapters.onDebugStart!({
+                                                        ...payload,
+                                                        dslContent: currentDslStr,
+                                                    }),
+                                                    'Debug start failed',
+                                                );
+                                            }
+                                            : undefined)
+                                        : async (payload) => {
+                                            const currentDslStr = graphRef.current
+                                                ? JSON.stringify(exportGraphToDsl(graphRef.current))
+                                                : payload.dslContent;
+                                            const result = await startDebugSession({
+                                                ...payload,
+                                                dslContent: currentDslStr,
+                                                sourceRef: apiId,
+                                                sourceName: apiName,
+                                            });
+                                            return unwrapDebugResult(result, 'Debug start failed');
+                                        }
+                                }
+                                onDebugStatus={
+                                    debugAdapters
+                                        ? debugAdapters.onDebugStatus
+                                        : async (sessionId) => {
+                                            const res = await getDebugSessionStatus(sessionId);
+                                            return res?.data || res;
+                                        }
+                                }
+                                onDebugResume={
+                                    debugAdapters
+                                        ? debugAdapters.onDebugResume
+                                        : async (sessionId, inputs) => {
+                                            await resumeDebugSession(sessionId, inputs || {});
+                                        }
+                                }
+                                onDebugCancel={
+                                    debugAdapters
+                                        ? debugAdapters.onDebugCancel
+                                        : async (sessionId) => {
+                                            await cancelDebugSession(sessionId);
+                                        }
+                                }
                                 breakpoints={breakpoints}
                                 onConsoleOpenChange={handleConsoleOpenChange}
                                 onExecutionLogsChange={setExecutionLogs}

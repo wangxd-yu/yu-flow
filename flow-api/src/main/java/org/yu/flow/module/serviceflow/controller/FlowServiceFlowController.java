@@ -1,9 +1,11 @@
 package org.yu.flow.module.serviceflow.controller;
 
+import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
 import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.dto.R;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
@@ -38,6 +40,9 @@ public class FlowServiceFlowController {
 
     @Resource
     private FlowEngine flowEngine;
+
+    @Resource
+    private ContractParamTypeConverter contractParamTypeConverter;
 
     @PostMapping
     public R<FlowServiceFlowDO> create(@RequestBody FlowServiceFlowDO body) {
@@ -87,22 +92,30 @@ public class FlowServiceFlowController {
         return R.ok(flowServiceFlowService.updateLogEnabled(id, enabled));
     }
 
-    @PostMapping("/{id}/publish")
+    @PutMapping("/{id}/publish")
     public R<FlowServiceFlowDO> publish(@PathVariable String id) {
         return R.ok(flowServiceFlowService.publish(id));
     }
 
-    @PostMapping("/{id}/unpublish")
+    @PutMapping("/{id}/unpublish")
     public R<FlowServiceFlowDO> unpublish(@PathVariable String id) {
         return R.ok(flowServiceFlowService.unpublish(id));
     }
 
-    @PostMapping("/{id}/republish")
+    /**
+     * 查询仍引用该服务的资产标签（下线前确认用）。
+     */
+    @GetMapping("/{id}/references")
+    public R<List<String>> listReferences(@PathVariable String id) {
+        return R.ok(flowServiceFlowService.listReferenceLabels(id));
+    }
+
+    @PutMapping("/{id}/republish")
     public R<FlowServiceFlowDO> republish(@PathVariable String id) {
         return R.ok(flowServiceFlowService.republish(id));
     }
 
-    @PostMapping("/{id}/rollback")
+    @PutMapping("/{id}/rollback")
     public R<FlowServiceFlowDO> rollback(@PathVariable String id) {
         return R.ok(flowServiceFlowService.rollbackToPublished(id));
     }
@@ -112,7 +125,7 @@ public class FlowServiceFlowController {
         return R.ok(flowServiceFlowService.listVersions(id));
     }
 
-    @PostMapping("/{id}/versions/{versionId}/restore")
+    @PutMapping("/{id}/versions/{versionId}/restore")
     public R<FlowServiceFlowDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
         return R.ok(flowServiceFlowService.restoreVersion(id, versionId));
     }
@@ -134,29 +147,23 @@ public class FlowServiceFlowController {
 
     /**
      * 调试运行（同步返回 FlowTrace）。
+     *
+     * <p>入参转换/必填校验与 CALL 共用 {@link ContractParamTypeConverter#convertAndValidateServiceInputs}；
+     * 仍使用客户端草稿 DSL，不走 {@code executeById} 的业务解包路径。</p>
      */
     @PostMapping("/debug/run")
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
         try {
+            Map<String, Object> rawInput = parseDebugInputBody(requestDTO.getBody());
+            String contractJson = resolveDebugContract(requestDTO);
+            Map<String, Object> typedInput =
+                    contractParamTypeConverter.convertAndValidateServiceInputs(contractJson, rawInput);
+
             Map<String, Object> args = new HashMap<>();
             args.put("serviceName", requestDTO.getSourceName());
             args.put("serviceId", requestDTO.getSourceRef());
-            // 调试入参：body 若为 JSON 对象则作为 $.service.input
-            if (requestDTO.getBody() != null && !requestDTO.getBody().isBlank()) {
-                try {
-                    Object parsed = new com.fasterxml.jackson.databind.ObjectMapper()
-                            .readValue(requestDTO.getBody(), Object.class);
-                    if (parsed instanceof Map) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> input = (Map<String, Object>) parsed;
-                        args.put("input", input);
-                    } else {
-                        args.put("input", Collections.singletonMap("body", parsed));
-                    }
-                } catch (Exception ignore) {
-                    args.put("input", Collections.singletonMap("body", requestDTO.getBody()));
-                }
-            }
+            args.put("input", typedInput);
+
             FlowTrace trace = flowEngine.execute(
                     requestDTO.getDslContent(),
                     args,
@@ -182,5 +189,36 @@ public class FlowServiceFlowController {
             errorTrace.setStepLogs(Collections.singletonList(errorLog));
             return R.ok(errorTrace);
         }
+    }
+
+    /** body JSON → $.service.input Map；空 body 视为空对象 */
+    private Map<String, Object> parseDebugInputBody(String body) {
+        if (body == null || body.isBlank()) {
+            return new HashMap<>();
+        }
+        try {
+            Object parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(body, Object.class);
+            if (parsed instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> input = (Map<String, Object>) parsed;
+                return new HashMap<>(input);
+            }
+            return new HashMap<>(Collections.singletonMap("body", parsed));
+        } catch (Exception ignore) {
+            return new HashMap<>(Collections.singletonMap("body", body));
+        }
+    }
+
+    /** 请求体 contract 优先，否则按 sourceRef 加载草稿契约 */
+    private String resolveDebugContract(FlowDebugRequestDTO requestDTO) {
+        if (StrUtil.isNotBlank(requestDTO.getContract())) {
+            return requestDTO.getContract();
+        }
+        if (StrUtil.isBlank(requestDTO.getSourceRef())) {
+            return null;
+        }
+        FlowServiceFlowDO svc = flowServiceFlowService.findById(requestDTO.getSourceRef());
+        return svc != null ? svc.getContract() : null;
     }
 }

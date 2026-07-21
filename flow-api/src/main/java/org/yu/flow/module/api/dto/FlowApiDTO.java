@@ -3,6 +3,7 @@ package org.yu.flow.module.api.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.assetversion.UnpublishedChangeDetector;
 
 import java.time.LocalDateTime;
 
@@ -85,15 +86,7 @@ public class FlowApiDTO {
         dto.setDeleted(configDO.getDeleted());
         dto.setCreateTime(configDO.getCreateTime());
         dto.setUpdateTime(configDO.getUpdateTime());
-        // 判断草稿是否与线上快照有差异
-        dto.setHasUnpublishedChanges(
-                configDO.getPublishStatus() != null
-                        && configDO.getPublishStatus() == 1
-                        && configDO.getPublishedSnapshot() != null
-                        && configDO.getUpdateTime() != null
-                        && configDO.getPublishTime() != null
-                        && configDO.getUpdateTime().isAfter(configDO.getPublishTime())
-        );
+        dto.setHasUnpublishedChanges(UnpublishedChangeDetector.apiHasUnpublishedChanges(configDO));
         return dto;
     }
 

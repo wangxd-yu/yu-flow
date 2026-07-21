@@ -821,6 +821,61 @@ class SchemaValidatorServiceTest {
         );
     }
 
+    // ============================= 21. PathParams / Headers 校验 =============================
+
+    @Test
+    @DisplayName("PathParams: 必填参数缺失 → 抛出 SchemaValidationException")
+    void pathParamsRequiredMissing() {
+        String contract = buildFullContract(null, null, null,
+                Collections.singletonList(schemaNode("id", "string", "主键", true)),
+                null);
+
+        SchemaValidationException ex = assertThrows(SchemaValidationException.class, () ->
+                service.validateFromContract(contract, null, null, Collections.emptyMap(), null)
+        );
+        assertTrue(ex.getErrors().stream().anyMatch(e ->
+                        e.contains("id") || e.contains("不能为空") || e.contains("缺少必填字段")),
+                "实际: " + ex.getErrors());
+    }
+
+    @Test
+    @DisplayName("PathParams: 必填参数存在 → 通过")
+    void pathParamsRequiredPresent() {
+        String contract = buildFullContract(null, null, null,
+                Collections.singletonList(schemaNode("id", "string", "主键", true)),
+                null);
+
+        assertDoesNotThrow(() ->
+                service.validateFromContract(contract, null, null, mapOf("id", "42"), null)
+        );
+    }
+
+    @Test
+    @DisplayName("Headers: 必填头缺失 → 抛出 SchemaValidationException")
+    void headersRequiredMissing() {
+        String contract = buildFullContract(null, null, null, null,
+                Collections.singletonList(schemaNode("X-Request-Id", "string", "请求 ID", true)));
+
+        SchemaValidationException ex = assertThrows(SchemaValidationException.class, () ->
+                service.validateFromContract(contract, null, null, null, Collections.emptyMap())
+        );
+        assertTrue(ex.getErrors().stream().anyMatch(e ->
+                        e.contains("X-Request-Id") || e.contains("不能为空") || e.contains("缺少必填字段")),
+                "实际: " + ex.getErrors());
+    }
+
+    @Test
+    @DisplayName("Headers: 头名大小写不敏感对齐后 → 通过")
+    void headersCaseInsensitiveMatch() {
+        String contract = buildFullContract(null, null, null, null,
+                Collections.singletonList(schemaNode("X-Request-Id", "string", "请求 ID", true)));
+
+        assertDoesNotThrow(() ->
+                service.validateFromContract(contract, null, null, null,
+                        mapOf("x-request-id", "abc-123"))
+        );
+    }
+
     // ============================= 辅助方法 =============================
 
     /** 构造 SchemaNode Map（模拟前端传入的节点，字段名与前端 TS 类型一致） */
@@ -907,5 +962,36 @@ class SchemaValidatorServiceTest {
                                                      List<Map<String, Object>> bodyNodes,
                                                      List<Map<String, Object>> queryNodes) {
         return buildContractStatic(bodyType, bodyNodes, queryNodes);
+    }
+
+    private static String buildFullContract(String bodyType,
+                                            List<Map<String, Object>> bodyNodes,
+                                            List<Map<String, Object>> queryNodes,
+                                            List<Map<String, Object>> pathNodes,
+                                            List<Map<String, Object>> headerNodes) {
+        try {
+            ObjectMapper om = new ObjectMapper();
+            Map<String, Object> request = new LinkedHashMap<>();
+            if (bodyType != null) {
+                request.put("bodyType", bodyType);
+            }
+            if (bodyNodes != null) {
+                request.put("body", bodyNodes);
+            }
+            if (queryNodes != null) {
+                request.put("query", queryNodes);
+            }
+            if (pathNodes != null) {
+                request.put("pathParams", pathNodes);
+            }
+            if (headerNodes != null) {
+                request.put("headers", headerNodes);
+            }
+            Map<String, Object> contract = new LinkedHashMap<>();
+            contract.put("request", request);
+            return om.writeValueAsString(contract);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to build contract JSON", e);
+        }
     }
 }

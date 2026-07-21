@@ -246,7 +246,7 @@ export async function listApiVersions(id: string) {
   return request<AssetVersionItem[]>(`/flow-api/api/${id}/versions`, { method: 'GET' });
 }
 
-/** 回退线上到指定历史版本（不覆盖草稿） */
+/** 回退至指定历史版本（同步覆盖草稿与线上快照） */
 export async function restoreApiVersion(id: string, versionId: string) {
   return request<FlowController>(`/flow-api/api/${id}/versions/${versionId}/restore`, {
     method: 'POST',

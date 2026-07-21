@@ -97,12 +97,13 @@ public class FlowTaskScheduler {
     /**
      * 注册一个任务到调度器。
      * 若已存在同 taskId 的调度，先取消再重新注册。
+     * <p>触发器 Cron 取自 {@code publishedSnapshot}，与运行 DSL 保持一致；草稿 Cron 不影响线上调度。
      *
      * @param task 任务定义
      */
     public void schedule(FlowTaskDO task) {
-        if (task == null || StrUtil.isBlank(task.getCron())) {
-            log.warn("[FlowTaskScheduler] 任务 Cron 为空，跳过注册: taskId={}", task != null ? task.getId() : "null");
+        if (task == null || StrUtil.isBlank(task.getId())) {
+            log.warn("[FlowTaskScheduler] 任务为空，跳过注册");
             return;
         }
         if (task.getPublishStatus() == null || task.getPublishStatus() != 1
@@ -112,21 +113,27 @@ public class FlowTaskScheduler {
             cancel(task.getId());
             return;
         }
+        String publishedCron = resolvePublishedCron(task);
+        if (StrUtil.isBlank(publishedCron)) {
+            log.warn("[FlowTaskScheduler] 发布快照中 Cron 为空，跳过注册: taskId={}", task.getId());
+            cancel(task.getId());
+            return;
+        }
         // 幂等：先取消旧调度
         cancel(task.getId());
 
         try {
-            CronTrigger trigger = new CronTrigger(task.getCron());
+            CronTrigger trigger = new CronTrigger(publishedCron);
             // 捕获 taskId，执行时再查库，避免闭包持有过期 dsl
             String taskId = task.getId();
             ScheduledFuture<?> future = taskScheduler.schedule(
                     () -> executeById(taskId, TRIGGER_CRON), trigger);
             futures.put(task.getId(), future);
-            log.info("[FlowTaskScheduler] 任务已注册: taskId={}, name={}, cron={}",
-                    task.getId(), task.getName(), task.getCron());
+            log.info("[FlowTaskScheduler] 任务已注册: taskId={}, name={}, cron(published)={}",
+                    task.getId(), task.getName(), publishedCron);
         } catch (Exception e) {
             log.error("[FlowTaskScheduler] 任务注册失败: taskId={}, cron={}, error={}",
-                    task.getId(), task.getCron(), e.getMessage());
+                    task.getId(), publishedCron, e.getMessage());
             throw e;
         }
     }
@@ -234,14 +241,16 @@ public class FlowTaskScheduler {
                 throw new IllegalStateException("任务未发布或发布快照为空，跳过执行");
             }
 
-            // 透传任务元信息，供 ScheduleStepExecutor 写入 $.schedule.*
+            // 透传已发布快照中的元信息，供 ScheduleStepExecutor 写入 $.schedule.*
+            String publishedName = resolvePublishedName(latestTask);
+            String publishedCron = resolvePublishedCron(latestTask);
             Map<String, Object> args = new HashMap<>();
-            args.put("taskName", latestTask.getName());
-            args.put("cron", latestTask.getCron());
+            args.put("taskName", publishedName);
+            args.put("cron", publishedCron);
 
             boolean logEnabled = Boolean.TRUE.equals(latestTask.getLogEnabled());
             Object result = flowEngine.execute(dsl, args, logEnabled,
-                    "TASK", latestTask.getId(), latestTask.getName());
+                    "TASK", latestTask.getId(), publishedName);
 
             if (logEnabled) {
                 FlowTrace trace = (result instanceof FlowTrace) ? (FlowTrace) result : null;
@@ -275,7 +284,7 @@ public class FlowTaskScheduler {
         try {
             FlowTaskLogDO logDO = FlowTaskLogDO.builder()
                     .taskId(latestTask.getId())
-                    .taskName(latestTask.getName())
+                    .taskName(resolvePublishedName(latestTask))
                     .triggerType(triggerType)
                     .status(status)
                     .costTimeMs(costTimeMs)
@@ -310,16 +319,35 @@ public class FlowTaskScheduler {
 
     /** 调度运行时只读已发布快照；MANUAL 也走快照，保证与线上一致。 */
     private String resolvePublishedDsl(FlowTaskDO task) {
+        return resolvePublishedText(task, "dslContent");
+    }
+
+    /** 线上触发器用的 Cron，取自发布快照（非草稿 cron 字段）。 */
+    private String resolvePublishedCron(FlowTaskDO task) {
+        String cron = resolvePublishedText(task, "cron");
+        // 兼容极旧快照缺 cron：降级草稿字段，避免已发布任务无法注册
+        if (StrUtil.isBlank(cron)) {
+            return task.getCron();
+        }
+        return cron;
+    }
+
+    private String resolvePublishedName(FlowTaskDO task) {
+        String name = resolvePublishedText(task, "name");
+        return StrUtil.isNotBlank(name) ? name : task.getName();
+    }
+
+    private String resolvePublishedText(FlowTaskDO task, String field) {
         if (task.getPublishStatus() == null || task.getPublishStatus() != 1
                 || StrUtil.isBlank(task.getPublishedSnapshot())) {
             return null;
         }
         try {
             JsonNode snap = objectMapper.readTree(task.getPublishedSnapshot());
-            JsonNode dsl = snap.get("dslContent");
-            return dsl != null && !dsl.isNull() ? dsl.asText() : null;
+            JsonNode node = snap.get(field);
+            return node != null && !node.isNull() ? node.asText() : null;
         } catch (Exception e) {
-            log.warn("[FlowTaskScheduler] 解析 publishedSnapshot 失败: taskId={}", task.getId(), e);
+            log.warn("[FlowTaskScheduler] 解析 publishedSnapshot.{} 失败: taskId={}", field, task.getId(), e);
             return null;
         }
     }

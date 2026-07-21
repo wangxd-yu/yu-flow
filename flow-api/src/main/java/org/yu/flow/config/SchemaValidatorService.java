@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  * JSON Schema 入参前置校验服务
  *
  * <p>基于 networknt/json-schema-validator 高性能校验库，将前端定义的 API 契约
- * （存储于 FlowApiDO.contract 字段）解析后，分别对 Body 和 Query 参数进行 JSON Schema 校验。
+ * （存储于 FlowApiDO.contract 字段）解析后，对 Body / Query / PathParams / Headers 进行 JSON Schema 校验。
  * 校验不通过时抛出携带中文友好提示的 {@link SchemaValidationException}。</p>
  *
  * <p>contract 字段存储的是完整的契约 JSON，结构如下：</p>
@@ -56,10 +56,20 @@ public class SchemaValidatorService {
     private static class CompiledContract {
         final JsonSchema bodySchema;
         final JsonSchema querySchema;
+        final JsonSchema pathSchema;
+        final JsonSchema headersSchema;
+        /** headers SchemaNode 声明的规范键名（用于大小写不敏感对齐） */
+        final Set<String> headerPropertyNames;
 
-        CompiledContract(JsonSchema bodySchema, JsonSchema querySchema) {
+        CompiledContract(JsonSchema bodySchema, JsonSchema querySchema,
+                         JsonSchema pathSchema, JsonSchema headersSchema,
+                         Set<String> headerPropertyNames) {
             this.bodySchema = bodySchema;
             this.querySchema = querySchema;
+            this.pathSchema = pathSchema;
+            this.headersSchema = headersSchema;
+            this.headerPropertyNames = headerPropertyNames != null
+                    ? headerPropertyNames : Collections.emptySet();
         }
     }
 
@@ -78,7 +88,7 @@ public class SchemaValidatorService {
                 JsonNode contract = objectMapper.readTree(key);
                 JsonNode requestNode = contract.path("request");
                 if (requestNode.isMissingNode()) {
-                    return new CompiledContract(null, null);
+                    return new CompiledContract(null, null, null, null, Collections.emptySet());
                 }
 
                 JsonNode bodyNodesArray = requestNode.path("body");
@@ -91,16 +101,13 @@ public class SchemaValidatorService {
                     }
                 }
 
-                JsonNode queryNodesArray = requestNode.path("query");
-                JsonSchema querySchema = null;
-                if (queryNodesArray.isArray() && queryNodesArray.size() > 0) {
-                    JsonNode nodeSchema = schemaNodesFlatToJsonSchema(queryNodesArray);
-                    if (nodeSchema != null) {
-                        querySchema = schemaFactory.getSchema(nodeSchema);
-                    }
-                }
+                JsonNode headersNodes = requestNode.path("headers");
+                JsonSchema querySchema = compileFlatSection(requestNode.path("query"));
+                JsonSchema pathSchema = compileFlatSection(requestNode.path("pathParams"));
+                JsonSchema headersSchema = compileFlatSection(headersNodes);
 
-                return new CompiledContract(bodySchema, querySchema);
+                return new CompiledContract(bodySchema, querySchema, pathSchema, headersSchema,
+                        extractSchemaNodeNames(headersNodes));
             } catch (Exception e) {
                 log.error("[SchemaValidator] 异步/缓存节点编译异常", e);
                 // 抛出运行时异常，打破计算，让外层捕获
@@ -109,17 +116,38 @@ public class SchemaValidatorService {
         });
     }
 
+    private JsonSchema compileFlatSection(JsonNode nodesArray) {
+        if (nodesArray == null || !nodesArray.isArray() || nodesArray.size() == 0) {
+            return null;
+        }
+        JsonNode nodeSchema = schemaNodesFlatToJsonSchema(nodesArray);
+        return nodeSchema != null ? schemaFactory.getSchema(nodeSchema) : null;
+    }
+
     /**
-     * 从完整契约 JSON 中提取 body 和 query 的校验规则，分别进行校验。
-     *
-     * @param contractJson 前端存储到 rule 字段的完整契约 JSON 字符串
-     * @param bodyParams   已解析的请求体参数 Map（POST/PUT body）
-     * @param queryParams  已解析的查询参数 Map（URL query string）
-     * @throws SchemaValidationException 校验失败时，携带所有校验错误的中文友好提示
+     * 兼容旧调用：仅校验 body + query。
      */
     public void validateFromContract(String contractJson,
                                      Map<String, Object> bodyParams,
                                      Map<String, ?> queryParams) {
+        validateFromContract(contractJson, bodyParams, queryParams, null, null);
+    }
+
+    /**
+     * 从完整契约 JSON 中提取 body / query / pathParams / headers 校验规则并校验。
+     *
+     * @param contractJson 完整契约 JSON
+     * @param bodyParams   请求体（已类型转换）
+     * @param queryParams  Query（已类型转换）
+     * @param pathParams   Path 变量（已类型转换）
+     * @param headers      Headers（已类型转换）
+     * @throws SchemaValidationException 校验失败时，携带所有校验错误的中文友好提示
+     */
+    public void validateFromContract(String contractJson,
+                                     Map<String, Object> bodyParams,
+                                     Map<String, ?> queryParams,
+                                     Map<String, ?> pathParams,
+                                     Map<String, ?> headers) {
         if (StrUtil.isBlank(contractJson)) {
             return;
         }
@@ -128,23 +156,13 @@ public class SchemaValidatorService {
             CompiledContract compiled = getOrCompileSchemaSafely(contractJson);
             List<String> allErrors = new ArrayList<>();
 
-            // ─── 顺序同步校验 Body ───
-            if (compiled.bodySchema != null) {
-                JsonNode bodyData = bodyParams != null
-                        ? objectMapper.valueToTree(toSchemaValidationValue(bodyParams))
-                        : objectMapper.createObjectNode();
-                allErrors.addAll(doValidate(compiled.bodySchema, bodyData));
-            }
+            collectSectionErrors(allErrors, compiled.bodySchema, bodyParams);
+            collectSectionErrors(allErrors, compiled.querySchema, queryParams);
+            collectSectionErrors(allErrors, compiled.pathSchema, pathParams);
+            // Header 名大小写不敏感：校验前按契约声明名对齐
+            collectSectionErrors(allErrors, compiled.headersSchema,
+                    alignHeaderKeys(headers, compiled.headerPropertyNames));
 
-            // ─── 顺序同步校验 Query ───
-            if (compiled.querySchema != null) {
-                JsonNode queryData = queryParams != null
-                        ? objectMapper.valueToTree(toSchemaValidationValue(queryParams))
-                        : objectMapper.createObjectNode();
-                allErrors.addAll(doValidate(compiled.querySchema, queryData));
-            }
-
-            // 抛出统一切面异常
             if (!allErrors.isEmpty()) {
                 String combined = String.join("；", allErrors);
                 log.warn("[SchemaValidator] 入参校验失败: {}", combined);
@@ -155,13 +173,63 @@ public class SchemaValidatorService {
             throw e;
         } catch (Exception e) {
             log.error("[SchemaValidator] 契约解析或校验过程异常", e);
-            // 这里兼容处理抛出的 IllegalArgumentException 或包装的 RuntimeException
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
-            if (e.getCause() != null) {
+            if (e.getCause() != null && e.getCause().getMessage() != null) {
                 msg = e.getCause().getMessage();
             }
             throw new SchemaValidationException("请求参数格式不正确: " + msg);
         }
+    }
+
+    private void collectSectionErrors(List<String> allErrors, JsonSchema schema, Map<String, ?> params) {
+        if (schema == null) {
+            return;
+        }
+        JsonNode data = params != null
+                ? objectMapper.valueToTree(toSchemaValidationValue(params))
+                : objectMapper.createObjectNode();
+        allErrors.addAll(doValidate(schema, data));
+    }
+
+    private Set<String> extractSchemaNodeNames(JsonNode nodesArray) {
+        if (nodesArray == null || !nodesArray.isArray() || nodesArray.size() == 0) {
+            return Collections.emptySet();
+        }
+        Set<String> names = new LinkedHashSet<>();
+        for (JsonNode node : nodesArray) {
+            String name = node.path("name").asText("");
+            if (!name.isEmpty()) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * 将实际 header 键按契约声明名做大小写不敏感对齐，便于 required 校验。
+     */
+    private Map<String, Object> alignHeaderKeys(Map<String, ?> headers, Set<String> canonicalNames) {
+        if (headers == null || headers.isEmpty()) {
+            return headers == null ? null : new LinkedHashMap<>(headers);
+        }
+        if (canonicalNames == null || canonicalNames.isEmpty()) {
+            return new LinkedHashMap<>(headers);
+        }
+        Map<String, String> lowerToCanonical = new HashMap<>();
+        for (String name : canonicalNames) {
+            if (name != null) {
+                lowerToCanonical.put(name.toLowerCase(Locale.ROOT), name);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        headers.forEach((k, v) -> {
+            if (k == null) {
+                return;
+            }
+            String canonical = lowerToCanonical.getOrDefault(k.toLowerCase(Locale.ROOT), k);
+            result.put(canonical, v);
+        });
+        return result;
     }
 
     /**
