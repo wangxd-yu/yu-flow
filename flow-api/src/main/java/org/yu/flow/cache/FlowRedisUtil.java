@@ -201,6 +201,14 @@ public class FlowRedisUtil {
     // ============================ Hash 类型 ============================
 
     /**
+     * Hash 字段自增（原子 HINCRBY）。
+     */
+    public static long hincrBy(String key, String hashKey, long delta) {
+        Long v = redisUtil.redisTemplate.opsForHash().increment(key, hashKey, delta);
+        return v == null ? 0L : v;
+    }
+
+    /**
      * Hash 设置字段值
      */
     public static boolean hset(String key, String hashKey, Object value) {

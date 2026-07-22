@@ -24,6 +24,8 @@ import {
 import TaskForm from './components/TaskForm';
 import { confirmTaskPublish } from './components/confirmTaskPublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
+import { batchAssetHealth, type AssetHealth } from '../services/assetMetrics';
+import { renderHealthTag } from '../components/AssetHealthTag';
 
 // ── CRUD 工具函数 ──
 
@@ -78,6 +80,7 @@ const TaskManagement: React.FC = () => {
   const [currentRow, setCurrentRow] = useState<Partial<FlowTask>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [selectedRowsState, setSelectedRows] = useState<FlowTask[]>([]);
+  const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
 
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
@@ -190,6 +193,13 @@ const TaskManagement: React.FC = () => {
           ? <Tag color="success">已发布</Tag>
           : <Tag>未发布</Tag>;
       },
+    },
+    {
+      title: '运行健康',
+      dataIndex: 'runtimeHealth',
+      width: 100,
+      hideInSearch: true,
+      render: (_, record) => renderHealthTag(healthMap[record.id]),
     },
     {
       title: '执行日志',
@@ -464,8 +474,21 @@ const TaskManagement: React.FC = () => {
                 size: pageSize || 20,
               });
               const data = (result as any)?.data || result;
+              const items: FlowTask[] = data?.items || [];
+              try {
+                const health = await batchAssetHealth(
+                  items.filter((i) => i.id).map((i) => ({ assetType: 'TASK' as const, assetId: i.id })),
+                );
+                const map: Record<string, AssetHealth> = {};
+                (health || []).forEach((h) => {
+                  map[h.assetId] = h;
+                });
+                setHealthMap(map);
+              } catch {
+                setHealthMap({});
+              }
               return {
-                data: data?.items || [],
+                data: items,
                 success: true,
                 total: data?.total || 0,
               };

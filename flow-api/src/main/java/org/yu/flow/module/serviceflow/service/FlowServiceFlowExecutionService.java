@@ -17,6 +17,9 @@ import org.yu.flow.log.service.service.FlowServiceLogService;
 import org.yu.flow.module.serviceflow.cache.ServiceResolvedContentCache;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
+import org.yu.flow.module.metrics.AssetMetricsRecorder;
+import org.yu.flow.module.metrics.MetricsAssetType;
+import org.yu.flow.module.metrics.MetricsOutcome;
 
 import jakarta.annotation.Resource;
 import java.util.HashMap;
@@ -51,6 +54,9 @@ public class FlowServiceFlowExecutionService {
 
     @Resource
     private ServiceResolvedContentCache serviceResolvedContentCache;
+
+    @Resource
+    private AssetMetricsRecorder assetMetricsRecorder;
 
     /**
      * 按服务 ID 执行，返回业务输出（解包 ExecutionResult / FlowTrace）。
@@ -178,11 +184,19 @@ public class FlowServiceFlowExecutionService {
                 NEST_DEPTH.remove();
             }
             long cost = System.currentTimeMillis() - start;
+            String trig = triggerType != null ? triggerType : "MANUAL";
+            // RUNNING 未终态时按 FAIL 计（异常路径已置 FAILED）；正常成功为 SUCCESS
+            MetricsOutcome outcome = "SUCCESS".equals(status)
+                    ? MetricsOutcome.SUCCESS
+                    : MetricsOutcome.FAIL;
+            if (!"RUNNING".equals(status)) {
+                assetMetricsRecorder.record(MetricsAssetType.SERVICE, svc.getId(), outcome, cost, trig);
+            }
             try {
                 flowServiceLogService.saveAsync(FlowServiceLogDO.builder()
                         .serviceId(svc.getId())
                         .serviceName(svc.getName())
-                        .triggerType(triggerType != null ? triggerType : "MANUAL")
+                        .triggerType(trig)
                         .status(status)
                         .costTimeMs(cost)
                         .errorMsg(errorMsg)

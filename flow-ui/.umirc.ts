@@ -87,6 +87,12 @@ export default defineConfig({
       component: './flow/service',
     },
     {
+      name: '运行中心',
+      icon: 'DashboardOutlined',
+      path: '/flow/runtime',
+      component: './flow/runtime',
+    },
+    {
       name: '页面管理',
       path: '/page-manage/list',
       icon: 'LayoutOutlined',

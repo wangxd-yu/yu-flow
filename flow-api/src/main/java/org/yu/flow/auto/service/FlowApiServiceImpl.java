@@ -41,6 +41,9 @@ import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.SchemaValidatorService;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.log.execution.service.FlowExecutionLogService;
+import org.yu.flow.module.metrics.AssetMetricsRecorder;
+import org.yu.flow.module.metrics.MetricsAssetType;
+import org.yu.flow.module.metrics.MetricsOutcome;
 
 /**
  * FlowApi 执行服务实现 —— 仅负责动态 API 的运行时执行逻辑（SQL 执行、参数校验、Flow 编排引擎调用等）
@@ -72,6 +75,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Resource
     private YuFlowProperties yuFlowProperties;
+
+    @Resource
+    private AssetMetricsRecorder assetMetricsRecorder;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -208,6 +214,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         boolean logEnabled = isLogEnabled(flowApiDO);
         FlowExecutionLogDO logDO = logEnabled ? buildBaseLogDO(flowApiDO) : null;
         RuntimeLogContext runtimeLogContext = logEnabled ? new RuntimeLogContext() : null;
+        MetricsOutcome metricsOutcome = MetricsOutcome.SUCCESS;
         if (logEnabled) {
             try {
                 Map<String, Object> requestMap = new HashMap<>();
@@ -225,6 +232,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             }
             return resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
         } catch (Exception e) {
+            metricsOutcome = MetricsOutcome.FAIL;
             if (!logEnabled) {
                 // 日志关闭时仅透传异常，不构建执行日志。
             } else if ("SUCCESS".equals(logDO.getStatus())) {
@@ -238,8 +246,12 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             }
             throw e;
         } finally {
+            long cost = System.currentTimeMillis() - start;
+            if (flowApiDO != null && flowApiDO.getId() != null) {
+                assetMetricsRecorder.record(MetricsAssetType.API, flowApiDO.getId(), metricsOutcome, cost);
+            }
             if (logEnabled) {
-                logDO.setCostTimeMs(System.currentTimeMillis() - start);
+                logDO.setCostTimeMs(cost);
                 flowExecutionLogService.saveLogAsync(logDO);
             }
         }
@@ -252,6 +264,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         boolean logEnabled = isLogEnabled(flowApiDO);
         FlowExecutionLogDO logDO = logEnabled ? buildBaseLogDO(flowApiDO) : null;
         RuntimeLogContext runtimeLogContext = logEnabled ? new RuntimeLogContext() : null;
+        MetricsOutcome metricsOutcome = MetricsOutcome.SUCCESS;
         if (logEnabled) {
             try {
                 if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
@@ -266,6 +279,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             }
             return resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
         } catch (Exception e) {
+            metricsOutcome = MetricsOutcome.FAIL;
             if (!logEnabled) {
                 // 日志关闭时仅透传异常，不构建执行日志。
             } else if ("SUCCESS".equals(logDO.getStatus())) {
@@ -279,8 +293,12 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             }
             throw e;
         } finally {
+            long cost = System.currentTimeMillis() - start;
+            if (flowApiDO != null && flowApiDO.getId() != null) {
+                assetMetricsRecorder.record(MetricsAssetType.API, flowApiDO.getId(), metricsOutcome, cost);
+            }
             if (logEnabled) {
-                logDO.setCostTimeMs(System.currentTimeMillis() - start);
+                logDO.setCostTimeMs(cost);
                 flowExecutionLogService.saveLogAsync(logDO);
             }
         }

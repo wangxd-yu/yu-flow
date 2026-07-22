@@ -32,6 +32,7 @@ import ImplementationPanel from './panels/ImplementationPanel';
 import ReqSchemaPanel from './panels/ReqSchemaPanel';
 import ResSchemaPanel from './panels/ResSchemaPanel';
 import BasicInfoPanel from './panels/BasicInfoPanel';
+import AssetRuntimePanel from '../../components/AssetRuntimePanel';
 import type { EngineMode } from './panels/ImplementationPanel';
 import type { SchemaNode, BodyType } from './ApiContractDesigner/types';
 import { buildApiTriggerPrefillFromContract } from './debugger/apiTriggerPrefill';
@@ -51,7 +52,7 @@ export type ControllerFormV2Props = {
 };
 
 /** Tab Key 类型 */
-type TabKey = 'implementation' | 'req-schema' | 'res-schema' | 'basic-info';
+type TabKey = 'implementation' | 'req-schema' | 'res-schema' | 'basic-info' | 'runtime';
 
 /** HTTP Method → 主题色映射 */
 const METHOD_COLORS: Record<string, string> = {
@@ -821,6 +822,12 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         ].filter((p) => !!p.name);
         return <BasicInfoPanel form={form} paramSuggestions={paramSuggestions} />;
       }
+      case 'runtime':
+        return (
+          <div style={{ overflow: 'auto', height: '100%' }}>
+            <AssetRuntimePanel assetType="API" assetId={values?.id} />
+          </div>
+        );
       default:
         return null;
     }
@@ -931,6 +938,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           { tab: 'API 文档定义 · 请求', key: 'req-schema' },
           { tab: 'API 文档定义 · 响应', key: 'res-schema' },
           { tab: '基础信息 / 缓存', key: 'basic-info' },
+          ...(values?.id ? [{ tab: '运行', key: 'runtime' }] : []),
         ]}
         style={{ height: '100%', overflow: 'hidden' }}
       >

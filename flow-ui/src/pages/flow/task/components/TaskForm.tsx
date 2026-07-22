@@ -27,6 +27,7 @@ import {
   restoreTaskVersion,
 } from '../services/taskService';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
+import AssetRuntimePanel from '../../components/AssetRuntimePanel';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
@@ -391,6 +392,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
     if (activeTab === 'basic') {
       return basicInfoContent;
     }
+    if (activeTab === 'runtime') {
+      return (
+        <div style={{ overflow: 'auto', height: '100%', padding: '0 8px' }}>
+          <AssetRuntimePanel assetType="TASK" assetId={initialValues.id} />
+        </div>
+      );
+    }
     return (
       <div className="task-form-fill">
         <FlowEditor
@@ -485,6 +493,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
         tabList={[
           { tab: '基本信息', key: 'basic' },
           { tab: '流程编排', key: 'flow' },
+          ...(initialValues.id ? [{ tab: '运行', key: 'runtime' }] : []),
         ]}
         style={{ height: '100%', overflow: 'hidden' }}
       >

@@ -26,6 +26,7 @@ import {
   restoreServiceFlowVersion,
 } from '../services/serviceFlowService';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
+import AssetRuntimePanel from '../../components/AssetRuntimePanel';
 import { SchemaTreeTable } from '../../controller/components/ApiContractDesigner';
 import type { SchemaNode } from '../../controller/components/ApiContractDesigner';
 import {
@@ -461,6 +462,13 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   const renderTabContent = () => {
     if (activeTab === 'basic') return basicInfoContent;
     if (activeTab === 'contract') return contractContent;
+    if (activeTab === 'runtime') {
+      return (
+        <div style={{ overflow: 'auto', height: '100%', padding: '0 8px' }}>
+          <AssetRuntimePanel assetType="SERVICE" assetId={initialValues.id} />
+        </div>
+      );
+    }
     return (
       <div className="service-form-fill">
         <FlowEditor
@@ -558,6 +566,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
           { tab: '基本信息', key: 'basic' },
           { tab: '服务契约', key: 'contract' },
           { tab: '流程编排', key: 'flow' },
+          ...(initialValues.id ? [{ tab: '运行', key: 'runtime' }] : []),
         ]}
         style={{ height: '100%', overflow: 'hidden' }}
       >

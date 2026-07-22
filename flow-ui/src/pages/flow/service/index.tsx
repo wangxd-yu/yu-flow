@@ -24,6 +24,8 @@ import ServiceFlowForm from './components/ServiceFlowForm';
 import ServiceManualRunModal from './components/ServiceManualRunModal';
 import { confirmServiceUnpublish } from './components/confirmServiceUnpublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
+import { batchAssetHealth, type AssetHealth } from '../services/assetMetrics';
+import { renderHealthTag } from '../components/AssetHealthTag';
 
 const handleAdd = async (fields: Partial<FlowServiceFlow>) => {
   const hide = message.loading('正在添加');
@@ -77,6 +79,7 @@ const ServiceFlowManagement: React.FC = () => {
   const [selectedRowsState, setSelectedRows] = useState<FlowServiceFlow[]>([]);
   const [manualRunOpen, setManualRunOpen] = useState(false);
   const [manualRunTarget, setManualRunTarget] = useState<FlowServiceFlow | null>(null);
+  const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
 
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
@@ -181,6 +184,13 @@ const ServiceFlowManagement: React.FC = () => {
           ? <Tag color="success">已发布</Tag>
           : <Tag>未发布</Tag>;
       },
+    },
+    {
+      title: '运行健康',
+      dataIndex: 'runtimeHealth',
+      width: 100,
+      hideInSearch: true,
+      render: (_, record) => renderHealthTag(healthMap[record.id]),
     },
     {
       title: '执行日志',
@@ -452,8 +462,21 @@ const ServiceFlowManagement: React.FC = () => {
                 size: pageSize || 20,
               });
               const data = (result as any)?.data || result;
+              const items: FlowServiceFlow[] = data?.items || [];
+              try {
+                const health = await batchAssetHealth(
+                  items.filter((i) => i.id).map((i) => ({ assetType: 'SERVICE' as const, assetId: i.id })),
+                );
+                const map: Record<string, AssetHealth> = {};
+                (health || []).forEach((h) => {
+                  map[h.assetId] = h;
+                });
+                setHealthMap(map);
+              } catch {
+                setHealthMap({});
+              }
               return {
-                data: data?.items || [],
+                data: items,
                 success: true,
                 total: data?.total || 0,
               };

@@ -34,6 +34,8 @@ import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import CodeEditor from './components/flow-editor/components/CodeEditor';
 import { buildApiCurl, copyText } from './utils/apiDocsActions';
+import { batchAssetHealth, type AssetHealth } from '../services/assetMetrics';
+import { renderHealthTag } from '../components/AssetHealthTag';
 
 /** 超过该字符数关闭自动换行，减轻大 JSON 渲染压力 */
 const CACHE_VIEW_WORDWRAP_LIMIT = 200_000;
@@ -145,6 +147,7 @@ const AutoApiConfigList: React.FC = () => {
   const [cacheContentKey, setCacheContentKey] = useState('');
   const [cacheContentText, setCacheContentText] = useState('');
   const [cacheContentTruncated, setCacheContentTruncated] = useState(false);
+  const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
 
   // 新建配置
   const handleAddAction = (directoryId?: string) => {
@@ -309,6 +312,13 @@ const AutoApiConfigList: React.FC = () => {
         }
         return dom;
       },
+    },
+    {
+      title: '运行健康',
+      dataIndex: 'runtimeHealth',
+      hideInSearch: true,
+      width: 100,
+      render: (_, record) => renderHealthTag(healthMap[record.id]),
     },
     {
       title: '执行日志',
@@ -607,9 +617,21 @@ const AutoApiConfigList: React.FC = () => {
                 page: (current || 1) - 1,
                 size: pageSize || 20,
               });
-
+              const items: FlowController[] = data?.items || [];
+              try {
+                const health = await batchAssetHealth(
+                  items.filter((i) => i.id).map((i) => ({ assetType: 'API' as const, assetId: i.id })),
+                );
+                const map: Record<string, AssetHealth> = {};
+                (health || []).forEach((h) => {
+                  map[h.assetId] = h;
+                });
+                setHealthMap(map);
+              } catch {
+                setHealthMap({});
+              }
               return {
-                data: data?.items || [],
+                data: items,
                 success: true,
                 total: data?.total,
               };

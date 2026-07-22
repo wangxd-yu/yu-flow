@@ -19,6 +19,9 @@ import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
 import org.yu.flow.log.task.service.FlowTaskLogService;
+import org.yu.flow.module.metrics.AssetMetricsRecorder;
+import org.yu.flow.module.metrics.MetricsAssetType;
+import org.yu.flow.module.metrics.MetricsOutcome;
 
 import jakarta.annotation.Resource;
 import java.util.HashMap;
@@ -64,6 +67,9 @@ public class FlowTaskScheduler {
 
     @Resource
     private YuFlowProperties yuFlowProperties;
+
+    @Resource
+    private AssetMetricsRecorder assetMetricsRecorder;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -310,6 +316,12 @@ public class FlowTaskScheduler {
 
         // 写入日志（始终记录摘要；trace 仅在 logEnabled 时写入）
         long costTimeMs = System.currentTimeMillis() - startTime;
+        assetMetricsRecorder.record(
+                MetricsAssetType.TASK,
+                latestTask.getId(),
+                MetricsOutcome.fromStatus(status),
+                costTimeMs,
+                triggerType);
         try {
             FlowTaskLogDO logDO = FlowTaskLogDO.builder()
                     .taskId(latestTask.getId())
@@ -330,6 +342,8 @@ public class FlowTaskScheduler {
     }
 
     private void saveSkippedLog(FlowTaskDO task, String triggerType, String reason) {
+        assetMetricsRecorder.record(
+                MetricsAssetType.TASK, task.getId(), MetricsOutcome.SKIPPED, 0L, triggerType);
         try {
             FlowTaskLogDO logDO = FlowTaskLogDO.builder()
                     .taskId(task.getId())
