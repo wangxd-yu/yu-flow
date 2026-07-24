@@ -321,6 +321,8 @@ const AutoApiConfigList: React.FC = () => {
       title: '接口名称',
       dataIndex: 'name',
       tip: '接口名称',
+      width: 200,
+      ellipsis: true,
       formItemProps: {
         rules: [
           {
@@ -330,18 +332,24 @@ const AutoApiConfigList: React.FC = () => {
         ],
       },
       render: (_, record) => (
-        <a onClick={() => handleEdit(record)}>{record.name}</a>
+        <a onClick={() => handleEdit(record)} title={record.name}>
+          {record.name}
+        </a>
       ),
     },
     {
       title: '所属目录',
       dataIndex: 'directoryName',
       hideInSearch: true,
-      render: (_, record) => record.directoryName ? <Tag color="blue">{record.directoryName}</Tag> : '-',
+      width: 120,
+      ellipsis: true,
+      render: (_, record) =>
+        record.directoryName ? <Tag color="blue">{record.directoryName}</Tag> : '-',
     },
     {
       title: '请求方法',
       dataIndex: 'method',
+      width: 96,
       valueEnum: {
         GET: { text: 'GET', status: 'GET' },
         POST: { text: 'POST', status: 'POST' },
@@ -349,7 +357,7 @@ const AutoApiConfigList: React.FC = () => {
         DELETE: { text: 'DELETE', status: 'DELETE' },
       },
       render: (_, record) => {
-        const colorMap = {
+        const colorMap: Record<string, string> = {
           GET: 'blue',
           POST: 'green',
           PUT: 'orange',
@@ -362,10 +370,14 @@ const AutoApiConfigList: React.FC = () => {
       title: 'URL',
       dataIndex: 'url',
       valueType: 'text',
+      width: 220,
+      ellipsis: true,
     },
     {
       title: '发布状态',
       dataIndex: 'publishStatus',
+      width: 120,
+      ellipsis: true,
       valueEnum: {
         0: { text: '未发布', status: 'Default' },
         1: { text: '已发布', status: 'Success' },
@@ -374,7 +386,7 @@ const AutoApiConfigList: React.FC = () => {
         if (record.publishStatus === 1 && record.hasUnpublishedChanges) {
           return (
             <Tooltip title="存在未发布的草稿修改">
-              <span style={{ color: '#faad14', fontWeight: 500 }}>
+              <span style={{ color: '#faad14', fontWeight: 500, whiteSpace: 'nowrap' }}>
                 <span style={{ marginRight: 6 }}>●</span>
                 待更新发布
               </span>
@@ -387,11 +399,13 @@ const AutoApiConfigList: React.FC = () => {
     {
       title: '实现方式',
       dataIndex: 'serviceType',
+      width: 110,
+      ellipsis: true,
       valueEnum: {
-        FLOW: { text: '逻辑编排', status: 'Processing' }, // 蓝色
-        DB: { text: '数据库', status: 'Success' }, // 绿色
-        JSON: { text: '静态 JSON', status: 'Warning' }, // 橙色
-        STRING: { text: '静态文本', status: 'Default' }, // 灰色
+        FLOW: { text: '逻辑编排', status: 'Processing' },
+        DB: { text: '数据库', status: 'Success' },
+        JSON: { text: '静态 JSON', status: 'Warning' },
+        STRING: { text: '静态文本', status: 'Default' },
       },
     },
     {
@@ -410,12 +424,13 @@ const AutoApiConfigList: React.FC = () => {
         />
       ),
     },
-    
     {
       title: '标签',
       dataIndex: 'tags',
       valueType: 'text',
       search: false,
+      width: 140,
+      ellipsis: true,
       render: (_, record) => {
         if (!record.tags) {
           return '-';
@@ -425,20 +440,26 @@ const AutoApiConfigList: React.FC = () => {
 
         if (Array.isArray(record.tags)) {
           tagsArray = record.tags;
-        }
-        else if (typeof record.tags === 'string') {
-          tagsArray = (record.tags as string).split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0);
+        } else if (typeof record.tags === 'string') {
+          tagsArray = (record.tags as string)
+            .split(',')
+            .map((tag: string) => tag.trim())
+            .filter((tag: string) => tag.length > 0);
         }
 
         if (tagsArray.length === 0) {
           return '-';
         }
 
-        return tagsArray.map((tag: string) => (
-          <Tag key={tag} color="blue" style={{ marginBottom: '4px' }}>
-            {tag}
-          </Tag>
-        ));
+        return (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {tagsArray.map((tag: string) => (
+              <Tag key={tag} color="blue" style={{ marginInlineEnd: 4 }}>
+                {tag}
+              </Tag>
+            ))}
+          </span>
+        );
       },
     },
     {
@@ -470,7 +491,7 @@ const AutoApiConfigList: React.FC = () => {
       ellipsis: true,
       render: (_, record) => (
         <Tooltip title="草稿配置；已发布接口以发布快照为准，改完需发布">
-          {renderIngressSummary(record.securityConfig)}
+          <span style={{ whiteSpace: 'nowrap' }}>{renderIngressSummary(record.securityConfig)}</span>
         </Tooltip>
       ),
     },
@@ -492,10 +513,10 @@ const AutoApiConfigList: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 320,
+      width: 340,
       fixed: 'right',
       render: (_, record) => (
-        <>
+        <span style={{ whiteSpace: 'nowrap' }}>
           <a onClick={() => handleEdit(record)}>编辑</a>
           <Divider type="vertical" />
           {record.publishStatus === 1 ? (
@@ -553,9 +574,9 @@ const AutoApiConfigList: React.FC = () => {
           >
             <a>删除</a>
           </Popconfirm>
-        </>
-      )
-    }
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -574,9 +595,10 @@ const AutoApiConfigList: React.FC = () => {
           <>
 
             <ProTable<FlowController>
-              className="fh-table"
+              className="fh-table fh-table-fit"
               headerTitle={`接口列表 (${selectedDirectoryName || '全部'})`}
-              scroll={{ x: 'max-content', y: 100000 }}
+              tableLayout="fixed"
+              scroll={{ x: 2160, y: 100000 }}
               pagination={{
                 defaultPageSize: 20,
                 showSizeChanger: true,

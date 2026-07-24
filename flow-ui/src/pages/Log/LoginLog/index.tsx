@@ -9,6 +9,7 @@ import { request } from '@umijs/max';
 import { Tag, Tooltip, Typography } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import { LogStatusTag, LogDuration } from '../shared';
+import '@/styles/fullHeightTable.css';
 import '../shared/logPageLayout.css';
 
 const { Text } = Typography;

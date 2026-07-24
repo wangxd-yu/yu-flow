@@ -18,6 +18,7 @@ import {
   prettyJson,
   safeParse,
 } from '../shared';
+import '@/styles/fullHeightTable.css';
 import '../shared/logPageLayout.css';
 
 const { Text } = Typography;

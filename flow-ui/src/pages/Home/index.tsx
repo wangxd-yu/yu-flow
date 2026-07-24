@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
-import { Button, Col, Empty, Row, Spin, Tag, Typography } from 'antd';
+import { Button, Col, Empty, Row, Spin, Typography } from 'antd';
 import { history, useModel } from '@umijs/max';
 import {
   ApiOutlined,
@@ -27,6 +27,7 @@ import {
   type AssetMetricsRankItem,
 } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
+import { AssetTypeBadge, openAssetDeepLink } from '@/components/flow/ops';
 import { Pie } from '@ant-design/plots';
 
 import styles from './index.less';
@@ -56,27 +57,6 @@ function totalOf(res: any): number {
   if (typeof res.total === 'number') return res.total;
   if (typeof res?.data?.total === 'number') return res.data.total;
   return 0;
-}
-
-function openAsset(item: AssetMetricsRankItem) {
-  const tab = 'runtime';
-  if (item.assetType === 'API') {
-    history.push(`/flow/api?apiId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  } else if (item.assetType === 'TASK') {
-    history.push(`/flow/task?taskId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  } else if (item.assetType === 'PLATFORM') {
-    history.push(`/flow/open-platform?platformId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  } else {
-    history.push(`/flow/service?serviceId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  }
-}
-
-function assetTypeLabel(t: string) {
-  if (t === 'API') return '接口';
-  if (t === 'TASK') return '任务';
-  if (t === 'SERVICE') return '服务';
-  if (t === 'PLATFORM') return '开放平台';
-  return t;
 }
 
 function getTimeGreeting() {
@@ -350,9 +330,14 @@ const HomePage: React.FC = () => {
                       <button
                         type="button"
                         className={styles.anomalyRow}
-                        onClick={() => openAsset(item)}
+                        onClick={() =>
+                          openAssetDeepLink({
+                            assetType: item.assetType,
+                            assetId: item.assetId,
+                          })
+                        }
                       >
-                        <Tag className={styles.anomalyType}>{assetTypeLabel(item.assetType)}</Tag>
+                        <AssetTypeBadge type={item.assetType} />
                         {renderHealthTag({
                           assetType: item.assetType,
                           assetId: item.assetId,

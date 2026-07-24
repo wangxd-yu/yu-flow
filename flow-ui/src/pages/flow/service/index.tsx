@@ -150,8 +150,12 @@ const ServiceFlowManagement: React.FC = () => {
       title: '服务名称',
       dataIndex: 'name',
       ellipsis: true,
+      width: 200,
+      ellipsis: true,
       render: (_, record) => (
-        <a onClick={() => handleEditAction(record)}>{record.name}</a>
+        <a onClick={() => handleEditAction(record)} title={record.name}>
+          {record.name}
+        </a>
       ),
     },
     {
@@ -159,6 +163,7 @@ const ServiceFlowManagement: React.FC = () => {
       dataIndex: 'directoryName',
       width: 120,
       hideInSearch: true,
+      ellipsis: true,
       render: (_, record) =>
         record.directoryName ? <Tag>{record.directoryName}</Tag> : '-',
     },
@@ -335,9 +340,10 @@ const ServiceFlowManagement: React.FC = () => {
       <DirectoryTreeLayout bizType="service" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <ProTable<FlowServiceFlow>
-            className="fh-table"
+            className="fh-table fh-table-fit"
             headerTitle={`服务列表 (${selectedDirectoryName || '全部'})`}
-            scroll={{ x: 'max-content', y: 100000 }}
+            tableLayout="fixed"
+            scroll={{ x: 1400, y: 100000 }}
             pagination={{
               defaultPageSize: 20,
               showSizeChanger: true,

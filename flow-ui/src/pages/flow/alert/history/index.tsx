@@ -1,10 +1,9 @@
 import React, { useRef } from 'react';
 import { ActionType, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
-import { Tag, Typography } from 'antd';
+import { Tag } from 'antd';
 import { AlertEvent, pageAlertEvents } from '@/services/flow/alertService';
+import { AssetTypeBadge, openAssetDeepLink } from '@/components/flow/ops';
 import '@/styles/fullHeightTable.css';
-
-const { Text } = Typography;
 
 const STATUS_MAP: Record<string, { color: string; text: string }> = {
   SUCCESS: { color: 'success', text: '成功' },
@@ -39,30 +38,38 @@ const AlertHistoryPage: React.FC = () => {
     {
       title: '资产类型',
       dataIndex: 'assetType',
-      width: 100,
+      width: 110,
       valueEnum: {
-        API: { text: 'API' },
-        TASK: { text: 'TASK' },
-        SERVICE: { text: 'SERVICE' },
-        PLATFORM: { text: 'PLATFORM' },
+        API: { text: '接口' },
+        TASK: { text: '任务' },
+        SERVICE: { text: '服务' },
+        PLATFORM: { text: '开放平台' },
       },
+      render: (_, r) => (r.assetType ? <AssetTypeBadge type={r.assetType} /> : '-'),
     },
     {
       title: '资产',
       dataIndex: 'assetName',
-      width: 180,
+      width: 200,
       search: false,
       ellipsis: true,
-      render: (_, r) => (
-        <Text>
-          {r.assetName || '-'}
-          {r.assetId ? (
-            <Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>
-              {r.assetId}
-            </Text>
-          ) : null}
-        </Text>
-      ),
+      render: (_, r) =>
+        r.assetId ? (
+          <a
+            onClick={() =>
+              openAssetDeepLink({
+                assetType: r.assetType || 'API',
+                assetId: r.assetId!,
+                tab: 'runtime',
+              })
+            }
+            title={r.assetId}
+          >
+            {r.assetName || r.assetId}
+          </a>
+        ) : (
+          r.assetName || '-'
+        ),
     },
     {
       title: '健康度',
@@ -71,9 +78,11 @@ const AlertHistoryPage: React.FC = () => {
       search: false,
       render: (_, r) =>
         r.health === 'error' ? (
-          <Tag color="error">error</Tag>
+          <Tag color="error">异常</Tag>
         ) : r.health === 'warn' ? (
-          <Tag color="warning">warn</Tag>
+          <Tag color="warning">告警</Tag>
+        ) : r.health === 'ok' ? (
+          <Tag color="success">健康</Tag>
         ) : (
           r.health || '-'
         ),
@@ -121,15 +130,20 @@ const AlertHistoryPage: React.FC = () => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer
+      className="fh-container"
+      style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
+    >
       <ProTable<AlertEvent>
+        className="fh-table"
         actionRef={actionRef}
         rowKey="id"
         columns={columns}
         request={pageAlertEvents}
         search={{ labelWidth: 'auto' }}
+        tableLayout="fixed"
         pagination={{ defaultPageSize: 20 }}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1200, y: 100000 }}
       />
     </PageContainer>
   );

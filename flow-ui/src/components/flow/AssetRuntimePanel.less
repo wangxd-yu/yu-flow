@@ -52,45 +52,6 @@
   flex-shrink: 0;
 }
 
-/* 分段控件（时间窗 / 日志筛选共用） */
-.arp-seg {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: #f1f5f9;
-  border: 1px solid #e8eef6;
-
-  button {
-    appearance: none;
-    border: none;
-    background: transparent;
-    color: #64748b;
-    height: 26px;
-    min-width: 36px;
-    padding: 0 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
-
-    &:hover {
-      color: #334155;
-    }
-
-    &.is-active {
-      background: #fff;
-      color: #0f172a;
-      font-weight: 600;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-    }
-
-    &.is-active.is-fail {
-      color: #dc2626;
-    }
-  }
-}
-
 .arp-icon-btn {
   appearance: none;
   width: 30px;
@@ -221,63 +182,6 @@
 /* ── 趋势图 ── */
 .arp-trend {
   padding-bottom: 8px;
-}
-
-.arp-trend-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.arp-lg {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid #e8eef6;
-  border-radius: 7px;
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 500;
-  color: #475569;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-
-  &:hover {
-    border-color: #cbd5e1;
-    background: #fff;
-  }
-
-  i {
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    border-radius: 2px;
-
-    &.ok { background: #34d399; }
-    &.bad { background: #f87171; }
-    &.p95 {
-      width: 12px;
-      height: 2px;
-      border-radius: 1px;
-      background: #f59e0b;
-    }
-  }
-
-  &.is-off {
-    color: #cbd5e1;
-    background: #f1f5f9;
-    border-color: #e2e8f0;
-    text-decoration: line-through;
-
-    i {
-      opacity: 0.35;
-      filter: grayscale(1);
-    }
-  }
 }
 
 .arp-trend-canvas {

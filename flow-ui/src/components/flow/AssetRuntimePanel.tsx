@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Empty, Spin, Typography } from 'antd';
 import { ReloadOutlined, RightOutlined } from '@ant-design/icons';
-import { DualAxes } from '@ant-design/plots';
 import dayjs from 'dayjs';
 import { history, request } from '@umijs/max';
 import {
@@ -14,6 +13,7 @@ import {
 import { queryTaskLogPage } from '@/services/flow/taskService';
 import { queryServiceLogPage } from '@/services/flow/serviceFlowService';
 import { pageOpenCallLogs } from '@/services/flow/openPlatformService';
+import { SoftSegmented, MetricsDualAxes } from '@/components/flow/ops';
 import './AssetRuntimePanel.less';
 
 const { Link } = Typography;
@@ -87,38 +87,6 @@ function fmtRelative(raw?: string) {
   const hours = dayjs().diff(d, 'hour');
   if (hours < 24) return `${hours} 小时前`;
   return d.format('MM-DD HH:mm');
-}
-
-function fmtAxisTime(raw: string, win: MetricsWindow, bucket: string): string {
-  if (!raw) return '';
-  const d = dayjs(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-  if (!d.isValid()) return raw;
-  if (win === '7d' || win === '30d') return d.format('MM-DD');
-  if (bucket === 'hour') return d.format('HH:00');
-  return d.format('HH:mm');
-}
-
-/** 按小时聚合（前端兜底：即使后端仍返回分钟，24h/7d/30d 也清晰可读） */
-function aggregateByHour(points: SeriesPoint[]): SeriesPoint[] {
-  const map = new Map<string, SeriesPoint>();
-  for (const p of points) {
-    const d = dayjs(p.time.includes('T') ? p.time : p.time.replace(' ', 'T'));
-    if (!d.isValid()) continue;
-    const key = d.startOf('hour').format('YYYY-MM-DD HH:mm:ss');
-    const cur = map.get(key) || {
-      time: key,
-      success: 0,
-      fail: 0,
-      skipped: 0,
-      p95Ms: 0,
-    };
-    cur.success += p.success;
-    cur.fail += p.fail;
-    cur.skipped += p.skipped;
-    cur.p95Ms = Math.max(cur.p95Ms ?? 0, p.p95Ms ?? 0);
-    map.set(key, cur);
-  }
-  return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
 }
 
 function rateTone(v?: number | null): '' | 'ok' | 'warn' | 'bad' {
@@ -229,32 +197,6 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
   const [recentLogs, setRecentLogs] = useState<RecentLogItem[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logFilter, setLogFilter] = useState<'all' | 'fail'>('all');
-  const [seriesVisible, setSeriesVisible] = useState({
-    success: true,
-    fail: true,
-    p95: true,
-  });
-
-  const toggleSeries = useCallback((key: 'success' | 'fail' | 'p95') => {
-    setSeriesVisible((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      if (!next.success && !next.fail && !next.p95) return prev;
-      return next;
-    });
-  }, []);
-
-  const chartWrapRef = useRef<HTMLDivElement>(null);
-  const [chartWidth, setChartWidth] = useState(0);
-  useEffect(() => {
-    const el = chartWrapRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver((entries) => {
-      const w = Math.floor(entries[0]?.contentRect?.width || 0);
-      if (w > 0) setChartWidth(w);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const loadMetrics = useCallback(async () => {
     if (!assetId) return;
@@ -304,125 +246,16 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
     [summary],
   );
 
-  // 长窗口：强制小时桶（不依赖后端是否已重启）
-  const { chartPoints, displayBucket } = useMemo(() => {
-    const longWin = window === '24h' || window === '7d' || window === '30d';
-    if (longWin && (granularity !== 'hour' || seriesPoints.length > 36)) {
-      return { chartPoints: aggregateByHour(seriesPoints), displayBucket: 'hour' };
-    }
-    return {
-      chartPoints: seriesPoints,
-      displayBucket: granularity === 'hour' ? 'hour' : 'minute',
-    };
-  }, [seriesPoints, window, granularity]);
-
-  const chartConfig = useMemo(() => {
-    const callData: Array<{ time: string; type: string; value: number }> = [];
-    for (const p of chartPoints) {
-      if (seriesVisible.success) callData.push({ time: p.time, type: '成功', value: p.success });
-      if (seriesVisible.fail) callData.push({ time: p.time, type: '失败', value: p.fail });
-    }
-    const p95Data = seriesVisible.p95
-      ? chartPoints.map((p) => ({ time: p.time, value: p.p95Ms ?? 0 }))
-      : [];
-
-    const barMaxW =
-      chartPoints.length <= 28 ? 28 : chartPoints.length <= 48 ? 16 : 10;
-
-    const children: any[] = [];
-    if (callData.length) {
-      children.push({
-        data: callData,
-        type: 'interval',
-        yField: 'value',
-        colorField: 'type',
-        stack: true,
-        scale: {
-          color: {
-            domain: ['成功', '失败'],
-            range: ['#34d399', '#f87171'],
-          },
-        },
-        style: {
-          maxWidth: barMaxW,
-          radiusTopLeft: 3,
-          radiusTopRight: 3,
-        },
-        axis: {
-          y: {
-            title: '调用次数',
-            titleFill: '#94a3b8',
-            titleFontSize: 11,
-            labelFill: '#94a3b8',
-            grid: true,
-            gridStrokeOpacity: 0.35,
-          },
-        },
-        tooltip: {
-          items: [{ channel: 'y', name: '次数' }],
-        },
-      });
-    }
-    if (p95Data.length) {
-      children.push({
-        data: p95Data,
-        type: 'line',
-        yField: 'value',
-        shapeField: 'smooth',
-        style: {
-          stroke: '#f59e0b',
-          lineWidth: 2.5,
-        },
-        axis: {
-          y: {
-            position: 'right',
-            title: 'P95 (ms)',
-            titleFill: '#94a3b8',
-            titleFontSize: 11,
-            labelFill: '#94a3b8',
-            grid: null,
-          },
-        },
-        tooltip: {
-          items: [{ channel: 'y', name: 'P95', valueFormatter: (v: number) => `${Math.round(v)} ms` }],
-        },
-      });
-    }
-
-    return {
-      xField: 'time',
-      height: 200,
-      paddingLeft: 44,
-      paddingRight: 48,
-      paddingBottom: 28,
-      legend: false,
-      axis: {
-        x: {
-          labelAutoRotate: false,
-          labelAutoHide: true,
-          labelFill: '#94a3b8',
-          labelFontSize: 11,
-          labelFormatter: (v: string) => fmtAxisTime(v, window, displayBucket),
-          tick: false,
-        },
-      },
-      tooltip: {
-        shared: true,
-        title: (d: any) => {
-          const t = d?.time || d?.[0]?.time;
-          return t ? fmtAxisTime(String(t), window, displayBucket) : '';
-        },
-      },
-      interaction: {
-        tooltip: {
-          shared: true,
-          crosshairs: true,
-          crosshairsY: false,
-        },
-      },
-      children,
-    };
-  }, [chartPoints, window, displayBucket, seriesVisible]);
+  const chartPoints = useMemo(
+    () =>
+      seriesPoints.map((p) => ({
+        time: p.time,
+        success: p.success,
+        fail: p.fail,
+        p95Ms: p.p95Ms,
+      })),
+    [seriesPoints],
+  );
 
   const filteredLogs = useMemo(() => {
     if (logFilter === 'fail') return recentLogs.filter((l) => !l.ok);
@@ -454,18 +287,12 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
 
   const windowTools = (
     <div className="arp-panel-tools">
-      <div className="arp-seg" role="group" aria-label="时间窗">
-        {WINDOWS.map((w) => (
-          <button
-            key={w}
-            type="button"
-            className={window === w ? 'is-active' : ''}
-            onClick={() => setWindow(w)}
-          >
-            {w}
-          </button>
-        ))}
-      </div>
+      <SoftSegmented
+        ariaLabel="时间窗"
+        value={window}
+        options={WINDOWS.map((w) => ({ label: w, value: w }))}
+        onChange={setWindow}
+      />
       <button
         type="button"
         className="arp-icon-btn"
@@ -539,47 +366,18 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
 
         {!empty && (
           <>
-
             <section className="arp-panel arp-trend">
               <div className="arp-panel-head">
-                <div className="arp-panel-title">
-                  调用量 / P95
-                  <span className="arp-panel-meta">
-                    {chartPoints.length} 点 · 每点 {displayBucket === 'hour' ? '1 小时' : '1 分钟'}
-                  </span>
-                </div>
-                <div className="arp-trend-legend" role="group" aria-label="图例开关">
-                  {(
-                    [
-                      ['success', 'ok', '成功'],
-                      ['fail', 'bad', '失败'],
-                      ['p95', 'p95', 'P95'],
-                    ] as const
-                  ).map(([key, icon, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`arp-lg${seriesVisible[key] ? '' : ' is-off'}`}
-                      onClick={() => toggleSeries(key)}
-                    >
-                      <i className={icon} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <div className="arp-panel-title">调用量 / P95</div>
               </div>
-              <div className="arp-trend-canvas" ref={chartWrapRef}>
-                {chartPoints.length && chartConfig.children.length && chartWidth > 0 ? (
-                  <DualAxes {...chartConfig} autoFit={false} width={chartWidth} />
-                ) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={
-                      chartPoints.length ? '请至少勾选一条图例系列' : '时间窗内无趋势数据'
-                    }
-                    style={{ padding: '24px 0' }}
-                  />
-                )}
+              <div className="arp-trend-canvas">
+                <MetricsDualAxes
+                  points={chartPoints}
+                  window={window}
+                  granularity={granularity}
+                  height={200}
+                  callAxisTitle="调用次数"
+                />
               </div>
             </section>
 
@@ -593,22 +391,15 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
                   </span>
                 </div>
                 <div className="arp-activity-actions">
-                  <div className="arp-seg">
-                    <button
-                      type="button"
-                      className={logFilter === 'all' ? 'is-active' : ''}
-                      onClick={() => setLogFilter('all')}
-                    >
-                      全部
-                    </button>
-                    <button
-                      type="button"
-                      className={logFilter === 'fail' ? 'is-active is-fail' : ''}
-                      onClick={() => setLogFilter('fail')}
-                    >
-                      失败
-                    </button>
-                  </div>
+                  <SoftSegmented
+                    ariaLabel="日志筛选"
+                    value={logFilter}
+                    options={[
+                      { label: '全部', value: 'all' },
+                      { label: '失败', value: 'fail' },
+                    ]}
+                    onChange={setLogFilter}
+                  />
                   <Link className="arp-activity-more" onClick={() => history.push(fullLogHref)}>
                     全部日志 <RightOutlined />
                   </Link>

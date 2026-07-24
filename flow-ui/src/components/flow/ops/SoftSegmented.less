@@ -1,0 +1,39 @@
+@import './opsTokens.less';
+
+.yf-soft-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--yf-seg-bg, #f1f5f9);
+  border: 1px solid var(--yf-line, #e8eef6);
+
+  button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    height: 26px;
+    min-width: 36px;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+
+    &:hover {
+      color: #334155;
+    }
+
+    &.is-active {
+      background: #fff;
+      color: var(--yf-ink, #0f172a);
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    }
+
+    &.is-active.is-fail {
+      color: var(--yf-bad-ink, #dc2626);
+    }
+  }
+}

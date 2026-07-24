@@ -1,0 +1,113 @@
+/* 全屏资产表单 Drawer + PageContainer 共享 chrome */
+
+.yf-asset-form-shell.ant-pro-page-container {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.yf-asset-form-shell .ant-page-header-heading-left,
+.yf-asset-form-shell .ant-page-header-heading-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.yf-asset-form-shell .ant-page-header {
+  flex-shrink: 0;
+  padding-block: 8px !important;
+  padding-inline: 20px !important;
+}
+
+.yf-asset-form-shell .ant-page-header-heading {
+  max-width: 100%;
+}
+
+.yf-asset-form-shell .ant-page-header-heading-extra {
+  margin-block: 0 !important;
+}
+
+.yf-asset-form-shell .ant-tabs-nav {
+  margin: 0 !important;
+  padding-inline: 20px !important;
+}
+
+.yf-asset-form-shell .ant-tabs-nav::before {
+  border-bottom-color: #f0f0f0;
+}
+
+.yf-asset-form-shell .ant-tabs-tab {
+  padding: 6px 0 !important;
+  font-size: 13px !important;
+}
+
+.yf-asset-form-shell .ant-tabs-nav-list {
+  gap: 0;
+}
+
+.yf-asset-form-shell > .ant-pro-grid-content,
+.yf-asset-form-shell .ant-pro-grid-content-children {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.yf-asset-form-shell .ant-pro-page-container-children-container {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  /* 左右留白，避免贴边；上下仍保持紧凑 */
+  padding: 8px 20px 12px !important;
+  margin-bottom: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.yf-asset-form-fill {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* 非 PageContainer 场景（如开放平台抽屉）：对齐 padding / tabs */
+.yf-asset-form-shell-plain {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 8px 20px 12px;
+}
+
+.yf-asset-form-shell-plain > .ant-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.yf-asset-form-shell-plain > .ant-tabs > .ant-tabs-nav {
+  margin: 0 !important;
+}
+
+.yf-asset-form-shell-plain > .ant-tabs > .ant-tabs-nav::before {
+  border-bottom-color: #f0f0f0;
+}
+
+.yf-asset-form-shell-plain > .ant-tabs > .ant-tabs-nav .ant-tabs-tab {
+  padding: 6px 0 !important;
+  font-size: 13px !important;
+}
+
+.yf-asset-form-shell-plain > .ant-tabs > .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

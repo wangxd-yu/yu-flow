@@ -4,5 +4,6 @@ export { default as AssetRuntimePanel } from './AssetRuntimePanel';
 export { default as AssetVersionHistoryDrawer, HistoryVersionButton } from './AssetVersionHistoryDrawer';
 export type { AssetVersionItem } from './AssetVersionHistoryDrawer';
 export { renderHealthTag } from './AssetHealthTag';
+export * from './ops';
 export * from './debugger';
 export * from './ApiContractDesigner';

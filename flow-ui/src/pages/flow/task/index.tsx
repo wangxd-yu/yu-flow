@@ -151,8 +151,12 @@ const TaskManagement: React.FC = () => {
       title: '任务名称',
       dataIndex: 'name',
       ellipsis: true,
+      width: 200,
+      ellipsis: true,
       render: (_, record) => (
-        <a onClick={() => handleEditAction(record)}>{record.name}</a>
+        <a onClick={() => handleEditAction(record)} title={record.name}>
+          {record.name}
+        </a>
       ),
     },
     {
@@ -160,6 +164,7 @@ const TaskManagement: React.FC = () => {
       dataIndex: 'directoryName',
       width: 120,
       hideInSearch: true,
+      ellipsis: true,
       render: (_, record) =>
         record.directoryName ? <Tag>{record.directoryName}</Tag> : '-',
     },
@@ -354,9 +359,10 @@ const TaskManagement: React.FC = () => {
       <DirectoryTreeLayout bizType="task" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <ProTable<FlowTask>
-            className="fh-table"
+            className="fh-table fh-table-fit"
             headerTitle={`任务列表 (${selectedDirectoryName || '全部'})`}
-            scroll={{ x: 'max-content', y: 100000 }}
+            tableLayout="fixed"
+            scroll={{ x: 1400, y: 100000 }}
             pagination={{
               defaultPageSize: 20,
               showSizeChanger: true,

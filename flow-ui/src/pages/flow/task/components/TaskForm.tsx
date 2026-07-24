@@ -28,6 +28,11 @@ import {
 } from '@/services/flow/taskService';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
 import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
+import {
+  AssetFormShell,
+  ASSET_FORM_SHELL_CLASS,
+  ASSET_FORM_FILL_CLASS,
+} from '@/components/flow/ops';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
@@ -406,7 +411,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
       );
     }
     return (
-      <div className="task-form-fill">
+      <div className={ASSET_FORM_FILL_CLASS}>
         <FlowEditor
           value={dslContent}
           onChange={setDslContent}
@@ -434,60 +439,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
   };
 
   return (
-    <Drawer
-      title={null}
-      width="100%"
-      open={visible}
-      onClose={onCancel}
-      closable={false}
-      styles={{
-        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' },
-      }}
-      destroyOnClose
-    >
-      <style>{`
-        .task-form-page-container.ant-pro-page-container {
-          display: flex !important;
-          flex-direction: column !important;
-          height: 100% !important;
-          overflow: hidden !important;
-        }
-        .task-form-page-container .ant-page-header { flex-shrink: 0; }
-        .task-form-page-container > .ant-pro-grid-content,
-        .task-form-page-container .ant-pro-grid-content-children {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-        }
-        .task-form-page-container .ant-page-header {
-          padding-inline: 20px !important;
-        }
-        .task-form-page-container .ant-tabs-nav {
-          padding-inline: 20px !important;
-          margin: 0 !important;
-        }
-        .task-form-page-container .ant-pro-page-container-children-container {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          height: auto !important;
-          padding: 8px 20px 12px !important;
-          overflow: hidden !important;
-          box-sizing: border-box !important;
-        }
-        .task-form-fill {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-        }
-      `}</style>
+    <AssetFormShell open={visible} onClose={onCancel}>
       <PageContainer
-        className="task-form-page-container"
+        className={ASSET_FORM_SHELL_CLASS}
         header={{
           title: headerTitle,
           extra: headerExtra,
@@ -548,7 +502,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
           ) : null}
         </Drawer>
       )}
-    </Drawer>
+    </AssetFormShell>
   );
 };
 

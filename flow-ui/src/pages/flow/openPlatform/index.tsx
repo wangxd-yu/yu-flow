@@ -12,6 +12,7 @@ import {
 import OpenPlatformDrawer from './components/OpenPlatformDrawer';
 import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
+import { AssetTypeBadge } from '@/components/flow/ops';
 import '@/styles/fullHeightTable.css';
 
 /** 列宽合计 → scroll.x（含 fixed/ellipsis 场景） */
@@ -44,14 +45,17 @@ const OpenPlatformPage: React.FC = () => {
       dataIndex: 'name',
       width: 180,
       render: (_, r) => (
-        <a
-          onClick={() => {
-            setCurrentId(r.id);
-            setDrawerOpen(true);
-          }}
-        >
-          {r.name}
-        </a>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <AssetTypeBadge type="PLATFORM" />
+          <a
+            onClick={() => {
+              setCurrentId(r.id);
+              setDrawerOpen(true);
+            }}
+          >
+            {r.name}
+          </a>
+        </span>
       ),
     },
     { title: '编码', dataIndex: 'code', width: 160 },

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Empty, Radio, Segmented, Space, Spin, Tabs, Tag, Tooltip, Typography, message } from 'antd';
+import { Alert, Empty, Spin, Tabs, Tooltip, message } from 'antd';
 import {
   AppstoreOutlined,
   ArrowRightOutlined,
@@ -10,8 +10,7 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { DualAxes } from '@ant-design/plots';
-import { history } from '@umijs/max';
+import dayjs from 'dayjs';
 import {
   getAssetMetricsSeries,
   getMetricsAnomalies,
@@ -22,10 +21,15 @@ import {
   type MetricsWindow,
 } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
+import {
+  SoftSegmented,
+  AssetTypeBadge,
+  ASSET_TYPE_LABEL,
+  openAssetDeepLink,
+  MetricsDualAxes,
+} from '@/components/flow/ops';
 import '@/styles/fullHeightTable.css';
 import './index.less';
-
-const { Text } = Typography;
 
 const WINDOWS: MetricsWindow[] = ['15m', '1h', '24h', '7d', '30d'];
 
@@ -35,32 +39,18 @@ const AUTO_REFRESH_OPTIONS = [
   { label: '60s', value: 60 },
 ];
 
-const ASSET_TYPE_LABEL: Record<MetricsAssetType, string> = {
-  API: '接口',
-  TASK: '任务',
-  SERVICE: '服务',
-  PLATFORM: '开放平台',
-};
+const ASSET_TYPE_OPTIONS: Array<{ label: string; value: MetricsAssetType }> = [
+  { label: '接口', value: 'API' },
+  { label: '任务', value: 'TASK' },
+  { label: '服务', value: 'SERVICE' },
+  { label: '开放平台', value: 'PLATFORM' },
+];
 
-const ASSET_TYPE_COLOR: Record<MetricsAssetType, string> = {
-  API: 'blue',
-  TASK: 'geekblue',
-  SERVICE: 'cyan',
-  PLATFORM: 'purple',
-};
-
-function openAsset(item: AssetMetricsRankItem) {
-  const tab = 'runtime';
-  if (item.assetType === 'API') {
-    history.push(`/flow/api?apiId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  } else if (item.assetType === 'TASK') {
-    history.push(`/flow/task?taskId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  } else if (item.assetType === 'PLATFORM') {
-    history.push(`/flow/open-platform?platformId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  } else {
-    history.push(`/flow/service?serviceId=${encodeURIComponent(item.assetId)}&tab=${tab}`);
-  }
-}
+const ORDER_OPTIONS: Array<{ label: string; value: 'errorRate' | 'p95' | 'calls' }> = [
+  { label: '错误率', value: 'errorRate' },
+  { label: 'P95', value: 'p95' },
+  { label: '调用量', value: 'calls' },
+];
 
 function fmtPct(v?: number | null) {
   if (v == null || Number.isNaN(v)) return '—';
@@ -69,10 +59,10 @@ function fmtPct(v?: number | null) {
 
 function fmtMs(v?: number | null) {
   if (v == null || Number.isNaN(v)) return '—';
-  return `${v}ms`;
+  if (v >= 1000) return `${(v / 1000).toFixed(2)}s`;
+  return `${Math.round(v)}ms`;
 }
 
-/** P95 延迟分档着色：>=1s 危险，>=500ms 告警，其余中性 */
 function p95Tone(v?: number | null) {
   if (v == null || Number.isNaN(v)) return 'muted';
   if (v >= 1000) return 'danger';
@@ -80,7 +70,6 @@ function p95Tone(v?: number | null) {
   return 'muted';
 }
 
-/** 大数值中文单位压缩：12345 → 1.2万 */
 function fmtNum(v?: number | null) {
   const n = v ?? 0;
   if (n >= 1e8) return `${(n / 1e8).toFixed(1)}亿`;
@@ -90,21 +79,16 @@ function fmtNum(v?: number | null) {
 
 function fmtClock(ts: number) {
   if (!ts) return '—';
-  const d = new Date(ts);
-  const p = (x: number) => String(x).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return dayjs(ts).format('HH:mm:ss');
 }
 
-type KpiTone = 'blue' | 'cyan' | 'green' | 'red' | 'orange';
+type KpiTone = 'slate' | 'cyan' | 'green' | 'red' | 'orange';
 
-const GRANULARITY_LABEL: Record<string, string> = {
-  minute: '每分钟',
-  hour: '每小时',
-  day: '每天',
-};
-
-/** 行内展开：懒加载资产时序，用 @ant-design/charts 双轴折线绘制趋势 */
-const RowTrend: React.FC<{ item: AssetMetricsRankItem; window: MetricsWindow }> = ({ item, window }) => {
+/** 行内展开：堆叠调用柱 + P95 折线 */
+const RowTrend: React.FC<{ item: AssetMetricsRankItem; window: MetricsWindow }> = ({
+  item,
+  window,
+}) => {
   const [loading, setLoading] = useState(true);
   const [series, setSeries] = useState<AssetMetricsSeries | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,70 +106,45 @@ const RowTrend: React.FC<{ item: AssetMetricsRankItem; window: MetricsWindow }> 
     };
   }, [item.assetType, item.assetId, window]);
 
-  const points = series?.points || [];
-  const n = points.length;
-
-  // 双轴数据：左轴=调用次数（成功/失败，长表 colorField=类型）；右轴=P95(ms)
-  const callData = points.flatMap((p) => [
-    { time: p.time, 类型: '成功', 次数: p.success },
-    { time: p.time, 类型: '失败', 次数: p.fail },
-  ]);
-  const p95Data = points.map((p) => ({ time: p.time, 指标: 'P95', ms: p.p95Ms ?? 0 }));
-
-  const config = {
-    xField: 'time',
-    height: 220,
-    autoFit: true,
-    legend: { color: { position: 'top' as const, layout: { justifyContent: 'flex-start' as const } } },
-    tooltip: { title: (d: any) => d.time },
-    children: [
-      {
-        data: callData,
-        type: 'line' as const,
-        yField: '次数',
-        colorField: '类型',
-        shapeField: 'smooth',
-        scale: { color: { range: ['#52c41a', '#ff4d4f'] } },
-        style: { lineWidth: 2 },
-        axis: { y: { title: '调用次数', titleFill: '#8c8c8c' } },
-      },
-      {
-        data: p95Data,
-        type: 'line' as const,
-        yField: 'ms',
-        colorField: '指标',
-        shapeField: 'smooth',
-        scale: { color: { range: ['#faad14'] } },
-        style: { lineWidth: 2, lineDash: [4, 4] },
-        axis: { y: { position: 'right' as const, title: 'P95 (ms)', titleFill: '#8c8c8c' } },
-      },
-    ],
-  };
-
   return (
     <div className="rt-detail">
-      <div className="rt-detail-chart">
-        {loading ? (
-          <div className="rt-detail-loading">
-            <Spin size="small" />
-          </div>
-        ) : error ? (
-          <Alert type="error" showIcon message={error} banner />
-        ) : !n ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span className="rt-empty-desc">时间窗内无趋势数据</span>} />
-        ) : (
-          <>
-            <DualAxes {...config} />
-            <div className="rt-trend-caption">
-              横轴为时间 · {GRANULARITY_LABEL[series?.granularity || ''] || series?.granularity || ''}一个点 · 共 {n} 点
+      <div className="rt-detail-main">
+        <div className="rt-detail-head">
+          <div className="rt-detail-title">调用量 / P95</div>
+        </div>
+        <div className="rt-detail-chart">
+          {loading ? (
+            <div className="rt-detail-loading">
+              <Spin size="small" />
             </div>
-          </>
-        )}
+          ) : error ? (
+            <Alert type="error" showIcon message={error} banner />
+          ) : (
+            <MetricsDualAxes
+              points={(series?.points || []).map((p) => ({
+                time: p.time,
+                success: p.success,
+                fail: p.fail,
+                p95Ms: p.p95Ms,
+              }))}
+              window={window}
+              granularity={series?.granularity}
+              height={180}
+              callAxisTitle="调用"
+            />
+          )}
+        </div>
       </div>
       <div className="rt-detail-side">
-        <a className="rt-detail-link" onClick={() => openAsset(item)}>
-          查看资产详情 <ArrowRightOutlined />
-        </a>
+        <button
+          type="button"
+          className="rt-detail-link"
+          onClick={() =>
+            openAssetDeepLink({ assetType: item.assetType, assetId: item.assetId })
+          }
+        >
+          资产运行详情 <ArrowRightOutlined />
+        </button>
       </div>
     </div>
   );
@@ -223,7 +182,6 @@ const RuntimeCenterPage: React.FC = () => {
     load();
   }, [load]);
 
-  // 自动刷新
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => {
@@ -258,7 +216,7 @@ const RuntimeCenterPage: React.FC = () => {
     {
       key: 'assets',
       icon: <AppstoreOutlined />,
-      tone: 'blue',
+      tone: 'slate',
       value: kpi.assets,
       label: activeTab === 'rank' ? '监控资产' : '异常资产',
       hint: `近 ${window}`,
@@ -269,7 +227,10 @@ const RuntimeCenterPage: React.FC = () => {
       tone: 'cyan',
       value: fmtNum(kpi.totalCalls),
       label: '总调用量',
-      hint: kpi.totalCalls > 0 ? `成功 ${fmtNum(kpi.totalCalls - dataset.reduce((s, r) => s + (r.failCount || 0), 0))}` : undefined,
+      hint:
+        kpi.totalCalls > 0
+          ? `成功 ${fmtNum(kpi.totalCalls - dataset.reduce((s, r) => s + (r.failCount || 0), 0))}`
+          : undefined,
     },
     {
       key: 'errorRate',
@@ -287,8 +248,10 @@ const RuntimeCenterPage: React.FC = () => {
       label: '待关注',
       hint: (
         <>
-          <span className="rt-dot err" />异常 {kpi.error}
-          <span className="rt-dot warn" />告警 {kpi.warn}
+          <span className="rt-dot err" />
+          异常 {kpi.error}
+          <span className="rt-dot warn" />
+          告警 {kpi.warn}
         </>
       ),
     },
@@ -315,13 +278,13 @@ const RuntimeCenterPage: React.FC = () => {
           const showId = !!r.assetId && r.assetName && r.assetName !== r.assetId;
           return (
             <span className="runtime-asset">
-              <Tag color={ASSET_TYPE_COLOR[r.assetType]} style={{ marginInlineEnd: 0 }}>
-                {ASSET_TYPE_LABEL[r.assetType] || r.assetType}
-              </Tag>
+              <AssetTypeBadge type={r.assetType} />
               <span className="runtime-asset-text">
                 <a
                   className="runtime-asset-name"
-                  onClick={() => openAsset(r)}
+                  onClick={() =>
+                    openAssetDeepLink({ assetType: r.assetType, assetId: r.assetId })
+                  }
                   title={r.assetName || r.assetId}
                 >
                   {r.assetName || r.assetId}
@@ -434,7 +397,6 @@ const RuntimeCenterPage: React.FC = () => {
     loading,
     columns,
     tableLayout: 'fixed' as const,
-    /** 仅纵向吸顶；不设 scroll.x / fixed，避免空数据时底部常驻横向滚动条 */
     scroll: { y: 100000 },
     className: 'fh-table runtime-table',
     size: 'middle' as const,
@@ -443,22 +405,23 @@ const RuntimeCenterPage: React.FC = () => {
     expandable: {
       columnWidth: 36,
       expandedRowClassName: () => 'rt-detail-row',
-      expandedRowRender: (r: AssetMetricsRankItem) => (
-        <RowTrend item={r} window={window} />
-      ),
+      expandedRowRender: (r: AssetMetricsRankItem) => <RowTrend item={r} window={window} />,
     },
   };
 
   const renderEmpty = (desc: string) => (
-    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span className="rt-empty-desc">{desc}</span>} />
+    <Empty
+      image={Empty.PRESENTED_IMAGE_SIMPLE}
+      description={<span className="rt-empty-desc">{desc}</span>}
+    />
   );
 
   return (
     <PageContainer
-      className="fh-container fh-runtime runtime-page"
+      className="fh-container runtime-page"
       header={{
         title: '运行中心',
-        subTitle: '按时间窗查看资产健康、延迟与异常排行',
+        subTitle: '资产健康、延迟与异常排行',
       }}
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
     >
@@ -466,13 +429,11 @@ const RuntimeCenterPage: React.FC = () => {
         <div className="runtime-toolbar">
           <div className="runtime-toolbar-group">
             <span className="runtime-toolbar-label">时间窗</span>
-            <Radio.Group
-              optionType="button"
-              buttonStyle="solid"
-              size="small"
+            <SoftSegmented
+              ariaLabel="时间窗"
               value={window}
-              onChange={(e) => setWindow(e.target.value)}
               options={WINDOWS.map((w) => ({ label: w, value: w }))}
+              onChange={(v) => setWindow(v as MetricsWindow)}
             />
           </div>
 
@@ -480,51 +441,42 @@ const RuntimeCenterPage: React.FC = () => {
             <>
               <div className="runtime-toolbar-group">
                 <span className="runtime-toolbar-label">资产</span>
-                <Segmented
-                  size="small"
+                <SoftSegmented
+                  ariaLabel="资产类型"
                   value={assetType}
+                  options={ASSET_TYPE_OPTIONS}
                   onChange={(v) => setAssetType(v as MetricsAssetType)}
-                  options={[
-                    { label: '接口', value: 'API' },
-                    { label: '任务', value: 'TASK' },
-                    { label: '服务', value: 'SERVICE' },
-                    { label: '开放平台', value: 'PLATFORM' },
-                  ]}
                 />
               </div>
               <div className="runtime-toolbar-group">
                 <span className="runtime-toolbar-label">排序</span>
-                <Segmented
-                  size="small"
+                <SoftSegmented
+                  ariaLabel="排序"
                   value={orderBy}
+                  options={ORDER_OPTIONS}
                   onChange={(v) => setOrderBy(v as typeof orderBy)}
-                  options={[
-                    { label: '错误率', value: 'errorRate' },
-                    { label: 'P95', value: 'p95' },
-                    { label: '调用量', value: 'calls' },
-                  ]}
                 />
               </div>
             </>
           )}
 
           <div className="runtime-meta">
-            <span className="runtime-updated">
-              更新于 {fmtClock(lastUpdated)}
-            </span>
-            <Segmented
-              size="small"
+            <span className="runtime-updated">更新于 {fmtClock(lastUpdated)}</span>
+            <SoftSegmented
+              ariaLabel="自动刷新"
               value={autoRefresh}
-              onChange={(v) => setAutoRefresh(v as number)}
               options={AUTO_REFRESH_OPTIONS}
+              onChange={(v) => setAutoRefresh(v as number)}
             />
             <Tooltip title="立即刷新">
-              <Button
-                size="small"
-                type="text"
-                icon={<ReloadOutlined spin={loading} />}
+              <button
+                type="button"
+                className="rt-icon-btn"
                 onClick={() => load()}
-              />
+                aria-label="刷新"
+              >
+                <ReloadOutlined spin={loading} />
+              </button>
             </Tooltip>
           </div>
         </div>
@@ -544,7 +496,7 @@ const RuntimeCenterPage: React.FC = () => {
 
         <div className="runtime-body">
           <Tabs
-            className="fh-tabs"
+            className="fh-tabs runtime-tabs"
             size="small"
             activeKey={activeTab}
             onChange={(k) => setActiveTab(k as 'rank' | 'anomalies')}
@@ -558,7 +510,11 @@ const RuntimeCenterPage: React.FC = () => {
                       {...tableProps}
                       rowKey={(r) => `${r.assetType}:${r.assetId}`}
                       dataSource={rank}
-                      locale={{ emptyText: renderEmpty(`${ASSET_TYPE_LABEL[assetType]}在近 ${window} 暂无调用数据`) }}
+                      locale={{
+                        emptyText: renderEmpty(
+                          `${ASSET_TYPE_LABEL[assetType]}在近 ${window} 暂无调用数据`,
+                        ),
+                      }}
                     />
                   </div>
                 ),
@@ -566,10 +522,12 @@ const RuntimeCenterPage: React.FC = () => {
               {
                 key: 'anomalies',
                 label: (
-                  <Space size={4}>
-                    <span>异常资产</span>
-                    {anomalies.length > 0 && <Tag color="orange">{anomalies.length}</Tag>}
-                  </Space>
+                  <span className="rt-tab-label">
+                    异常资产
+                    {anomalies.length > 0 && (
+                      <span className="rt-tab-badge">{anomalies.length}</span>
+                    )}
+                  </span>
                 ),
                 children: (
                   <div className="runtime-pane">

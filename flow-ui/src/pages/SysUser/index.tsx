@@ -150,6 +150,7 @@ const SysUserPage: React.FC = () => {
       <ModalForm
         title={edit ? '编辑用户' : '新建用户'}
         open={open}
+        layout="vertical"
         modalProps={{ destroyOnClose: true, onCancel: () => setOpen(false) }}
         initialValues={
           edit

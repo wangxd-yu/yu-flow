@@ -27,6 +27,11 @@ import {
 } from '@/services/flow/serviceFlowService';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
 import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
+import {
+  AssetFormShell,
+  ASSET_FORM_SHELL_CLASS,
+  ASSET_FORM_FILL_CLASS,
+} from '@/components/flow/ops';
 import { SchemaTreeTable } from '@/components/flow/ApiContractDesigner';
 import type { SchemaNode } from '@/components/flow/ApiContractDesigner';
 import {
@@ -476,7 +481,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       );
     }
     return (
-      <div className="service-form-fill">
+      <div className={ASSET_FORM_FILL_CLASS}>
         <FlowEditor
           value={dslContent}
           onChange={setDslContent}
@@ -506,60 +511,9 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   };
 
   return (
-    <Drawer
-      title={null}
-      width="100%"
-      open={visible}
-      onClose={onCancel}
-      closable={false}
-      styles={{
-        body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' },
-      }}
-      destroyOnClose
-    >
-      <style>{`
-        .service-form-page-container.ant-pro-page-container {
-          display: flex !important;
-          flex-direction: column !important;
-          height: 100% !important;
-          overflow: hidden !important;
-        }
-        .service-form-page-container .ant-page-header { flex-shrink: 0; }
-        .service-form-page-container > .ant-pro-grid-content,
-        .service-form-page-container .ant-pro-grid-content-children {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-        }
-        .service-form-page-container .ant-page-header {
-          padding-inline: 20px !important;
-        }
-        .service-form-page-container .ant-tabs-nav {
-          padding-inline: 20px !important;
-          margin: 0 !important;
-        }
-        .service-form-page-container .ant-pro-page-container-children-container {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          height: auto !important;
-          padding: 8px 20px 12px !important;
-          overflow: hidden !important;
-          box-sizing: border-box !important;
-        }
-        .service-form-fill {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-        }
-      `}</style>
+    <AssetFormShell open={visible} onClose={onCancel}>
       <PageContainer
-        className="service-form-page-container"
+        className={ASSET_FORM_SHELL_CLASS}
         header={{
           title: headerTitle,
           extra: headerExtra,
@@ -629,7 +583,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
         serviceName={name || initialValues.name}
         onClose={() => setManualRunOpen(false)}
       />
-    </Drawer>
+    </AssetFormShell>
   );
 };
 

@@ -16,5 +16,6 @@ export {
   LOG_WORDWRAP_LIMIT,
   LOG_PRETTY_LIMIT,
 } from './logFormat';
+import '@/styles/fullHeightTable.css';
 import './logPageLayout.css';
 import './logDetailShell.css';

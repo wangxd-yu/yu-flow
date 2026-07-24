@@ -5,6 +5,7 @@ import React, { useRef } from 'react';
 import { ActionType, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
 import { Tag, Typography } from 'antd';
+import '@/styles/fullHeightTable.css';
 import '../shared/logPageLayout.css';
 
 const { Text } = Typography;
@@ -89,18 +90,20 @@ const AuditLogPage: React.FC = () => {
 
   return (
     <PageContainer
-      className="log-page-container"
+      className="fh-container"
       header={{ title: '变更审计', subTitle: '接口发布 / 系统配置 / 开放密钥轮换' }}
+      style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
     >
       <ProTable<AuditLogDTO>
-        className="log-page-table"
+        className="fh-table"
         actionRef={actionRef}
         rowKey="id"
         columns={columns}
         search={{ labelWidth: 'auto' }}
+        tableLayout="fixed"
         pagination={{ defaultPageSize: 20, showSizeChanger: true }}
         request={queryPage}
-        scroll={{ x: 960 }}
+        scroll={{ x: 960, y: 100000 }}
       />
     </PageContainer>
   );

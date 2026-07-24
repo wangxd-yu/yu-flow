@@ -11,6 +11,7 @@ import {
 import { request } from '@umijs/max';
 import { message, Tabs, Spin, Alert, Typography, Button } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
+import '@/styles/fullHeightTable.css';
 
 const { Title, Text } = Typography;
 
@@ -293,22 +294,29 @@ const SysConfigManage: React.FC = () => {
   });
 
   return (
-    <PageContainer>
+    <PageContainer
+      className="fh-container"
+      style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
+      header={{ title: '系统配置', subTitle: '热更新基础设施参数' }}
+    >
       <Alert
         message="基础设施参数设置"
         description="此处参数修改后将通过底层 L2 缓存通道 (Redis Pub/Sub) 实时热部署广播至所有集群节点内存，无须重启服务即可生效。请谨慎操作。"
         type="warning"
         showIcon
         closable
-        style={{ marginBottom: 24 }}
+        style={{ marginBottom: 12, flexShrink: 0 }}
       />
-      <ProCard>
+      <ProCard
+        style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+        bodyStyle={{ height: '100%' }}
+      >
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
           tabPosition="left"
           items={tabItems}
-          destroyInactiveTabPane={false} 
+          destroyInactiveTabPane={false}
         />
       </ProCard>
     </PageContainer>

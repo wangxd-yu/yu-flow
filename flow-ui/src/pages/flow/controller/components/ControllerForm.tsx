@@ -12,7 +12,7 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Drawer, message, Button, Form, Input, Select,
+  message, Button, Form, Input, Select,
   Space, Tag, Dropdown, Tooltip, Popover
 } from 'antd';
 import type { MenuProps } from 'antd';
@@ -25,6 +25,11 @@ import {
   listApiVersions, restoreApiVersion, queryAutoApiConfigDetail,
 } from '@/services/flow/flowController';
 import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
+import {
+  AssetFormShell,
+  ASSET_FORM_SHELL_CLASS,
+  ASSET_FORM_FILL_CLASS,
+} from '@/components/flow/ops';
 import { buildApiCurl, copyText, openPublishedApiDocCenter } from '@/utils/apiDocsActions';
 
 // ── Panel 子组件 ──
@@ -854,7 +859,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     switch (activeTab) {
       case 'implementation':
         return (
-          <div className="controller-form-fill">
+          <div className={ASSET_FORM_FILL_CLASS}>
             <ImplementationPanel
               engineMode={engineMode}
               onEngineModeChange={setEngineMode}
@@ -940,93 +945,10 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   // ═══════════════════════════════════════════════════════════════════
 
   return (
-    <Drawer
-      title={null}
-      width="100%"
-      open={modalVisible}
-      onClose={onCancel}
-      closable={false}
-      styles={{
-        body: {
-          padding: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-        },
-      }}
-      destroyOnClose
-    >
+    <AssetFormShell open={modalVisible} onClose={onCancel}>
       {/* 顶部 URL 信息栏 + Tab 固定；滚动落在 .ant-pro-grid-content（当前版无 children-content） */}
-      <style>{`
-        .controller-form-page-container .ant-page-header-heading-left,
-        .controller-form-page-container .ant-page-header-heading-title {
-          flex: 1;
-          min-width: 0;
-        }
-        .controller-form-page-container.ant-pro-page-container {
-          display: flex !important;
-          flex-direction: column !important;
-          height: 100% !important;
-          overflow: hidden !important;
-        }
-        .controller-form-page-container .ant-page-header {
-          flex-shrink: 0;
-          padding-block: 8px !important;
-          padding-inline: 20px !important;
-        }
-        .controller-form-page-container .ant-page-header-heading {
-          max-width: 100%;
-        }
-        .controller-form-page-container .ant-page-header-heading-extra {
-          margin-block: 0 !important;
-        }
-        .controller-form-page-container .ant-tabs-nav {
-          margin: 0 !important;
-          padding-inline: 20px !important;
-        }
-        .controller-form-page-container .ant-tabs-nav::before {
-          border-bottom-color: #f0f0f0;
-        }
-        .controller-form-page-container .ant-tabs-tab {
-          padding: 6px 0 !important;
-          font-size: 13px !important;
-        }
-        .controller-form-page-container .ant-tabs-nav-list {
-          gap: 0;
-        }
-        .controller-form-page-container > .ant-pro-grid-content,
-        .controller-form-page-container .ant-pro-grid-content-children {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-          padding-bottom: 0 !important;
-          margin-bottom: 0 !important;
-        }
-        .controller-form-page-container .ant-pro-page-container-children-container {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          height: auto !important;
-          /* 左右留白，避免贴边；上下仍保持紧凑 */
-          padding: 8px 20px 12px !important;
-          margin-bottom: 0 !important;
-          overflow: hidden !important;
-          box-sizing: border-box !important;
-        }
-        .controller-form-fill {
-          flex: 1 !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          overflow: hidden !important;
-        }
-      `}</style>
       <PageContainer
-        className="controller-form-page-container"
+        className={ASSET_FORM_SHELL_CLASS}
         header={{
           title: headerTitle,
           extra: headerExtra,
@@ -1151,7 +1073,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           }}
         />
       )}
-    </Drawer>
+    </AssetFormShell>
   );
 };
 

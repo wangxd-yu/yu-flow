@@ -17,6 +17,7 @@ import {
   FlowTaskLog,
 } from '@/services/flow/taskService';
 import { LogStatusTag, LogDuration, type LogStatusKind, LogDeepLinkBar } from '../shared';
+import '@/styles/fullHeightTable.css';
 import '../shared/logPageLayout.css';
 
 const { Text } = Typography;

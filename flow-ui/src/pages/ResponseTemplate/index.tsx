@@ -302,10 +302,11 @@ const ResponseTemplateManage: React.FC = () => {
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"
-        scroll={{ x: 'max-content', y: 100000 }}
+        scroll={{ x: 1100, y: 100000 }}
         search={{
           labelWidth: 120,
         }}
+        locale={{ emptyText: '暂无响应模板' }}
         toolBarRender={() => [
           <Button key="add" type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             新建模板

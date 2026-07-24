@@ -6,6 +6,7 @@ import {
 import type { DataNode } from 'antd/es/tree';
 import dayjs from 'dayjs';
 import { request } from '@umijs/max';
+import { ASSET_FORM_SHELL_PLAIN_CLASS } from '@/components/flow/ops';
 import {
   createCredential,
   disableCredential,
@@ -300,13 +301,24 @@ const OpenPlatformDrawer: React.FC<Props> = ({ platformId, open, onClose, defaul
   };
 
   return (
+    <>
     <Drawer
       title={platform ? `开放平台 · ${platform.name}` : '开放平台'}
       width="90%"
       open={open}
       onClose={onClose}
       destroyOnClose
+      styles={{
+        body: {
+          padding: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        },
+      }}
     >
+      <div className={ASSET_FORM_SHELL_PLAIN_CLASS}>
       <Alert
         type="info"
         showIcon
@@ -693,6 +705,8 @@ const OpenPlatformDrawer: React.FC<Props> = ({ platformId, open, onClose, defaul
           },
         ]}
       />
+      </div>
+    </Drawer>
 
       <Modal
         title="请妥善保存密钥（仅显示一次）"
@@ -737,7 +751,7 @@ const OpenPlatformDrawer: React.FC<Props> = ({ platformId, open, onClose, defaul
           {docPreview?.content}
         </pre>
       </Modal>
-    </Drawer>
+    </>
   );
 };
 

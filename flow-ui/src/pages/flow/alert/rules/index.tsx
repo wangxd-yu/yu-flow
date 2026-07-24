@@ -211,55 +211,67 @@ const AlertRulesPage: React.FC = () => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer
+      className="fh-container"
+      style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
+    >
       <Tabs
+        className="fh-tabs"
         items={[
           {
             key: 'rules',
             label: '告警规则',
             children: (
-              <ProTable<AlertRule>
-                actionRef={ruleRef}
-                rowKey="id"
-                columns={ruleColumns}
-                request={pageAlertRules}
-                search={{ labelWidth: 'auto' }}
-                toolBarRender={() => [
-                  <Button
-                    key="add"
-                    type="primary"
-                    onClick={() => setRuleModal({ open: true })}
-                  >
-                    新建规则
-                  </Button>,
-                ]}
-                pagination={{ defaultPageSize: 20 }}
-                scroll={{ x: 1100 }}
-              />
+              <div className="fh-tab-pane">
+                <ProTable<AlertRule>
+                  className="fh-table"
+                  actionRef={ruleRef}
+                  rowKey="id"
+                  columns={ruleColumns}
+                  request={pageAlertRules}
+                  search={{ labelWidth: 'auto' }}
+                  tableLayout="fixed"
+                  toolBarRender={() => [
+                    <Button
+                      key="add"
+                      type="primary"
+                      onClick={() => setRuleModal({ open: true })}
+                    >
+                      新建规则
+                    </Button>,
+                  ]}
+                  pagination={{ defaultPageSize: 20 }}
+                  scroll={{ x: 1100, y: 100000 }}
+                />
+              </div>
             ),
           },
           {
             key: 'channels',
             label: '告警通道',
             children: (
-              <ProTable<AlertChannel>
-                actionRef={channelRef}
-                rowKey="id"
-                columns={channelColumns}
-                request={pageAlertChannels}
-                search={{ labelWidth: 'auto' }}
-                toolBarRender={() => [
-                  <Button
-                    key="add"
-                    type="primary"
-                    onClick={() => setChannelModal({ open: true })}
-                  >
-                    新建通道
-                  </Button>,
-                ]}
-                pagination={{ defaultPageSize: 20 }}
-                scroll={{ x: 900 }}
-              />
+              <div className="fh-tab-pane">
+                <ProTable<AlertChannel>
+                  className="fh-table"
+                  actionRef={channelRef}
+                  rowKey="id"
+                  columns={channelColumns}
+                  request={pageAlertChannels}
+                  search={{ labelWidth: 'auto' }}
+                  tableLayout="fixed"
+                  toolBarRender={() => [
+                    <Button
+                      key="add"
+                      type="primary"
+                      onClick={() => setChannelModal({ open: true })}
+                    >
+                      新建通道
+                    </Button>,
+                  ]}
+                  pagination={{ defaultPageSize: 20 }}
+                  scroll={{ x: 900, y: 100000 }}
+                />
+              </div>
             ),
           },
         ]}
@@ -268,6 +280,7 @@ const AlertRulesPage: React.FC = () => {
       <ModalForm
         title={ruleModal.record ? '编辑规则' : '新建规则'}
         open={ruleModal.open}
+        layout="vertical"
         modalProps={{
           destroyOnClose: true,
           onCancel: () => setRuleModal({ open: false }),
@@ -385,6 +398,7 @@ const AlertRulesPage: React.FC = () => {
       <ModalForm
         title={channelModal.record ? '编辑通道' : '新建通道'}
         open={channelModal.open}
+        layout="vertical"
         modalProps={{
           destroyOnClose: true,
           onCancel: () => setChannelModal({ open: false }),

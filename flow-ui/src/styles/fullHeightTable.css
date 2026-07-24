@@ -148,16 +148,3 @@
 .fh-table-fit .ant-table-tbody > tr > td {
   white-space: nowrap;
 }
-
-/* 运行中心：收紧 PageContainer 底边距，避免 Tabs+表体外溢出横向滚动 */
-.fh-container.fh-runtime .ant-pro-page-container-children-container {
-  padding-inline: 24px !important;
-  padding-block-start: 8px !important;
-  overflow: hidden !important;
-}
-.fh-container.fh-runtime .fh-toolbar {
-  margin-bottom: 8px;
-}
-.fh-container.fh-runtime .fh-tabs .ant-tabs-nav {
-  margin-bottom: 4px !important;
-}
