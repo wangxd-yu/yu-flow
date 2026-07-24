@@ -38,6 +38,9 @@ import ReqSchemaPanel from './panels/ReqSchemaPanel';
 import ResSchemaPanel from './panels/ResSchemaPanel';
 import BasicInfoPanel from './panels/BasicInfoPanel';
 import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
+import { confirmPublishWithGate } from '@/components/flow/release/confirmPublishWithGate';
+import RegressionSuitePanel from '@/components/flow/release/RegressionSuitePanel';
+import ApiDataViewDrawer from './ApiDataViewDrawer';
 import type { EngineMode } from './panels/ImplementationPanel';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
 import { buildApiTriggerPrefillFromContract } from '@/components/flow/debugger/apiTriggerPrefill';
@@ -634,9 +637,21 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     urlConflictMsg,
   ]);
 
+  const [regressionOpen, setRegressionOpen] = useState(false);
+  const [dataViewOpen, setDataViewOpen] = useState(false);
+
   const handlePublishCurrentDraft = useCallback(async () => {
     const saved = await handleSubmit(undefined, { notify: false, closeOnSuccess: false });
     if (!saved.success || !saved.id) {
+      return;
+    }
+
+    const envCode = await confirmPublishWithGate({
+      assetType: 'API',
+      assetId: saved.id,
+      assetName: name || saved.id,
+    });
+    if (!envCode) {
       return;
     }
 
@@ -644,9 +659,9 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     const hide = message.loading(isRepublish ? '正在发布更新...' : '正在发布...');
     try {
       if (isRepublish) {
-        await republishApi(saved.id);
+        await republishApi(saved.id, envCode);
       } else {
-        await publishApi(saved.id);
+        await publishApi(saved.id, envCode);
       }
       hide();
       message.success(isRepublish ? '发布更新成功' : '发布成功');
@@ -654,7 +669,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     } catch (e) {
       hide();
     }
-  }, [handleSubmit, isEdit, publishStatus, onSubmit]);
+  }, [handleSubmit, isEdit, publishStatus, onSubmit, name]);
 
   // ═══════════════════════════════════════════════════════════════════
   //  Header 区域配置
@@ -792,6 +807,17 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             回滚草稿
           </Button>
         </Tooltip>
+      )}
+
+      {isEdit && values?.id && (
+        <Button size={headerCtrlSize} onClick={() => setDataViewOpen(true)}>
+          数据查看
+        </Button>
+      )}
+      {isEdit && values?.id && (
+        <Button size={headerCtrlSize} onClick={() => setRegressionOpen(true)}>
+          回归测试
+        </Button>
       )}
 
       {(publishStatus === 0 || isEdit) && (
@@ -1071,6 +1097,25 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               // 拉详情失败时仍保持历史抽屉打开
             }
           }}
+        />
+      )}
+
+      {values?.id && (
+        <RegressionSuitePanel
+          open={regressionOpen}
+          onClose={() => setRegressionOpen(false)}
+          assetType="API"
+          assetId={values.id}
+          assetName={name || values.name}
+        />
+      )}
+
+      {values?.id && (
+        <ApiDataViewDrawer
+          open={dataViewOpen}
+          onClose={() => setDataViewOpen(false)}
+          apiId={values.id}
+          apiName={name || values.name}
         />
       )}
     </AssetFormShell>

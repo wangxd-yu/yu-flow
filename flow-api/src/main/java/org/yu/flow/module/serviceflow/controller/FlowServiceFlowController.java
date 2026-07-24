@@ -93,8 +93,9 @@ public class FlowServiceFlowController {
     }
 
     @PutMapping("/{id}/publish")
-    public R<FlowServiceFlowDO> publish(@PathVariable String id) {
-        return R.ok(flowServiceFlowService.publish(id));
+    public R<FlowServiceFlowDO> publish(@PathVariable String id,
+                                        @RequestParam(required = false, defaultValue = "DEV") String envCode) {
+        return R.ok(flowServiceFlowService.publish(id, envCode));
     }
 
     @PutMapping("/{id}/unpublish")
@@ -111,8 +112,9 @@ public class FlowServiceFlowController {
     }
 
     @PutMapping("/{id}/republish")
-    public R<FlowServiceFlowDO> republish(@PathVariable String id) {
-        return R.ok(flowServiceFlowService.republish(id));
+    public R<FlowServiceFlowDO> republish(@PathVariable String id,
+                                          @RequestParam(required = false, defaultValue = "DEV") String envCode) {
+        return R.ok(flowServiceFlowService.publish(id, envCode));
     }
 
     @PutMapping("/{id}/rollback")

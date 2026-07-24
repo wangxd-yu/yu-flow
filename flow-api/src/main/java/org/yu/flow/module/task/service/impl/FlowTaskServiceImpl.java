@@ -76,6 +76,9 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Resource
     private AuditLogService auditLogService;
 
+    @Resource
+    private org.yu.flow.module.release.service.PublishGateService publishGateService;
+
     private void notifyRefIndex() {
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
@@ -254,7 +257,14 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowTaskDO publish(String id) {
+        return publish(id, "DEV");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowTaskDO publish(String id, String envCode) {
         demoModeGuard.checkModifyOrDelete(id, "定时任务");
+        publishGateService.assertCanPublish("TASK", id, envCode);
         FlowTaskDO task = requireTask(id);
         if (StrUtil.isBlank(task.getDslContent())) {
             throw new RuntimeException("任务 DSL 为空，无法发布");
@@ -272,9 +282,11 @@ public class FlowTaskServiceImpl implements FlowTaskService {
             flowTaskScheduler.reschedule(saved);
         }
         notifyRefIndex();
+        String env = org.yu.flow.module.release.support.RegressionSecurity.normalizeEnvCode(envCode);
         auditLogService.record("TASK_PUBLISH", "TASK", id,
                 "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName())
-                        + "\",\"cron\":\"" + StrUtil.nullToEmpty(saved.getCron()) + "\"}");
+                        + "\",\"cron\":\"" + StrUtil.nullToEmpty(saved.getCron())
+                        + "\",\"env\":\"" + env + "\"}");
         return saved;
     }
 

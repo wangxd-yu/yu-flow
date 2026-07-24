@@ -22,12 +22,19 @@ import org.yu.flow.auto.service.FlowApiExecutionService;
 
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.module.api.service.FlowApiCrudService;
+import org.yu.flow.module.api.service.ApiDataViewService;
+import org.yu.flow.module.api.dto.ApiDataPreviewRequestDTO;
+import org.yu.flow.module.api.dto.ApiDataPreviewResultDTO;
+import org.yu.flow.module.api.dto.ApiDataExportRequestDTO;
+import org.yu.flow.module.api.dto.ApiExcelTemplateMetaDTO;
+import org.springframework.web.multipart.MultipartFile;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.SchemaValidatorService;
 import org.yu.flow.module.rbac.support.RequirePerm;
 
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import cn.hutool.core.util.StrUtil;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -53,6 +60,9 @@ public class FlowApiController {
 
     @Resource
     private FlowApiCrudService flowApiCrudService;
+
+    @Resource
+    private ApiDataViewService apiDataViewService;
 
     @Resource
     private ApiResponseCacheService apiResponseCacheService;
@@ -320,8 +330,9 @@ public class FlowApiController {
      */
     @PutMapping("/{id}/publish")
     @RequirePerm("flow:api:write")
-    public R<FlowApiDO> publish(@PathVariable String id) {
-        return R.ok(flowApiCrudService.publish(id));
+    public R<FlowApiDO> publish(@PathVariable String id,
+                                @RequestParam(required = false, defaultValue = "DEV") String envCode) {
+        return R.ok(flowApiCrudService.publish(id, envCode));
     }
 
     /**
@@ -347,8 +358,9 @@ public class FlowApiController {
      */
     @PutMapping("/{id}/republish")
     @RequirePerm("flow:api:write")
-    public R<FlowApiDO> republish(@PathVariable String id) {
-        return R.ok(flowApiCrudService.republish(id));
+    public R<FlowApiDO> republish(@PathVariable String id,
+                                  @RequestParam(required = false, defaultValue = "DEV") String envCode) {
+        return R.ok(flowApiCrudService.publish(id, envCode));
     }
 
     /** 历史版本列表 */
@@ -362,6 +374,64 @@ public class FlowApiController {
     @RequirePerm("flow:api:write")
     public R<FlowApiDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
         return R.ok(flowApiCrudService.restoreVersion(id, versionId));
+    }
+
+    /**
+     * 管理端数据预览（DB PAGE/LIST/OBJECT；不改对外 JSON 契约）
+     */
+    @PostMapping("/{id}/data/preview")
+    @RequirePerm({"flow:api:view", "flow:api:write"})
+    public R<ApiDataPreviewResultDTO> previewData(@PathVariable String id,
+                                                  @RequestBody(required = false) ApiDataPreviewRequestDTO body) {
+        return R.ok(apiDataViewService.preview(id, body));
+    }
+
+    /**
+     * 管理端 Excel 导出（文件流）
+     */
+    @PostMapping("/{id}/data/export")
+    @RequirePerm("flow:api:write")
+    public void exportData(@PathVariable String id,
+                           @RequestBody(required = false) ApiDataExportRequestDTO body,
+                           HttpServletResponse response) {
+        apiDataViewService.exportExcel(id, body, response);
+    }
+
+    /** 导出模板元信息 */
+    @GetMapping("/{id}/data/export-template")
+    @RequirePerm({"flow:api:view", "flow:api:write"})
+    public R<ApiExcelTemplateMetaDTO> getExportTemplateMeta(@PathVariable String id) {
+        return R.ok(apiDataViewService.getExcelTemplateMeta(id));
+    }
+
+    /** 上传公司标准表头模板（xlsx，覆盖） */
+    @PostMapping("/{id}/data/export-template")
+    @RequirePerm("flow:api:write")
+    public R<ApiExcelTemplateMetaDTO> uploadExportTemplate(@PathVariable String id,
+                                                           @RequestParam("file") MultipartFile file) {
+        return R.ok(apiDataViewService.uploadExcelTemplate(id, file));
+    }
+
+    /** 删除导出模板（回退 DYNAMIC） */
+    @DeleteMapping("/{id}/data/export-template")
+    @RequirePerm("flow:api:write")
+    public R<Void> deleteExportTemplate(@PathVariable String id) {
+        apiDataViewService.deleteExcelTemplate(id);
+        return R.ok();
+    }
+
+    /** 下载空白示例模板（含占位符约定） */
+    @GetMapping("/{id}/data/export-template/sample")
+    @RequirePerm({"flow:api:view", "flow:api:write"})
+    public void downloadSampleExportTemplate(@PathVariable String id, HttpServletResponse response) {
+        apiDataViewService.downloadSampleExcelTemplate(id, response);
+    }
+
+    /** 下载当前已上传模板原文件 */
+    @GetMapping("/{id}/data/export-template/file")
+    @RequirePerm({"flow:api:view", "flow:api:write"})
+    public void downloadExportTemplate(@PathVariable String id, HttpServletResponse response) {
+        apiDataViewService.downloadExcelTemplate(id, response);
     }
 
     @GetMapping("/name/{name}")

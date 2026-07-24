@@ -70,6 +70,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Resource
     private AuditLogService auditLogService;
 
+    @Resource
+    private org.yu.flow.module.release.service.PublishGateService publishGateService;
+
     @Override
     @Transactional
     public FlowServiceFlowDO save(FlowServiceFlowDO entity) {
@@ -210,7 +213,14 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowServiceFlowDO publish(String id) {
+        return publish(id, "DEV");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowServiceFlowDO publish(String id, String envCode) {
         demoModeGuard.checkModifyOrDelete(id, "内部服务");
+        publishGateService.assertCanPublish("SERVICE", id, envCode);
         FlowServiceFlowDO entity = require(id);
         if (StrUtil.isBlank(entity.getDslContent())) {
             throw new RuntimeException("服务 DSL 为空，无法发布");
@@ -225,8 +235,10 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
         flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        String env = org.yu.flow.module.release.support.RegressionSecurity.normalizeEnvCode(envCode);
         auditLogService.record("SERVICE_PUBLISH", "SERVICE", id,
-                "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName()) + "\"}");
+                "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName())
+                        + "\",\"env\":\"" + env + "\"}");
         return saved;
     }
 

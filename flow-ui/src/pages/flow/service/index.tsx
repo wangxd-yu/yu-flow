@@ -290,12 +290,20 @@ const ServiceFlowManagement: React.FC = () => {
             下线
           </a>
         ) : (
-          <Popconfirm
+          <a
             key="publish"
-            title="确认发布该服务？发布后可被 API/任务编排调用。"
-            onConfirm={async () => {
+            onClick={async () => {
               try {
-                await publishServiceFlow(record.id);
+                const { confirmPublishWithGate } = await import(
+                  '@/components/flow/release/confirmPublishWithGate'
+                );
+                const envCode = await confirmPublishWithGate({
+                  assetType: 'SERVICE',
+                  assetId: record.id,
+                  assetName: record.name,
+                });
+                if (!envCode) return;
+                await publishServiceFlow(record.id, envCode);
                 message.success('发布成功');
                 actionRef.current?.reload();
               } catch (e: any) {
@@ -303,8 +311,8 @@ const ServiceFlowManagement: React.FC = () => {
               }
             }}
           >
-            <a>发布</a>
-          </Popconfirm>
+            发布
+          </a>
         ),
         <Divider key="d2" type="vertical" />,
         <a

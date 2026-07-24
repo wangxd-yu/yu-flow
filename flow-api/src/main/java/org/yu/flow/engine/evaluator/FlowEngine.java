@@ -296,6 +296,14 @@ public class FlowEngine {
             context.setSourceName(sourceName);
         }
 
+        // DEBUG / REGRESSION：业务库写操作默认事务回滚（与 DB 模式调试一致）
+        String effectiveSource = context.getInvokeSource();
+        boolean rollbackDb = shouldRollbackDbWrites(effectiveSource, args);
+        if (rollbackDb) {
+            org.yu.flow.module.datasource.support.FlowDbRollbackScope.open();
+            context.setVar("@__rollbackDb", true);
+        }
+
         // 拓扑索引：缓存在 Definition 上，子流程复用
         Map<String, List<String>> parentMap = flowDefinition.getParentMap();
         Map<String, Set<String>> parallelSiblings = flowDefinition.getParallelSiblings();
@@ -432,7 +440,31 @@ public class FlowEngine {
             }
             // 处理系统异常
             return (T) ExecutionResult.failure(500, "系统错误: " + e.getMessage());
+        } finally {
+            if (rollbackDb) {
+                org.yu.flow.module.datasource.support.FlowDbRollbackScope.close();
+            }
         }
+    }
+
+    /**
+     * DEBUG / REGRESSION 默认回滚业务库写；可用 args.__rollbackDb=false 显式关闭。
+     */
+    private static boolean shouldRollbackDbWrites(String invokeSource, Map<String, Object> args) {
+        if (args != null && args.containsKey("__rollbackDb")) {
+            Object v = args.get("__rollbackDb");
+            if (v instanceof Boolean) {
+                return (Boolean) v;
+            }
+            if (v != null) {
+                return Boolean.parseBoolean(String.valueOf(v));
+            }
+        }
+        if (invokeSource == null) {
+            return false;
+        }
+        String src = invokeSource.trim().toUpperCase(Locale.ROOT);
+        return "DEBUG".equals(src) || "REGRESSION".equals(src);
     }
 
     /**

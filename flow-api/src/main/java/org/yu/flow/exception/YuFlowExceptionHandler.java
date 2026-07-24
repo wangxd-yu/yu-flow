@@ -58,6 +58,9 @@ public class YuFlowExceptionHandler {
         if ("RBAC_UNAUTHORIZED".equals(code)) {
             return HttpStatus.UNAUTHORIZED;
         }
+        if ("PUBLISH_GATE_BLOCKED".equals(code) || "VALIDATION_ERROR".equals(code)) {
+            return HttpStatus.BAD_REQUEST;
+        }
         return getHttpStatus(ex.getSeverity());
     }
 

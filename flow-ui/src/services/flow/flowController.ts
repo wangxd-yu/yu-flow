@@ -46,8 +46,63 @@ export interface FlowController {
    * 入站防护 JSON：authMode/antiReplay/rateLimit/ipAllowlist/timeoutMs
    */
   securityConfig?: string;
+  /** 数据查看 / Excel 导出配置 JSON */
+  viewExportConfig?: string;
+  responseType?: string;
+  serviceType?: string;
+  contract?: string;
   createTime?: string;
   updateTime?: string;
+}
+
+export interface ViewExportColumn {
+  field: string;
+  header?: string;
+  width?: number;
+  exportable?: boolean;
+  visible?: boolean;
+  /** 模板占位符 key，对应 {.key}，默认等于 field */
+  templateKey?: string;
+}
+
+export interface ViewExportConfig {
+  enabled?: boolean;
+  sheetName?: string;
+  maxExportRows?: number;
+  itemsPath?: string;
+  /** DYNAMIC | TEMPLATE */
+  exportMode?: 'DYNAMIC' | 'TEMPLATE' | string;
+  templateFileId?: string;
+  templateSheetNo?: number;
+  columns?: ViewExportColumn[];
+}
+
+export interface ApiExcelTemplateMeta {
+  id?: string;
+  apiId?: string;
+  fileName?: string;
+  contentType?: string;
+  fileSize?: number;
+  createTime?: string;
+  updateTime?: string;
+  present?: boolean;
+  hasListPlaceholder?: boolean;
+  warning?: string;
+}
+
+export interface ApiDataPreviewResult {
+  apiId: string;
+  apiName?: string;
+  serviceType?: string;
+  responseType?: string;
+  useDraft?: boolean;
+  columns?: ViewExportColumn[];
+  rows?: Record<string, any>[];
+  object?: Record<string, any>;
+  total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 }
 
 export async function queryAutoApiConfigDetail(id: string): Promise<FlowController> {
@@ -238,9 +293,12 @@ export async function cancelDebugSession(sessionId: string) {
 
 // ============================= 版本快照 API =============================
 
-/** 发布 API（冻结草稿为线上快照） */
-export async function publishApi(id: string) {
-  return request<FlowController>(`/flow-api/api/${id}/publish`, { method: 'PUT' });
+/** 发布 API（冻结草稿为线上快照；envCode 默认 DEV） */
+export async function publishApi(id: string, envCode = 'DEV') {
+  return request<FlowController>(`/flow-api/api/${id}/publish`, {
+    method: 'PUT',
+    params: { envCode },
+  });
 }
 
 /** 下线 API（清除快照，停止线上服务） */
@@ -254,8 +312,11 @@ export async function rollbackApi(id: string) {
 }
 
 /** 重新发布（将最新草稿冻结为快照并上线） */
-export async function republishApi(id: string) {
-  return request<FlowController>(`/flow-api/api/${id}/republish`, { method: 'PUT' });
+export async function republishApi(id: string, envCode = 'DEV') {
+  return request<FlowController>(`/flow-api/api/${id}/republish`, {
+    method: 'PUT',
+    params: { envCode },
+  });
 }
 
 /** 历史版本列表 */
@@ -268,4 +329,163 @@ export async function restoreApiVersion(id: string, versionId: string) {
   return request<FlowController>(`/flow-api/api/${id}/versions/${versionId}/restore`, {
     method: 'POST',
   });
+}
+
+/** 管理端数据预览 */
+export async function previewApiData(
+  id: string,
+  data: {
+    useDraft?: boolean;
+    queryParams?: Record<string, string>;
+    bodyParams?: Record<string, any>;
+    pathParams?: Record<string, string>;
+    page?: number;
+    size?: number;
+  },
+): Promise<ApiDataPreviewResult> {
+  const result = await request(`/flow-api/api/${id}/data/preview`, {
+    method: 'POST',
+    data,
+  });
+  return (result as any)?.data ?? result;
+}
+
+function apiAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('flow_token') || '';
+  return { 'Flow-Authorization': token };
+}
+
+function apiContextPath(): string {
+  return process.env.NODE_ENV === 'production' ? (window as any).__CONTEXT_PATH__ || '' : '';
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function filenameFromContentDisposition(cd: string | null, fallback: string) {
+  let filename = fallback;
+  const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd || '');
+  if (m) {
+    filename = decodeURIComponent(m[1] || m[2]);
+  }
+  return filename;
+}
+
+/** 管理端 Excel 导出（blob 下载） */
+export async function exportApiDataExcel(
+  id: string,
+  data: {
+    useDraft?: boolean;
+    queryParams?: Record<string, string>;
+    bodyParams?: Record<string, any>;
+    pathParams?: Record<string, string>;
+  },
+): Promise<{
+  exportMode?: string;
+  fallback?: string;
+  fallbackMessage?: string;
+  rows?: number;
+}> {
+  const url = `${apiContextPath()}/flow-api/api/${id}/data/export`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...apiAuthHeaders(),
+    },
+    credentials: 'include',
+    body: JSON.stringify(data || {}),
+  });
+  if (!res.ok) {
+    let msg = `导出失败 (${res.status})`;
+    try {
+      const j = await res.json();
+      msg = j?.msg || j?.message || msg;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const exportMode = res.headers.get('X-Export-Mode') || undefined;
+  const fallback = res.headers.get('X-Export-Fallback') || undefined;
+  let fallbackMessage: string | undefined;
+  const rawMsg = res.headers.get('X-Export-Fallback-Message');
+  if (rawMsg) {
+    try {
+      fallbackMessage = decodeURIComponent(rawMsg);
+    } catch {
+      fallbackMessage = rawMsg;
+    }
+  }
+  const rowsHeader = res.headers.get('X-Export-Rows');
+  const rows = rowsHeader != null && rowsHeader !== '' ? Number(rowsHeader) : undefined;
+  const blob = await res.blob();
+  if (!blob || blob.size === 0) {
+    throw new Error('导出文件为空，请检查 SQL 或列配置');
+  }
+  triggerBlobDownload(blob, filenameFromContentDisposition(res.headers.get('Content-Disposition'), 'export.xlsx'));
+  return { exportMode, fallback, fallbackMessage, rows };
+}
+
+export async function getApiExcelTemplateMeta(id: string): Promise<ApiExcelTemplateMeta> {
+  const result = await request(`/flow-api/api/${id}/data/export-template`, { method: 'GET' });
+  return (result as any)?.data ?? result;
+}
+
+export async function uploadApiExcelTemplate(id: string, file: File): Promise<ApiExcelTemplateMeta> {
+  const form = new FormData();
+  form.append('file', file);
+  const result = await request(`/flow-api/api/${id}/data/export-template`, {
+    method: 'POST',
+    data: form,
+  });
+  return (result as any)?.data ?? result;
+}
+
+export async function deleteApiExcelTemplate(id: string): Promise<void> {
+  await request(`/flow-api/api/${id}/data/export-template`, { method: 'DELETE' });
+}
+
+export async function downloadApiExcelTemplateSample(id: string): Promise<void> {
+  const url = `${apiContextPath()}/flow-api/api/${id}/data/export-template/sample`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: apiAuthHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error(`下载示例模板失败 (${res.status})`);
+  const blob = await res.blob();
+  triggerBlobDownload(
+    blob,
+    filenameFromContentDisposition(res.headers.get('Content-Disposition'), 'export_template_sample.xlsx'),
+  );
+}
+
+export async function downloadApiExcelTemplateFile(id: string): Promise<void> {
+  const url = `${apiContextPath()}/flow-api/api/${id}/data/export-template/file`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: apiAuthHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    let msg = `下载模板失败 (${res.status})`;
+    try {
+      const j = await res.json();
+      msg = j?.msg || j?.message || msg;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  triggerBlobDownload(
+    blob,
+    filenameFromContentDisposition(res.headers.get('Content-Disposition'), 'template.xlsx'),
+  );
 }

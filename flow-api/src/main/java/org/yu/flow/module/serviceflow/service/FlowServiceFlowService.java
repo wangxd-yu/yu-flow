@@ -30,6 +30,8 @@ public interface FlowServiceFlowService {
     /** 发布：冻结 dslContent + contract 为快照 */
     FlowServiceFlowDO publish(String id);
 
+    FlowServiceFlowDO publish(String id, String envCode);
+
     /** 下线：清除快照，CALL 不可再调用 */
     FlowServiceFlowDO unpublish(String id);
 

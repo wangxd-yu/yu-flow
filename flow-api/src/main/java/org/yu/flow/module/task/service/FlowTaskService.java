@@ -43,6 +43,8 @@ public interface FlowTaskService {
 
     FlowTaskDO publish(String id);
 
+    FlowTaskDO publish(String id, String envCode);
+
     FlowTaskDO unpublish(String id);
 
     FlowTaskDO rollbackToPublished(String id);

@@ -88,8 +88,11 @@ public interface FlowApiCrudService {
         return existsByUrlAndMethod(url, method, null);
     }
 
-    /** 发布 API：将草稿内容冻结为发布快照 */
+    /** 发布 API：将草稿内容冻结为发布快照（envCode 默认 DEV） */
     FlowApiDO publish(String id);
+
+    /** 发布 API（指定逻辑环境门禁） */
+    FlowApiDO publish(String id, String envCode);
 
     /** 下线 API：清除快照，线上停止服务 */
     FlowApiDO unpublish(String id);

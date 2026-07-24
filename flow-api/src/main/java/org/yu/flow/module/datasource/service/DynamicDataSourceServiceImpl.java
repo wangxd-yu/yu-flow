@@ -675,6 +675,10 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
     @Override
     public <T> T execute(String code, DataSourceCallback<T> callback) {
+        // 调试/回归回滚作用域内：SELECT 也必须走同一连接事务，才能读到未提交写入
+        if (org.yu.flow.module.datasource.support.FlowDbRollbackScope.isActive()) {
+            return executeInTransaction(code, Propagation.REQUIRED, callback);
+        }
         JdbcTemplate jt = jdbcTemplateMap.get(code);
         if (jt == null) {
             throw new IllegalArgumentException("数据源未找到, code=" + code);
@@ -698,14 +702,21 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         PlatformTransactionManager txManager = transactionManagerMap.computeIfAbsent(
                 code, k -> new DataSourceTransactionManager(ds)
         );
+        JdbcTemplate jt = jdbcTemplateMap.get(code);
+
+        // FLOW 调试/回归：加入线程级回滚事务，结束后由 Scope.close 统一 rollback
+        if (org.yu.flow.module.datasource.support.FlowDbRollbackScope.isActive()
+                && (propagation == Propagation.REQUIRED
+                || propagation == Propagation.SUPPORTS
+                || propagation == Propagation.MANDATORY)) {
+            return org.yu.flow.module.datasource.support.FlowDbRollbackScope.participate(
+                    code, txManager, jt, callback);
+        }
 
         TransactionTemplate txTemplate = new TransactionTemplate(txManager);
         txTemplate.setPropagationBehavior(propagation.value());
 
-        return txTemplate.execute(status -> {
-            JdbcTemplate jt = jdbcTemplateMap.get(code);
-            return callback.doInDataSource(jt);
-        });
+        return txTemplate.execute(status -> callback.doInDataSource(jt));
     }
 
     @Override

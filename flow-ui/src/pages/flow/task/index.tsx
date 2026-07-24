@@ -294,7 +294,16 @@ const TaskManagement: React.FC = () => {
               const ok = await confirmTaskPublish(record);
               if (!ok) return;
               try {
-                await publishTask(record.id);
+                const { confirmPublishWithGate } = await import(
+                  '@/components/flow/release/confirmPublishWithGate'
+                );
+                const envCode = await confirmPublishWithGate({
+                  assetType: 'TASK',
+                  assetId: record.id,
+                  assetName: record.name,
+                });
+                if (!envCode) return;
+                await publishTask(record.id, envCode);
                 message.success('发布成功');
                 actionRef.current?.reload();
               } catch (e: any) {

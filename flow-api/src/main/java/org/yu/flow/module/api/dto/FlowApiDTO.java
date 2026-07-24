@@ -34,6 +34,8 @@ public class FlowApiDTO {
     private String cacheConfig;
     /** 入站防护配置 JSON（草稿；线上以发布快照为准） */
     private String securityConfig;
+    /** 数据查看 / Excel 导出配置 JSON */
+    private String viewExportConfig;
     private Integer level;
     private String contract;
     private String tags;
@@ -78,6 +80,7 @@ public class FlowApiDTO {
         dto.setLogEnabled(configDO.getLogEnabled() == null || configDO.getLogEnabled());
         dto.setCacheConfig(configDO.getCacheConfig());
         dto.setSecurityConfig(configDO.getSecurityConfig());
+        dto.setViewExportConfig(configDO.getViewExportConfig());
         dto.setLevel(configDO.getLevel());
         dto.setContract(configDO.getContract());
         dto.setTags(configDO.getTags());
@@ -113,6 +116,7 @@ public class FlowApiDTO {
         configDO.setLogEnabled(this.getLogEnabled());
         configDO.setCacheConfig(this.getCacheConfig());
         configDO.setSecurityConfig(this.getSecurityConfig());
+        configDO.setViewExportConfig(this.getViewExportConfig());
         configDO.setLevel(this.getLevel());
         configDO.setContract(this.getContract());
         configDO.setTags(this.getTags());

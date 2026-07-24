@@ -6,3 +6,4 @@ export * from './serviceFlowService';
 export * from './dataSource';
 export * from './openPlatformService';
 export * from './serviceContract';
+export * from './releaseService';

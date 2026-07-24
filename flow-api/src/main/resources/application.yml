@@ -7,6 +7,10 @@ server:
       enabled: true
       force: true
 spring:
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 4MB
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/flow?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
     username: root

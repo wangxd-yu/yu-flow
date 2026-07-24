@@ -89,6 +89,13 @@ public class FlowApiDO implements Serializable {
     private String securityConfig;
 
     /**
+     * 数据查看 / Excel 导出配置（JSON）。
+     * <p>结构示例：{"enabled":true,"sheetName":"数据","maxExportRows":50000,"columns":[{"field":"userName","header":"用户名"}]}</p>
+     */
+    @Column(name = "view_export_config", columnDefinition = "TEXT")
+    private String viewExportConfig;
+
+    /**
      * 优先级，与请求的ss-level比较，大的优先
      */
     private Integer level;

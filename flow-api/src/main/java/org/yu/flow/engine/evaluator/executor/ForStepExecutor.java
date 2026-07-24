@@ -175,7 +175,14 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
                 }
             }
 
+            // 主线程若处于调试/回归回滚作用域，分支线程需各自 open/close（线程池不会继承）
+            final boolean branchRollbackDb =
+                    org.yu.flow.module.datasource.support.FlowDbRollbackScope.isActive();
+
             executorService.submit(() -> {
+                if (branchRollbackDb) {
+                    org.yu.flow.module.datasource.support.FlowDbRollbackScope.open();
+                }
                 try {
                     // ---- a) 浅拷贝：新顶层 Map + 共享嵌套引用（barrier 共享）；循环元数据写在分支自有 key ----
                     ExecutionContext branchCtx = context.copy(false);
@@ -209,6 +216,9 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
                     // 向屏障提交 ERROR 哨兵，确保计数器递增，防止 CollectStep 永久挂起
                     barrier.submitError(index, e);
                 } finally {
+                    if (branchRollbackDb) {
+                        org.yu.flow.module.datasource.support.FlowDbRollbackScope.close();
+                    }
                     if (inFlight != null) {
                         inFlight.release();
                     }

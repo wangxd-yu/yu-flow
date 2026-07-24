@@ -86,16 +86,22 @@ export async function updateTaskLogEnabled(id: string, enabled: boolean) {
 
 // ── 发布 / 历史版本 ──
 
-export async function publishTask(id: string) {
-  return request<FlowTask>(`/flow-api/task/${id}/publish`, { method: 'PUT' });
+export async function publishTask(id: string, envCode = 'DEV') {
+  return request<FlowTask>(`/flow-api/task/${id}/publish`, {
+    method: 'PUT',
+    params: { envCode },
+  });
 }
 
 export async function unpublishTask(id: string) {
   return request<FlowTask>(`/flow-api/task/${id}/unpublish`, { method: 'PUT' });
 }
 
-export async function republishTask(id: string) {
-  return request<FlowTask>(`/flow-api/task/${id}/republish`, { method: 'PUT' });
+export async function republishTask(id: string, envCode = 'DEV') {
+  return request<FlowTask>(`/flow-api/task/${id}/republish`, {
+    method: 'PUT',
+    params: { envCode },
+  });
 }
 
 export async function rollbackTask(id: string) {

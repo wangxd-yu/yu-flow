@@ -78,6 +78,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private FlowOpenApiGrantRepository flowOpenApiGrantRepository;
 
     @Resource
+    private org.yu.flow.module.release.service.PublishGateService publishGateService;
+
+    @Resource
     private OpenPlatformCache openPlatformCache;
 
     @Resource
@@ -191,6 +194,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         }
         if (flowApiDO.getSecurityConfig() == null) {
             flowApiDO.setSecurityConfig(dbRecord.getSecurityConfig());
+        }
+        if (flowApiDO.getViewExportConfig() == null) {
+            flowApiDO.setViewExportConfig(dbRecord.getViewExportConfig());
         }
         boolean cacheConfigChanged = !Objects.equals(
                 StrUtil.nullToEmpty(flowApiDO.getCacheConfig()),
@@ -458,7 +464,14 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO publish(String id) {
+        return publish(id, "DEV");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO publish(String id, String envCode) {
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
+        publishGateService.assertCanPublish("API", id, envCode);
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
 
@@ -479,10 +492,12 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // 刷新缓存，线上生效
         flowApiCacheManager.publishRefreshEvent();
         notifyRefIndex();
+        String env = org.yu.flow.module.release.support.RegressionSecurity.normalizeEnvCode(envCode);
         auditLogService.record("API_PUBLISH", "API", id,
                 "{\"method\":\"" + StrUtil.nullToEmpty(api.getMethod())
                         + "\",\"url\":\"" + StrUtil.nullToEmpty(api.getUrl())
-                        + "\",\"name\":\"" + StrUtil.nullToEmpty(api.getName()) + "\"}");
+                        + "\",\"name\":\"" + StrUtil.nullToEmpty(api.getName())
+                        + "\",\"env\":\"" + env + "\"}");
         return api;
     }
 
@@ -596,6 +611,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             applyText(snap, "contract", api::setContract);
             applyText(snap, "cacheConfig", api::setCacheConfig);
             applyText(snap, "securityConfig", api::setSecurityConfig);
+            applyText(snap, "viewExportConfig", api::setViewExportConfig);
             applyText(snap, "templateId", api::setTemplateId);
             applyText(snap, "customSuccessWrapper", api::setCustomSuccessWrapper);
             applyText(snap, "customPageWrapper", api::setCustomPageWrapper);
@@ -635,6 +651,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             snap.put("contract", api.getContract());
             snap.put("cacheConfig", api.getCacheConfig());
             snap.put("securityConfig", api.getSecurityConfig());
+            snap.put("viewExportConfig", api.getViewExportConfig());
             snap.put("templateId", api.getTemplateId());
             snap.put("customSuccessWrapper", api.getCustomSuccessWrapper());
             snap.put("customPageWrapper", api.getCustomPageWrapper());

@@ -89,8 +89,11 @@ export async function updateServiceFlowLogEnabled(id: string, enabled: boolean) 
   });
 }
 
-export async function publishServiceFlow(id: string) {
-  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/publish`, { method: 'PUT' });
+export async function publishServiceFlow(id: string, envCode = 'DEV') {
+  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/publish`, {
+    method: 'PUT',
+    params: { envCode },
+  });
 }
 
 export async function unpublishServiceFlow(id: string) {
@@ -104,8 +107,11 @@ export async function listServiceFlowReferences(id: string): Promise<string[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export async function republishServiceFlow(id: string) {
-  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/republish`, { method: 'PUT' });
+export async function republishServiceFlow(id: string, envCode = 'DEV') {
+  return request<FlowServiceFlow>(`/flow-api/service-flow/${id}/republish`, {
+    method: 'PUT',
+    params: { envCode },
+  });
 }
 
 export async function rollbackServiceFlow(id: string) {

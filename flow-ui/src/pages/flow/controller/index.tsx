@@ -30,6 +30,7 @@ import {
   ApiCacheEntry,
 } from '@/services/flow/flowController';
 import ApiConfigForm from './components/ControllerForm';
+import ApiDataViewDrawer from './components/ApiDataViewDrawer';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
@@ -175,6 +176,8 @@ const AutoApiConfigList: React.FC = () => {
   const [formInitialTab, setFormInitialTab] = useState<
     'implementation' | 'req-schema' | 'res-schema' | 'basic-info' | 'runtime' | undefined
   >();
+  const [dataViewOpen, setDataViewOpen] = useState(false);
+  const [dataViewApi, setDataViewApi] = useState<{ id: string; name?: string } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -513,11 +516,20 @@ const AutoApiConfigList: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 340,
+      width: 420,
       fixed: 'right',
       render: (_, record) => (
         <span style={{ whiteSpace: 'nowrap' }}>
           <a onClick={() => handleEdit(record)}>编辑</a>
+          <Divider type="vertical" />
+          <a
+            onClick={() => {
+              setDataViewApi({ id: record.id, name: record.name });
+              setDataViewOpen(true);
+            }}
+          >
+            数据查看
+          </a>
           <Divider type="vertical" />
           {record.publishStatus === 1 ? (
             <a
@@ -537,7 +549,16 @@ const AutoApiConfigList: React.FC = () => {
             <a
               onClick={async () => {
                 try {
-                  await publishApi(record.id);
+                  const { confirmPublishWithGate } = await import(
+                    '@/components/flow/release/confirmPublishWithGate'
+                  );
+                  const envCode = await confirmPublishWithGate({
+                    assetType: 'API',
+                    assetId: record.id,
+                    assetName: record.name,
+                  });
+                  if (!envCode) return;
+                  await publishApi(record.id, envCode);
                   message.success('发布成功');
                   actionRef.current?.reload();
                 } catch {
@@ -691,6 +712,63 @@ const AutoApiConfigList: React.FC = () => {
             }}
           >
             批量删除
+          </Button>
+          <Button
+            onClick={async () => {
+              if (selectedRowsState.length > 20) {
+                message.warning('单次批量回归最多 20 个接口，请减少选择');
+                return;
+              }
+              const { confirmBatchRegression } = await import(
+                '@/components/flow/release/confirmBatchRegression'
+              );
+              const envCode = await confirmBatchRegression({
+                count: selectedRowsState.length,
+                assetLabel: '接口',
+              });
+              if (!envCode) return;
+              const hide = message.loading(
+                `正在对 ${selectedRowsState.length} 个接口执行回归（${envCode}）…`,
+                0,
+              );
+              try {
+                const { batchRunRegression } = await import('@/services/flow/releaseService');
+                const result = await batchRunRegression({
+                  assetType: 'API',
+                  assetIds: selectedRowsState.map((r) => r.id),
+                  envCode,
+                });
+                hide();
+                const summary = `通过 ${result.passed} / 失败 ${result.failed} / 跳过 ${result.skipped} / 错误 ${result.error}`;
+                if (result.failed + result.error === 0) {
+                  message.success(`批量回归完成（${envCode}）：${summary}`);
+                } else {
+                  Modal.warning({
+                    title: `批量回归完成（${envCode}）`,
+                    width: 640,
+                    content: (
+                      <div>
+                        <p>{summary}</p>
+                        <ul style={{ maxHeight: 280, overflow: 'auto', paddingLeft: 18 }}>
+                          {(result.items || [])
+                            .filter((i) => i.status !== 'PASSED' && i.status !== 'SKIPPED')
+                            .map((i) => (
+                              <li key={i.assetId}>
+                                <b>{i.assetName || i.assetId}</b>：{i.status} — {i.message}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ),
+                  });
+                }
+              } catch (e: any) {
+                hide();
+                message.error(e?.message || '批量回归失败');
+              }
+            }}
+          >
+            批量回归
           </Button>
           <Button
             type="primary"
@@ -920,6 +998,18 @@ const AutoApiConfigList: React.FC = () => {
           />
         </Spin>
       </Modal>
+
+      {dataViewApi && (
+        <ApiDataViewDrawer
+          open={dataViewOpen}
+          onClose={() => {
+            setDataViewOpen(false);
+            setDataViewApi(null);
+          }}
+          apiId={dataViewApi.id}
+          apiName={dataViewApi.name}
+        />
+      )}
     </PageContainer>
   );
 };

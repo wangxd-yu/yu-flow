@@ -33,9 +33,11 @@ export default defineConfig({
             { text: '动态数据源', link: '/manual/data-source' },
             { text: '数据模型', link: '/manual/data-model' },
             { text: '动态 API', link: '/manual/dynamic-api' },
+            { text: '接口数据查看与导出', link: '/manual/api-data-view-export' },
             { text: '可视化页面', link: '/manual/visual-page' },
             { text: '全局参数', link: '/manual/global-params' },
             { text: '执行大盘与只读回放', link: '/manual/execution-trace' },
+            { text: '环境发布门禁与回归', link: '/manual/release-gate' },
             { text: '演示模式安全管控', link: '/manual/demo-mode' }
           ]
         }

@@ -107,8 +107,9 @@ public class FlowTaskController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PutMapping("/{id}/publish")
-    public R<FlowTaskDO> publish(@PathVariable String id) {
-        return R.ok(flowTaskService.publish(id));
+    public R<FlowTaskDO> publish(@PathVariable String id,
+                                 @RequestParam(required = false, defaultValue = "DEV") String envCode) {
+        return R.ok(flowTaskService.publish(id, envCode));
     }
 
     @PutMapping("/{id}/unpublish")
@@ -122,8 +123,9 @@ public class FlowTaskController {
     }
 
     @PutMapping("/{id}/republish")
-    public R<FlowTaskDO> republish(@PathVariable String id) {
-        return R.ok(flowTaskService.republish(id));
+    public R<FlowTaskDO> republish(@PathVariable String id,
+                                   @RequestParam(required = false, defaultValue = "DEV") String envCode) {
+        return R.ok(flowTaskService.publish(id, envCode));
     }
 
     @GetMapping("/{id}/versions")
