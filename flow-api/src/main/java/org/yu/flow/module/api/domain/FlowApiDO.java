@@ -81,6 +81,14 @@ public class FlowApiDO implements Serializable {
     private String cacheConfig;
 
     /**
+     * 入站防护配置（JSON）。
+     * <p>结构示例：{"authMode":"INHERIT","antiReplay":null,"rateLimitEnabled":null,"rateLimitQps":null,"ipAllowlist":null}</p>
+     * <p>运行时以 publishedSnapshot 为准，改完需发布后生效。</p>
+     */
+    @Column(columnDefinition = "TEXT")
+    private String securityConfig;
+
+    /**
      * 优先级，与请求的ss-level比较，大的优先
      */
     private Integer level;

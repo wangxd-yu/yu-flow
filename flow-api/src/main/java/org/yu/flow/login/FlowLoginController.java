@@ -5,7 +5,9 @@ import org.yu.flow.annotation.YuFlowApi;
 import org.yu.flow.dto.R;
 import org.yu.flow.log.login.domain.LoginLogDO;
 import org.yu.flow.log.login.service.LoginLogService;
+import org.yu.flow.login.captcha.LoginCaptchaService;
 import org.yu.flow.login.dto.LoginDto;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 import net.dreamlu.mica.ip2region.core.Ip2regionSearcher;
 import net.dreamlu.mica.ip2region.core.IpInfo;
@@ -34,13 +37,38 @@ public class FlowLoginController {
     private LoginLogService loginLogService;
 
     @Resource
+    private LoginCaptchaService loginCaptchaService;
+
+    @Resource
     private Ip2regionSearcher ip2regionSearcher;
+
+    /**
+     * 获取登录图形验证码（无需鉴权）。
+     */
+    @GetMapping("/login/captcha")
+    public R<Map<String, String>> captcha() {
+        try {
+            return R.ok(loginCaptchaService.create(), "ok");
+        } catch (Exception e) {
+            return R.fail(e.getMessage() != null ? e.getMessage() : "验证码生成失败");
+        }
+    }
 
     @PostMapping("/login")
     public R<String> login(@RequestBody LoginDto loginDto, HttpServletRequest request) {
         long startTime = System.currentTimeMillis();
         String ip = getClientIp(request);
         String userAgent = request.getHeader("User-Agent");
+
+        // 先校验验证码（一次性消费），再验账号密码
+        try {
+            loginCaptchaService.verifyAndConsume(
+                    loginDto != null ? loginDto.getCaptchaId() : null,
+                    loginDto != null ? loginDto.getCaptchaCode() : null);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            saveFailLog(loginDto, ip, userAgent, System.currentTimeMillis() - startTime, e.getMessage());
+            return R.fail(e.getMessage());
+        }
 
         String token = loginService.login(loginDto);
         long duration = System.currentTimeMillis() - startTime;
@@ -58,9 +86,8 @@ public class FlowLoginController {
             log.error("IP region lookup failed for IP: {}", ip, e);
         }
 
-        // 异步保存登录日志
         LoginLogDO logDO = LoginLogDO.builder()
-                .account(loginDto.getUsername())
+                .account(loginDto != null ? loginDto.getUsername() : null)
                 .ip(ip)
                 .region(region)
                 .userAgent(userAgent)
@@ -79,6 +106,31 @@ public class FlowLoginController {
         logDO.setMsg("登录成功");
         loginLogService.saveLog(logDO);
         return R.ok(token);
+    }
+
+    private void saveFailLog(LoginDto loginDto, String ip, String userAgent, long duration, String msg) {
+        try {
+            String region = "未知";
+            if (ip2regionSearcher != null) {
+                IpInfo ipInfo = ip2regionSearcher.memorySearch(ip);
+                if (ipInfo != null) {
+                    region = formatRegion(ipInfo.getAddress());
+                }
+            }
+            LoginLogDO logDO = LoginLogDO.builder()
+                    .account(loginDto != null ? loginDto.getUsername() : null)
+                    .ip(ip)
+                    .region(region)
+                    .userAgent(userAgent)
+                    .duration(duration)
+                    .status(0)
+                    .msg(msg != null ? msg : "验证码校验失败")
+                    .createTime(LocalDateTime.now())
+                    .build();
+            loginLogService.saveLog(logDO);
+        } catch (Exception e) {
+            log.warn("保存验证码失败登录日志异常: {}", e.getMessage());
+        }
     }
 
     /**

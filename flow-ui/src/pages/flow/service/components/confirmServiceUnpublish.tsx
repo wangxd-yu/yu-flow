@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal } from 'antd';
-import { listServiceFlowReferences } from '../services/serviceFlowService';
+import { listServiceFlowReferences } from '@/services/flow/serviceFlowService';
 
 /**
  * 下线前软确认：有引用时列出调用方，用户确认后仍可继续下线。

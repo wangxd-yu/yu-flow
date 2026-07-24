@@ -12,8 +12,8 @@ import {
   CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import type { FlowServiceFlow } from '../services/serviceFlowService';
-import FlowEditor from '../../controller/components/FlowEditor';
+import type { FlowServiceFlow } from '@/services/flow/serviceFlowService';
+import FlowEditor from '@/components/flow/FlowEditor';
 import {
   debugRunServiceFlow,
   updateServiceFlow,
@@ -24,18 +24,18 @@ import {
   getServiceFlow,
   listServiceFlowVersions,
   restoreServiceFlowVersion,
-} from '../services/serviceFlowService';
-import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
-import AssetRuntimePanel from '../../components/AssetRuntimePanel';
-import { SchemaTreeTable } from '../../controller/components/ApiContractDesigner';
-import type { SchemaNode } from '../../controller/components/ApiContractDesigner';
+} from '@/services/flow/serviceFlowService';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
+import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
+import { SchemaTreeTable } from '@/components/flow/ApiContractDesigner';
+import type { SchemaNode } from '@/components/flow/ApiContractDesigner';
 import {
   parseServiceContract,
   stringifyServiceContract,
   injectContractIntoServiceDsl,
   buildSampleInputFromContract,
   type ServiceContract,
-} from './serviceContract';
+} from '@/services/flow/serviceContract';
 import ServiceManualRunModal from './ServiceManualRunModal';
 import { confirmServiceUnpublish } from './confirmServiceUnpublish';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
@@ -79,10 +79,12 @@ export interface ServiceFlowFormProps {
   onCancel: () => void;
   onSubmit: (values: Partial<FlowServiceFlow>) => void;
   onPublished?: (detail: FlowServiceFlow) => void;
+  /** 打开时默认 Tab（如运行中心深链） */
+  initialTab?: string;
 }
 
 const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
-  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished,
+  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
 }) => {
   const [form] = Form.useForm();
   const [name, setName] = useState<string>(initialValues.name || '');
@@ -134,9 +136,13 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
       setPublishStatus(initialValues.publishStatus === 1 ? 1 : 0);
       setHasUnpublishedChanges(!!initialValues.hasUnpublishedChanges);
       setSubmitAttempted(false);
-      setActiveTab('basic');
+      setActiveTab(
+        initialTab && (initialTab !== 'runtime' || !!initialValues.id)
+          ? initialTab
+          : 'basic',
+      );
     }
-  }, [visible, initialValues]);
+  }, [visible, initialValues, initialTab]);
 
   /** 改契约时同步写入 DSL，保证切到编排页卡片立刻显示入参摘要 */
   const updateContract = useCallback((next: ServiceContract) => {

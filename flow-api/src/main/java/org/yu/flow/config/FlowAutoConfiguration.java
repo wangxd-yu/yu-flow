@@ -81,11 +81,18 @@ public class FlowAutoConfiguration {
             ContractParamTypeConverter contractParamTypeConverter,
             ResponseStrategyResolver responseStrategyResolver,
             ResponseTransformer responseTransformer,
-            ApiResponseCacheService apiResponseCacheService) {
+            ApiResponseCacheService apiResponseCacheService,
+            org.yu.flow.module.open.auth.OpenAuthService openAuthService,
+            org.yu.flow.module.metrics.AssetMetricsRecorder assetMetricsRecorder,
+            org.yu.flow.module.open.auth.HostAuthenticationProbe hostAuthenticationProbe,
+            org.yu.flow.module.api.security.IngressSecurityResolver ingressSecurityResolver,
+            org.yu.flow.module.api.security.IngressSecurityGuard ingressSecurityGuard,
+            org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings yuFlowRuntimeSettings) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
                 schemaValidatorService, contractParamTypeConverter, responseStrategyResolver, responseTransformer,
-                apiResponseCacheService);
+                apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
+                ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings);
 
         FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/*");

@@ -7,16 +7,16 @@ import {
 } from '@ant-design/pro-components';
 import { Button, Drawer, message, Popconfirm, Tag, Typography } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
-import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
+import FlowEditor from '@/components/flow/FlowEditor';
+import { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
 import {
   queryTaskLogPage,
   getTaskLog,
   getTask,
   clearTaskLog,
   FlowTaskLog,
-} from '../../flow/task/services/taskService';
-import { LogStatusTag, LogDuration, type LogStatusKind } from '../shared';
+} from '@/services/flow/taskService';
+import { LogStatusTag, LogDuration, type LogStatusKind, LogDeepLinkBar } from '../shared';
 import '../shared/logPageLayout.css';
 
 const { Text } = Typography;
@@ -183,7 +183,13 @@ const TaskLogPage: React.FC = () => {
         className="fh-table"
         rowKey="id"
         actionRef={actionRef}
-        headerTitle={initialTaskId ? `任务日志（taskId=${initialTaskId}）` : '全部任务日志'}
+        headerTitle={
+          initialTaskId ? (
+            <LogDeepLinkBar label={`taskId=${initialTaskId}`} clearPath="/log/task" />
+          ) : (
+            '全部任务日志'
+          )
+        }
         tableLayout="fixed"
         scroll={{ x: 900, y: 100000 }}
         search={{

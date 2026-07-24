@@ -35,6 +35,9 @@ public class SysConfigDTO {
     /** 状态 (1: 启用, 0: 停用) */
     private Integer status;
 
+    /** 组内展示顺序，越小越靠前 */
+    private Integer sortOrder;
+
     private String createBy;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
@@ -60,6 +63,7 @@ public class SysConfigDTO {
         dto.setRemark(entity.getRemark());
         dto.setIsBuiltin(entity.getIsBuiltin());
         dto.setStatus(entity.getStatus());
+        dto.setSortOrder(entity.getSortOrder());
         dto.setCreateBy(entity.getCreateBy());
         dto.setCreateTime(entity.getCreateTime());
         dto.setUpdateBy(entity.getUpdateBy());
@@ -79,6 +83,7 @@ public class SysConfigDTO {
         entity.setRemark(this.remark);
         entity.setIsBuiltin(this.isBuiltin);
         entity.setStatus(this.status);
+        entity.setSortOrder(this.sortOrder != null ? this.sortOrder : 100);
         return entity;
     }
 }

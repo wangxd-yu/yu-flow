@@ -61,6 +61,8 @@ public class DemoModeGuard {
         loadProtectedIds("flow_page_directory", "页面目录");
         loadProtectedIds("flow_sys_config", "系统参数");
         loadProtectedIds("flow_task_info", "定时任务");
+        loadProtectedIds("flow_service_info", "服务编排");
+        loadProtectedIds("flow_open_platform", "开放平台");
         log.warn("[DemoModeGuard] 演示模式资产锁定完成，共保护 {} 个资产 ID。", protectedIds.size());
     }
 

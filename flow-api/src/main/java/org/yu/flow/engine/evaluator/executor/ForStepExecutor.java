@@ -177,10 +177,10 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
 
             executorService.submit(() -> {
                 try {
-                    // ---- a) 复制上下文（barrier 引用被共享） ----
-                    ExecutionContext branchCtx = context.copy(true);
+                    // ---- a) 浅拷贝：新顶层 Map + 共享嵌套引用（barrier 共享）；循环元数据写在分支自有 key ----
+                    ExecutionContext branchCtx = context.copy(false);
 
-                    // ---- b) 注入循环元数据（DSL 通过 $.{forStepId}.item 引用） ----
+                    // ---- b) 注入循环元数据（写在分支自有顶层 key，互不覆盖）----
                     Map<String, Object> loopMeta = new HashMap<>();
                     loopMeta.put(PortNames.ITEM, item);
                     loopMeta.put(ContextKeys.INDEX, index);

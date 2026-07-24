@@ -182,6 +182,7 @@ public class FlowEngine {
         executors.put("schedule", new ScheduleStepExecutor());
         executors.put("service", new ServiceStepExecutor());
         executors.put("delay", new DelayStepExecutor());
+        executors.put("sendMail", new SendMailStepExecutor());
         executors.put("errorHandler", new ErrorHandlerStepExecutor());
         wireApiExecutor();
     }

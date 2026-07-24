@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActionType,
   PageContainer,
@@ -6,7 +6,7 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { Button, Divider, message, Popconfirm, Switch, Tag, Tooltip } from 'antd';
-import { history } from '@umijs/max';
+import { history, useLocation } from '@umijs/max';
 import {
   queryServiceFlowPage,
   createServiceFlow,
@@ -19,13 +19,14 @@ import {
   publishServiceFlow,
   unpublishServiceFlow,
   FlowServiceFlow,
-} from './services/serviceFlowService';
+} from '@/services/flow/serviceFlowService';
 import ServiceFlowForm from './components/ServiceFlowForm';
 import ServiceManualRunModal from './components/ServiceManualRunModal';
 import { confirmServiceUnpublish } from './components/confirmServiceUnpublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
-import { batchAssetHealth, type AssetHealth } from '../services/assetMetrics';
-import { renderHealthTag } from '../components/AssetHealthTag';
+import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
+import { renderHealthTag } from '@/components/flow/AssetHealthTag';
+import '@/styles/fullHeightTable.css';
 
 const handleAdd = async (fields: Partial<FlowServiceFlow>) => {
   const hide = message.loading('正在添加');
@@ -72,6 +73,7 @@ const handleRemove = async (selectedRows: FlowServiceFlow[]) => {
 };
 
 const ServiceFlowManagement: React.FC = () => {
+  const location = useLocation();
   const actionRef = useRef<ActionType>();
   const [formVisible, setFormVisible] = useState<boolean>(false);
   const [currentRow, setCurrentRow] = useState<Partial<FlowServiceFlow>>({});
@@ -80,10 +82,35 @@ const ServiceFlowManagement: React.FC = () => {
   const [manualRunOpen, setManualRunOpen] = useState(false);
   const [manualRunTarget, setManualRunTarget] = useState<FlowServiceFlow | null>(null);
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
+  const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const serviceId = params.get('serviceId');
+    const tab = params.get('tab') || undefined;
+    if (!serviceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail: any = await getServiceFlow(serviceId);
+        if (cancelled) return;
+        setCurrentRow(detail?.data || detail || { id: serviceId });
+        setIsEditMode(true);
+        setFormInitialTab(tab || 'runtime');
+        setFormVisible(true);
+      } catch {
+        if (!cancelled) message.error('打开服务详情失败');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.search]);
 
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
     setIsEditMode(false);
+    setFormInitialTab(undefined);
     setFormVisible(true);
   };
 
@@ -92,6 +119,7 @@ const ServiceFlowManagement: React.FC = () => {
       const detail: any = await getServiceFlow(record.id);
       setCurrentRow(detail?.data || detail || record);
       setIsEditMode(true);
+      setFormInitialTab(undefined);
       setFormVisible(true);
     } catch {
       message.error('加载服务详情失败');
@@ -257,9 +285,10 @@ const ServiceFlowManagement: React.FC = () => {
             下线
           </a>
         ) : (
-          <a
+          <Popconfirm
             key="publish"
-            onClick={async () => {
+            title="确认发布该服务？发布后可被 API/任务编排调用。"
+            onConfirm={async () => {
               try {
                 await publishServiceFlow(record.id);
                 message.success('发布成功');
@@ -269,8 +298,8 @@ const ServiceFlowManagement: React.FC = () => {
               }
             }}
           >
-            发布
-          </a>
+            <a>发布</a>
+          </Popconfirm>
         ),
         <Divider key="d2" type="vertical" />,
         <a
@@ -294,103 +323,6 @@ const ServiceFlowManagement: React.FC = () => {
     },
   ];
 
-  const fullHeightTableCSS = `
-    .fh-container.ant-pro-page-container {
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-    .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      height: auto !important;
-      padding-block-end: 0 !important;
-    }
-    .fh-container .dir-tree-layout {
-      flex: 1 !important;
-      min-height: 0 !important;
-      height: 100% !important;
-    }
-    .fh-table.ant-pro-table {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-search {
-      flex-shrink: 0;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-      flex: 1;
-      min-height: 0;
-      display: flex !important;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-list-toolbar {
-      flex-shrink: 0;
-    }
-    .fh-table .ant-table-wrapper {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-nested-loading {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-header {
-      flex-shrink: 0;
-      overflow: hidden !important;
-    }
-    .fh-table .ant-table-body {
-      flex: 1;
-      min-height: 0;
-      max-height: none !important;
-      overflow-y: scroll !important;
-    }
-    .fh-table .ant-table-pagination {
-      flex-shrink: 0;
-      padding: 6px 0;
-      margin: 0 !important;
-    }
-  `;
-
   return (
     <PageContainer
       className="fh-container"
@@ -400,7 +332,6 @@ const ServiceFlowManagement: React.FC = () => {
         overflow: 'hidden',
       }}
     >
-      <style>{fullHeightTableCSS}</style>
       <DirectoryTreeLayout bizType="service" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <ProTable<FlowServiceFlow>
@@ -494,7 +425,11 @@ const ServiceFlowManagement: React.FC = () => {
           visible={formVisible}
           isEdit={isEditMode}
           initialValues={currentRow}
-          onCancel={() => setFormVisible(false)}
+          initialTab={formInitialTab}
+          onCancel={() => {
+            setFormVisible(false);
+            setFormInitialTab(undefined);
+          }}
           onSubmit={handleFormSubmit}
           onPublished={(detail) => {
             setCurrentRow(detail);

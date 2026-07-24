@@ -4,15 +4,9 @@ import { history } from 'umi'; // 从 umi 导入 history
 import logo from '@/assets/logo1.svg';
 import React from 'react';
 
+import { fetchAuthMe } from '@/services/auth';
 import { extensionRegistry } from '@/utils/extensionRegistry';
-
-/**
- * 退出登录 —— 清除 Token 并跳转到登录页
- */
-function handleLogout() {
-  localStorage.removeItem('flow_token');
-  history.push('/login');
-}
+import UserHeaderActions from '@/components/UserHeaderActions';
 
 // ============ Favicon 动态与多环境适配 ============
 (function () {
@@ -59,7 +53,9 @@ function isWhiteListed(pathname: string): boolean {
 function isTokenValid(token: string | null): boolean {
   if (!token) return false;
   try {
-    const parts = token.split('.');
+    // 兼容 localStorage 存 "Bearer <jwt>" 或纯 jwt
+    const jwt = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
+    const parts = jwt.split('.');
     if (parts.length !== 3) return false;
 
     // 解析 Base64URL 编码的 Payload
@@ -128,12 +124,21 @@ export function render(oldRender: () => void) {
   const contextPath = window.__CONTEXT_PATH__ || '';
   const fullBase = contextPath ? contextPath + base : base;
 
-  // 从完整路径中提取路由路径
+  // 从完整路径中提取路由路径（兼容 /flow-ui 无尾斜杠）
   let routePath = pathname;
-  if (pathname.startsWith(fullBase)) {
-    routePath = pathname.substring(fullBase.length - 1); // 保留开头的 /
-  } else if (pathname.startsWith(base)) {
-    routePath = pathname.substring(base.length - 1);
+  const bases = [fullBase, base, fullBase.replace(/\/$/, ''), base.replace(/\/$/, '')].filter(
+    (v, i, arr) => !!v && arr.indexOf(v) === i,
+  );
+  for (const b of bases) {
+    if (pathname === b || pathname === b.replace(/\/$/, '')) {
+      routePath = '/';
+      break;
+    }
+    if (pathname.startsWith(b.endsWith('/') ? b : b + '/')) {
+      const prefix = b.endsWith('/') ? b : b + '/';
+      routePath = '/' + pathname.substring(prefix.length);
+      break;
+    }
   }
 
   const isValid = isTokenValid(token);
@@ -142,12 +147,7 @@ export function render(oldRender: () => void) {
     if (token) {
       localStorage.removeItem('flow_token');
     }
-    // 未登录或 token 过期：
-    // - 跳转到登录页
-    // - 【不调用 oldRender()】，彻底阻止应用渲染，防止侧边栏/菜单泄露
     history.push('/login');
-    // 跳转后仍需渲染（渲染登录页），否则页面空白
-    // 但此时路由已跳到 /login（白名单），直接继续渲染
     oldRender();
     return;
   }
@@ -157,15 +157,34 @@ export function render(oldRender: () => void) {
 }
 
 // 全局初始化数据配置，用于 Layout 用户信息和权限初始化
-// 更多信息见文档：https://umijs.org/docs/api/runtime-config#getinitialstate
 export async function getInitialState(): Promise<{
   name: string;
+  displayName?: string;
   isLogin: boolean;
+  userId?: string;
+  roles?: string[];
+  permissions?: string[];
+  legacyAdmin?: boolean;
 }> {
   const token = localStorage.getItem('flow_token');
+  const isLogin = isTokenValid(token);
+  if (!isLogin) {
+    return { name: '', isLogin: false, roles: [], permissions: [] };
+  }
+  const me = await fetchAuthMe();
+  // /auth/me 失败：清 token，交由 render/onRouteChange 进登录页（此处勿 history.push，易在初始化阶段抛错白屏）
+  if (!me) {
+    localStorage.removeItem('flow_token');
+    return { name: '', isLogin: false, roles: [], permissions: [] };
+  }
   return {
-    name: '@umijs/max',
-    isLogin: isTokenValid(token),
+    name: me.username,
+    displayName: me.displayName || me.username,
+    isLogin: true,
+    userId: me.userId,
+    roles: me.roles,
+    permissions: me.permissions,
+    legacyAdmin: me.legacyAdmin,
   };
 }
 
@@ -176,10 +195,19 @@ export async function getInitialState(): Promise<{
  * 当登录状态变化时（登录/退出），布局立即重新渲染，
  * 确保未登录时菜单栏和页头完全不可见。
  */
-export const layout = ({ initialState }: { initialState: { isLogin: boolean } | null }) => {
-  // 绑定到 initialState.isLogin 而非静态读取 localStorage
-  // 这样登录/退出时布局可以响应式更新，不会残留菜单栏
+export const layout = ({
+  initialState,
+}: {
+  initialState: {
+    isLogin?: boolean;
+    displayName?: string;
+    name?: string;
+    legacyAdmin?: boolean;
+  } | null;
+}) => {
   const isLogin = initialState?.isLogin ?? false;
+  const displayName = initialState?.displayName || initialState?.name || '';
+  const legacyAdmin = !!initialState?.legacyAdmin;
 
   return {
     title: 'YU Flow',
@@ -187,31 +215,16 @@ export const layout = ({ initialState }: { initialState: { isLogin: boolean } | 
     menu: {
       locale: false,
     },
-    // 右上角操作区：退出登录按钮
     actionsRender: isLogin
       ? () => [
-          React.createElement(
-            'span',
-            {
-              key: 'logout',
-              onClick: handleLogout,
-              style: {
-                cursor: 'pointer',
-                fontSize: 14,
-                padding: '0 12px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              },
-              title: '退出登录',
-            },
-            '退出登录',
-          ),
+          React.createElement(UserHeaderActions, {
+            key: 'user-actions',
+            displayName,
+            legacyAdmin,
+          }),
         ]
       : undefined,
-    // 未登录时不渲染菜单，防止目录遍历
     menuRender: isLogin ? undefined : false,
-    // 未登录时不渲染页头
     headerRender: isLogin ? undefined : false,
   };
 };

@@ -7,7 +7,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Flex, Typography, message, Select, Segmented, Space, Tooltip } from 'antd';
+import { Alert, Button, Flex, Typography, message, Select, Segmented, Space, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
 import {
   FullscreenOutlined, FullscreenExitOutlined,
@@ -15,11 +15,11 @@ import {
   ApartmentOutlined, AlignLeftOutlined,
 } from '@ant-design/icons';
 import { format } from 'sql-formatter';
-import FlowEditor from '../FlowEditor';
-import CodeEditor from '../flow-editor/components/CodeEditor';
-import { DbDebugger } from '../debugger';
-import { debugRunDbApiConfig } from '../../services/flowController';
-import { queryDataSourceList } from '@/pages/flow/dataSource/services/dataSource';
+import FlowEditor from '@/components/flow/FlowEditor';
+import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
+import { DbDebugger } from '@/components/flow/debugger';
+import { debugRunDbApiConfig } from '@/services/flow/flowController';
+import { queryDataSourceList } from '@/services/flow/dataSource';
 
 const { Text } = Typography;
 
@@ -75,6 +75,21 @@ const ENGINE_MODE_OPTIONS: { label: string; value: EngineMode; icon: React.React
   { label: '静态 JSON', value: 'JSON', icon: <CodeOutlined /> },
   { label: '静态文本', value: 'STRING', icon: <FileTextOutlined /> },
 ];
+
+/** 校验静态 JSON；合法返回 null，否则返回错误文案 */
+export function getStaticJsonError(content?: string): string | null {
+  const raw = content ?? '';
+  if (!raw.trim()) {
+    return '静态 JSON 内容不能为空';
+  }
+  try {
+    JSON.parse(raw);
+    return null;
+  } catch (e: any) {
+    const detail = typeof e?.message === 'string' ? e.message : '语法错误';
+    return `JSON 格式不正确：${detail}`;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  组件实现
@@ -154,6 +169,8 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
       }
     }
   }, [jsonContent, sqlContent, onJsonContentChange, onSqlContentChange]);
+
+  const jsonError = engineMode === 'JSON' ? getStaticJsonError(jsonContent) : null;
 
   // ─── Segmented 选项 ────────────────────────────────────────────────
   const engineSegmentedOptions = ENGINE_MODE_OPTIONS.map((opt) => ({
@@ -324,12 +341,23 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
               background: '#fff', zIndex: 10,
             }}
           >
-            <Flex justify="flex-end" style={{ flexShrink: 0 }}>
-              <Tooltip title="格式化并校验 JSON">
-                <Button icon={<AlignLeftOutlined />} onClick={() => formatContent('JSON')}>格式化</Button>
-              </Tooltip>
-            </Flex>
-            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+            <div style={{ flexShrink: 0 }}>
+              {jsonError ? (
+                <Alert type="error" showIcon banner message={jsonError} style={{ padding: '4px 12px' }} />
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>JSON 格式校验通过</Text>
+              )}
+            </div>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                position: 'relative',
+                border: jsonError ? '1px solid #ff4d4f' : '1px solid transparent',
+                borderRadius: 6,
+                overflow: 'hidden',
+              }}
+            >
               <CodeEditor
                 value={jsonContent}
                 onChange={onJsonContentChange}

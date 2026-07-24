@@ -1,0 +1,163 @@
+/**
+ * 全高列表页布局（.fh-container + .fh-table）
+ * 规范见 .agents/skills/ui-layout-standard/SKILL.md
+ * 典范页：pages/ResponseTemplate/index.tsx
+ */
+
+.fh-container.ant-pro-page-container {
+  display: flex !important;
+  flex-direction: column !important;
+}
+.fh-container.ant-pro-page-container > .ant-pro-grid-content,
+.fh-container.ant-pro-page-container .ant-pro-grid-content-children {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  padding-block-end: 0 !important;
+}
+
+.fh-container .dir-tree-layout {
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* 顶部筛选条（Tabs / Radio 等，非 ProTable search） */
+.fh-toolbar {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+/* Tabs 填满剩余高度，让内部 ProTable 可 flex:1 */
+.fh-tabs.ant-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fh-tabs .ant-tabs-nav {
+  flex-shrink: 0;
+  margin-bottom: 8px !important;
+}
+.fh-tabs .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.fh-tabs .ant-tabs-content {
+  height: 100%;
+}
+.fh-tabs .ant-tabs-tabpane {
+  height: 100%;
+}
+.fh-tabs .ant-tabs-tabpane-active {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.fh-tab-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fh-table.ant-pro-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.fh-table .ant-pro-table-search {
+  flex-shrink: 0;
+}
+.fh-table > .ant-pro-card:not(.ant-pro-table-search) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fh-table .ant-pro-table-list-toolbar {
+  flex-shrink: 0;
+}
+.fh-table .ant-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-spin-nested-loading,
+.fh-table .ant-spin-container,
+.fh-table .ant-table,
+.fh-table .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fh-table .ant-table-header {
+  flex-shrink: 0;
+  overflow: hidden !important;
+}
+.fh-table .ant-table-body {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: scroll !important;
+}
+.fh-table .ant-table-pagination {
+  flex-shrink: 0;
+  padding: 6px 0;
+  margin: 0 !important;
+}
+
+/**
+ * 无固定列 / 监控看板类表格：列宽随容器自适应，避免空数据时底部出现常驻横向滚动条。
+ * 垂直滚动改为 auto（数据少时不占滚动条槽位）。
+ */
+.fh-table-fit .ant-table-body {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+.fh-table-fit .ant-table {
+  width: 100% !important;
+}
+.fh-table-fit .ant-table-container,
+.fh-table-fit .ant-table-content {
+  width: 100% !important;
+}
+.fh-table-fit .ant-table-thead > tr > th,
+.fh-table-fit .ant-table-tbody > tr > td {
+  white-space: nowrap;
+}
+
+/* 运行中心：收紧 PageContainer 底边距，避免 Tabs+表体外溢出横向滚动 */
+.fh-container.fh-runtime .ant-pro-page-container-children-container {
+  padding-inline: 24px !important;
+  padding-block-start: 8px !important;
+  overflow: hidden !important;
+}
+.fh-container.fh-runtime .fh-toolbar {
+  margin-bottom: 8px;
+}
+.fh-container.fh-runtime .fh-tabs .ant-tabs-nav {
+  margin-bottom: 4px !important;
+}

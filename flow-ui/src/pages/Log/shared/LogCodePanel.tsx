@@ -1,7 +1,7 @@
 import React from 'react';
 import CodeEditor, {
   CodeEditorLanguage,
-} from '@/pages/flow/controller/components/flow-editor/components/CodeEditor';
+} from '@/components/flow/flow-editor/components/CodeEditor';
 import { LOG_WORDWRAP_LIMIT } from './logFormat';
 
 export interface LogCodePanelProps {

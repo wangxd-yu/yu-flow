@@ -19,6 +19,7 @@ import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.FlowDbDebugRequestDTO;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.datasource.service.DynamicDataSourceService;
+import org.yu.flow.module.datasource.wall.DataSourceWallGuard;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -60,6 +61,9 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Lazy
     @Resource
     private DynamicDataSourceService dynamicDataSourceService;
+
+    @Resource
+    private DataSourceWallGuard dataSourceWallGuard;
 
     @Resource
     private DemoModeGuard demoModeGuard;
@@ -230,7 +234,15 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             if (logEnabled) {
                 logDO.setStatus("SUCCESS");
             }
-            return resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
+            Object resolved = resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
+            if (resolved instanceof R && Boolean.FALSE.equals(((R<?>) resolved).getOk())) {
+                metricsOutcome = MetricsOutcome.FAIL;
+                if (logEnabled && logDO != null && "SUCCESS".equals(logDO.getStatus())) {
+                    logDO.setStatus("ERROR");
+                    truncateAndSetErrorMsg(logDO, ((R<?>) resolved).getMsg());
+                }
+            }
+            return resolved;
         } catch (Exception e) {
             metricsOutcome = MetricsOutcome.FAIL;
             if (!logEnabled) {
@@ -277,7 +289,16 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             if (logEnabled) {
                 logDO.setStatus("SUCCESS");
             }
-            return resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
+            Object resolved = resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
+            // 软失败（如 FLOW ExecutionResult 返回 R.fail）仍计入 FAIL，避免成功率虚高
+            if (resolved instanceof R && Boolean.FALSE.equals(((R<?>) resolved).getOk())) {
+                metricsOutcome = MetricsOutcome.FAIL;
+                if (logEnabled && logDO != null && "SUCCESS".equals(logDO.getStatus())) {
+                    logDO.setStatus("ERROR");
+                    truncateAndSetErrorMsg(logDO, ((R<?>) resolved).getMsg());
+                }
+            }
+            return resolved;
         } catch (Exception e) {
             metricsOutcome = MetricsOutcome.FAIL;
             if (!logEnabled) {
@@ -987,6 +1008,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Override
     public Object executePageQuery(String datasource, SqlAndParams sqlAndParams, Pageable pageable) {
+        dataSourceWallGuard.assertSqlAllowed(datasource, sqlAndParams.getSql());
         String originalSql = sqlAndParams.getSql();
         String countSql;
 
@@ -1034,6 +1056,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public int executeUpdate(String datasource, SqlAndParams sqlAndParams) {
         // [Demo 模式] 禁止执行 UPDATE / DELETE SQL
         demoModeGuard.checkSqlWrite("UPDATE/DELETE");
+        dataSourceWallGuard.assertSqlAllowed(datasource, sqlAndParams.getSql());
         return dynamicDataSourceService.executeInTransaction(datasource, jt -> jt.update(
                 sqlAndParams.getSql(),
                 sqlAndParams.getParams().toArray()
@@ -1044,6 +1067,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public int executeInsert(String datasource, SqlAndParams sqlAndParams) {
         // [Demo 模式] 禁止执行 INSERT SQL
         demoModeGuard.checkSqlWrite("INSERT");
+        dataSourceWallGuard.assertSqlAllowed(datasource, sqlAndParams.getSql());
         return dynamicDataSourceService.executeInTransaction(datasource, jt -> jt.update(
                 sqlAndParams.getSql(),
                 sqlAndParams.getParams().toArray()
@@ -1073,6 +1097,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                     row = Collections.emptyMap();
                 }
                 SqlAndParams sp = DynamicSqlParser.parseDynamicSqlToPrepared(sqlTemplate, row);
+                dataSourceWallGuard.assertSqlAllowed(datasource, sp.getSql());
                 if (preparedSql == null) {
                     preparedSql = sp.getSql();
                 } else if (!preparedSql.equals(sp.getSql())) {
@@ -1108,6 +1133,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Override
     public Object executeListQuery(String datasource, SqlAndParams sqlAndParams, Pageable pageable) {
+        dataSourceWallGuard.assertSqlAllowed(datasource, sqlAndParams.getSql());
         String pageSql = sqlAndParams.getSql();
         if (pageable.getSort().isSorted()) {
             pageSql = RegularSqlParseUtil.removeOrderByClause(pageSql);
@@ -1122,6 +1148,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Override
     public Map<String, Object> executeObjectQuery(String datasource, SqlAndParams sqlAndParams) {
+        dataSourceWallGuard.assertSqlAllowed(datasource, sqlAndParams.getSql());
         List<Map<String, Object>> result = dynamicDataSourceService.execute(datasource, jt -> jt.query(
                 sqlAndParams.getSql(),
                 sqlAndParams.getParams().toArray(),

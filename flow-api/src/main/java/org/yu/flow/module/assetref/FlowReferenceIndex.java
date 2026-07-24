@@ -73,11 +73,21 @@ public class FlowReferenceIndex {
     @EventListener(ApplicationReadyEvent.class)
     @Async("flowAsyncExecutor")
     public void warmUp() {
-        rebuildAll();
+        ensureReady();
     }
 
     public boolean isReady() {
         return ready.get();
+    }
+
+    /**
+     * 若尚未就绪则同步重建一次（与异步 warmUp 共用锁，避免启动窗口内删除走 LIKE 全表扫）。
+     */
+    public void ensureReady() {
+        if (ready.get()) {
+            return;
+        }
+        rebuildAll();
     }
 
     public List<String> findServiceReferenceLabels(String serviceId) {

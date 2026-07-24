@@ -6,7 +6,9 @@ package org.yu.flow.module.metrics;
 public enum MetricsOutcome {
     SUCCESS,
     FAIL,
-    SKIPPED;
+    SKIPPED,
+    /** 鉴权/授权失败；不计入业务成功率分母，避免污染健康度 */
+    AUTH_FAIL;
 
     public static MetricsOutcome fromStatus(String status) {
         if (status == null) {

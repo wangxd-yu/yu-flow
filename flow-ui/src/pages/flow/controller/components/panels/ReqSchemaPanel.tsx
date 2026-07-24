@@ -9,9 +9,9 @@
 import React, { useMemo } from 'react';
 import { Alert, Divider, Empty, Input, Radio, Space, Tabs } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
-import SchemaTreeTable from '../ApiContractDesigner/SchemaTreeTable';
-import useSchemaDrawer from '../ApiContractDesigner/useSchemaDrawer';
-import type { SchemaNode, BodyType } from '../ApiContractDesigner/types';
+import SchemaTreeTable from '@/components/flow/ApiContractDesigner/SchemaTreeTable';
+import useSchemaDrawer from '@/components/flow/ApiContractDesigner/useSchemaDrawer';
+import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  常量

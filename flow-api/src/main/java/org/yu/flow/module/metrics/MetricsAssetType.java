@@ -6,7 +6,9 @@ package org.yu.flow.module.metrics;
 public enum MetricsAssetType {
     API,
     TASK,
-    SERVICE;
+    SERVICE,
+    /** 开放平台（第三方调用方） */
+    PLATFORM;
 
     public static MetricsAssetType fromPath(String raw) {
         if (raw == null) {

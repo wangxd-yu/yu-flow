@@ -21,7 +21,7 @@ import java.time.Duration;
 @Component
 public class ServiceResolvedContentCache {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     private final Cache<String, ResolvedContent> cache;
 

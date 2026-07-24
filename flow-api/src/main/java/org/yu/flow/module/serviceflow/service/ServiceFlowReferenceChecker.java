@@ -50,8 +50,13 @@ public class ServiceFlowReferenceChecker {
         if (StrUtil.isBlank(serviceId)) {
             return List.of();
         }
-        if (flowReferenceIndex.isReady()) {
-            return flowReferenceIndex.findServiceReferenceLabels(serviceId);
+        try {
+            flowReferenceIndex.ensureReady();
+            if (flowReferenceIndex.isReady()) {
+                return flowReferenceIndex.findServiceReferenceLabels(serviceId);
+            }
+        } catch (Exception e) {
+            log.warn("[ServiceFlowReferenceChecker] 索引未就绪，降级 LIKE: {}", e.getMessage());
         }
         return findReferenceLabelsFallback(serviceId);
     }

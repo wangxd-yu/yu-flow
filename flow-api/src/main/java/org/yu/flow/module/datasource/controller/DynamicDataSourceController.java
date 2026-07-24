@@ -8,13 +8,16 @@ import org.yu.flow.dto.R;
 import org.yu.flow.module.datasource.domain.DataSourceDO;
 import org.yu.flow.module.datasource.dto.TestConnectionDTO;
 import org.yu.flow.module.datasource.service.DynamicDataSourceService;
+import org.yu.flow.module.datasource.wall.DataSourceWallGuard;
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
-import javax.sql.DataSource;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 动态数据源管理控制器
@@ -23,28 +26,32 @@ import java.util.Map;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/dataSource")
+@RequirePerm({"flow:ds:view", "flow:ds:write"})
 public class DynamicDataSourceController {
 
     @Resource
     private DynamicDataSourceService dynamicDataSourceService;
 
     @Resource
+    private DataSourceWallGuard dataSourceWallGuard;
+
+    @Resource
     private DemoModeGuard demoModeGuard;
 
     /**
-     * 获取所有数据源
-     * @return 包含所有数据源的Map，key为数据源名称，value为数据源对象
+     * 获取数据源摘要列表（不含连接池内部对象与明文密码）。
      */
     @GetMapping
-    public R<Map<String, DataSource>> getAllDataSources() {
-        return R.ok(dynamicDataSourceService.getAllDataSources(), "获取所有数据源成功");
+    public R<List<Map<String, Object>>> getAllDataSources() {
+        PageBean<DataSourceDO> page = dynamicDataSourceService.findPage(null, null, 0, 1000);
+        List<Map<String, Object>> list = page.getItems() == null
+                ? List.of()
+                : page.getItems().stream().map(this::toSafeSummary).collect(Collectors.toList());
+        return R.ok(list, "获取所有数据源成功");
     }
 
     /**
      * 根据 ID 获取单个数据源配置（密码已脱敏）
-     *
-     * @param id 数据源 ID
-     * @return 脱敏后的数据源配置
      */
     @GetMapping("/{id}")
     public R<DataSourceDO> getDataSource(@PathVariable String id) {
@@ -56,15 +63,6 @@ public class DynamicDataSourceController {
         }
     }
 
-    /**
-     * 分页查询数据源列表
-     * 支持根据 name 模糊搜索, dbType 精确搜索
-     *
-     * @param name        模型名称（模糊，可选）
-     * @param dbType   物理表名（模糊，可选）
-     * @param page        页码
-     * @param size        每页条数
-     */
     @GetMapping("/page")
     public R<PageBean<DataSourceDO>> getPage(
             @RequestParam(required = false) String name,
@@ -74,33 +72,21 @@ public class DynamicDataSourceController {
         return R.ok(dynamicDataSourceService.findPage(name, dbType, page, size));
     }
 
-
-    /**
-     * 添加新数据源
-     * @param config 数据源配置信息
-     * @return 操作结果
-     */
     @PostMapping
+    @RequirePerm("flow:ds:write")
     public R<Boolean> addDataSource(@RequestBody DataSourceDO config) {
         boolean result = dynamicDataSourceService.addDataSource(config);
         return result ? R.ok(true, "添加数据源成功") : R.fail("添加数据源失败");
     }
 
-    /**
-     * 更新数据源配置
-     * @param id 数据源名称
-     * @param config 新的数据源配置
-     * @return 操作结果
-     */
     @PutMapping("/{id}")
+    @RequirePerm("flow:ds:write")
     public R<Boolean> updateDataSource(
             @PathVariable String id,
             @RequestBody DataSourceDO config) {
 
         try {
-            // 前端可能没有在请求体中传 id，以路径中的 id 为准
             config.setId(id);
-
             boolean result = dynamicDataSourceService.updateDataSource(config);
             return result ? R.ok(true, "更新数据源成功") : R.fail("更新数据源失败");
         } catch (Exception e) {
@@ -108,12 +94,8 @@ public class DynamicDataSourceController {
         }
     }
 
-    /**
-     * 删除数据源
-     * @param id 要删除的数据源名称
-     * @return 操作结果
-     */
     @DeleteMapping("/{id}")
+    @RequirePerm("flow:ds:write")
     public R<Boolean> removeDataSource(@PathVariable String id) {
         try {
             boolean result = dynamicDataSourceService.removeDataSource(id);
@@ -123,12 +105,8 @@ public class DynamicDataSourceController {
         }
     }
 
-    /**
-     * 启用数据源
-     * @param id 要启用的数据源名称
-     * @return 操作结果
-     */
     @PostMapping("/{id}/enable")
+    @RequirePerm("flow:ds:write")
     public R<Boolean> enableDataSource(@PathVariable String id) {
         try {
             boolean result = dynamicDataSourceService.enableDataSource(id);
@@ -138,12 +116,8 @@ public class DynamicDataSourceController {
         }
     }
 
-    /**
-     * 禁用数据源
-     * @param id 要禁用的数据源名称
-     * @return 操作结果
-     */
     @PostMapping("/{id}/disable")
+    @RequirePerm("flow:ds:write")
     public R<Boolean> disableDataSource(@PathVariable String id) {
         try {
             boolean result = dynamicDataSourceService.disableDataSource(id);
@@ -153,19 +127,8 @@ public class DynamicDataSourceController {
         }
     }
 
-    // =========================================================================
-    // 任务三：独立连通性测试接口（不依赖已保存的数据源，直接用 DTO 参数测试）
-    // 注意：此接口必须放在 /{id}/test-connection 之前，防止被路径变量吞掉
-    // =========================================================================
-    /**
-     * POST /flow-api/dataSource/test-connection
-     * 使用表单中输入的 url/username/password/driver 临时建立 JDBC 连接进行测试。
-     * 不写数据库，连接成功后立即关闭。超时时间 5 秒。
-     *
-     * @param dto 连接参数
-     * @return {success: true/false, message: "错误信息"}
-     */
     @PostMapping("/test-connection")
+    @RequirePerm("flow:ds:write")
     public R<Map<String, Object>> testConnectionByParam(@RequestBody @Validated TestConnectionDTO dto) {
         Map<String, Object> result = dynamicDataSourceService.testConnectionByDTO(dto);
         boolean success = Boolean.TRUE.equals(result.get("success"));
@@ -174,13 +137,8 @@ public class DynamicDataSourceController {
                 : R.fail("连接测试失败：" + result.get("message"));
     }
 
-    /**
-     * 测试已保存数据源的连接（使用数据库中存储的加密密码）
-     *
-     * @param id 要测试的数据源 ID
-     * @return 连接测试结果
-     */
     @GetMapping("/{id}/test-connection")
+    @RequirePerm({"flow:ds:view", "flow:ds:write"})
     public R<Boolean> testConnection(@PathVariable String id) {
         try {
             boolean isConnected = dynamicDataSourceService.testConnection(id);
@@ -190,18 +148,14 @@ public class DynamicDataSourceController {
         }
     }
 
-    /**
-     * 执行查询SQL
-     * @param code 数据源编码
-     * @param sql 要执行的SQL语句
-     * @return 查询结果
-     */
     @PostMapping("/{code}/execute/query")
+    @RequirePerm("flow:ds:write")
     public R<Object> executeQuery(
             @PathVariable String code,
             @RequestBody String sql) {
 
         try {
+            dataSourceWallGuard.assertSqlAllowed(code, sql);
             Object result = dynamicDataSourceService.execute(code, jdbcTemplate -> jdbcTemplate.queryForList(sql));
             return R.ok(result, "SQL查询执行成功");
         } catch (Exception e) {
@@ -209,21 +163,16 @@ public class DynamicDataSourceController {
         }
     }
 
-    /**
-     * 执行更新SQL
-     * @param code 数据源编码
-     * @param sql 要执行的SQL语句
-     * @return 影响的行数
-     */
     @PostMapping("/{code}/execute/update")
+    @RequirePerm("flow:ds:write")
     public R<Integer> executeUpdate(
             @PathVariable String code,
             @RequestBody String sql) {
 
-        // [Demo 模式] 禁止直接执行 SQL 写操作
         demoModeGuard.checkSqlWrite("SQL 直接写入");
 
         try {
+            dataSourceWallGuard.assertSqlAllowed(code, sql);
             Integer result = dynamicDataSourceService.execute(code, jdbcTemplate -> jdbcTemplate.update(sql));
             return R.ok(result, "SQL更新执行成功");
         } catch (Exception e) {
@@ -231,11 +180,21 @@ public class DynamicDataSourceController {
         }
     }
 
-
-
     @GetMapping("/tableList/{code}")
     public R<List<Map<String, Object>>> getTableList(@PathVariable String code) {
         List<Map<String, Object>> tableList = dynamicDataSourceService.getTableList(code);
         return R.ok(tableList);
+    }
+
+    private Map<String, Object> toSafeSummary(DataSourceDO d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", d.getId());
+        m.put("name", d.getName());
+        m.put("code", d.getCode());
+        m.put("dbType", d.getDbType());
+        m.put("status", d.getStatus());
+        m.put("healthStatus", d.getHealthStatus());
+        m.put("isSystem", d.getIsSystem());
+        return m;
     }
 }

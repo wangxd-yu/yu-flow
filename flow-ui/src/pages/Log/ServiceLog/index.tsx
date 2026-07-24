@@ -5,18 +5,18 @@ import {
   ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import { Button, Drawer, message, Popconfirm, Typography } from 'antd';
+import { Button, Drawer, message, Popconfirm, Tag, Typography } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
-import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
+import FlowEditor from '@/components/flow/FlowEditor';
+import { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
 import {
   queryServiceLogPage,
   getServiceLog,
   getServiceFlow,
   clearServiceLog,
   FlowServiceLog,
-} from '../../flow/service/services/serviceFlowService';
-import { LogStatusTag, LogDuration, type LogStatusKind } from '../shared';
+} from '@/services/flow/serviceFlowService';
+import { LogStatusTag, LogDuration, type LogStatusKind, LogDeepLinkBar } from '../shared';
 import '../shared/logPageLayout.css';
 
 const { Text } = Typography;
@@ -97,6 +97,24 @@ const ServiceLogPage: React.FC = () => {
       ),
     },
     {
+      title: '触发类型',
+      dataIndex: 'triggerType',
+      width: 110,
+      valueEnum: {
+        MANUAL: { text: 'MANUAL' },
+        CALL: { text: 'CALL' },
+        DEBUG: { text: 'DEBUG' },
+      },
+      render: (_, record) =>
+        record.triggerType ? (
+          <Tag color={record.triggerType === 'MANUAL' ? 'blue' : 'purple'}>
+            {record.triggerType}
+          </Tag>
+        ) : (
+          '-'
+        ),
+    },
+    {
       title: '执行状态',
       dataIndex: 'status',
       width: 120,
@@ -169,12 +187,17 @@ const ServiceLogPage: React.FC = () => {
         rowKey="id"
         actionRef={actionRef}
         headerTitle={
-          initialServiceId
-            ? `服务日志（serviceId=${initialServiceId}）`
-            : '全部服务日志'
+          initialServiceId ? (
+            <LogDeepLinkBar
+              label={`serviceId=${initialServiceId}`}
+              clearPath="/log/service"
+            />
+          ) : (
+            '全部服务日志'
+          )
         }
         tableLayout="fixed"
-        scroll={{ x: 900, y: 100000 }}
+        scroll={{ x: 1000, y: 100000 }}
         search={{
           labelWidth: 'auto',
           defaultCollapsed: false,
@@ -208,6 +231,7 @@ const ServiceLogPage: React.FC = () => {
             serviceId: rest.serviceId || initialServiceId,
             serviceName: rest.serviceName,
             status: rest.status,
+            triggerType: rest.triggerType,
             startTime,
             endTime,
             page: (rest.current || 1) - 1,

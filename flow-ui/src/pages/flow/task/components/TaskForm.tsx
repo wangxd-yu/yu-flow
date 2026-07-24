@@ -13,8 +13,8 @@ import {
   CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import type { FlowTask } from '../services/taskService';
-import FlowEditor from '../../controller/components/FlowEditor';
+import type { FlowTask } from '@/services/flow/taskService';
+import FlowEditor from '@/components/flow/FlowEditor';
 import {
   debugRunTask,
   updateTask,
@@ -25,9 +25,9 @@ import {
   getTask,
   listTaskVersions,
   restoreTaskVersion,
-} from '../services/taskService';
-import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
-import AssetRuntimePanel from '../../components/AssetRuntimePanel';
+} from '@/services/flow/taskService';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
+import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
@@ -68,10 +68,12 @@ export interface TaskFormProps {
   onSubmit: (values: Partial<FlowTask>) => void;
   /** 发布 / 下线 / 回滚 / 版本恢复后通知列表刷新 */
   onPublished?: (detail: FlowTask) => void;
+  /** 打开时默认 Tab（如运行中心深链） */
+  initialTab?: string;
 }
 
 const TaskForm: React.FC<TaskFormProps> = ({
-  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished,
+  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
 }) => {
   const [form] = Form.useForm();
 
@@ -106,9 +108,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
       setPublishStatus(initialValues.publishStatus === 1 ? 1 : 0);
       setHasUnpublishedChanges(!!initialValues.hasUnpublishedChanges);
       setSubmitAttempted(false);
-      setActiveTab('basic');
+      setActiveTab(
+        initialTab && (initialTab !== 'runtime' || !!initialValues.id)
+          ? initialTab
+          : 'basic',
+      );
     }
-  }, [visible, initialValues]);
+  }, [visible, initialValues, initialTab]);
 
   const buildPayload = useCallback((): Partial<FlowTask> | null => {
     setSubmitAttempted(true);

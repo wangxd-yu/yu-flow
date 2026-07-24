@@ -22,14 +22,12 @@ import java.nio.charset.StandardCharsets;
  *
  * <h3>兼容性</h3>
  * <ul>
- *   <li>Swagger UI — 直接在 URL 栏填入 {@code /flow-api/v3/api-docs} 即可加载</li>
- *   <li>Redoc — 同理</li>
- *   <li>Postman — 支持导入 OpenAPI 3.0 JSON</li>
- *   <li>前端 SDK 生成器 (openapi-generator / swagger-codegen) — 兼容</li>
+ *   <li>Postman / Apifox — 导入 OpenAPI 3.0 JSON（需 Flow-Authorization）</li>
+ *   <li>前端 SDK 生成器 (openapi-generator 等) — 兼容</li>
  * </ul>
  *
- * <h3>CORS</h3>
- * <p>该端点返回标准 JSON，CORS 策略继承宿主配置。</p>
+ * <h3>安全</h3>
+ * <p>需管理端 JWT（{@code Flow-Authorization}）；CORS 继承宿主配置，本控制器不再设置 {@code *}。</p>
  *
  * @author yu-flow
  */
@@ -55,13 +53,13 @@ public class OpenApiController {
     public void getApiDocs(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setContentType("application/json;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        response.setHeader("Access-Control-Allow-Origin", "*");
+        // 鉴权由 FlowApiGatewayFilter 统一校验；此处不再放开 CORS *
 
-        // ── 网关层鉴权开关 ──
+        // ── 功能开关（默认开启；关闭后即使已登录也拒绝） ──
         boolean openApiEnabled = sysConfigCacheManager.getBoolConfig("openapi.enabled", true);
         if (!openApiEnabled) {
             response.setStatus(403);
-            response.getWriter().write("{\"error\": \"OpenAPI 接口已禁用，请在系统配置中开启 (openapi.enabled=true)\"}");
+            response.getWriter().write("{\"ok\":false,\"code\":403,\"msg\":\"OpenAPI 接口已禁用，请在系统配置中开启 (openapi.enabled=true)\"}");
             response.getWriter().flush();
             return;
         }
@@ -79,13 +77,12 @@ public class OpenApiController {
     @GetMapping(value = "/api-docs.yaml", produces = "application/x-yaml")
     public void getApiDocsYaml(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setContentType("application/json;charset=UTF-8");
-        response.setHeader("Access-Control-Allow-Origin", "*");
+        response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
-        // ── 网关层鉴权开关 ──
         boolean openApiEnabled = sysConfigCacheManager.getBoolConfig("openapi.enabled", true);
         if (!openApiEnabled) {
             response.setStatus(403);
-            response.getWriter().write("{\"error\": \"OpenAPI 接口已禁用，请在系统配置中开启 (openapi.enabled=true)\"}");
+            response.getWriter().write("{\"ok\":false,\"code\":403,\"msg\":\"OpenAPI 接口已禁用，请在系统配置中开启 (openapi.enabled=true)\"}");
             response.getWriter().flush();
             return;
         }

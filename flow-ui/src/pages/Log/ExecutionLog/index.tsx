@@ -8,9 +8,9 @@ import {
 import { request } from '@umijs/max';
 import { Tag, Drawer, Typography, Button, Space, message } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import FlowEditor from '@/pages/flow/controller/components/FlowEditor';
-import { FlowTrace } from '@/pages/flow/controller/components/debugger/FlowDebugger';
-import { LogStatusTag, LogDuration } from '../shared';
+import FlowEditor from '@/components/flow/FlowEditor';
+import { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
+import { LogStatusTag, LogDuration, LogDeepLinkBar } from '../shared';
 import '../shared/logPageLayout.css';
 import SimpleTraceViewer from './SimpleTraceViewer';
 
@@ -254,13 +254,19 @@ const ExecutionLog: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: initialApiId ? `接口日志 (apiId=${initialApiId})` : '接口日志',
+        title: '接口日志',
         subTitle: '监控与追溯生产环境下接口的调用状态、耗时及请求上下文',
       }}
     >
       <ProTable<ExecutionLogListDTO>
         className="fh-table"
-        headerTitle="执行记录"
+        headerTitle={
+          initialApiId ? (
+            <LogDeepLinkBar label={`apiId=${initialApiId}`} clearPath="/log/execution" />
+          ) : (
+            '执行记录'
+          )
+        }
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"

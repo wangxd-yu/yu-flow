@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `flow_metrics_minute` (
     `bucket_start`    DATETIME       NOT NULL COMMENT '分钟桶起点（整分）',
     `success_cnt`     BIGINT         NOT NULL DEFAULT 0,
     `fail_cnt`        BIGINT         NOT NULL DEFAULT 0,
+    `auth_fail_cnt`   BIGINT         NOT NULL DEFAULT 0 COMMENT '鉴权失败（不计入业务失败率）',
     `skipped_cnt`     BIGINT         NOT NULL DEFAULT 0,
     `sum_cost_ms`     BIGINT         NOT NULL DEFAULT 0,
     `latency_count`   BIGINT         NOT NULL DEFAULT 0,

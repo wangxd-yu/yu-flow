@@ -1,6 +1,7 @@
 package org.yu.flow.module.datasource.domain;
 
 import lombok.Data;
+import org.yu.flow.module.datasource.dto.DataSourceWallConfig;
 
 import java.util.Date;
 
@@ -33,6 +34,12 @@ public class DataSourceDO {
     private Date createTime;
     private Date updateTime;
 
+    /** 系统数据源（1 = 如 [DEFAULT]，连接只读、仅可改安全墙） */
+    private Integer isSystem = 0;
+
+    /** SQL 安全墙（产品化配置） */
+    private DataSourceWallConfig wallConfig;
+
     // -------- 健康度追踪字段 --------
     /** 连接健康度：HEALTHY / UNHEALTHY / CIRCUIT_OPEN / UNKNOWN */
     private String healthStatus = HEALTH_UNKNOWN;
@@ -40,4 +47,8 @@ public class DataSourceDO {
     private Integer errorCount = 0;
     /** 最后一次连接失败的异常堆栈/简述 */
     private String lastErrorMsg;
+
+    public boolean systemDataSource() {
+        return isSystem != null && isSystem == 1;
+    }
 }

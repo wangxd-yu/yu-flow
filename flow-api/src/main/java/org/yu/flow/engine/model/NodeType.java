@@ -53,6 +53,8 @@ public final class NodeType {
     // ========== 内部控制 ==========
     /** 延迟 / 等待（毫秒） */
     public static final String DELAY = "delay";
+    /** 发送邮件（SMTP，复用 FlowMailService） */
+    public static final String SEND_MAIL = "sendMail";
     /** 统一错误处理入口（引擎异常时跳转，单例） */
     public static final String ERROR_HANDLER = "errorHandler";
 }

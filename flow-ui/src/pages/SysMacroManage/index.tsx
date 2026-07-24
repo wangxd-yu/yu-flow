@@ -15,7 +15,7 @@ import {
 import { request } from '@umijs/max';
 import { Alert, Button, message, Popconfirm, Space, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { invalidateMacroCache } from '@/pages/flow/controller/components/flow-editor/components/MacroCompletion';
+import { invalidateMacroCache } from '@/components/flow/flow-editor/components/MacroCompletion';
 
 /**
  * ============================================================================

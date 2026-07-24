@@ -13,10 +13,11 @@ import type { FormInstance } from 'antd';
 import {
   ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea,
 } from '@ant-design/pro-components';
-import { DatabaseOutlined, GiftOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { DatabaseOutlined, GiftOutlined, InfoCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import ResponseWrapperSection from './ResponseWrapperSection';
 import CacheConfigSection from './CacheConfigSection';
+import IngressSecuritySection from './IngressSecuritySection';
 import SectionCard from './SectionCard';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -31,14 +32,12 @@ export interface BasicInfoPanelProps {
 
 const NAV_ITEMS = [
   { key: 'meta', label: '接口元信息', icon: <InfoCircleOutlined /> },
+  { key: 'ingress', label: '入站防护', icon: <SafetyCertificateOutlined /> },
   { key: 'cache', label: '查询响应缓存', icon: <DatabaseOutlined /> },
   { key: 'wrapper', label: '返回包装配置', icon: <GiftOutlined /> },
 ] as const;
 
 type NavKey = (typeof NAV_ITEMS)[number]['key'];
-
-const SCROLL_ROOT_SELECTOR =
-  '.controller-form-page-container > .ant-pro-grid-content';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  组件实现
@@ -49,6 +48,8 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
   const [activeKey, setActiveKey] = useState<NavKey>('meta');
   const scrollingByClick = useRef(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout>>();
+  /** 面板自身的滚动容器，兼作锚点滚动/高亮的 root */
+  const scrollRootRef = useRef<HTMLDivElement>(null);
 
   const scrollToSection = useCallback((key: NavKey) => {
     const el = document.getElementById(`basic-info-${key}`);
@@ -72,7 +73,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
 
     if (elements.length === 0) return undefined;
 
-    const root = document.querySelector(SCROLL_ROOT_SELECTOR) as Element | null;
+    const root = scrollRootRef.current;
     const observer = new IntersectionObserver(
       (entries) => {
         if (scrollingByClick.current) return;
@@ -101,72 +102,92 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
   }, []);
 
   return (
-    <div
-      className="basic-info-panel"
-      style={{ display: 'flex', gap: 20, maxWidth: 1080, margin: '0 auto', padding: '16px 0 24px' }}
-    >
+    <div ref={scrollRootRef} className="basic-info-scroll">
       <style>{`
+        /* 面板自身作为滚动容器，撑满 Tab 内容区并可独立滚动 */
+        .basic-info-scroll {
+          height: 100%;
+          overflow-y: auto;
+          overflow-x: hidden;
+          overscroll-behavior: contain;
+        }
+        .basic-info-panel {
+          display: flex;
+          gap: 20px;
+          max-width: 1080px;
+          margin: 0 auto;
+          padding: 16px 4px 32px;
+          box-sizing: border-box;
+        }
         .basic-info-panel .ant-form-item {
           margin-bottom: 14px;
         }
         .basic-info-panel .ant-form-item-extra {
           min-height: 0;
         }
+        .basic-info-nav-btn:hover {
+          background: #f2f6fc !important;
+        }
       `}</style>
 
-      {/* ── 左侧锚点导航 ── */}
-      <nav
-        style={{
-          width: 156,
-          flexShrink: 0,
-          position: 'sticky',
-          top: 12,
-          alignSelf: 'flex-start',
-        }}
-      >
-        <div
+      <div className="basic-info-panel">
+        {/* ── 左侧锚点导航 ── */}
+        <nav
           style={{
-            background: '#fff',
-            border: '1px solid #ebeef5',
-            borderRadius: 8,
-            padding: '6px 0',
-            overflow: 'hidden',
+            width: 160,
+            flexShrink: 0,
+            position: 'sticky',
+            top: 0,
+            alignSelf: 'flex-start',
           }}
         >
-          {NAV_ITEMS.map((item) => {
-            const active = activeKey === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => scrollToSection(item.key)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  width: '100%',
-                  border: 'none',
-                  borderLeft: active ? '3px solid #1677ff' : '3px solid transparent',
-                  background: active ? '#e6f4ff' : 'transparent',
-                  color: active ? '#1677ff' : '#4e5969',
-                  fontWeight: active ? 600 : 400,
-                  fontSize: 13,
-                  padding: '9px 12px 9px 10px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'background 0.2s, color 0.2s',
-                }}
-              >
-                <span style={{ fontSize: 14, display: 'flex' }}>{item.icon}</span>
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid #ebeef5',
+              borderRadius: 10,
+              padding: '6px',
+              overflow: 'hidden',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+            }}
+          >
+            {NAV_ITEMS.map((item) => {
+              const active = activeKey === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="basic-info-nav-btn"
+                  onClick={() => scrollToSection(item.key)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    border: 'none',
+                    borderRadius: 8,
+                    background: active ? '#e6f4ff' : 'transparent',
+                    color: active ? '#1677ff' : '#4e5969',
+                    fontWeight: active ? 600 : 400,
+                    fontSize: 13,
+                    padding: '9px 10px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.2s, color 0.2s',
+                  }}
+                >
+                  <span style={{ fontSize: 14, display: 'flex', color: active ? '#1677ff' : '#86909c' }}>
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
 
-      {/* ── 右侧内容区 ── */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* ── 右侧内容区 ── */}
+        <div style={{ flex: 1, minWidth: 0 }}>
         <ProForm form={form} submitter={false} layout="vertical">
           <SectionCard
             id="basic-info-meta"
@@ -231,6 +252,16 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
           </SectionCard>
 
           <SectionCard
+            id="basic-info-ingress"
+            tone="primary"
+            icon={<SafetyCertificateOutlined />}
+            title="入站防护"
+            description="鉴权 / 防重放 / 限流 / IP；继承全局或按接口覆盖，需发布后生效"
+          >
+            <IngressSecuritySection />
+          </SectionCard>
+
+          <SectionCard
             id="basic-info-cache"
             tone="primary"
             icon={<DatabaseOutlined />}
@@ -256,6 +287,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
             <ResponseWrapperSection form={form} />
           </SectionCard>
         </ProForm>
+        </div>
       </div>
     </div>
   );

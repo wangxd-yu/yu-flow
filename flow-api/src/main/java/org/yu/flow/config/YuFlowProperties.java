@@ -95,6 +95,22 @@ public class YuFlowProperties {
      */
     private Metrics metrics = new Metrics();
 
+    /**
+     * 第三方开放平台配置组。
+     */
+    private Open open = new Open();
+
+    /**
+     * 已发布 API 入站防护（全局默认；可按接口 securityConfig 覆盖）。
+     */
+    private Ingress ingress = new Ingress();
+
+    /**
+     * SMTP 邮件（告警 / 后续流程编排节点共用）。
+     * 运行时优先读系统配置 MAIL_*；库中无键/停用时回退本段。
+     */
+    private Mail mail = new Mail();
+
     // ==================== Getters & Setters ====================
 
     public boolean isEnabled() {
@@ -175,6 +191,30 @@ public class YuFlowProperties {
 
     public void setMetrics(Metrics metrics) {
         this.metrics = metrics;
+    }
+
+    public Open getOpen() {
+        return open;
+    }
+
+    public void setOpen(Open open) {
+        this.open = open;
+    }
+
+    public Ingress getIngress() {
+        return ingress;
+    }
+
+    public void setIngress(Ingress ingress) {
+        this.ingress = ingress;
+    }
+
+    public Mail getMail() {
+        return mail;
+    }
+
+    public void setMail(Mail mail) {
+        this.mail = mail;
     }
 
     // ==================== 内部配置组：Engine ====================
@@ -427,6 +467,17 @@ public class YuFlowProperties {
         private String aesSecretKey = "flow-secure-keys";
 
         /**
+         * 管理端 JWT HMAC 密钥。
+         * <p>生产必须通过 {@code YU_FLOW_JWT_SECRET} 覆盖，禁止使用历史默认值 {@code ss-flow-699}。</p>
+         */
+        private String jwtSecretKey = "ss-flow-699";
+
+        /**
+         * 管理端 JWT 有效期（秒），默认 2 小时。
+         */
+        private long jwtExpireSeconds = 7200L;
+
+        /**
          * Groovy 脚本可通过 spring.getBean(name) 获取的 Bean 名称白名单。
          * 默认空列表，不向脚本暴露任何 Spring Bean。
          */
@@ -438,6 +489,22 @@ public class YuFlowProperties {
 
         public void setAesSecretKey(String aesSecretKey) {
             this.aesSecretKey = aesSecretKey;
+        }
+
+        public String getJwtSecretKey() {
+            return jwtSecretKey;
+        }
+
+        public void setJwtSecretKey(String jwtSecretKey) {
+            this.jwtSecretKey = jwtSecretKey;
+        }
+
+        public long getJwtExpireSeconds() {
+            return jwtExpireSeconds;
+        }
+
+        public void setJwtExpireSeconds(long jwtExpireSeconds) {
+            this.jwtExpireSeconds = jwtExpireSeconds;
         }
 
         public List<String> getScriptAllowedBeans() {
@@ -672,6 +739,319 @@ public class YuFlowProperties {
 
         public void setFlushLockTtlSeconds(int flushLockTtlSeconds) {
             this.flushLockTtlSeconds = flushLockTtlSeconds;
+        }
+    }
+
+    // ==================== 内部配置组：Open ====================
+
+    /**
+     * 第三方开放平台配置。
+     *
+     * <p>对应 YAML：{@code yu.flow.open.*}</p>
+     */
+    public static class Open {
+
+        /** 总开关；关闭后 /flow-api/open/** 返回 404 */
+        private boolean enabled = true;
+
+        /** 开放入口前缀（不含尾斜杠） */
+        private String entryPrefix = "/flow-api/open";
+
+        /** 签名时钟偏差秒数 */
+        private int skewSeconds = 300;
+
+        /** 是否允许 X-Yu-App-Secret 明文头（无签名时）；默认 false，演示可环境变量打开 */
+        private boolean allowPlainSecret = false;
+
+        /** 轮换后旧密钥宽限期（小时）；≤0 表示立即失效 */
+        private int rotateGraceHours = 24;
+
+        /** 全局入站摘要日志开关；平台 openCallLogEnabled=0 时可单独关闭 */
+        private boolean callLogEnabled = true;
+
+        /** HMAC 是否纳入 body SHA-256（空 body 用空串） */
+        private boolean includeBodyHash = true;
+
+        /**
+         * nonce 写入 Redis 失败时是否拒绝请求。
+         * 生产建议 true；本地无 Redis 时可 false（存在重放风险）。
+         */
+        private boolean nonceFailClosed = true;
+
+        /**
+         * 是否允许第三方用 AppKey 直打「真实发布 path」（凭证头分流）。
+         * 默认 false：仅认 {@code /flow-api/open/{path}} 前缀入口。
+         */
+        private boolean allowDirectPath = false;
+
+        /**
+         * 已发布 API 且无 AppKey 时，是否强制 {@link org.yu.flow.module.open.auth.HostAuthenticationProbe}。
+         * 默认 false（宽松）；宿主误配 permitAll 时可打开并实现 Probe。
+         */
+        private boolean requireHostAuth = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getEntryPrefix() {
+            return entryPrefix;
+        }
+
+        public void setEntryPrefix(String entryPrefix) {
+            this.entryPrefix = entryPrefix;
+        }
+
+        public int getSkewSeconds() {
+            return skewSeconds;
+        }
+
+        public void setSkewSeconds(int skewSeconds) {
+            this.skewSeconds = skewSeconds;
+        }
+
+        public boolean isAllowPlainSecret() {
+            return allowPlainSecret;
+        }
+
+        public void setAllowPlainSecret(boolean allowPlainSecret) {
+            this.allowPlainSecret = allowPlainSecret;
+        }
+
+        public int getRotateGraceHours() {
+            return rotateGraceHours;
+        }
+
+        public void setRotateGraceHours(int rotateGraceHours) {
+            this.rotateGraceHours = rotateGraceHours;
+        }
+
+        public boolean isCallLogEnabled() {
+            return callLogEnabled;
+        }
+
+        public void setCallLogEnabled(boolean callLogEnabled) {
+            this.callLogEnabled = callLogEnabled;
+        }
+
+        public boolean isIncludeBodyHash() {
+            return includeBodyHash;
+        }
+
+        public void setIncludeBodyHash(boolean includeBodyHash) {
+            this.includeBodyHash = includeBodyHash;
+        }
+
+        public boolean isNonceFailClosed() {
+            return nonceFailClosed;
+        }
+
+        public void setNonceFailClosed(boolean nonceFailClosed) {
+            this.nonceFailClosed = nonceFailClosed;
+        }
+
+        public boolean isAllowDirectPath() {
+            return allowDirectPath;
+        }
+
+        public void setAllowDirectPath(boolean allowDirectPath) {
+            this.allowDirectPath = allowDirectPath;
+        }
+
+        public boolean isRequireHostAuth() {
+            return requireHostAuth;
+        }
+
+        public void setRequireHostAuth(boolean requireHostAuth) {
+            this.requireHostAuth = requireHostAuth;
+        }
+    }
+
+    // ==================== 内部配置组：Ingress ====================
+
+    /**
+     * 已发布 API 入站防护全局默认。
+     *
+     * <p>对应 YAML：{@code yu.flow.ingress.*}</p>
+     * <p>{@code enabled=false} 时信任宿主网关（与历史行为一致）；开放入口 {@code /flow-api/open/**} 不受影响。</p>
+     */
+    public static class Ingress {
+
+        /** 总开关；关闭则不启用入站兜底（此时网关仍会对已匹配动态 API 要求管理端 JWT） */
+        private boolean enabled = true;
+
+        /** 默认鉴权：NONE | HOST | OPEN（安全默认 HOST=需管理端登录态） */
+        private String defaultAuthMode = "HOST";
+
+        /** 默认是否启用防重放（仅 OPEN 鉴权生效） */
+        private boolean defaultAntiReplay = true;
+
+        /** 默认是否启用限流 */
+        private boolean defaultRateLimitEnabled = false;
+
+        /** 默认限流 QPS（秒级固定窗口） */
+        private int defaultRateLimitQps = 100;
+
+        /** 默认 IP 白名单（空=不限制） */
+        private String defaultIpAllowlist = "";
+
+        /**
+         * 默认接口执行超时（毫秒）。≤0 表示不限制。
+         * 可被接口 securityConfig.timeoutMs 覆盖。
+         */
+        private int defaultTimeoutMs = 30000;
+
+        /** 限流 Redis 失败时是否 fail-open */
+        private boolean rateLimitFailOpen = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getDefaultAuthMode() {
+            return defaultAuthMode;
+        }
+
+        public void setDefaultAuthMode(String defaultAuthMode) {
+            this.defaultAuthMode = defaultAuthMode;
+        }
+
+        public boolean isDefaultAntiReplay() {
+            return defaultAntiReplay;
+        }
+
+        public void setDefaultAntiReplay(boolean defaultAntiReplay) {
+            this.defaultAntiReplay = defaultAntiReplay;
+        }
+
+        public boolean isDefaultRateLimitEnabled() {
+            return defaultRateLimitEnabled;
+        }
+
+        public void setDefaultRateLimitEnabled(boolean defaultRateLimitEnabled) {
+            this.defaultRateLimitEnabled = defaultRateLimitEnabled;
+        }
+
+        public int getDefaultRateLimitQps() {
+            return defaultRateLimitQps;
+        }
+
+        public void setDefaultRateLimitQps(int defaultRateLimitQps) {
+            this.defaultRateLimitQps = defaultRateLimitQps;
+        }
+
+        public String getDefaultIpAllowlist() {
+            return defaultIpAllowlist;
+        }
+
+        public void setDefaultIpAllowlist(String defaultIpAllowlist) {
+            this.defaultIpAllowlist = defaultIpAllowlist;
+        }
+
+        public int getDefaultTimeoutMs() {
+            return defaultTimeoutMs;
+        }
+
+        public void setDefaultTimeoutMs(int defaultTimeoutMs) {
+            this.defaultTimeoutMs = defaultTimeoutMs;
+        }
+
+        public boolean isRateLimitFailOpen() {
+            return rateLimitFailOpen;
+        }
+
+        public void setRateLimitFailOpen(boolean rateLimitFailOpen) {
+            this.rateLimitFailOpen = rateLimitFailOpen;
+        }
+    }
+
+    // ==================== 内部配置组：Mail ====================
+
+    /**
+     * SMTP 邮件发送。对应 YAML：{@code yu.flow.mail.*}
+     * <p>系统配置 MAIL_* 优先于本段。</p>
+     */
+    public static class Mail {
+        private boolean enabled = false;
+        private String host = "";
+        private int port = 465;
+        private String username = "";
+        private String password = "";
+        /** 发件人地址；空则用 username */
+        private String from = "";
+        private boolean ssl = true;
+        private boolean starttls = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getFrom() {
+            return from;
+        }
+
+        public void setFrom(String from) {
+            this.from = from;
+        }
+
+        public boolean isSsl() {
+            return ssl;
+        }
+
+        public void setSsl(boolean ssl) {
+            this.ssl = ssl;
+        }
+
+        public boolean isStarttls() {
+            return starttls;
+        }
+
+        public void setStarttls(boolean starttls) {
+            this.starttls = starttls;
         }
     }
 }

@@ -21,6 +21,7 @@ import {
 import { Button, message, Tag, Popconfirm, Space, Typography, Tooltip, Row, Col, Tabs } from 'antd';
 import { PlusOutlined, StarOutlined } from '@ant-design/icons';
 import { request } from '@umijs/max';
+import '@/styles/fullHeightTable.css';
 
 const { Text } = Typography;
 
@@ -290,105 +291,11 @@ const ResponseTemplateManage: React.FC = () => {
     },
   ];
 
-  // ---- Full-height ProTable CSS overrides ----
-  const fullHeightTableCSS = `
-    .fh-container.ant-pro-page-container {
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-    .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      height: auto !important;
-      padding-block-end: 0 !important;
-    }
-    .fh-table.ant-pro-table {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-search {
-      flex-shrink: 0;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-      flex: 1;
-      min-height: 0;
-      display: flex !important;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-list-toolbar {
-      flex-shrink: 0;
-    }
-    .fh-table .ant-table-wrapper {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-nested-loading {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-header {
-      flex-shrink: 0;
-      overflow: hidden !important;
-    }
-    .fh-table .ant-table-body {
-      flex: 1;
-      min-height: 0;
-      max-height: none !important;
-      overflow-y: scroll !important;
-    }
-    .fh-table .ant-table-pagination {
-      flex-shrink: 0;
-      padding: 6px 0;
-      margin: 0 !important;
-    }
-  `;
-
   return (
     <PageContainer
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
     >
-      <style>{fullHeightTableCSS}</style>
       <ProTable<ResponseTemplateItem>
         className="fh-table"
         headerTitle="响应模板列表"

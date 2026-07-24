@@ -17,6 +17,8 @@ public class AssetMetricsSummaryDTO {
     private long successCount;
     private long failCount;
     private long skippedCount;
+    /** 鉴权失败（不计入成功率分母） */
+    private long authFailCount;
     /** null = 时间窗内无终态样本 */
     private Double successRate;
     private Double errorRate;

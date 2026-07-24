@@ -1,0 +1,534 @@
+/* 运行中心：监控看板式布局（非整页 ProTable CRUD） */
+
+.runtime-page.ant-pro-page-container .ant-page-header {
+  padding-block: 12px 8px;
+}
+
+.runtime-page.ant-pro-page-container .ant-pro-page-container-children-container {
+  padding-inline: 20px !important;
+  padding-block: 0 12px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  flex: 1 !important;
+}
+
+.runtime-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f7f8fa;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.runtime-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.runtime-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runtime-toolbar-label {
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.runtime-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.runtime-updated {
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ===== KPI 概览卡片 ===== */
+.runtime-kpis {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 16px 4px;
+  background: #fff;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.rt-kpi {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fafbfc;
+  border: 1px solid #eef0f3;
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+}
+
+.rt-kpi:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  border-color: #e0e3e8;
+}
+
+.rt-kpi-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  font-size: 18px;
+}
+
+.rt-kpi-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.rt-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #1f2329;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+.rt-kpi-label {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #8c8c8c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-kpi-hint {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #bfbfbf;
+  white-space: nowrap;
+}
+
+.rt-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-left: 6px;
+}
+
+.rt-dot:first-child {
+  margin-left: 0;
+}
+
+.rt-dot.err {
+  background: #cf1322;
+}
+
+.rt-dot.warn {
+  background: #fa8c16;
+}
+
+/* KPI tone 配色（图标底色 + 数值强调） */
+.rt-kpi.tone-blue .rt-kpi-icon {
+  background: #e6f0ff;
+  color: #1677ff;
+}
+
+.rt-kpi.tone-cyan .rt-kpi-icon {
+  background: #e6fffb;
+  color: #13c2c2;
+}
+
+.rt-kpi.tone-green .rt-kpi-icon {
+  background: #eafff1;
+  color: #52c41a;
+}
+
+.rt-kpi.tone-orange .rt-kpi-icon {
+  background: #fff4e6;
+  color: #fa8c16;
+}
+
+.rt-kpi.tone-red {
+  background: #fff5f5;
+  border-color: #ffdede;
+}
+
+.rt-kpi.tone-red .rt-kpi-icon {
+  background: #ffe7e7;
+  color: #cf1322;
+}
+
+.rt-kpi.tone-red .rt-kpi-value {
+  color: #cf1322;
+}
+
+.runtime-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px 12px;
+}
+
+.runtime-body .ant-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.runtime-body .ant-tabs-nav {
+  margin: 0 !important;
+  padding: 4px 4px 0;
+  background: transparent;
+}
+
+.runtime-body .ant-tabs-nav::before {
+  border-bottom-color: #eef0f3 !important;
+}
+
+.runtime-body .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #eef0f3;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+}
+
+.runtime-body .ant-tabs-content,
+.runtime-body .ant-tabs-tabpane {
+  height: 100%;
+}
+
+.runtime-body .ant-tabs-tabpane-active {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.runtime-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 表体贴容器：填满剩余高度，表体可纵向滚动 */
+.runtime-pane .fh-table.ant-pro-table {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.runtime-pane .fh-table > .ant-pro-card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.runtime-pane .fh-table .ant-pro-card-body {
+  padding: 0 !important;
+}
+
+.runtime-pane .fh-table .ant-table-thead > tr > th {
+  background: #fafafa !important;
+  font-weight: 500;
+  color: #595959;
+  font-size: 12px;
+}
+
+.runtime-pane .fh-table .ant-table-tbody > tr > td {
+  font-size: 13px;
+}
+
+.runtime-pane .fh-table .ant-table-tbody > tr:hover > td {
+  background: #f5f9ff !important;
+}
+
+/* 覆盖全高表默认 overflow-y:scroll + 禁止横向滚动条（本页无固定列） */
+.runtime-pane .runtime-table.fh-table .ant-table-body,
+.runtime-pane .runtime-table.fh-table .ant-table-content {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+.runtime-pane .runtime-table.fh-table .ant-table-header {
+  overflow: hidden !important;
+}
+.runtime-pane .runtime-table.fh-table .ant-table {
+  width: 100% !important;
+}
+.runtime-pane .runtime-table.fh-table .ant-table-container::before,
+.runtime-pane .runtime-table.fh-table .ant-table-container::after {
+  display: none !important;
+}
+
+.runtime-asset {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.runtime-asset-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.runtime-asset-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1677ff;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.runtime-asset-name:hover {
+  color: #4096ff;
+}
+
+.runtime-asset-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #bfbfbf;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.runtime-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  color: #262626;
+}
+
+.runtime-num.muted {
+  color: #8c8c8c;
+}
+
+.runtime-num.warn {
+  color: #d46b08;
+}
+
+.runtime-num.danger {
+  color: #cf1322;
+  font-weight: 600;
+}
+
+/* ===== 排名徽标（Top3 奖牌配色） ===== */
+.rt-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8c8c8c;
+  background: #f2f3f5;
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-rank.top {
+  color: #fff;
+}
+
+.rt-rank.top-1 {
+  background: linear-gradient(135deg, #ffb020, #ff9500);
+  box-shadow: 0 1px 3px rgba(255, 149, 0, 0.4);
+}
+
+.rt-rank.top-2 {
+  background: linear-gradient(135deg, #b8c2cc, #97a3b0);
+}
+
+.rt-rank.top-3 {
+  background: linear-gradient(135deg, #e0a06b, #c8824a);
+}
+
+/* ===== 成功率可视化条 ===== */
+.rt-rate {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rt-rate-val {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #262626;
+  line-height: 1;
+}
+
+.rt-rate-val.ok {
+  color: #389e0d;
+}
+
+.rt-rate-val.warn {
+  color: #d46b08;
+}
+
+.rt-rate-val.bad {
+  color: #cf1322;
+  font-weight: 600;
+}
+
+.rt-rate-bar {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
+  background: #f0f0f0;
+  overflow: hidden;
+}
+
+.rt-rate-bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: #52c41a;
+  transition: width 0.3s ease;
+}
+
+.rt-rate-bar > i.warn {
+  background: #faad14;
+}
+
+.rt-rate-bar > i.bad {
+  background: #ff4d4f;
+}
+
+/* ===== 行级健康态着色（左侧色条 + 淡背景） ===== */
+.runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child,
+.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child {
+  position: relative;
+}
+
+.runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child::before,
+.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child::before {
+  background: #ff4d4f;
+}
+
+.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child::before {
+  background: #faad14;
+}
+
+.runtime-pane .runtime-table.fh-table .rt-row-error > td {
+  background: #fff8f8;
+}
+
+.runtime-pane .runtime-table.fh-table .rt-row-error:hover > td {
+  background: #fff1f0 !important;
+}
+
+/* ===== 空态 ===== */
+.rt-empty-desc {
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+/* ===== 行内展开：趋势详情 ===== */
+.runtime-pane .runtime-table.fh-table .rt-detail-row > td {
+  background: #fbfcfd !important;
+  padding: 0 !important;
+}
+
+.rt-detail {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  padding: 14px 16px 16px 52px;
+}
+
+.rt-detail-chart {
+  flex: 1;
+  min-width: 0;
+}
+
+.rt-detail-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 132px;
+}
+
+/* 图表下方说明文字 */
+.rt-trend-caption {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #bfbfbf;
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-detail-side {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+}
+
+.rt-detail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #1677ff;
+  white-space: nowrap;
+}
+
+.rt-detail-link:hover {
+  color: #4096ff;
+}

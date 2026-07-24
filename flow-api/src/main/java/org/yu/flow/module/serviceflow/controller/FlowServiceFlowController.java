@@ -197,7 +197,7 @@ public class FlowServiceFlowController {
             return new HashMap<>();
         }
         try {
-            Object parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+            Object parsed = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper()
                     .readValue(body, Object.class);
             if (parsed instanceof Map) {
                 @SuppressWarnings("unchecked")

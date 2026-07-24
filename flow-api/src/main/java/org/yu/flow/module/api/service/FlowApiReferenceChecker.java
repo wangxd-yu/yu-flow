@@ -50,8 +50,13 @@ public class FlowApiReferenceChecker {
         if (StrUtil.isBlank(apiId)) {
             return List.of();
         }
-        if (flowReferenceIndex.isReady()) {
-            return flowReferenceIndex.findApiReferenceLabels(apiId);
+        try {
+            flowReferenceIndex.ensureReady();
+            if (flowReferenceIndex.isReady()) {
+                return flowReferenceIndex.findApiReferenceLabels(apiId);
+            }
+        } catch (Exception e) {
+            log.warn("[FlowApiReferenceChecker] 索引未就绪，降级 LIKE: {}", e.getMessage());
         }
         return findReferenceLabelsFallback(apiId);
     }

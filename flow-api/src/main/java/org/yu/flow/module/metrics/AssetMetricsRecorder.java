@@ -48,9 +48,11 @@ public class AssetMetricsRecorder {
                 case SUCCESS -> FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_SUCCESS, 1);
                 case FAIL -> FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_FAIL, 1);
                 case SKIPPED -> FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_SKIPPED, 1);
+                case AUTH_FAIL -> FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_AUTH_FAIL, 1);
             }
 
-            if (outcome != MetricsOutcome.SKIPPED && costMs >= 0) {
+            // 鉴权失败不计延迟直方图，避免污染 P95
+            if (outcome != MetricsOutcome.SKIPPED && outcome != MetricsOutcome.AUTH_FAIL && costMs >= 0) {
                 FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_SUM_COST, costMs);
                 FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_LATENCY_COUNT, 1);
                 int idx = LatencyHistogram.indexOf(costMs);
@@ -76,11 +78,16 @@ public class AssetMetricsRecorder {
             FlowRedisUtil.hset(meta, MetricsKeys.META_LAST_SUCCESS, String.valueOf(now));
             FlowRedisUtil.hset(meta, MetricsKeys.META_CONSEC_FAIL, "0");
         } else if (outcome == MetricsOutcome.FAIL) {
+            // 仅业务失败拉高连续失败；AUTH_FAIL 不污染健康度
             FlowRedisUtil.hset(meta, MetricsKeys.META_LAST_FAIL, String.valueOf(now));
             long prev = parseLong(FlowRedisUtil.hget(meta, MetricsKeys.META_CONSEC_FAIL));
             FlowRedisUtil.hset(meta, MetricsKeys.META_CONSEC_FAIL, String.valueOf(prev + 1));
+        } else {
+            return;
         }
         FlowRedisUtil.expire(meta, Math.max(ttlHours, 24), TimeUnit.HOURS);
+        FlowRedisUtil.sadd(MetricsKeys.META_DIRTY_SET, meta);
+        FlowRedisUtil.expire(MetricsKeys.META_DIRTY_SET, Math.max(ttlHours, 24) + 1L, TimeUnit.HOURS);
     }
 
     private static long parseLong(Object v) {

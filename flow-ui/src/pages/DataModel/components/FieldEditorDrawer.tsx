@@ -5,7 +5,7 @@ import { EditableProTable, ProColumns, ModalForm, ProFormTextArea, ProFormSelect
 import type { EditableFormInstance } from '@ant-design/pro-components';
 import { HolderOutlined, DownOutlined } from '@ant-design/icons';
 import { getModelDetail, updateModel } from '../services/dataModel';
-import { queryDataSourceList } from '@/pages/flow/dataSource/services/dataSource';
+import { queryDataSourceList } from '@/services/flow/dataSource';
 import { request } from '@umijs/max';
 
 // ── dnd-kit ─────────────────────────────────────────────────

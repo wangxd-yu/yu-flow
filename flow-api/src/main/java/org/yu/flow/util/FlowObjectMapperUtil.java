@@ -21,30 +21,40 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 
 /**
- * @author yu-flow
- * @date 2025-03-13 10:30
+ * 流程/API 层统一 ObjectMapper 工厂。
+ *
+ * <p>返回<strong>懒加载单例</strong>（配置只读，读写线程安全）。DSL 引擎解析请继续使用专用
+ * {@code new ObjectMapper()}，避免与日期/PG 序列化配置互相干扰。</p>
  */
-public class FlowObjectMapperUtil {
+public final class FlowObjectMapperUtil {
 
+    private static final class Holder {
+        private static final ObjectMapper INSTANCE = create();
+    }
+
+    private FlowObjectMapperUtil() {
+    }
+
+    /** 共享配置好的 ObjectMapper；调用方勿再 registerModule / configure。 */
     public static ObjectMapper flowObjectMapper() {
+        return Holder.INSTANCE;
+    }
+
+    private static ObjectMapper create() {
         ObjectMapper objectMapper = new ObjectMapper();
         SimpleModule module = new SimpleModule();
         module.addSerializer(PGobject.class, new PGObjectSerializer());
         objectMapper.registerModule(module);
 
-        // 注册 JavaTimeModule 并配置日期格式
-        // 配置日期时间格式
         JavaTimeModule javaTimeModule = new JavaTimeModule();
-
-        // 自定义日期时间序列化格式
         DateTimeFormatter formatter = new DateTimeFormatterBuilder()
                 .appendPattern("yyyy-MM-dd HH:mm:ss")
-                .appendFraction(ChronoField.MILLI_OF_SECOND, 0, 3, true) // 可选毫秒部分
+                .appendFraction(ChronoField.MILLI_OF_SECOND, 0, 3, true)
                 .toFormatter();
 
         javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(formatter));
         javaTimeModule.addSerializer(ZonedDateTime.class, new ZonedDateTimeSerializer(formatter));
-        javaTimeModule.addSerializer(OffsetDateTime.class, new JsonSerializer<OffsetDateTime>() {
+        javaTimeModule.addSerializer(OffsetDateTime.class, new JsonSerializer<>() {
             @Override
             public void serialize(OffsetDateTime value, JsonGenerator gen, SerializerProvider provider)
                     throws IOException {
@@ -53,14 +63,8 @@ public class FlowObjectMapperUtil {
         });
 
         objectMapper.registerModule(javaTimeModule);
-        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS); // 禁用时间戳格式
-        objectMapper.configure(SerializationFeature.WRITE_DATES_WITH_ZONE_ID, true); // 使用时区
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        objectMapper.configure(SerializationFeature.WRITE_DATES_WITH_ZONE_ID, true);
         return objectMapper;
     }
-
-   /* @Bean
-    @Primary
-    public MappingJackson2HttpMessageConverter mappingJackson2HttpMessageConverter(ObjectMapper objectMapper) {
-        return new MappingJackson2HttpMessageConverter(objectMapper); // 使用自定义的 ObjectMapper
-    }*/
 }

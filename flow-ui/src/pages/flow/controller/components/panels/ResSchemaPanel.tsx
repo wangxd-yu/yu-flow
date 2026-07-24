@@ -9,8 +9,8 @@
 import React from 'react';
 import { Alert, Button, Input, InputNumber, Space } from 'antd';
 import { InfoCircleOutlined, ImportOutlined } from '@ant-design/icons';
-import SchemaTreeTable from '../ApiContractDesigner/SchemaTreeTable';
-import type { SchemaNode } from '../ApiContractDesigner/types';
+import SchemaTreeTable from '@/components/flow/ApiContractDesigner/SchemaTreeTable';
+import type { SchemaNode } from '@/components/flow/ApiContractDesigner/types';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Props

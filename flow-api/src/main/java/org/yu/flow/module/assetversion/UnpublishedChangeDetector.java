@@ -13,7 +13,7 @@ import org.yu.flow.module.task.domain.FlowTaskDO;
  */
 public final class UnpublishedChangeDetector {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     private UnpublishedChangeDetector() {
     }
@@ -42,6 +42,7 @@ public final class UnpublishedChangeDetector {
                     || differs(api.getCustomSuccessWrapper(), snap, "customSuccessWrapper")
                     || differs(api.getCustomPageWrapper(), snap, "customPageWrapper")
                     || differs(api.getCustomFailWrapper(), snap, "customFailWrapper")
+                    || differs(api.getSecurityConfig(), snap, "securityConfig")
                     || differsInt(api.getLevel(), snap, "level");
             // logEnabled / cacheConfig 视为运营配置，不计入「待更新发布」
         } catch (Exception e) {

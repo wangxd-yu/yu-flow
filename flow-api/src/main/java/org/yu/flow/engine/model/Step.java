@@ -43,6 +43,7 @@ import java.util.Map;
         @JsonSubTypes.Type(value = SystemVarStep.class, name = "systemVar"),
         @JsonSubTypes.Type(value = SystemMethodStep.class, name = "systemMethod"),
         @JsonSubTypes.Type(value = DelayStep.class, name = "delay"),
+        @JsonSubTypes.Type(value = SendMailStep.class, name = "sendMail"),
         @JsonSubTypes.Type(value = ErrorHandlerStep.class, name = "errorHandler")
 })
 @JsonIgnoreProperties(ignoreUnknown = true)

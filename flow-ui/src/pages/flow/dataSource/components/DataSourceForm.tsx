@@ -5,15 +5,17 @@ import {
   ProFormSelect,
   ProFormText,
 } from '@ant-design/pro-components';
-import { Button, message } from 'antd';
+import { Alert, Button, message } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 import {
   addDataSource,
   testConnectionByParams,
+  testDataSourceConnection,
   updateDataSource,
-} from '../services/dataSource';
+} from '@/services/flow/dataSource';
+import DataSourceWallForm, { defaultWallConfig } from './DataSourceWallForm';
 
 export type FormProps = {
   onCancel: () => void;
@@ -27,14 +29,35 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
   const { modalVisible, onCancel, onSubmit, values = {}, isEdit } = props;
   const [form] = useForm();
   const [testLoading, setTestLoading] = useState(false);
+  const isSystem = !!values?.isSystem || values?.isSystem === 1;
+
+  const initialValues = useMemo(
+    () => ({
+      ...defaultWallConfig(),
+      ...values,
+      wallConfig: {
+        ...defaultWallConfig(),
+        ...(values?.wallConfig || {}),
+      },
+      isSystem: values?.isSystem ?? 0,
+    }),
+    [values],
+  );
 
   const handleSubmit = async (formValues: any) => {
     try {
       const hide = message.loading(isEdit ? '正在更新...' : '正在添加...');
+      const payload = {
+        ...formValues,
+        wallConfig: {
+          ...defaultWallConfig(),
+          ...(formValues.wallConfig || {}),
+        },
+      };
       if (isEdit) {
-        await updateDataSource(values.id!, formValues);
+        await updateDataSource(values.id!, payload);
       } else {
-        await addDataSource(formValues);
+        await addDataSource(payload);
       }
       hide();
       message.success(isEdit ? '更新成功' : '添加成功');
@@ -47,8 +70,24 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
     }
   };
 
-  /** 点击"测试连接"按钮：收集当前表单值，调用独立测试接口 */
   const handleTestConnection = async () => {
+    if (isSystem) {
+      setTestLoading(true);
+      try {
+        const res = await testDataSourceConnection(values.id!);
+        if (res) {
+          message.success('连接测试成功');
+        } else {
+          message.error('连接测试失败');
+        }
+      } catch (e: any) {
+        console.error('测试连接异常：', e);
+      } finally {
+        setTestLoading(false);
+      }
+      return;
+    }
+
     const formValues = form.getFieldsValue();
     const { driverClassName, url, username, password } = formValues;
 
@@ -60,24 +99,20 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
     setTestLoading(true);
     try {
       const res = await testConnectionByParams({
-        id: values.id, // 编辑模式下传原有id，方便后端查库兜底
+        id: values.id,
         driverClassName,
         url,
         username,
-        // 编辑模式下密码可能为空（不修改），此时传 undefined，后端用库中密码
         password: password || undefined,
       });
 
-      // res 是 R 包装体，实际测试结果在 res.data 中；兼容直返结构
       const testResult = res?.data || res;
       if (testResult?.success) {
-        message.success('连接测试成功 ✅');
+        message.success('连接测试成功');
       } else {
         message.error(`连接测试失败：${testResult?.message || '未知错误'}`);
       }
     } catch (e: any) {
-      // 错误已在 request.ts 拦截器中通过 message.error 弹出，
-      // 此处仅防御性捕获，防止未处理的 Promise Rejection 导致页面异常。
       console.error('测试连接异常：', e);
     } finally {
       setTestLoading(false);
@@ -86,7 +121,13 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
 
   return (
     <DrawerForm
-      title={isEdit ? '编辑数据源' : '新增数据源'}
+      title={
+        isSystem
+          ? '编辑系统默认数据源（仅安全墙）'
+          : isEdit
+            ? '编辑数据源'
+            : '新增数据源'
+      }
       width="70%"
       layout="horizontal"
       open={modalVisible}
@@ -96,12 +137,12 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
           onCancel();
         }
       }}
-      initialValues={values}
+      initialValues={initialValues}
       onFinish={handleSubmit}
       drawerProps={{
         destroyOnClose: true,
       }}
-      labelCol={{ style: { width: '90px' } }}
+      labelCol={{ style: { width: '110px' } }}
       grid={true}
       rowProps={{
         gutter: [16, 16],
@@ -111,7 +152,6 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
           submitText: '提交',
           resetText: '取消',
         },
-        // 在系统默认「取消 / 提交」按钮前插入「测试连接」按钮
         render: (_, dom) => [
           <Button
             key="test-connection"
@@ -124,12 +164,22 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
         ],
       }}
     >
+      {isSystem && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16, width: '100%' }}
+          message="系统默认数据源"
+          description="连接信息来自 spring.datasource，只读展示；可配置 SQL 安全墙。该数据源不可删除或停用。"
+        />
+      )}
+
       <ProFormText
         name="name"
         label="数据源名称"
         placeholder="请输入数据源名称"
         rules={[{ required: true, message: '请输入数据源名称!' }]}
-        disabled={isEdit}
+        disabled={isEdit && !isSystem}
         colProps={{ span: 8 }}
       />
       <ProFormText
@@ -137,15 +187,19 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
         label="数据源编码"
         placeholder="请输入数据源编码，如 erp_master_db"
         tooltip="全局唯一编码，创建后不可修改"
-        disabled={isEdit}
-        rules={[
-          { required: true, message: '请输入数据源编码!' },
-          {
-            pattern: /^[a-z][a-z0-9_]*$/,
-            message: '只能包含小写字母、数字和下划线，且不能以数字开头',
-          },
-          { max: 50, message: '编码长度不能超过50个字符' },
-        ]}
+        disabled={isEdit || isSystem}
+        rules={
+          isSystem
+            ? []
+            : [
+                { required: true, message: '请输入数据源编码!' },
+                {
+                  pattern: /^[a-z][a-z0-9_]*$/,
+                  message: '只能包含小写字母、数字和下划线，且不能以数字开头',
+                },
+                { max: 50, message: '编码长度不能超过50个字符' },
+              ]
+        }
         colProps={{ span: 8 }}
       />
       <ProFormSelect
@@ -156,81 +210,93 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
           postgresql: 'PostgreSQL',
           highgo: 'HighGo',
         }}
-        rules={[{ required: true, message: '请选择数据库类型!' }]}
+        rules={isSystem ? [] : [{ required: true, message: '请选择数据库类型!' }]}
+        disabled={isSystem}
         colProps={{ span: 8 }}
       />
       <ProFormText
         name="driverClassName"
         label="驱动类名"
         placeholder="请输入驱动类名"
-        rules={[{ required: true, message: '请输入驱动类名!' }]}
+        rules={isSystem ? [] : [{ required: true, message: '请输入驱动类名!' }]}
+        disabled={isSystem}
         colProps={{ span: 8 }}
       />
       <ProFormText
         name="url"
         label="连接URL"
         placeholder="请输入连接URL"
-        rules={[{ required: true, message: '请输入连接URL!' }]}
+        rules={isSystem ? [] : [{ required: true, message: '请输入连接URL!' }]}
+        disabled={isSystem}
         colProps={{ span: 8 }}
       />
       <ProFormText
         name="username"
         label="用户名"
         placeholder="请输入用户名"
-        rules={[{ required: true, message: '请输入用户名!' }]}
+        rules={isSystem ? [] : [{ required: true, message: '请输入用户名!' }]}
+        disabled={isSystem}
         colProps={{ span: 8 }}
       />
 
-      {/* ===== 密码框：编辑模式下 placeholder 变为提示，且不必填 ===== */}
-      <ProFormText.Password
-        name="password"
-        label="密码"
-        placeholder={isEdit ? '若不修改密码请留空' : '请输入密码'}
-        rules={isEdit ? [] : [{ required: true, message: '请输入密码!' }]}
-        colProps={{ span: 8 }}
-      />
+      {!isSystem && (
+        <ProFormText.Password
+          name="password"
+          label="密码"
+          placeholder={isEdit ? '若不修改密码请留空' : '请输入密码'}
+          rules={isEdit ? [] : [{ required: true, message: '请输入密码!' }]}
+          colProps={{ span: 8 }}
+        />
+      )}
 
-      <ProFormGroup title="连接池配置" collapsible>
-        <ProFormDigit
-          name="initialSize"
-          label="初始连接数"
-          min={1}
-          max={100}
-          initialValue={5}
-          colProps={{ span: 8 }}
-        />
-        <ProFormDigit
-          name="minIdle"
-          label="最小空闲连接"
-          min={1}
-          max={100}
-          initialValue={5}
-          colProps={{ span: 8 }}
-        />
-        <ProFormDigit
-          name="maxActive"
-          label="最大活动连接"
-          min={1}
-          max={100}
-          initialValue={20}
-          colProps={{ span: 8 }}
-        />
-      </ProFormGroup>
+      {!isSystem && (
+        <ProFormGroup title="连接池配置" collapsible>
+          <ProFormDigit
+            name="initialSize"
+            label="初始连接数"
+            min={1}
+            max={100}
+            initialValue={5}
+            colProps={{ span: 8 }}
+          />
+          <ProFormDigit
+            name="minIdle"
+            label="最小空闲连接"
+            min={1}
+            max={100}
+            initialValue={5}
+            colProps={{ span: 8 }}
+          />
+          <ProFormDigit
+            name="maxActive"
+            label="最大活动连接"
+            min={1}
+            max={100}
+            initialValue={20}
+            colProps={{ span: 8 }}
+          />
+        </ProFormGroup>
+      )}
 
-      <ProFormSelect
-        name="status"
-        label="状态"
-        valueEnum={{
-          1: '启用',
-          0: '禁用',
-        }}
-        rules={[{ required: true, message: '请选择状态!' }]}
-        colProps={{ span: 8 }}
-        normalize={(val: any) => (val !== undefined && val !== null ? Number(val) : val)}
-      />
+      {!isSystem && (
+        <ProFormSelect
+          name="status"
+          label="状态"
+          valueEnum={{
+            1: '启用',
+            0: '禁用',
+          }}
+          rules={[{ required: true, message: '请选择状态!' }]}
+          colProps={{ span: 8 }}
+          normalize={(val: any) =>
+            val !== undefined && val !== null ? Number(val) : val
+          }
+        />
+      )}
+
+      <DataSourceWallForm />
     </DrawerForm>
   );
 };
 
 export default DataSourceForm;
-

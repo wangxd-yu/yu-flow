@@ -4,16 +4,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Modal, Space, Typography, message } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
-import CodeEditor from '../../controller/components/flow-editor/components/CodeEditor';
+import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
 import {
   getServiceFlow,
   runServiceFlow,
   type FlowServiceFlow,
-} from '../services/serviceFlowService';
+} from '@/services/flow/serviceFlowService';
 import {
   buildSampleInputFromContract,
   parseServiceContract,
-} from './serviceContract';
+} from '@/services/flow/serviceContract';
 
 const { Text } = Typography;
 

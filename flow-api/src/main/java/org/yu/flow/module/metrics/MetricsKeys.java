@@ -15,12 +15,15 @@ public final class MetricsKeys {
     public static final DateTimeFormatter MINUTE_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 
     public static final String ACTIVE_SET = "flow:metrics:active";
+    /** 待刷入 MySQL 的 meta Redis key 集合 */
+    public static final String META_DIRTY_SET = "flow:metrics:meta:dirty";
     public static final String FLUSH_LOCK = "flow:metrics:flush:lock";
     public static final String CLEANUP_LOCK = "flow:metrics:cleanup:lock";
 
     public static final String FIELD_SUCCESS = "success";
     public static final String FIELD_FAIL = "fail";
     public static final String FIELD_SKIPPED = "skipped";
+    public static final String FIELD_AUTH_FAIL = "authFail";
     public static final String FIELD_SUM_COST = "sumCostMs";
     public static final String FIELD_LATENCY_COUNT = "latencyCount";
 
@@ -72,6 +75,30 @@ public final class MetricsKeys {
     }
 
     /**
+     * 解析 meta key：flow:metrics:meta:{type}:{assetId}
+     */
+    public static MetaKeyParts parseMetaKey(String key) {
+        if (key == null || !key.startsWith("flow:metrics:meta:")) {
+            return null;
+        }
+        String[] parts = key.split(":");
+        // flow metrics meta TYPE assetId → 5 parts
+        if (parts.length < 5) {
+            return null;
+        }
+        try {
+            MetricsAssetType type = MetricsAssetType.valueOf(parts[3]);
+            String assetId = parts[4];
+            if (assetId == null || assetId.isBlank()) {
+                return null;
+            }
+            return new MetaKeyParts(type, assetId, key);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 解析桶 key：flow:metrics:m:{type}:{assetId}:{trigger}:{yyyyMMddHHmm}
      */
     public static BucketKeyParts parseBucketKey(String key) {
@@ -99,6 +126,13 @@ public final class MetricsKeys {
             String assetId,
             String triggerType,
             LocalDateTime bucketStart,
+            String redisKey
+    ) {
+    }
+
+    public record MetaKeyParts(
+            MetricsAssetType assetType,
+            String assetId,
             String redisKey
     ) {
     }

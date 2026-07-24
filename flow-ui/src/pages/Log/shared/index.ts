@@ -6,6 +6,7 @@ export { default as LogDetailShell } from './LogDetailShell';
 export type { LogDetailShellProps, LogDetailShellOverview } from './LogDetailShell';
 export { default as LogDuration } from './LogDuration';
 export { default as LogResultTable, isTabularData } from './LogResultTable';
+export { LogDeepLinkBar } from './LogDeepLinkBar';
 export {
   formatDuration,
   getDurationColor,

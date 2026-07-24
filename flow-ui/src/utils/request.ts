@@ -33,10 +33,25 @@ export const requestConfig: RequestConfig = {
 
       // 2. 添加认证 Token 和凭据配置
       const token = localStorage.getItem('flow_token');
-      const headers = {
+      const headers: Record<string, any> = {
         ...options.headers,
-        "Flow-Authorization": token ? `${token}` : '',
+        'Flow-Authorization': token ? `${token}` : '',
       };
+      // POST/PUT/PATCH 带 JSON body 时，统一用无 charset 的 application/json，
+      // 避免 umi/浏览器写成 application/json;charset=UTF-8 触发后端 415
+      const method = (options.method || 'GET').toUpperCase();
+      if (
+        ['POST', 'PUT', 'PATCH'].includes(method) &&
+        options.data !== undefined &&
+        options.data !== null &&
+        !(options.data instanceof FormData)
+      ) {
+        const ct = String(headers['Content-Type'] || headers['content-type'] || '');
+        if (!ct || ct.startsWith('application/json')) {
+          headers['Content-Type'] = 'application/json';
+          delete headers['content-type'];
+        }
+      }
 
       // 3. 通过 headers 设置凭据
       /* if (options.credentials === 'include') {
@@ -70,8 +85,8 @@ export const requestConfig: RequestConfig = {
           // 不再需要异步处理读取返回体内容，可直接在 data 中读出，部分字段可在 config 中找到
           const { data = {} as any, config } = response;
 
-          // 处理未登录状态
-          if (data.code === 401) {
+          // 处理未登录 / Token 失效（兼容 HTTP 401 业务码）
+          if (data.code === 401 || data.code === 401002 || data.code === 401003 || data.code === 401004) {
             handleUnauthorized();
             throw new Error(data.msg || '请先登录');
           }
@@ -79,11 +94,6 @@ export const requestConfig: RequestConfig = {
           // 处理权限不足
           if (data.code === 403) {
             throw new Error(data.msg || '权限不足');
-          }
-
-          if (data.code === 401003) {
-            handleUnauthorized();
-            throw new Error(data.msg || '请重新登录');
           }
 
           // 处理业务错误，兼容 amis 返回 ok、status 都有可能不存在的情况

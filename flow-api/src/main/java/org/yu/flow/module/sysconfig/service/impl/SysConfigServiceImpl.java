@@ -10,6 +10,7 @@ import org.yu.flow.module.sysconfig.dto.SysConfigDTO;
 import org.yu.flow.module.sysconfig.query.SysConfigQueryDTO;
 import org.yu.flow.module.sysconfig.repository.SysConfigRepository;
 import org.yu.flow.module.sysconfig.service.SysConfigService;
+import org.yu.flow.log.audit.service.AuditLogService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -40,11 +41,15 @@ public class SysConfigServiceImpl implements SysConfigService {
     @Resource
     private DemoModeGuard demoModeGuard;
 
+    @Resource
+    private AuditLogService auditLogService;
+
     @Override
     public PageBean<SysConfigDTO> findPage(SysConfigQueryDTO queryDTO) {
         int page = Math.max(queryDTO.getPage() - 1, 0);
         Pageable pageable = PageRequest.of(page, queryDTO.getSize(),
-                Sort.by(Sort.Direction.DESC, "createTime"));
+                Sort.by(Sort.Direction.ASC, "sortOrder")
+                        .and(Sort.by(Sort.Direction.ASC, "configKey")));
 
         Specification<SysConfigDO> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -99,6 +104,7 @@ public class SysConfigServiceImpl implements SysConfigService {
                 .remark(dto.getRemark())
                 .isBuiltin(dto.getIsBuiltin() == null ? 0 : dto.getIsBuiltin())
                 .status(dto.getStatus() == null ? 1 : dto.getStatus())
+                .sortOrder(dto.getSortOrder() == null ? 100 : dto.getSortOrder())
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
                 .build();
@@ -117,6 +123,9 @@ public class SysConfigServiceImpl implements SysConfigService {
         SysConfigDO existing = sysConfigRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("配置不存在，id: " + id));
 
+        String oldValue = existing.getConfigValue();
+        String configKey = existing.getConfigKey();
+
         if (StrUtil.isNotBlank(dto.getConfigKey())
                 && !dto.getConfigKey().equals(existing.getConfigKey())
                 && sysConfigRepository.existsByConfigKeyAndIdNot(dto.getConfigKey(), id)) {
@@ -125,17 +134,28 @@ public class SysConfigServiceImpl implements SysConfigService {
 
         // 内置参数无法改变其 configKey，通常也无法改变分组或类型，但可以修改 value
         if (existing.getIsBuiltin() != null && existing.getIsBuiltin() == 1) {
-            // 只允许修改部分字段
-            existing.setConfigValue(dto.getConfigValue());
-            existing.setRemark(dto.getRemark());
+            // 只允许修改值、备注、排序
+            if (dto.getConfigValue() != null) {
+                existing.setConfigValue(dto.getConfigValue());
+            }
+            if (dto.getRemark() != null) {
+                existing.setRemark(dto.getRemark());
+            }
+            if (dto.getSortOrder() != null) {
+                existing.setSortOrder(dto.getSortOrder());
+            }
             existing.setUpdateTime(LocalDateTime.now());
             SysConfigDO saved = sysConfigRepository.save(existing);
             sysConfigCacheManager.publishRefreshEvent();
+            if (dto.getConfigValue() != null && !StrUtil.equals(oldValue, saved.getConfigValue())) {
+                auditConfigUpdate(configKey, oldValue, saved.getConfigValue());
+            }
             return saved;
         }
 
         if (StrUtil.isNotBlank(dto.getConfigKey())) {
             existing.setConfigKey(dto.getConfigKey());
+            configKey = dto.getConfigKey();
         }
         existing.setConfigValue(dto.getConfigValue());
         if (StrUtil.isNotBlank(dto.getValueType())) {
@@ -147,12 +167,30 @@ public class SysConfigServiceImpl implements SysConfigService {
         if (dto.getStatus() != null) {
             existing.setStatus(dto.getStatus());
         }
+        if (dto.getSortOrder() != null) {
+            existing.setSortOrder(dto.getSortOrder());
+        }
         existing.setRemark(dto.getRemark());
         existing.setUpdateTime(LocalDateTime.now());
 
         SysConfigDO saved = sysConfigRepository.save(existing);
         sysConfigCacheManager.publishRefreshEvent();
+        auditConfigUpdate(configKey, oldValue, saved.getConfigValue());
         return saved;
+    }
+
+    private void auditConfigUpdate(String configKey, String oldValue, String newValue) {
+        String key = StrUtil.nullToEmpty(configKey);
+        boolean secret = key.toUpperCase().contains("SECRET")
+                || key.toUpperCase().contains("PASSWORD")
+                || key.toUpperCase().contains("WEBHOOK");
+        String ov = secret ? "***" : StrUtil.nullToEmpty(oldValue);
+        String nv = secret ? "***" : StrUtil.nullToEmpty(newValue);
+        if (ov.length() > 120) ov = ov.substring(0, 120) + "...";
+        if (nv.length() > 120) nv = nv.substring(0, 120) + "...";
+        auditLogService.record("SYS_CONFIG_UPDATE", "SYS_CONFIG", key,
+                "{\"key\":\"" + key + "\",\"old\":\"" + ov.replace("\"", "'")
+                        + "\",\"new\":\"" + nv.replace("\"", "'") + "\"}");
     }
 
     @Override

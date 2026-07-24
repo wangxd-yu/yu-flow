@@ -14,7 +14,7 @@ import java.util.List;
 @Slf4j
 public final class FlowDslReferenceScanner {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     private FlowDslReferenceScanner() {
     }

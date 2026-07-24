@@ -41,9 +41,24 @@ public class YuFlowExceptionHandler {
         log.warn("[YuFlowExceptionHandler] 流程异常: path={}, code={}, stepId={}",
                 getRequestPath(request), ex.getErrorCode(), ex.getStepId());
 
-        HttpStatus status = getHttpStatus(ex.getSeverity());
-        R<?> response = R.fail(status.value(), ex.getMessage(), buildFlowDetail(ex));
+        HttpStatus status = resolveHttpStatus(ex);
+        R<?> response = R.failWithErrorCode(status.value(), ex.getErrorCode(), ex.getMessage());
+        // 附带流程上下文（若有）
+        if (ex.getStepId() != null || (ex.getContext() != null && !ex.getContext().isEmpty())) {
+            response = R.fail(status.value(), ex.getMessage(), buildFlowDetail(ex));
+        }
         return ResponseEntity.status(status).body(response);
+    }
+
+    private HttpStatus resolveHttpStatus(FlowException ex) {
+        String code = ex.getErrorCode();
+        if ("RBAC_FORBIDDEN".equals(code)) {
+            return HttpStatus.FORBIDDEN;
+        }
+        if ("RBAC_UNAUTHORIZED".equals(code)) {
+            return HttpStatus.UNAUTHORIZED;
+        }
+        return getHttpStatus(ex.getSeverity());
     }
 
     @ExceptionHandler(ValidationException.class)
@@ -92,6 +107,24 @@ public class YuFlowExceptionHandler {
 
         R<?> response = R.fail(400, ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<R<?>> handleMediaTypeNotSupported(
+            org.springframework.web.HttpMediaTypeNotSupportedException ex, WebRequest request) {
+        log.warn("[YuFlowExceptionHandler] Content-Type 不支持: path={}, contentType={}, message={}",
+                getRequestPath(request), ex.getContentType(), ex.getMessage());
+        String ct = ex.getContentType() != null ? ex.getContentType().toString() : "unknown";
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(R.fail(415, "不支持的 Content-Type: " + ct + "，请使用 application/json"));
+    }
+
+    @ExceptionHandler(org.yu.flow.module.mail.FlowMailException.class)
+    public ResponseEntity<R<?>> handleFlowMailException(
+            org.yu.flow.module.mail.FlowMailException ex, WebRequest request) {
+        log.warn("[YuFlowExceptionHandler] 邮件异常: path={}, message={}",
+                getRequestPath(request), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(R.fail(400, ex.getMessage()));
     }
 
     @ExceptionHandler(RuntimeException.class)

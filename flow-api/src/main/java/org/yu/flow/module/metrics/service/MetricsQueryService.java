@@ -8,13 +8,17 @@ import org.yu.flow.cache.FlowRedisUtil;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.metrics.*;
+import org.yu.flow.module.metrics.domain.FlowMetricsMetaDO;
 import org.yu.flow.module.metrics.domain.FlowMetricsMinuteDO;
 import org.yu.flow.module.metrics.dto.*;
+import org.yu.flow.module.metrics.repository.FlowMetricsMetaRepository;
 import org.yu.flow.module.metrics.repository.FlowMetricsMinuteRepository;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
+import org.yu.flow.module.open.domain.FlowOpenPlatformDO;
+import org.yu.flow.module.open.repository.FlowOpenPlatformRepository;
 
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
@@ -30,6 +34,8 @@ public class MetricsQueryService {
     @Resource
     private FlowMetricsMinuteRepository metricsMinuteRepository;
     @Resource
+    private FlowMetricsMetaRepository metricsMetaRepository;
+    @Resource
     private ObjectMapper flowObjectMapper;
     @Resource
     private FlowApiRepository flowApiRepository;
@@ -37,6 +43,8 @@ public class MetricsQueryService {
     private FlowTaskRepository flowTaskRepository;
     @Resource
     private FlowServiceFlowRepository flowServiceFlowRepository;
+    @Resource
+    private FlowOpenPlatformRepository flowOpenPlatformRepository;
 
     public AssetMetricsSummaryDTO summary(MetricsAssetType type, String assetId, MetricsWindow window) {
         MetricsBucketAgg agg = aggregateAsset(type, assetId, window);
@@ -51,6 +59,7 @@ public class MetricsQueryService {
                 .successCount(agg.getSuccess())
                 .failCount(agg.getFail())
                 .skippedCount(agg.getSkipped())
+                .authFailCount(agg.getAuthFail())
                 .successRate(successRate)
                 .errorRate(errorRate)
                 .avgCostMs(agg.avgCostMs())
@@ -134,6 +143,7 @@ public class MetricsQueryService {
             byAsset.computeIfAbsent(row.getAssetId(), k -> new MetricsBucketAgg())
                     .addCounts(
                             nz(row.getSuccessCnt()), nz(row.getFailCnt()), nz(row.getSkippedCnt()),
+                            nz(row.getAuthFailCnt()),
                             nz(row.getSumCostMs()), nz(row.getLatencyCount()),
                             LatencyHistogram.fromJson(row.getHistJson(), flowObjectMapper));
         }
@@ -220,6 +230,7 @@ public class MetricsQueryService {
             map.computeIfAbsent(bucket, k -> new MetricsBucketAgg())
                     .addCounts(
                             nz(row.getSuccessCnt()), nz(row.getFailCnt()), nz(row.getSkippedCnt()),
+                            nz(row.getAuthFailCnt()),
                             nz(row.getSumCostMs()), nz(row.getLatencyCount()),
                             LatencyHistogram.fromJson(row.getHistJson(), flowObjectMapper));
         }
@@ -292,6 +303,7 @@ public class MetricsQueryService {
                 readLong(hash, MetricsKeys.FIELD_SUCCESS),
                 readLong(hash, MetricsKeys.FIELD_FAIL),
                 readLong(hash, MetricsKeys.FIELD_SKIPPED),
+                readLong(hash, MetricsKeys.FIELD_AUTH_FAIL),
                 readLong(hash, MetricsKeys.FIELD_SUM_COST),
                 readLong(hash, MetricsKeys.FIELD_LATENCY_COUNT),
                 hist);
@@ -349,16 +361,89 @@ public class MetricsQueryService {
 
     private Meta readMeta(MetricsAssetType type, String assetId) {
         Meta meta = new Meta();
+        boolean redisHit = false;
         try {
             String key = MetricsKeys.metaKey(type, assetId);
             meta.lastSuccessAt = parseLongObj(FlowRedisUtil.hget(key, MetricsKeys.META_LAST_SUCCESS));
             meta.lastFailAt = parseLongObj(FlowRedisUtil.hget(key, MetricsKeys.META_LAST_FAIL));
             Long cf = parseLongObj(FlowRedisUtil.hget(key, MetricsKeys.META_CONSEC_FAIL));
             meta.consecFail = cf == null ? 0L : cf;
+            // consecFail=0 且无 last* 时，仍可能是「刚成功清零」的有效 Redis 态；用 key 是否存在区分
+            redisHit = meta.lastSuccessAt != null || meta.lastFailAt != null
+                    || cf != null
+                    || FlowRedisUtil.hasKey(key);
         } catch (Exception ignored) {
             // ignore
         }
+        if (redisHit) {
+            return meta;
+        }
+        // Redis 过期 → 正式 meta 表
+        if (loadMetaFromTable(type, assetId, meta)) {
+            return meta;
+        }
+        // 仍无 → 近 24h 分钟桶近似推导
+        deriveMetaFromDb(type, assetId, meta);
         return meta;
+    }
+
+    private boolean loadMetaFromTable(MetricsAssetType type, String assetId, Meta meta) {
+        try {
+            Optional<FlowMetricsMetaDO> opt =
+                    metricsMetaRepository.findByAssetTypeAndAssetId(type.name(), assetId);
+            if (opt.isEmpty()) {
+                return false;
+            }
+            FlowMetricsMetaDO row = opt.get();
+            meta.lastSuccessAt = row.getLastSuccessAt();
+            meta.lastFailAt = row.getLastFailAt();
+            meta.consecFail = row.getConsecFail() == null ? 0L : row.getConsecFail();
+            return meta.lastSuccessAt != null || meta.lastFailAt != null || meta.consecFail > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 从新到旧扫描分钟桶：遇 success 则打断连续失败；累加仅失败分钟的 fail。
+     * 时间为桶起点近似（非精确调用时刻）。
+     */
+    private void deriveMetaFromDb(MetricsAssetType type, String assetId, Meta meta) {
+        try {
+            LocalDateTime now = MetricsKeys.nowMinute();
+            LocalDateTime from = now.minusHours(24);
+            List<FlowMetricsMinuteDO> rows = metricsMinuteRepository
+                    .findByAssetTypeAndAssetIdAndBucketStartGreaterThanEqualAndBucketStartLessThan(
+                            type.name(), assetId, MetricsKeys.toDate(from), MetricsKeys.toDate(now.plusMinutes(1)));
+            if (rows == null || rows.isEmpty()) {
+                return;
+            }
+            rows.sort((a, b) -> b.getBucketStart().compareTo(a.getBucketStart()));
+            long consec = 0;
+            boolean streak = true;
+            for (FlowMetricsMinuteDO row : rows) {
+                long s = nz(row.getSuccessCnt());
+                long f = nz(row.getFailCnt());
+                if (meta.lastFailAt == null && f > 0) {
+                    meta.lastFailAt = row.getBucketStart().getTime();
+                }
+                if (meta.lastSuccessAt == null && s > 0) {
+                    meta.lastSuccessAt = row.getBucketStart().getTime();
+                }
+                if (!streak) {
+                    continue;
+                }
+                if (s > 0) {
+                    streak = false;
+                    consec = 0;
+                } else if (f > 0) {
+                    consec += f;
+                }
+            }
+            meta.consecFail = consec;
+        } catch (Exception ignored) {
+            // fail-open
+        }
     }
 
     private static Long parseLongObj(Object v) {
@@ -378,6 +463,7 @@ public class MetricsQueryService {
                 case API -> flowApiRepository.findById(id).map(FlowApiDO::getName).orElse(id);
                 case TASK -> flowTaskRepository.findById(id).map(FlowTaskDO::getName).orElse(id);
                 case SERVICE -> flowServiceFlowRepository.findById(id).map(FlowServiceFlowDO::getName).orElse(id);
+                case PLATFORM -> flowOpenPlatformRepository.findById(id).map(FlowOpenPlatformDO::getName).orElse(id);
             };
         } catch (Exception e) {
             return id;

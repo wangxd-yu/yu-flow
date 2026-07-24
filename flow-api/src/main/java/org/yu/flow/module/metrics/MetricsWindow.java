@@ -26,9 +26,12 @@ public enum MetricsWindow {
         return nowMinute.minusMinutes(minutes);
     }
 
-    /** series 粒度：短窗按分钟，长窗按小时 */
+    /**
+     * series 粒度：15m/1h 按分钟（点数少、便于看瞬时）；
+     * 24h/7d/30d 按小时，避免 24h 上千分钟柱挤成色块。
+     */
     public boolean hourlySeries() {
-        return this == D7 || this == D30;
+        return this == H24 || this == D7 || this == D30;
     }
 
     public static MetricsWindow fromParam(String raw) {

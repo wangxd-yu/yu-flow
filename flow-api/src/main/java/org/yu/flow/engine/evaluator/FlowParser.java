@@ -21,6 +21,7 @@ import java.util.Map;
  * 2. 画布格式: nodes 数组 + edges 数组定义连接, 步骤数据在 data 字段中
  */
 public class FlowParser {
+    /** DSL 解析专用：保持默认 Jackson 行为，避免与 API 层日期/PG 序列化配置互相干扰 */
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public FlowDefinition parse(String json) throws JsonProcessingException {

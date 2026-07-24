@@ -29,6 +29,7 @@ import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowService;
 import org.yu.flow.module.serviceflow.service.ServiceFlowReferenceChecker;
 import org.yu.flow.module.assetref.FlowReferenceIndex;
+import org.yu.flow.log.audit.service.AuditLogService;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
@@ -43,7 +44,7 @@ import java.util.stream.Collectors;
 @Service
 public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
 
-    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     @Resource
     private FlowServiceFlowRepository flowServiceFlowRepository;
@@ -66,9 +67,13 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Resource
     private FlowReferenceIndex flowReferenceIndex;
 
+    @Resource
+    private AuditLogService auditLogService;
+
     @Override
     @Transactional
     public FlowServiceFlowDO save(FlowServiceFlowDO entity) {
+        flowDirectoryService.assertDirectoryBizType(entity.getDirectoryId(), "service");
         if (entity.getEnabled() == null) entity.setEnabled(true);
         if (entity.getLogEnabled() == null) entity.setLogEnabled(false);
         if (entity.getPublishStatus() == null) entity.setPublishStatus(0);
@@ -97,7 +102,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         if (entity.getTags() != null) existing.setTags(entity.getTags());
         // 允许空串表示移到根目录（Jackson 会反序列化 ""，blankToNull → null）
         if (entity.getDirectoryId() != null) {
-            existing.setDirectoryId(StrUtil.isBlank(entity.getDirectoryId()) ? null : entity.getDirectoryId());
+            String dirId = StrUtil.isBlank(entity.getDirectoryId()) ? null : entity.getDirectoryId();
+            flowDirectoryService.assertDirectoryBizType(dirId, "service");
+            existing.setDirectoryId(dirId);
         }
         existing.setUpdateTime(LocalDateTime.now());
         FlowServiceFlowDO saved = flowServiceFlowRepository.save(existing);
@@ -218,6 +225,8 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
         flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        auditLogService.record("SERVICE_PUBLISH", "SERVICE", id,
+                "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName()) + "\"}");
         return saved;
     }
 

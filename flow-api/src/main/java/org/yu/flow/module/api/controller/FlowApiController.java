@@ -25,6 +25,7 @@ import org.yu.flow.module.api.service.FlowApiCrudService;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.SchemaValidatorService;
+import org.yu.flow.module.rbac.support.RequirePerm;
 
 import jakarta.annotation.Resource;
 import cn.hutool.core.util.StrUtil;
@@ -47,6 +48,7 @@ import java.util.Map;
 @YuFlowApi
 @RestController
 @RequestMapping(value = {"flow-api/api"})
+@RequirePerm({"flow:api:view", "flow:api:write"})
 public class FlowApiController {
 
     @Resource
@@ -68,6 +70,7 @@ public class FlowApiController {
     private ContractParamTypeConverter contractParamTypeConverter;
 
     @PostMapping("/debug/run")
+    @RequirePerm("flow:api:write")
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
         try {
             Map<String, Object> args = new HashMap<>();
@@ -146,29 +149,34 @@ public class FlowApiController {
      * 数据库模式调试运行：传入 SQL / 数据源 / 响应类型与请求参数，直接执行并返回 FlowTrace。
      */
     @PostMapping("/debug/db/run")
+    @RequirePerm("flow:api:write")
     public R<FlowTrace> debugDbRun(@RequestBody FlowDbDebugRequestDTO requestDTO) {
         return R.ok(flowApiExecutionService.debugRunDb(requestDTO));
     }
 
     @PostMapping
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> create(@RequestBody FlowApiDO flowApiDO) {
         FlowApiDO savedConfig = flowApiCrudService.save(flowApiDO);
         return R.ok(savedConfig);
     }
 
     @PostMapping("/batch/create")
+    @RequirePerm("flow:api:write")
     public R<List<FlowApiDO>> batchCreate(@RequestBody List<FlowApiDO> flowApiDOList) {
         List<FlowApiDO> savedList = flowApiCrudService.batchSave(flowApiDOList);
         return R.ok(savedList);
     }
 
     @PutMapping("/batch/delete")
+    @RequirePerm("flow:api:write")
     public R<Void> batchDelete(@RequestBody List<String> ids) {
         flowApiCrudService.batchDelete(ids);
         return R.ok();
     }
 
     @PutMapping("/batch/moveToDir")
+    @RequirePerm("flow:api:write")
     public R<Void> batchMove(@RequestBody BatchMoveDTO batchMoveDTO) {
         flowApiCrudService.batchMove(batchMoveDTO.getIds(), batchMoveDTO.getTargetDirectoryId());
         return R.ok();
@@ -190,12 +198,14 @@ public class FlowApiController {
     }
 
     @PutMapping("/{id}")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> update(@PathVariable String id, @RequestBody FlowApiDO flowApiDO) {
         flowApiDO.setId(id);
         return R.ok(flowApiCrudService.update(flowApiDO));
     }
 
     @PutMapping("/{id}/log-enabled")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> updateLogEnabled(@PathVariable String id, @RequestParam boolean enabled) {
         return R.ok(flowApiCrudService.updateLogEnabled(id, enabled));
     }
@@ -205,6 +215,7 @@ public class FlowApiController {
      * <p>Body 可为完整 cacheConfig JSON 字符串，或 {"cacheConfig":"{...}"} / 直接对象。</p>
      */
     @PutMapping("/{id}/cache-config")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> updateCacheConfig(@PathVariable String id, @RequestBody(required = false) Object body) {
         String cacheConfigJson = resolveCacheConfigBody(body);
         return R.ok(flowApiCrudService.updateCacheConfig(id, cacheConfigJson));
@@ -234,6 +245,7 @@ public class FlowApiController {
      * 清除该接口全部响应缓存。
      */
     @DeleteMapping("/{id}/cache")
+    @RequirePerm("flow:api:write")
     public R<Long> clearCache(@PathVariable String id) {
         return R.ok(apiResponseCacheService.evictAll(id));
     }
@@ -242,11 +254,13 @@ public class FlowApiController {
      * 清除单条响应缓存。
      */
     @DeleteMapping("/{id}/cache/entries")
+    @RequirePerm("flow:api:write")
     public R<Boolean> clearCacheEntry(@PathVariable String id, @RequestParam String key) {
         return R.ok(apiResponseCacheService.evictOne(id, key));
     }
 
     @DeleteMapping("/{id}")
+    @RequirePerm("flow:api:write")
     public R<Void> delete(@PathVariable String id) {
         flowApiCrudService.delete(id);
         return R.ok();
@@ -305,6 +319,7 @@ public class FlowApiController {
      * 发布 API（冻结草稿为线上快照）
      */
     @PutMapping("/{id}/publish")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> publish(@PathVariable String id) {
         return R.ok(flowApiCrudService.publish(id));
     }
@@ -313,6 +328,7 @@ public class FlowApiController {
      * 下线 API（清除快照，停止线上服务）
      */
     @PutMapping("/{id}/unpublish")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> unpublish(@PathVariable String id) {
         return R.ok(flowApiCrudService.unpublish(id));
     }
@@ -321,6 +337,7 @@ public class FlowApiController {
      * 回滚草稿到发布版本
      */
     @PutMapping("/{id}/rollback")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> rollback(@PathVariable String id) {
         return R.ok(flowApiCrudService.rollbackToPublished(id));
     }
@@ -329,6 +346,7 @@ public class FlowApiController {
      * 重新发布（将最新草稿冻结为快照并上线）
      */
     @PutMapping("/{id}/republish")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> republish(@PathVariable String id) {
         return R.ok(flowApiCrudService.republish(id));
     }
@@ -341,6 +359,7 @@ public class FlowApiController {
 
     /** 回退至指定历史版本（同步覆盖草稿与线上快照） */
     @PostMapping("/{id}/versions/{versionId}/restore")
+    @RequirePerm("flow:api:write")
     public R<FlowApiDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
         return R.ok(flowApiCrudService.restoreVersion(id, versionId));
     }

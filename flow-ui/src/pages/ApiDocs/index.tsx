@@ -3,7 +3,6 @@ import { Card, Button, Space, Typography, Divider, message } from 'antd';
 import {
   FileTextOutlined,
   CopyOutlined,
-  LinkOutlined,
   DownloadOutlined,
 } from '@ant-design/icons';
 import { request } from '@umijs/max';
@@ -13,9 +12,7 @@ const { Title, Paragraph, Text } = Typography;
 /**
  * OpenAPI 文档页面
  *
- * 提供 API 文档的访问入口和导出功能：
- * - 在线 Swagger UI 预览
- * - 复制 JSON 端点地址
+ * - 复制 JSON 端点地址（需登录态 Header）
  * - 下载 OpenAPI JSON 文件
  */
 const ApiDocsPage: React.FC = () => {
@@ -53,10 +50,6 @@ const ApiDocsPage: React.FC = () => {
     }
   };
 
-  const handleOpenSwaggerUi = () => {
-    window.open(`${window.location.origin}/flow-api/swagger-ui.html`, '_blank');
-  };
-
   return (
     <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
       <Typography>
@@ -65,33 +58,14 @@ const ApiDocsPage: React.FC = () => {
           API 文档中心
         </Title>
         <Paragraph type="secondary">
-          Yu Flow 会根据所有已发布的动态接口，实时生成标准 <Text code>OpenAPI 3.0</Text> 契约文档。
-          您可以将该文档导入 Postman、Apifox 等工具，或直接通过 Swagger UI 在线浏览。
+          Yu Flow 会根据所有已发布的动态接口，实时生成标准 <Text code>OpenAPI 3.0</Text> 契约。
+          可下载 JSON 或导入 Postman、Apifox 等工具（请求需携带登录态 <Text code>Flow-Authorization</Text>）。
         </Paragraph>
       </Typography>
 
       <Divider />
 
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        {/* Swagger UI */}
-        <Card
-          hoverable
-          onClick={handleOpenSwaggerUi}
-          style={{ cursor: 'pointer', borderLeft: '4px solid #667eea' }}
-        >
-          <Space>
-            <LinkOutlined style={{ fontSize: 24, color: '#667eea' }} />
-            <div>
-              <Text strong style={{ fontSize: 15 }}>在线预览 (Swagger UI)</Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                在内置的 Swagger UI 界面中浏览所有已发布接口，支持搜索和分组。
-              </Text>
-            </div>
-          </Space>
-        </Card>
-
-        {/* 端点地址 */}
         <Card style={{ borderLeft: '4px solid #52c41a' }}>
           <Space align="start">
             <CopyOutlined style={{ fontSize: 24, color: '#52c41a' }} />
@@ -99,7 +73,7 @@ const ApiDocsPage: React.FC = () => {
               <Text strong style={{ fontSize: 15 }}>OpenAPI 端点地址</Text>
               <br />
               <Text type="secondary" style={{ fontSize: 12, marginBottom: 8, display: 'block' }}>
-                将此 URL 粘贴到 Postman、Apifox 或任何支持 OpenAPI 导入的工具中。
+                需登录态（请求头 Flow-Authorization）。导入 Postman / Apifox 时请同步配置该 Header。
               </Text>
               <Space>
                 <Text code copyable={{ text: apiDocsUrl }}>
@@ -113,7 +87,6 @@ const ApiDocsPage: React.FC = () => {
           </Space>
         </Card>
 
-        {/* 下载 */}
         <Card
           hoverable
           onClick={handleDownload}

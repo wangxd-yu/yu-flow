@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.util.FlowObjectMapperUtil;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
@@ -38,8 +39,8 @@ import java.util.concurrent.TimeUnit;
  * <p>使用 Spring {@link TaskScheduler} 实现任务的运行时动态注册与取消，
  * 无需重启应用即可生效。应用启动后自动加载所有 enabled=true 的任务。
  *
- * <p>多节点部署时，Cron 触发通过 Redis 分布式锁保证同一任务全局只执行一次；
- * 手动触发（MANUAL）与 debug 不走锁。
+ * <p>多节点部署时，Cron / MANUAL 触发通过 Redis 分布式锁保证同一任务全局只执行一次；
+ * debug 不走锁。
  *
  * @author yu-flow
  */
@@ -52,6 +53,9 @@ public class FlowTaskScheduler {
 
     /** 触发类型：Cron 调度（需抢锁） */
     private static final String TRIGGER_CRON = "CRON";
+
+    /** 触发类型：手动立即执行（与 Cron 共用锁，防连点 / 与调度重叠） */
+    private static final String TRIGGER_MANUAL = "MANUAL";
 
     @Resource
     private TaskScheduler taskScheduler;
@@ -71,7 +75,7 @@ public class FlowTaskScheduler {
     @Resource
     private AssetMetricsRecorder assetMetricsRecorder;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
 
     /** taskId -> ScheduledFuture 映射，用于取消调度 */
     private final Map<String, ScheduledFuture<?>> futures = new ConcurrentHashMap<>();
@@ -173,7 +177,7 @@ public class FlowTaskScheduler {
 
     /**
      * 立即手动触发一次（供 /run 接口调用），异步执行，不阻塞 HTTP 线程。
-     * <p>手动触发不走 Redis 分布式锁。
+     * <p>与 Cron 共用 Redis 执行锁，避免连点或与调度重叠双跑。
      *
      * @param task 任务定义
      */
@@ -181,7 +185,7 @@ public class FlowTaskScheduler {
         if (task == null || StrUtil.isBlank(task.getId())) {
             return;
         }
-        taskScheduler.schedule(() -> executeById(task.getId(), "MANUAL"),
+        taskScheduler.schedule(() -> executeById(task.getId(), TRIGGER_MANUAL),
                 java.time.Instant.now());
     }
 
@@ -197,19 +201,20 @@ public class FlowTaskScheduler {
             return;
         }
 
-        // 仅 Cron 抢分布式锁；MANUAL / debug 不走锁
+        // Cron / MANUAL 抢分布式锁；debug 不走锁
         String lockKey = null;
         String lockValue = null;
         ScheduledFuture<?> renewFuture = null;
         int ttlMinutes = Math.max(1, yuFlowProperties.getTask().getLockTtlMinutes());
-        if (TRIGGER_CRON.equals(triggerType)) {
+        boolean needLock = TRIGGER_CRON.equals(triggerType) || TRIGGER_MANUAL.equals(triggerType);
+        if (needLock) {
             lockKey = TASK_LOCK_KEY_PREFIX + taskId;
             lockValue = UUID.randomUUID().toString();
             try {
                 boolean acquired = FlowRedisUtil.setIfAbsent(lockKey, lockValue, ttlMinutes, TimeUnit.MINUTES);
                 if (!acquired) {
-                    log.info("[FlowTaskScheduler] 未抢到执行锁，跳过: taskId={}, name={}, lockKey={}",
-                            latestTask.getId(), latestTask.getName(), lockKey);
+                    log.info("[FlowTaskScheduler] 未抢到执行锁，跳过: taskId={}, name={}, trigger={}, lockKey={}",
+                            latestTask.getId(), latestTask.getName(), triggerType, lockKey);
                     saveSkippedLog(latestTask, triggerType, "未抢到分布式执行锁，其他节点正在执行或刚执行完成");
                     return;
                 }

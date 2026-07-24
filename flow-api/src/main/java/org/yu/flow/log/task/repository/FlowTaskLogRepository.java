@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
 
+import java.util.Date;
+
 /**
  * 定时任务日志 JPA Repository
  *
@@ -18,4 +20,9 @@ public interface FlowTaskLogRepository extends JpaRepository<FlowTaskLogDO, Stri
     @Modifying(clearAutomatically = true)
     @Query("DELETE FROM FlowTaskLogDO l WHERE l.taskId = :taskId")
     int deleteByTaskId(@Param("taskId") String taskId);
+
+    /** 批量删除指定时间之前的任务日志（定时清理） */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM FlowTaskLogDO l WHERE l.createTime < :threshold")
+    int deleteByCreateTimeBefore(@Param("threshold") Date threshold);
 }

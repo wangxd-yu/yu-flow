@@ -49,6 +49,22 @@ public final class PublishedApiSnapshot {
         return fromSnap != null ? fromSnap : api.getTags();
     }
 
+    /**
+     * 入站防护配置：已发布时只读快照（缺字段 / null → 全继承全局，不读草稿列）。
+     * <p>未发布时回退草稿列（管理端预览用）。</p>
+     */
+    public static String resolveSecurityConfig(FlowApiDO api) {
+        JsonNode snap = parseSnapshot(api);
+        if (snap != null) {
+            if (!snap.has("securityConfig") || snap.get("securityConfig").isNull()) {
+                return null;
+            }
+            String value = snap.get("securityConfig").asText(null);
+            return StrUtil.isBlank(value) ? null : value;
+        }
+        return api == null ? null : api.getSecurityConfig();
+    }
+
     private static String textFromSnapshot(FlowApiDO api, String field) {
         JsonNode snap = parseSnapshot(api);
         if (snap == null || !snap.has(field) || snap.get(field).isNull()) {

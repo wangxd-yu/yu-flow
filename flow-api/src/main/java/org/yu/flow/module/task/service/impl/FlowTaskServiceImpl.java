@@ -30,6 +30,7 @@ import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.module.task.scheduler.FlowTaskScheduler;
 import org.yu.flow.module.task.service.FlowTaskService;
 import org.yu.flow.module.assetref.FlowReferenceIndex;
+import org.yu.flow.log.audit.service.AuditLogService;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
@@ -49,7 +50,7 @@ import java.util.stream.Collectors;
 @Service
 public class FlowTaskServiceImpl implements FlowTaskService {
 
-    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     @Resource
     private FlowTaskRepository flowTaskRepository;
@@ -72,6 +73,9 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Resource
     private FlowReferenceIndex flowReferenceIndex;
 
+    @Resource
+    private AuditLogService auditLogService;
+
     private void notifyRefIndex() {
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
@@ -84,6 +88,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Transactional
     public FlowTaskDO save(FlowTaskDO taskDO) {
         validateCronExpression(taskDO.getCron());
+        flowDirectoryService.assertDirectoryBizType(taskDO.getDirectoryId(), "task");
         if (taskDO.getEnabled() == null) taskDO.setEnabled(true);
         if (taskDO.getLogEnabled() == null) taskDO.setLogEnabled(false);
         if (taskDO.getPublishStatus() == null) taskDO.setPublishStatus(0);
@@ -119,7 +124,11 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         if (taskDO.getDslContent() != null) existing.setDslContent(taskDO.getDslContent());
         if (taskDO.getInfo() != null) existing.setInfo(taskDO.getInfo());
         if (taskDO.getTags() != null) existing.setTags(taskDO.getTags());
-        if (taskDO.getDirectoryId() != null) existing.setDirectoryId(taskDO.getDirectoryId());
+        if (taskDO.getDirectoryId() != null) {
+            flowDirectoryService.assertDirectoryBizType(
+                    StrUtil.isBlank(taskDO.getDirectoryId()) ? null : taskDO.getDirectoryId(), "task");
+            existing.setDirectoryId(taskDO.getDirectoryId());
+        }
         existing.setUpdateTime(LocalDateTime.now());
 
         FlowTaskDO updated = flowTaskRepository.save(existing);
@@ -263,6 +272,9 @@ public class FlowTaskServiceImpl implements FlowTaskService {
             flowTaskScheduler.reschedule(saved);
         }
         notifyRefIndex();
+        auditLogService.record("TASK_PUBLISH", "TASK", id,
+                "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName())
+                        + "\",\"cron\":\"" + StrUtil.nullToEmpty(saved.getCron()) + "\"}");
         return saved;
     }
 

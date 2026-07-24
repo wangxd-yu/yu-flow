@@ -1,0 +1,138 @@
+import React, { useRef } from 'react';
+import { ActionType, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
+import { Tag, Typography } from 'antd';
+import { AlertEvent, pageAlertEvents } from '@/services/flow/alertService';
+import '@/styles/fullHeightTable.css';
+
+const { Text } = Typography;
+
+const STATUS_MAP: Record<string, { color: string; text: string }> = {
+  SUCCESS: { color: 'success', text: '成功' },
+  FAIL: { color: 'error', text: '失败' },
+  SUPPRESSED: { color: 'default', text: '静默' },
+};
+
+const AlertHistoryPage: React.FC = () => {
+  const actionRef = useRef<ActionType>();
+
+  const columns: ProColumns<AlertEvent>[] = [
+    {
+      title: '时间',
+      dataIndex: 'firedAt',
+      valueType: 'dateTimeRange',
+      hideInTable: true,
+    },
+    {
+      title: '时间',
+      dataIndex: 'firedAt',
+      width: 170,
+      search: false,
+    },
+    {
+      title: '规则',
+      dataIndex: 'ruleName',
+      width: 140,
+      search: false,
+      ellipsis: true,
+      render: (_, r) => r.ruleName || 'SysConfig兜底',
+    },
+    {
+      title: '资产类型',
+      dataIndex: 'assetType',
+      width: 100,
+      valueEnum: {
+        API: { text: 'API' },
+        TASK: { text: 'TASK' },
+        SERVICE: { text: 'SERVICE' },
+        PLATFORM: { text: 'PLATFORM' },
+      },
+    },
+    {
+      title: '资产',
+      dataIndex: 'assetName',
+      width: 180,
+      search: false,
+      ellipsis: true,
+      render: (_, r) => (
+        <Text>
+          {r.assetName || '-'}
+          {r.assetId ? (
+            <Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>
+              {r.assetId}
+            </Text>
+          ) : null}
+        </Text>
+      ),
+    },
+    {
+      title: '健康度',
+      dataIndex: 'health',
+      width: 90,
+      search: false,
+      render: (_, r) =>
+        r.health === 'error' ? (
+          <Tag color="error">error</Tag>
+        ) : r.health === 'warn' ? (
+          <Tag color="warning">warn</Tag>
+        ) : (
+          r.health || '-'
+        ),
+    },
+    {
+      title: '失败数',
+      dataIndex: 'failCount',
+      width: 80,
+      search: false,
+    },
+    {
+      title: '错误率',
+      dataIndex: 'errorRate',
+      width: 90,
+      search: false,
+      render: (_, r) =>
+        r.errorRate == null ? '-' : `${(r.errorRate * 100).toFixed(1)}%`,
+    },
+    {
+      title: '通道',
+      dataIndex: 'channelType',
+      width: 100,
+      search: false,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      valueEnum: {
+        SUCCESS: { text: '成功' },
+        FAIL: { text: '失败' },
+        SUPPRESSED: { text: '静默' },
+      },
+      render: (_, r) => {
+        const m = STATUS_MAP[r.status] || { color: 'default', text: r.status };
+        return <Tag color={m.color}>{m.text}</Tag>;
+      },
+    },
+    {
+      title: '错误信息',
+      dataIndex: 'errorMsg',
+      search: false,
+      ellipsis: true,
+    },
+  ];
+
+  return (
+    <PageContainer>
+      <ProTable<AlertEvent>
+        actionRef={actionRef}
+        rowKey="id"
+        columns={columns}
+        request={pageAlertEvents}
+        search={{ labelWidth: 'auto' }}
+        pagination={{ defaultPageSize: 20 }}
+        scroll={{ x: 1200 }}
+      />
+    </PageContainer>
+  );
+};
+
+export default AlertHistoryPage;

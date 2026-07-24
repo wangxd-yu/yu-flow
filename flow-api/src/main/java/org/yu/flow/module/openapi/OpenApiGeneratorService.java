@@ -127,28 +127,49 @@ public class OpenApiGeneratorService {
         info.set("contact", contact);
         root.set("info", info);
 
-        // ─── servers ───
+        // ─── servers（优先 X-Forwarded-*；内网回环地址改为相对路径，避免泄露上游） ───
         if (request != null) {
             ArrayNode servers = objectMapper.createArrayNode();
             ObjectNode server = objectMapper.createObjectNode();
-            
-            // 构建 server url，例如 http://localhost:8080/flow
-            String scheme = request.getScheme();
-            String serverName = request.getServerName();
-            int serverPort = request.getServerPort();
-            String contextPath = request.getContextPath();
-            
-            StringBuilder serverUrl = new StringBuilder();
-            serverUrl.append(scheme).append("://").append(serverName);
-            if ((scheme.equals("http") && serverPort != 80) || (scheme.equals("https") && serverPort != 443)) {
-                serverUrl.append(":").append(serverPort);
+            String contextPath = StrUtil.blankToDefault(request.getContextPath(), "");
+
+            String forwardedProto = firstHeaderValue(request.getHeader("X-Forwarded-Proto"));
+            String forwardedHost = firstHeaderValue(request.getHeader("X-Forwarded-Host"));
+            String scheme = StrUtil.blankToDefault(forwardedProto, request.getScheme());
+            String hostHeader = StrUtil.blankToDefault(forwardedHost, request.getServerName());
+            String serverName = hostHeader;
+            Integer serverPort = null;
+            if (hostHeader.contains(":")) {
+                int idx = hostHeader.lastIndexOf(':');
+                serverName = hostHeader.substring(0, idx);
+                try {
+                    serverPort = Integer.parseInt(hostHeader.substring(idx + 1));
+                } catch (NumberFormatException ignored) {
+                    serverPort = null;
+                }
             }
-            if (StrUtil.isNotBlank(contextPath)) {
-                serverUrl.append(contextPath);
+            if (serverPort == null) {
+                serverPort = request.getServerPort();
             }
-            
-            server.put("url", serverUrl.toString());
-            server.put("description", "当前服务地址");
+
+            boolean loopback = isLoopbackHost(serverName) && StrUtil.isBlank(forwardedHost);
+            if (loopback) {
+                // 相对当前文档访问入口，不暴露 127.0.0.1:内网端口
+                server.put("url", StrUtil.isBlank(contextPath) ? "/" : contextPath);
+                server.put("description", "相对当前访问入口");
+            } else {
+                StringBuilder serverUrl = new StringBuilder();
+                serverUrl.append(scheme).append("://").append(serverName);
+                if (("http".equalsIgnoreCase(scheme) && serverPort != 80)
+                        || ("https".equalsIgnoreCase(scheme) && serverPort != 443)) {
+                    serverUrl.append(":").append(serverPort);
+                }
+                if (StrUtil.isNotBlank(contextPath)) {
+                    serverUrl.append(contextPath);
+                }
+                server.put("url", serverUrl.toString());
+                server.put("description", "当前服务地址");
+            }
             servers.add(server);
             root.set("servers", servers);
         }
@@ -199,6 +220,24 @@ public class OpenApiGeneratorService {
         }
         root.set("tags", tagsArray);
 
+        // ─── components.securitySchemes + 全局 security（管理端 JWT） ───
+        ObjectNode components = objectMapper.createObjectNode();
+        ObjectNode securitySchemes = objectMapper.createObjectNode();
+        ObjectNode flowAuth = objectMapper.createObjectNode();
+        flowAuth.put("type", "apiKey");
+        flowAuth.put("in", "header");
+        flowAuth.put("name", "Flow-Authorization");
+        flowAuth.put("description", "管理端 JWT，格式：Bearer <token>");
+        securitySchemes.set("FlowAuthorization", flowAuth);
+        components.set("securitySchemes", securitySchemes);
+        root.set("components", components);
+
+        ArrayNode security = objectMapper.createArrayNode();
+        ObjectNode securityReq = objectMapper.createObjectNode();
+        securityReq.set("FlowAuthorization", objectMapper.createArrayNode());
+        security.add(securityReq);
+        root.set("security", security);
+
         return root;
     }
 
@@ -223,6 +262,10 @@ public class OpenApiGeneratorService {
 
         // ── operationId ──
         operation.put("operationId", generateOperationId(api));
+        // 开放平台文档过滤用
+        if (StrUtil.isNotBlank(api.getId())) {
+            operation.put("x-yu-api-id", api.getId());
+        }
 
         // ── tags ──
         ArrayNode tagsArr = objectMapper.createArrayNode();
@@ -636,5 +679,26 @@ public class OpenApiGeneratorService {
         if (!val.isMissingNode() && !val.isNull() && val.isBoolean() && val.asBoolean()) {
             to.put(field, true);
         }
+    }
+
+    private static String firstHeaderValue(String raw) {
+        if (StrUtil.isBlank(raw)) {
+            return null;
+        }
+        // X-Forwarded-* 可能为逗号分隔列表，取第一个
+        int comma = raw.indexOf(',');
+        String first = comma >= 0 ? raw.substring(0, comma) : raw;
+        return first.trim();
+    }
+
+    private static boolean isLoopbackHost(String host) {
+        if (StrUtil.isBlank(host)) {
+            return true;
+        }
+        String h = host.trim().toLowerCase(Locale.ROOT);
+        return "localhost".equals(h)
+                || "127.0.0.1".equals(h)
+                || "::1".equals(h)
+                || "0:0:0:0:0:0:0:1".equals(h);
     }
 }

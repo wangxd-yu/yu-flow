@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActionType,
   FooterToolbar,
@@ -10,7 +10,7 @@ import {
   ModalForm,
 } from '@ant-design/pro-components';
 import { Button, Divider, Drawer, Modal, message, Tag, Popconfirm, Space, Switch, Tooltip, Table, Spin } from 'antd';
-import { history } from '@umijs/max';
+import { history, useLocation } from '@umijs/max';
 import {
   queryAutoApiConfigDetail,
   queryAutoApiConfigList,
@@ -28,15 +28,52 @@ import {
   unpublishApi,
   FlowController,
   ApiCacheEntry,
-} from './services/flowController';
+} from '@/services/flow/flowController';
 import ApiConfigForm from './components/ControllerForm';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
-import CodeEditor from './components/flow-editor/components/CodeEditor';
-import { buildApiCurl, copyText } from './utils/apiDocsActions';
-import { batchAssetHealth, type AssetHealth } from '../services/assetMetrics';
-import { renderHealthTag } from '../components/AssetHealthTag';
+import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
+import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
+import { renderHealthTag } from '@/components/flow/AssetHealthTag';
 
+import '@/styles/fullHeightTable.css';
+
+/** 列表「防护」列：一眼扫 auth / 限流 / 超时 */
+function renderIngressSummary(securityConfig?: string) {
+  let cfg: any = {};
+  try {
+    if (securityConfig) cfg = JSON.parse(securityConfig);
+  } catch {
+    /* ignore */
+  }
+  const mode = (cfg?.authMode || 'INHERIT') as string;
+  const modeLabel =
+    mode === 'INHERIT' ? '继承' : mode === 'NONE' ? 'NONE' : mode === 'HOST' ? 'HOST' : mode === 'OPEN' ? 'OPEN' : mode;
+  const modeColor =
+    mode === 'NONE' ? 'default' : mode === 'HOST' ? 'blue' : mode === 'OPEN' ? 'purple' : 'geekblue';
+
+  let rlText = '限流·继承';
+  let rlColor: string = 'default';
+  if (cfg?.rateLimitEnabled === true) {
+    rlText = `限流·开${cfg.rateLimitQps ? `@${cfg.rateLimitQps}` : ''}`;
+    rlColor = 'orange';
+  } else if (cfg?.rateLimitEnabled === false) {
+    rlText = '限流·关';
+  }
+
+  let toText = '超时·继承';
+  if (cfg?.timeoutMs !== null && cfg?.timeoutMs !== undefined) {
+    toText = cfg.timeoutMs <= 0 ? '超时·不限' : `超时·${cfg.timeoutMs}ms`;
+  }
+
+  return (
+    <Space size={4} wrap>
+      <Tag color={modeColor} style={{ margin: 0 }}>{modeLabel}</Tag>
+      <Tag color={rlColor} style={{ margin: 0 }}>{rlText}</Tag>
+      <Tag style={{ margin: 0 }}>{toText}</Tag>
+    </Space>
+  );
+}
 /** 超过该字符数关闭自动换行，减轻大 JSON 渲染压力 */
 const CACHE_VIEW_WORDWRAP_LIMIT = 200_000;
 /** 超过该字符数跳过 pretty-print，避免主线程卡顿 */
@@ -124,6 +161,7 @@ const handleRemove = async (selectedRows: FlowController[]) => {
 };
 
 const AutoApiConfigList: React.FC = () => {
+  const location = useLocation();
   const [createModalVisible, handleModalVisible] = useState<boolean>(false);
   const actionRef = useRef<ActionType>();
   const [row, setRow] = useState<FlowController>();
@@ -134,6 +172,37 @@ const AutoApiConfigList: React.FC = () => {
   const [formVisible, setFormVisible] = useState<boolean>(false);
   const [currentRow, setCurrentRow] = useState<Partial<FlowController>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [formInitialTab, setFormInitialTab] = useState<
+    'implementation' | 'req-schema' | 'res-schema' | 'basic-info' | 'runtime' | undefined
+  >();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const apiId = params.get('apiId');
+    const tab = params.get('tab') || undefined;
+    if (!apiId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await queryAutoApiConfigDetail(apiId);
+        if (cancelled) return;
+        setCurrentRow(detail);
+        setIsEditMode(true);
+        setFormInitialTab(
+          tab === 'runtime' || tab === 'implementation' || tab === 'req-schema'
+            || tab === 'res-schema' || tab === 'basic-info'
+            ? tab
+            : 'runtime',
+        );
+        setFormVisible(true);
+      } catch {
+        if (!cancelled) message.error('打开接口详情失败');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.search]);
 
   // 响应缓存查看
   const [cacheDrawerVisible, setCacheDrawerVisible] = useState(false);
@@ -153,6 +222,7 @@ const AutoApiConfigList: React.FC = () => {
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
     setIsEditMode(false);
+    setFormInitialTab(undefined);
     setFormVisible(true);
   };
 
@@ -164,6 +234,7 @@ const AutoApiConfigList: React.FC = () => {
       hide();
       setCurrentRow(detail);
       setIsEditMode(true);
+      setFormInitialTab(undefined);
       setFormVisible(true);
     } catch (error) {
       hide();
@@ -314,17 +385,21 @@ const AutoApiConfigList: React.FC = () => {
       },
     },
     {
-      title: '运行健康',
-      dataIndex: 'runtimeHealth',
-      hideInSearch: true,
-      width: 100,
-      render: (_, record) => renderHealthTag(healthMap[record.id]),
+      title: '实现方式',
+      dataIndex: 'serviceType',
+      valueEnum: {
+        FLOW: { text: '逻辑编排', status: 'Processing' }, // 蓝色
+        DB: { text: '数据库', status: 'Success' }, // 绿色
+        JSON: { text: '静态 JSON', status: 'Warning' }, // 橙色
+        STRING: { text: '静态文本', status: 'Default' }, // 灰色
+      },
     },
     {
       title: '执行日志',
       dataIndex: 'logEnabled',
       hideInSearch: true,
       width: 90,
+      align: 'center',
       render: (_, record) => (
         <Switch
           size="small"
@@ -335,30 +410,7 @@ const AutoApiConfigList: React.FC = () => {
         />
       ),
     },
-    {
-      title: '响应缓存',
-      dataIndex: 'cacheConfig',
-      hideInSearch: true,
-      width: 100,
-      render: (_, record) => {
-        const on = isCacheEnabled(record.cacheConfig);
-        return (
-          <Tag color={on ? 'processing' : 'default'}>
-            {on ? '已开启' : '未开启'}
-          </Tag>
-        );
-      },
-    },
-    {
-      title: '实现方式',
-      dataIndex: 'serviceType',
-      valueEnum: {
-        FLOW: { text: '逻辑编排', status: 'Processing' }, // 蓝色
-        DB: { text: '数据库', status: 'Success' }, // 绿色
-        JSON: { text: '静态 JSON', status: 'Warning' }, // 橙色
-        STRING: { text: '静态文本', status: 'Default' }, // 灰色
-      },
-    },
+    
     {
       title: '标签',
       dataIndex: 'tags',
@@ -390,16 +442,58 @@ const AutoApiConfigList: React.FC = () => {
       },
     },
     {
+      title: '响应缓存',
+      dataIndex: 'cacheConfig',
+      hideInSearch: true,
+      width: 100,
+      render: (_, record) => {
+        const on = isCacheEnabled(record.cacheConfig);
+        return (
+          <Tag color={on ? 'processing' : 'default'}>
+            {on ? '已开启' : '未开启'}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: '运行健康',
+      dataIndex: 'runtimeHealth',
+      hideInSearch: true,
+      width: 100,
+      render: (_, record) => renderHealthTag(healthMap[record.id]),
+    },
+    {
+      title: '防护',
+      dataIndex: 'securityConfig',
+      hideInSearch: true,
+      width: 220,
+      ellipsis: true,
+      render: (_, record) => (
+        <Tooltip title="草稿配置；已发布接口以发布快照为准，改完需发布">
+          {renderIngressSummary(record.securityConfig)}
+        </Tooltip>
+      ),
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'updateTime',
+      valueType: 'dateTime',
+      search: false,
+      width: 170,
+    },
+    {
       title: '创建时间',
       dataIndex: 'createTime',
       valueType: 'dateTime',
       search: false,
+      width: 170,
     },
     {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 460,
+      width: 320,
+      fixed: 'right',
       render: (_, record) => (
         <>
           <a onClick={() => handleEdit(record)}>编辑</a>
@@ -434,24 +528,17 @@ const AutoApiConfigList: React.FC = () => {
             </a>
           )}
           <Divider type="vertical" />
-          <a
-            onClick={async () => {
-              const curl = buildApiCurl(record.method, record.url);
-              const ok = await copyText(curl);
-              if (ok) message.success('cURL 已复制');
-              else message.error('复制失败');
-            }}
-          >
-            复制 cURL
-          </a>
-          <Divider type="vertical" />
-          <a onClick={() => history.push('/api-docs')}>文档</a>
-          <Divider type="vertical" />
           <a onClick={() => history.push(`/log/execution?apiId=${record.id}`)}>
             查看日志
           </a>
           <Divider type="vertical" />
-          <a onClick={() => handleViewCache(record)}>查看缓存</a>
+          {isCacheEnabled(record.cacheConfig) ? (
+            <a onClick={() => handleViewCache(record)}>查看缓存</a>
+          ) : (
+            <Tooltip title="未开启响应缓存">
+              <span style={{ color: 'rgba(0,0,0,0.25)', cursor: 'not-allowed' }}>查看缓存</span>
+            </Tooltip>
+          )}
           <Divider type="vertical" />
           <Popconfirm
             title="确认删除该接口吗？"
@@ -471,104 +558,6 @@ const AutoApiConfigList: React.FC = () => {
     }
   ];
 
-  // ---- Full-height ProTable CSS overrides ----
-  const fullHeightTableCSS = `
-    .fh-container.ant-pro-page-container {
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-    .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      height: auto !important;
-      padding-block-end: 0 !important;
-    }
-    .fh-container .dir-tree-layout {
-      flex: 1 !important;
-      min-height: 0 !important;
-      height: 100% !important;
-    }
-    .fh-table.ant-pro-table {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-search {
-      flex-shrink: 0;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-      flex: 1;
-      min-height: 0;
-      display: flex !important;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-list-toolbar {
-      flex-shrink: 0;
-    }
-    .fh-table .ant-table-wrapper {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-nested-loading {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-header {
-      flex-shrink: 0;
-      overflow: hidden !important;
-    }
-    .fh-table .ant-table-body {
-      flex: 1;
-      min-height: 0;
-      max-height: none !important;
-      overflow-y: scroll !important;
-    }
-    .fh-table .ant-table-pagination {
-      flex-shrink: 0;
-      padding: 6px 0;
-      margin: 0 !important;
-    }
-  `;
-
   return (
     <PageContainer
       className="fh-container"
@@ -583,7 +572,7 @@ const AutoApiConfigList: React.FC = () => {
       <DirectoryTreeLayout bizType="api" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <>
-            <style>{fullHeightTableCSS}</style>
+
             <ProTable<FlowController>
               className="fh-table"
               headerTitle={`接口列表 (${selectedDirectoryName || '全部'})`}
@@ -716,10 +705,15 @@ const AutoApiConfigList: React.FC = () => {
       <ApiConfigForm
         isEdit={isEditMode}
         modalVisible={formVisible}
-        onCancel={() => setFormVisible(false)}
+        initialTab={formInitialTab}
+        onCancel={() => {
+          setFormVisible(false);
+          setFormInitialTab(undefined);
+        }}
         onSubmit={(success) => {
           if (success) {
             setFormVisible(false);
+            setFormInitialTab(undefined);
             actionRef.current?.reload();
           }
         }}

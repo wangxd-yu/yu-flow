@@ -11,54 +11,15 @@ import { Badge, Button, Divider, Drawer, message, Popconfirm, Tag, Tooltip } fro
 import React, { useRef, useState } from 'react';
 import DataSourceForm from './components/DataSourceForm';
 import {
-  addDataSource,
-  batchDeleteDataSource,
   DataSourceDO,
   deleteDataSource,
   disableDataSource,
   enableDataSource,
   queryDataSourcePage,
   testDataSourceConnection,
-  updateDataSource,
-} from './services/dataSource';
+} from '@/services/flow/dataSource';
 
-/**
- * 添加数据源
- */
-const handleAdd = async (fields: DataSourceDO) => {
-  const hide = message.loading('正在添加');
-  try {
-    await addDataSource(fields);
-    hide();
-    message.success('添加成功');
-    return true;
-  } catch (error: any) {
-    hide();
-    if (!error?.message?.includes('DEMO_RESTRICTED')) {
-      message.error('添加失败请重试！');
-    }
-    return false;
-  }
-};
-
-/**
- * 更新数据源
- */
-const handleUpdate = async (id: string, fields: Partial<DataSourceDO>) => {
-  const hide = message.loading('正在更新');
-  try {
-    await updateDataSource(id, fields);
-    hide();
-    message.success('更新成功');
-    return true;
-  } catch (error: any) {
-    hide();
-    if (!error?.message?.includes('DEMO_RESTRICTED')) {
-      message.error('更新失败请重试！');
-    }
-    return false;
-  }
-};
+import '@/styles/fullHeightTable.css';
 
 /**
  * 删除数据源
@@ -67,7 +28,8 @@ const handleRemove = async (selectedRows: DataSourceDO[]) => {
   const hide = message.loading('正在删除');
   if (!selectedRows?.length) return true;
   try {
-    await batchDeleteDataSource(selectedRows.map((row) => row.id));
+    // 后端暂无批量删除接口时逐条删除
+    await Promise.all(selectedRows.map((row) => deleteDataSource(row.id)));
     hide();
     message.success('删除成功，即将刷新');
     return true;
@@ -89,12 +51,15 @@ const DataSourceList: React.FC = () => {
   const [row, setRow] = useState<DataSourceDO>();
   const [selectedRowsState, setSelectedRows] = useState<DataSourceDO[]>([]);
 
+  const isSystemRow = (record: DataSourceDO) =>
+    !!record.isSystem || record.isSystem === 1 || record.code === '[DEFAULT]';
+
   const columns: ProColumns<DataSourceDO>[] = [
     {
       title: '名称',
       dataIndex: 'name',
       tip: '数据源名称',
-      width: 150,
+      width: 180,
       formItemProps: {
         rules: [
           {
@@ -103,6 +68,21 @@ const DataSourceList: React.FC = () => {
           },
         ],
       },
+      render: (_, record) => (
+        <span>
+          {record.name}
+          {isSystemRow(record) && (
+            <Tag color="gold" style={{ marginLeft: 6 }}>
+              系统
+            </Tag>
+          )}
+          {record.wallConfig?.enabled && (
+            <Tag color="red" style={{ marginLeft: 6 }}>
+              墙已开
+            </Tag>
+          )}
+        </span>
+      ),
     },
     {
       title: '数据源编码',
@@ -214,184 +194,96 @@ const DataSourceList: React.FC = () => {
       dataIndex: 'option',
       valueType: 'option',
       width: 300,
-      render: (_, record) => [
-        <a
-          key="edit"
-          onClick={() => {
-            handleUpdateModalVisible(true);
-            setStepFormValues(record);
-          }}
-        >
-          编辑
-        </a>,
-        <Divider type="vertical" />,
-        <Popconfirm
-          key="delete"
-          title="确定要删除吗？"
-          onConfirm={async () => {
-            try {
-              await deleteDataSource(record.id);
-              actionRef.current?.reload();
-            } catch (error) {
-              // 错误已通过全局拦截器展示
-            }
-          }}
-        >
-          <a>删除</a>
-        </Popconfirm>,
-        <Divider type="vertical" />,
-        <a
-          key="test"
-          onClick={async () => {
-            const hide = message.loading('正在测试连接...', 0);
-            try {
-              const result = await testDataSourceConnection(record.id);
-              if (result) {
-                message.success('连接测试成功');
-              } else {
-                message.error('连接测试失败');
-              }
-            } catch (error: any) {
-              // 错误已经在 request.ts 的拦截器中通过 message.error 弹出了，
-              // 这里只需要捕获异常，防止其变成未处理的 Promise Rejection 导致页面白屏报错。
-              console.log('测试连接异常：', error);
-            } finally {
-              hide();
-              // 测试完毕后，不管成功与否都刷新列表，以更新健康度显示
-              actionRef.current?.reload();
-            }
-          }}
-        >
-          测试连接
-        </a>,
-        <Divider type="vertical" />,
-        record.status == 1 ? (
+      render: (_, record) => {
+        const system = isSystemRow(record);
+        const ops: React.ReactNode[] = [
           <a
-            key="disable"
+            key="edit"
+            onClick={() => {
+              handleUpdateModalVisible(true);
+              setStepFormValues(record);
+            }}
+          >
+            {system ? '安全配置' : '编辑'}
+          </a>,
+          <Divider type="vertical" key="d1" />,
+          <a
+            key="test"
             onClick={async () => {
+              const hide = message.loading('正在测试连接...', 0);
               try {
-                await disableDataSource(record.id);
+                const result = await testDataSourceConnection(record.id);
+                if (result) {
+                  message.success('连接测试成功');
+                } else {
+                  message.error('连接测试失败');
+                }
+              } catch (error: any) {
+                console.log('测试连接异常：', error);
+              } finally {
+                hide();
                 actionRef.current?.reload();
-                message.success('已禁用数据源');
-              } catch (error) {
-                // 错误已通过全局拦截器展示
               }
             }}
           >
-            禁用
-          </a>
-        ) : (
-          <a
-            key="enable"
-            onClick={async () => {
-              try {
-                await enableDataSource(record.id);
-                actionRef.current?.reload();
-                message.success('已启用数据源');
-              } catch (error) {
-                // 错误已通过全局拦截器展示
-              }
-            }}
-          >
-            启用
-          </a>
-        ),
-      ],
+            测试连接
+          </a>,
+        ];
+        if (!system) {
+          ops.push(
+            <Divider type="vertical" key="d2" />,
+            <Popconfirm
+              key="delete"
+              title="确定要删除吗？"
+              onConfirm={async () => {
+                try {
+                  await deleteDataSource(record.id);
+                  actionRef.current?.reload();
+                } catch (error) {
+                  // 错误已通过全局拦截器展示
+                }
+              }}
+            >
+              <a>删除</a>
+            </Popconfirm>,
+            <Divider type="vertical" key="d3" />,
+            record.status == 1 ? (
+              <a
+                key="disable"
+                onClick={async () => {
+                  try {
+                    await disableDataSource(record.id);
+                    actionRef.current?.reload();
+                    message.success('已禁用数据源');
+                  } catch (error) {
+                    // 错误已通过全局拦截器展示
+                  }
+                }}
+              >
+                禁用
+              </a>
+            ) : (
+              <a
+                key="enable"
+                onClick={async () => {
+                  try {
+                    await enableDataSource(record.id);
+                    actionRef.current?.reload();
+                    message.success('已启用数据源');
+                  } catch (error) {
+                    // 错误已通过全局拦截器展示
+                  }
+                }}
+              >
+                启用
+              </a>
+            ),
+          );
+        }
+        return ops;
+      },
     },
   ];
-
-  // ---- Full-height ProTable CSS overrides ----
-  const fullHeightTableCSS = `
-    .fh-container.ant-pro-page-container {
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-    .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      height: auto !important;
-      padding-block-end: 0 !important;
-    }
-    .fh-table.ant-pro-table {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-search {
-      flex-shrink: 0;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-      flex: 1;
-      min-height: 0;
-      display: flex !important;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-list-toolbar {
-      flex-shrink: 0;
-    }
-    .fh-table .ant-table-wrapper {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-nested-loading {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-header {
-      flex-shrink: 0;
-      overflow: hidden !important;
-    }
-    .fh-table .ant-table-body {
-      flex: 1;
-      min-height: 0;
-      max-height: none !important;
-      overflow-y: scroll !important;
-    }
-    .fh-table .ant-table-pagination {
-      flex-shrink: 0;
-      padding: 6px 0;
-      margin: 0 !important;
-    }
-  `;
 
   return (
     <PageContainer
@@ -401,7 +293,7 @@ const DataSourceList: React.FC = () => {
         title: '动态数据源管理',
       }}
     >
-      <style>{fullHeightTableCSS}</style>
+
       <ProTable<DataSourceDO>
         className="fh-table"
         headerTitle="数据源列表"
@@ -442,6 +334,9 @@ const DataSourceList: React.FC = () => {
         columns={columns}
         rowSelection={{
           onChange: (_, selectedRows) => setSelectedRows(selectedRows),
+          getCheckboxProps: (record) => ({
+            disabled: isSystemRow(record),
+          }),
         }}
       />
       {selectedRowsState?.length > 0 && (
@@ -457,7 +352,12 @@ const DataSourceList: React.FC = () => {
           <Button
             onClick={async () => {
               try {
-                await handleRemove(selectedRowsState);
+                const removable = selectedRowsState.filter((r) => !isSystemRow(r));
+                if (!removable.length) {
+                  message.warning('系统默认数据源不可删除');
+                  return;
+                }
+                await handleRemove(removable);
                 setSelectedRows([]);
                 actionRef.current?.reloadAndRest?.();
               } catch (error) {

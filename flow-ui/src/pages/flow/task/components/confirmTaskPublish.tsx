@@ -1,5 +1,5 @@
 import { Modal } from 'antd';
-import type { FlowTask } from '../services/taskService';
+import type { FlowTask } from '@/services/flow/taskService';
 
 /**
  * 列表「发布」确认：发布的是库中已保存草稿，非未保存的表单编辑。

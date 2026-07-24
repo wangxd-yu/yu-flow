@@ -35,4 +35,7 @@ public class SaveSysConfigDTO {
 
     /** 状态 (1: 启用, 0: 停用) */
     private Integer status;
+
+    /** 组内展示顺序，越小越靠前 */
+    private Integer sortOrder;
 }

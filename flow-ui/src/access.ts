@@ -1,10 +1,79 @@
-export default (initialState: API.UserInfo) => {
-  // 在这里按照初始化数据定义项目中的权限，统一管理
-  // 参考文档 https://umijs.org/docs/max/access
-  const canSeeAdmin = !!(
-    initialState && initialState.name !== 'dontHaveAccess'
-  );
-  return {
-    canSeeAdmin,
-  };
+import { hasPerm } from '@/services/auth';
+
+export type InitialStateType = {
+  name?: string;
+  displayName?: string;
+  isLogin?: boolean;
+  userId?: string;
+  roles?: string[];
+  permissions?: string[];
+  legacyAdmin?: boolean;
 };
+
+/**
+ * Umi access：路由 / 菜单鉴权。
+ * 约定：拥有 * 或对应 view/write 即可进入页面；写操作另由后端 @RequirePerm 兜底。
+ *
+ * 重要：未登录时必须返回 true，否则会在跳转 /login 前把带 access 的路由全部判为不可达 → 白屏。
+ * 未登录时的菜单/页头已由 layout.menuRender/headerRender = false 隐藏。
+ */
+export default function access(initialState: InitialStateType) {
+  const perms = initialState?.permissions || [];
+  const loggedIn = !!initialState?.isLogin;
+
+  const can = (...codes: string[]) => {
+    if (!loggedIn) return true;
+    return hasPerm(perms, ...codes);
+  };
+
+  return {
+    canHome: can('home:view', '*'),
+    canApi: can('flow:api:view', 'flow:api:write', '*'),
+    canTask: can('flow:task:view', 'flow:task:write', '*'),
+    canService: can('flow:service:view', 'flow:service:write', '*'),
+    canPage: can('flow:page:view', 'flow:page:write', '*'),
+    canRuntime: can('flow:runtime:view', '*'),
+    canAlert: can('flow:alert:view', 'flow:alert:edit', '*'),
+    canOpen: can('flow:open:view', 'flow:open:write', '*'),
+    canLog: can('log:view', '*'),
+    canDs: can('flow:ds:view', 'flow:ds:write', '*'),
+    canModel: can('flow:model:view', 'flow:model:write', '*'),
+    canTemplate: can('sys:template:view', 'sys:template:write', '*'),
+    canMacro: can('sys:macro:view', 'sys:macro:write', '*'),
+    canConfig: can('sys:config:view', 'sys:config:write', '*'),
+    canUser: can('sys:user:view', 'sys:user:write', '*'),
+    canUserWrite: can('sys:user:write', '*'),
+    canRole: can('sys:role:view', 'sys:role:write', '*'),
+    canRoleWrite: can('sys:role:write', '*'),
+    canDocs: can('docs:view', '*'),
+    /** 流程资产父菜单：任一子权限 */
+    canAssetGroup: can(
+      'flow:api:view', 'flow:api:write',
+      'flow:task:view', 'flow:task:write',
+      'flow:service:view', 'flow:service:write',
+      'flow:page:view', 'flow:page:write',
+      '*',
+    ),
+    canOpsGroup: can(
+      'flow:runtime:view',
+      'flow:alert:view', 'flow:alert:edit',
+      'flow:open:view', 'flow:open:write',
+      'log:view',
+      '*',
+    ),
+    canInfraGroup: can(
+      'flow:ds:view', 'flow:ds:write',
+      'flow:model:view', 'flow:model:write',
+      '*',
+    ),
+    canPlatformGroup: can(
+      'sys:template:view', 'sys:template:write',
+      'sys:macro:view', 'sys:macro:write',
+      'sys:config:view', 'sys:config:write',
+      'sys:user:view', 'sys:user:write',
+      'sys:role:view', 'sys:role:write',
+      'docs:view',
+      '*',
+    ),
+  };
+}

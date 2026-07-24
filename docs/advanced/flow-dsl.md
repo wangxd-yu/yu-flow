@@ -626,7 +626,29 @@ SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数
 
 ---
 
-### 5.17 `errorHandler` — 异常汇聚（单例）
+### 5.17 `sendMail` — 发送邮件
+
+依赖系统配置 `MAIL_*` / `yu.flow.mail` SMTP。字段支持 `${var}`（来自 `inputs`）；也可用 `inputs.to` / `subject` / `text` / `html` 覆盖。
+
+```json
+{
+  "id": "mail1",
+  "type": "sendMail",
+  "data": {
+    "to": "ops@example.com",
+    "subject": "告警 ${title}",
+    "text": "详情：${detail}",
+    "html": "",
+    "inputs": {}
+  }
+}
+```
+
+入 `in`，出 `out`（`{ success, to, subject }`）。
+
+---
+
+### 5.18 `errorHandler` — 异常汇聚（单例）
 
 | | |
 | --- | --- |

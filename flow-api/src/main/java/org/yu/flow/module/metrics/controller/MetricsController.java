@@ -7,6 +7,7 @@ import org.yu.flow.module.metrics.MetricsWindow;
 import org.yu.flow.module.metrics.dto.*;
 import org.yu.flow.module.metrics.service.MetricsQueryService;
 
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
@@ -38,8 +39,11 @@ public class MetricsController {
                 MetricsAssetType.fromPath(assetType), assetId, MetricsWindow.fromParam(window)));
     }
 
-    @PostMapping("/health")
-    public R<List<AssetHealthDTO>> health(@RequestBody MetricsHealthRequest request) {
+    @PostMapping(
+            value = "/health",
+            consumes = {MediaType.APPLICATION_JSON_VALUE, "application/json;charset=UTF-8"})
+    public R<List<AssetHealthDTO>> health(
+            @RequestBody(required = false) MetricsHealthRequest request) {
         return R.ok(metricsQueryService.health(request == null ? null : request.getItems()));
     }
 

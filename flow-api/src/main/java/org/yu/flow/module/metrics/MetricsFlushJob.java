@@ -6,7 +6,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.yu.flow.cache.FlowRedisUtil;
 import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.metrics.domain.FlowMetricsMetaDO;
 import org.yu.flow.module.metrics.domain.FlowMetricsMinuteDO;
+import org.yu.flow.module.metrics.repository.FlowMetricsMetaRepository;
 import org.yu.flow.module.metrics.repository.FlowMetricsMinuteRepository;
 
 import jakarta.annotation.PostConstruct;
@@ -32,6 +34,8 @@ public class MetricsFlushJob {
     private YuFlowProperties yuFlowProperties;
     @Resource
     private FlowMetricsMinuteRepository metricsMinuteRepository;
+    @Resource
+    private FlowMetricsMetaRepository metricsMetaRepository;
     @Resource
     private ObjectMapper flowObjectMapper;
     @Resource
@@ -85,13 +89,16 @@ public class MetricsFlushJob {
             return;
         }
         try {
-            transactionTemplate.executeWithoutResult(status -> doFlush(cfg));
+            transactionTemplate.executeWithoutResult(status -> {
+                doFlushMinutes();
+                doFlushMeta();
+            });
         } finally {
             FlowRedisUtil.unlock(MetricsKeys.FLUSH_LOCK, lockVal);
         }
     }
 
-    private void doFlush(YuFlowProperties.Metrics cfg) {
+    private void doFlushMinutes() {
         Set<Object> members = FlowRedisUtil.smembers(MetricsKeys.ACTIVE_SET);
         if (members == null || members.isEmpty()) {
             return;
@@ -117,12 +124,77 @@ public class MetricsFlushJob {
                 FlowRedisUtil.srem(MetricsKeys.ACTIVE_SET, key);
                 flushed++;
             } catch (Exception e) {
-                log.warn("[MetricsFlushJob] 刷入失败 key={}: {}", key, e.getMessage());
+                log.warn("[MetricsFlushJob] 刷入分钟桶失败 key={}: {}", key, e.getMessage());
             }
         }
         if (flushed > 0) {
             log.info("[MetricsFlushJob] 已刷入 {} 个分钟桶", flushed);
         }
+    }
+
+    private void doFlushMeta() {
+        Set<Object> members = FlowRedisUtil.smembers(MetricsKeys.META_DIRTY_SET);
+        if (members == null || members.isEmpty()) {
+            return;
+        }
+        int flushed = 0;
+        for (Object m : members) {
+            if (m == null) {
+                continue;
+            }
+            String key = String.valueOf(m);
+            MetricsKeys.MetaKeyParts parts = MetricsKeys.parseMetaKey(key);
+            if (parts == null) {
+                FlowRedisUtil.srem(MetricsKeys.META_DIRTY_SET, key);
+                continue;
+            }
+            try {
+                if (upsertMetaFromRedis(parts)) {
+                    flushed++;
+                }
+                FlowRedisUtil.srem(MetricsKeys.META_DIRTY_SET, key);
+            } catch (Exception e) {
+                log.warn("[MetricsFlushJob] 刷入 meta 失败 key={}: {}", key, e.getMessage());
+            }
+        }
+        if (flushed > 0) {
+            log.info("[MetricsFlushJob] 已刷入 {} 条计量 meta", flushed);
+        }
+    }
+
+    /** @return 是否实际写入 */
+    private boolean upsertMetaFromRedis(MetricsKeys.MetaKeyParts parts) {
+        Map<Object, Object> hash = FlowRedisUtil.hgetAll(parts.redisKey());
+        if (hash == null || hash.isEmpty()) {
+            return false;
+        }
+        Long lastSuccess = readLongObj(hash, MetricsKeys.META_LAST_SUCCESS);
+        Long lastFail = readLongObj(hash, MetricsKeys.META_LAST_FAIL);
+        long consec = readLong(hash, MetricsKeys.META_CONSEC_FAIL);
+
+        FlowMetricsMetaDO row = metricsMetaRepository
+                .findByAssetTypeAndAssetId(parts.assetType().name(), parts.assetId())
+                .orElse(null);
+        if (row == null) {
+            row = FlowMetricsMetaDO.builder()
+                    .assetType(parts.assetType().name())
+                    .assetId(parts.assetId())
+                    .lastSuccessAt(lastSuccess)
+                    .lastFailAt(lastFail)
+                    .consecFail(consec)
+                    .build();
+        } else {
+            // Redis 字段可能因 TTL 重建后缺失；非空才覆盖，避免冲掉已落库的 last*
+            if (lastSuccess != null) {
+                row.setLastSuccessAt(lastSuccess);
+            }
+            if (lastFail != null) {
+                row.setLastFailAt(lastFail);
+            }
+            row.setConsecFail(consec);
+        }
+        metricsMetaRepository.save(row);
+        return true;
     }
 
     private void upsertFromRedis(MetricsKeys.BucketKeyParts parts) {
@@ -133,6 +205,7 @@ public class MetricsFlushJob {
         long success = readLong(hash, MetricsKeys.FIELD_SUCCESS);
         long fail = readLong(hash, MetricsKeys.FIELD_FAIL);
         long skipped = readLong(hash, MetricsKeys.FIELD_SKIPPED);
+        long authFail = readLong(hash, MetricsKeys.FIELD_AUTH_FAIL);
         long sumCost = readLong(hash, MetricsKeys.FIELD_SUM_COST);
         long latencyCount = readLong(hash, MetricsKeys.FIELD_LATENCY_COUNT);
         long[] hist = LatencyHistogram.empty();
@@ -154,6 +227,7 @@ public class MetricsFlushJob {
                     .bucketStart(bucketDate)
                     .successCnt(success)
                     .failCnt(fail)
+                    .authFailCnt(authFail)
                     .skippedCnt(skipped)
                     .sumCostMs(sumCost)
                     .latencyCount(latencyCount)
@@ -163,6 +237,7 @@ public class MetricsFlushJob {
             // Redis 桶是该分钟完整视图；以 Redis 覆盖（单热源），避免重复 flush 双加
             row.setSuccessCnt(success);
             row.setFailCnt(fail);
+            row.setAuthFailCnt(authFail);
             row.setSkippedCnt(skipped);
             row.setSumCostMs(sumCost);
             row.setLatencyCount(latencyCount);
@@ -172,9 +247,13 @@ public class MetricsFlushJob {
     }
 
     private static long readLong(Map<Object, Object> hash, String field) {
+        Long v = readLongObj(hash, field);
+        return v == null ? 0L : v;
+    }
+
+    private static Long readLongObj(Map<Object, Object> hash, String field) {
         Object v = hash.get(field);
         if (v == null) {
-            // Jackson 序列化后 hash key 可能是带引号的字符串
             for (Map.Entry<Object, Object> e : hash.entrySet()) {
                 if (e.getKey() != null && field.equals(String.valueOf(e.getKey()).replace("\"", ""))) {
                     v = e.getValue();
@@ -183,13 +262,16 @@ public class MetricsFlushJob {
             }
         }
         if (v == null) {
-            return 0L;
+            return null;
         }
         try {
             String s = String.valueOf(v).replace("\"", "");
+            if (s.isBlank() || "null".equalsIgnoreCase(s)) {
+                return null;
+            }
             return Long.parseLong(s);
         } catch (Exception e) {
-            return 0L;
+            return null;
         }
     }
 

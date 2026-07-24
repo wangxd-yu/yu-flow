@@ -10,7 +10,7 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
-import { queryDataSourceList } from '@/pages/flow/dataSource/services/dataSource';
+import { queryDataSourceList } from '@/services/flow/dataSource';
 import {
   Button,
   Divider,

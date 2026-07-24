@@ -35,7 +35,7 @@ public class FlowServiceFlowExecutionService {
     public static final int MAX_NEST_DEPTH = 8;
 
     private static final ThreadLocal<Integer> NEST_DEPTH = ThreadLocal.withInitial(() -> 0);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     @Resource
     private FlowServiceFlowRepository flowServiceFlowRepository;

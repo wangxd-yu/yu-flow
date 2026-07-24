@@ -47,4 +47,10 @@ public interface FlowDirectoryService {
      * @return 目录ID列表
      */
     List<String> getAllChildIds(String directoryId);
+
+    /**
+     * 校验资产挂载目录归属：directoryId 为空放行；目录 bizType 为空（共享）放行；
+     * 否则必须与 expectedBizType 一致（api / task / service / model / page）。
+     */
+    void assertDirectoryBizType(String directoryId, String expectedBizType);
 }

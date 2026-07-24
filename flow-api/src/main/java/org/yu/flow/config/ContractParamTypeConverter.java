@@ -4,6 +4,8 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.stereotype.Service;
 import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.util.FlowObjectMapperUtil;
@@ -25,7 +27,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 根据 API contract.request 中的 SchemaNode 定义，将 HTTP 字符串参数转换为强类型值。
@@ -36,7 +37,10 @@ public class ContractParamTypeConverter {
     private static final int MAX_CACHE_SIZE = 1000;
 
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
-    private final Map<String, JsonNode> contractCache = new ConcurrentHashMap<>();
+    /** 契约 JSON → 解析树；Caffeine LRU，避免满表 clear 抖动 */
+    private final Cache<String, JsonNode> contractCache = Caffeine.newBuilder()
+            .maximumSize(MAX_CACHE_SIZE)
+            .build();
 
     /**
      * 内部服务契约：校验必填并转换 {@code inputs} SchemaNode 列表对应的入参。
@@ -122,16 +126,23 @@ public class ContractParamTypeConverter {
     }
 
     private JsonNode getContract(String contractJson) {
-        if (contractCache.size() >= MAX_CACHE_SIZE) {
-            contractCache.clear();
-        }
-        return contractCache.computeIfAbsent(contractJson, value -> {
-            try {
-                return objectMapper.readTree(value);
-            } catch (Exception e) {
-                throw new SchemaValidationException("API 契约 JSON 格式不正确: " + e.getMessage());
+        try {
+            return contractCache.get(contractJson, value -> {
+                try {
+                    return objectMapper.readTree(value);
+                } catch (Exception e) {
+                    throw new SchemaValidationException("API 契约 JSON 格式不正确: " + e.getMessage());
+                }
+            });
+        } catch (SchemaValidationException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof SchemaValidationException sve) {
+                throw sve;
             }
-        });
+            throw e;
+        }
     }
 
     private Object convertValue(Object value, JsonNode schema, String path) {

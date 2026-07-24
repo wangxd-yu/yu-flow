@@ -1,6 +1,5 @@
 package org.yu.flow.engine.evaluator.executor;
 
-import cn.hutool.extra.spring.SpringUtil;
 import org.yu.flow.auto.service.FlowApiExecutionService;
 import org.yu.flow.auto.util.InputParamsUtil;
 import org.yu.flow.engine.evaluator.ExecutionContext;
@@ -45,24 +44,27 @@ public class ApiServiceCallStepExecutor extends AbstractStepExecutor<ApiServiceC
     }
 
     private FlowServiceFlowExecutionService serviceExec() {
-        if (serviceFlowExecutionService != null) {
-            return serviceFlowExecutionService;
+        if (serviceFlowExecutionService == null) {
+            throw new FlowException("API_EXECUTOR_NOT_WIRED",
+                    "ApiServiceCallStepExecutor 未注入 FlowServiceFlowExecutionService");
         }
-        return SpringUtil.getBean(FlowServiceFlowExecutionService.class);
+        return serviceFlowExecutionService;
     }
 
     private FlowApiCrudService apiCrud() {
-        if (flowApiCrudService != null) {
-            return flowApiCrudService;
+        if (flowApiCrudService == null) {
+            throw new FlowException("API_EXECUTOR_NOT_WIRED",
+                    "ApiServiceCallStepExecutor 未注入 FlowApiCrudService");
         }
-        return SpringUtil.getBean(FlowApiCrudService.class);
+        return flowApiCrudService;
     }
 
     private FlowApiExecutionService apiExec() {
-        if (flowApiExecutionService != null) {
-            return flowApiExecutionService;
+        if (flowApiExecutionService == null) {
+            throw new FlowException("API_EXECUTOR_NOT_WIRED",
+                    "ApiServiceCallStepExecutor 未注入 FlowApiExecutionService");
         }
-        return SpringUtil.getBean(FlowApiExecutionService.class);
+        return flowApiExecutionService;
     }
 
     @Override

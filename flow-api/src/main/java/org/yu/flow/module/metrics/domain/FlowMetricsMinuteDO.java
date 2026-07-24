@@ -50,6 +50,9 @@ public class FlowMetricsMinuteDO {
     @Column(name = "fail_cnt", nullable = false)
     private Long failCnt;
 
+    @Column(name = "auth_fail_cnt", nullable = false)
+    private Long authFailCnt;
+
     @Column(name = "skipped_cnt", nullable = false)
     private Long skippedCnt;
 
@@ -72,6 +75,7 @@ public class FlowMetricsMinuteDO {
         updateTime = new Date();
         if (successCnt == null) successCnt = 0L;
         if (failCnt == null) failCnt = 0L;
+        if (authFailCnt == null) authFailCnt = 0L;
         if (skippedCnt == null) skippedCnt = 0L;
         if (sumCostMs == null) sumCostMs = 0L;
         if (latencyCount == null) latencyCount = 0L;

@@ -16,6 +16,8 @@ public class R<T> implements Serializable {
     private Boolean ok;     // 操作是否成功（true/false）
     private int code;       // 状态码
     private String msg;     // 消息
+    /** 机器可读错误码（如 OPEN_AUTH_INVALID）；成功时为 null */
+    private String errorCode;
     private T data;         // 数据
     private long timestamp = System.currentTimeMillis(); // 时间戳
 
@@ -86,6 +88,13 @@ public class R<T> implements Serializable {
         result.setCode(code);
         result.setMsg(msg);
         result.setData(data);
+        return result;
+    }
+
+    /** 开放入口等场景：HTTP code + 机器可读 errorCode + 人类可读 msg */
+    public static <T> R<T> failWithErrorCode(int httpCode, String errorCode, String msg) {
+        R<T> result = fail(httpCode, msg);
+        result.setErrorCode(errorCode);
         return result;
     }
 }

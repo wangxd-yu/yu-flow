@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { message } from 'antd';
-import { useNavigate, useModel } from '@umijs/max';
-import { request } from '@umijs/max';
+import { useNavigate, useModel, request } from '@umijs/max';
+import { fetchAuthMe } from '@/services/auth';
 import styles from './index.module.css';
 import logo from '@/assets/logo1.svg';
 
@@ -36,46 +36,107 @@ const EyeOffIcon = () => (
   </svg>
 );
 
+const ShieldIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+);
+
 declare global {
   interface Window {
     __DEMO_MODE__?: boolean;
   }
 }
 
+type CaptchaState = {
+  captchaId: string;
+  imageBase64: string;
+};
+
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { setInitialState } = useModel('@@initialState');
   const [loading, setLoading] = useState(false);
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({ username: '', password: '' });
-  const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    captchaCode: '',
+  });
+  const [captcha, setCaptcha] = useState<CaptchaState | null>(null);
+  const [errors, setErrors] = useState<{
+    username?: string;
+    password?: string;
+    captchaCode?: string;
+  }>({});
 
-  React.useEffect(() => {
-    localStorage.removeItem('flow_token');
-    setInitialState((prev: any) => ({ ...prev, isLogin: false }));
-    
-    // 演示环境自动填充默认账号密码
-    if (typeof window !== 'undefined' && window.__DEMO_MODE__) {
-      setFormData({ username: 'admin', password: '123456' });
+  const refreshCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    try {
+      const res = await request<{ captchaId: string; imageBase64: string }>(
+        '/flow-api/login/captcha',
+        { method: 'GET', skipErrorHandler: true } as any,
+      );
+      const data = (res as any)?.data || res;
+      if (data?.captchaId && data?.imageBase64) {
+        setCaptcha({
+          captchaId: data.captchaId,
+          imageBase64: data.imageBase64,
+        });
+        setFormData((prev) => ({ ...prev, captchaCode: '' }));
+        setErrors((prev) => ({ ...prev, captchaCode: undefined }));
+      } else {
+        message.error('验证码加载失败');
+      }
+    } catch (e) {
+      console.error(e);
+      message.error('验证码加载失败，请检查后端与 Redis');
+    } finally {
+      setCaptchaLoading(false);
     }
-  }, [setInitialState]);
+  }, []);
+
+  useEffect(() => {
+    localStorage.removeItem('flow_token');
+    setInitialState((prev: any) => ({
+      ...(prev || {}),
+      name: '',
+      displayName: '',
+      isLogin: false,
+      roles: [],
+      permissions: [],
+    }));
+
+    if (typeof window !== 'undefined' && window.__DEMO_MODE__) {
+      setFormData((prev) => ({
+        ...prev,
+        username: 'admin',
+        password: '123456',
+      }));
+    }
+
+    refreshCaptcha();
+  }, [setInitialState, refreshCaptcha]);
 
   const validate = useCallback(() => {
-    const e: { username?: string; password?: string } = {};
+    const e: { username?: string; password?: string; captchaCode?: string } = {};
     if (!formData.username.trim()) e.username = '请输入用户名';
     if (!formData.password) e.password = '请输入密码';
+    if (!formData.captchaCode.trim()) e.captchaCode = '请输入验证码';
+    if (!captcha?.captchaId) e.captchaCode = e.captchaCode || '请先获取验证码';
     setErrors(e);
     return Object.keys(e).length === 0;
-  }, [formData]);
+  }, [formData, captcha]);
 
-  const handleChange = (field: 'username' | 'password') => (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
-  };
+  const handleChange =
+    (field: 'username' | 'password' | 'captchaCode') =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+      if (errors[field]) {
+        setErrors((prev) => ({ ...prev, [field]: undefined }));
+      }
+    };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,15 +146,46 @@ const Login: React.FC = () => {
     try {
       const response = await request('/flow-api/login', {
         method: 'POST',
-        data: formData,
+        data: {
+          username: formData.username,
+          password: formData.password,
+          captchaId: captcha?.captchaId,
+          captchaCode: formData.captchaCode.trim(),
+        },
       });
 
-      localStorage.setItem('flow_token', response);
-      await setInitialState((prev: any) => ({ ...prev, isLogin: true }));
+      const token =
+        typeof response === 'string' ? response : (response as any)?.data || response;
+      if (!token || typeof token !== 'string') {
+        message.error('登录响应异常');
+        refreshCaptcha();
+        return;
+      }
+      const normalized = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      localStorage.setItem('flow_token', normalized);
+      const me = await fetchAuthMe();
+      if (!me?.permissions?.length) {
+        localStorage.removeItem('flow_token');
+        message.error('获取用户权限失败，请确认后端已启动');
+        refreshCaptcha();
+        return;
+      }
+      await setInitialState((prev: any) => ({
+        ...(prev || {}),
+        name: me.username || formData.username,
+        displayName: me.displayName || me.username || formData.username,
+        isLogin: true,
+        userId: me.userId,
+        roles: me.roles || [],
+        permissions: me.permissions,
+        legacyAdmin: me.legacyAdmin,
+      }));
       message.success('登录成功');
-      navigate('/');
+      navigate('/home');
     } catch (error) {
       console.error(error);
+      // 失败后刷新验证码（已消费或错误）
+      refreshCaptcha();
     } finally {
       setLoading(false);
     }
@@ -133,6 +225,7 @@ const Login: React.FC = () => {
                   className={styles.inputField}
                   type="text"
                   placeholder="请输入用户名"
+                  autoComplete="username"
                   value={formData.username}
                   onChange={handleChange('username')}
                 />
@@ -149,6 +242,7 @@ const Login: React.FC = () => {
                   className={styles.inputField}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="请输入密码"
+                  autoComplete="current-password"
                   value={formData.password}
                   onChange={handleChange('password')}
                 />
@@ -156,11 +250,54 @@ const Login: React.FC = () => {
                   type="button"
                   className={styles.passwordToggle}
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
                 >
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
               {errors.password && <span className={styles.errorMsg}>{errors.password}</span>}
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label htmlFor="captchaCode">验证码</label>
+              <div className={styles.captchaRow}>
+                <div className={styles.inputWrapper}>
+                  <span className={styles.inputIcon}><ShieldIcon /></span>
+                  <input
+                    id="captchaCode"
+                    className={styles.inputField}
+                    type="text"
+                    placeholder="请输入验证码"
+                    autoComplete="off"
+                    maxLength={8}
+                    value={formData.captchaCode}
+                    onChange={handleChange('captchaCode')}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className={styles.captchaImgBtn}
+                  onClick={refreshCaptcha}
+                  disabled={captchaLoading}
+                  title="点击刷新验证码"
+                  aria-label="刷新验证码"
+                >
+                  {captcha?.imageBase64 ? (
+                    <img
+                      src={captcha.imageBase64}
+                      alt="验证码"
+                      className={styles.captchaImg}
+                    />
+                  ) : (
+                    <span className={styles.captchaPlaceholder}>
+                      {captchaLoading ? '加载中' : '点击获取'}
+                    </span>
+                  )}
+                </button>
+              </div>
+              {errors.captchaCode && (
+                <span className={styles.errorMsg}>{errors.captchaCode}</span>
+              )}
             </div>
 
             <button type="submit" className={styles.submitBtn} disabled={loading}>

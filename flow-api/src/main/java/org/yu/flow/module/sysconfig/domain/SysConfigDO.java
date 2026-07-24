@@ -80,6 +80,10 @@ public class SysConfigDO {
     @Column(name = "status", nullable = false, columnDefinition = "TINYINT DEFAULT 1")
     private Integer status;
 
+    /** 组内展示顺序，越小越靠前 */
+    @Column(name = "sort_order", nullable = false)
+    private Integer sortOrder;
+
     /** 创建者 */
     @Column(name = "create_by", length = 64)
     private String createBy;

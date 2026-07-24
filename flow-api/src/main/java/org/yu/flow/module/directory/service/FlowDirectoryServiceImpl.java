@@ -227,4 +227,20 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
             }
         }
     }
+
+    @Override
+    public void assertDirectoryBizType(String directoryId, String expectedBizType) {
+        if (StrUtil.isBlank(directoryId) || StrUtil.isBlank(expectedBizType)) {
+            return;
+        }
+        FlowDirectoryDO dir = directoryRepository.findById(directoryId)
+                .orElseThrow(() -> new RuntimeException("目录不存在: " + directoryId));
+        if (StrUtil.isBlank(dir.getBizType())) {
+            return; // 共享目录
+        }
+        if (!expectedBizType.trim().equalsIgnoreCase(dir.getBizType().trim())) {
+            throw new RuntimeException("目录「" + dir.getName() + "」属于 "
+                    + dir.getBizType() + " 域，不能挂到 " + expectedBizType + " 资产下");
+        }
+    }
 }

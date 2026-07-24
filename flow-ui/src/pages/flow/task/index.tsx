@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActionType,
   PageContainer,
@@ -6,7 +6,7 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { Button, Divider, message, Popconfirm, Switch, Tooltip, Tag } from 'antd';
-import { history } from '@umijs/max';
+import { history, useLocation } from '@umijs/max';
 import {
   queryTaskPage,
   createTask,
@@ -20,12 +20,13 @@ import {
   publishTask,
   unpublishTask,
   FlowTask,
-} from './services/taskService';
+} from '@/services/flow/taskService';
 import TaskForm from './components/TaskForm';
 import { confirmTaskPublish } from './components/confirmTaskPublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
-import { batchAssetHealth, type AssetHealth } from '../services/assetMetrics';
-import { renderHealthTag } from '../components/AssetHealthTag';
+import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
+import { renderHealthTag } from '@/components/flow/AssetHealthTag';
+import '@/styles/fullHeightTable.css';
 
 // ── CRUD 工具函数 ──
 
@@ -75,16 +76,42 @@ const handleRemove = async (selectedRows: FlowTask[]) => {
 // ── 主组件 ──
 
 const TaskManagement: React.FC = () => {
+  const location = useLocation();
   const actionRef = useRef<ActionType>();
   const [formVisible, setFormVisible] = useState<boolean>(false);
   const [currentRow, setCurrentRow] = useState<Partial<FlowTask>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [selectedRowsState, setSelectedRows] = useState<FlowTask[]>([]);
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
+  const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const taskId = params.get('taskId');
+    const tab = params.get('tab') || undefined;
+    if (!taskId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail: any = await getTask(taskId);
+        if (cancelled) return;
+        setCurrentRow(detail?.data || detail || { id: taskId });
+        setIsEditMode(true);
+        setFormInitialTab(tab || 'runtime');
+        setFormVisible(true);
+      } catch {
+        if (!cancelled) message.error('打开任务详情失败');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.search]);
 
   const handleAddAction = (directoryId?: string) => {
     setCurrentRow({ directoryId });
     setIsEditMode(false);
+    setFormInitialTab(undefined);
     setFormVisible(true);
   };
 
@@ -93,6 +120,7 @@ const TaskManagement: React.FC = () => {
       const detail: any = await getTask(record.id);
       setCurrentRow(detail?.data || detail || record);
       setIsEditMode(true);
+      setFormInitialTab(undefined);
       setFormVisible(true);
     } catch {
       message.error('加载任务详情失败');
@@ -239,9 +267,10 @@ const TaskManagement: React.FC = () => {
         </a>,
         <Divider key="d1" type="vertical" />,
         record.publishStatus === 1 ? (
-          <a
+          <Popconfirm
             key="unpublish"
-            onClick={async () => {
+            title="确认下线该任务？下线后定时调度将停止。"
+            onConfirm={async () => {
               try {
                 await unpublishTask(record.id);
                 message.success('已下线');
@@ -251,8 +280,8 @@ const TaskManagement: React.FC = () => {
               }
             }}
           >
-            下线
-          </a>
+            <a>下线</a>
+          </Popconfirm>
         ) : (
           <a
             key="publish"
@@ -313,103 +342,6 @@ const TaskManagement: React.FC = () => {
     },
   ];
 
-  const fullHeightTableCSS = `
-    .fh-container.ant-pro-page-container {
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container > .ant-pro-grid-content,
-    .fh-container.ant-pro-page-container .ant-pro-grid-content-children {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .fh-container.ant-pro-page-container .ant-pro-page-container-children-container {
-      flex: 1 !important;
-      min-height: 0 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      height: auto !important;
-      padding-block-end: 0 !important;
-    }
-    .fh-container .dir-tree-layout {
-      flex: 1 !important;
-      min-height: 0 !important;
-      height: 100% !important;
-    }
-    .fh-table.ant-pro-table {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-search {
-      flex-shrink: 0;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table > .ant-pro-card:not(.ant-pro-table-search) > .ant-pro-card-body {
-      flex: 1;
-      min-height: 0;
-      display: flex !important;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .fh-table .ant-pro-table-list-toolbar {
-      flex-shrink: 0;
-    }
-    .fh-table .ant-table-wrapper {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-nested-loading {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-spin-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-container {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .fh-table .ant-table-header {
-      flex-shrink: 0;
-      overflow: hidden !important;
-    }
-    .fh-table .ant-table-body {
-      flex: 1;
-      min-height: 0;
-      max-height: none !important;
-      overflow-y: scroll !important;
-    }
-    .fh-table .ant-table-pagination {
-      flex-shrink: 0;
-      padding: 6px 0;
-      margin: 0 !important;
-    }
-  `;
-
   return (
     <PageContainer
       className="fh-container"
@@ -419,7 +351,6 @@ const TaskManagement: React.FC = () => {
         overflow: 'hidden',
       }}
     >
-      <style>{fullHeightTableCSS}</style>
       <DirectoryTreeLayout bizType="task" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <ProTable<FlowTask>
@@ -506,7 +437,11 @@ const TaskManagement: React.FC = () => {
           visible={formVisible}
           isEdit={isEditMode}
           initialValues={currentRow}
-          onCancel={() => setFormVisible(false)}
+          initialTab={formInitialTab}
+          onCancel={() => {
+            setFormVisible(false);
+            setFormInitialTab(undefined);
+          }}
           onSubmit={handleFormSubmit}
           onPublished={(detail) => {
             setCurrentRow(detail);

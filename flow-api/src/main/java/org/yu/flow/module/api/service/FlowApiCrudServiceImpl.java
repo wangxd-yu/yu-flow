@@ -18,9 +18,12 @@ import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
 import org.yu.flow.module.assetref.FlowReferenceIndex;
+import org.yu.flow.module.open.cache.OpenPlatformCache;
+import org.yu.flow.module.open.repository.FlowOpenApiGrantRepository;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
+import org.yu.flow.log.audit.service.AuditLogService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -71,8 +74,35 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Resource
     private FlowReferenceIndex flowReferenceIndex;
 
+    @Resource
+    private FlowOpenApiGrantRepository flowOpenApiGrantRepository;
+
+    @Resource
+    private OpenPlatformCache openPlatformCache;
+
+    @Resource
+    private AuditLogService auditLogService;
+
     private void notifyRefIndex() {
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+    }
+
+    private void purgeOpenGrantsForApi(String apiId) {
+        try {
+            flowOpenApiGrantRepository.deleteByApiId(apiId);
+            openPlatformCache.publishRefresh();
+        } catch (Exception e) {
+            // 表未迁移时不阻断删除 API
+        }
+    }
+
+    private void purgeOpenGrantsForApis(List<String> apiIds) {
+        try {
+            flowOpenApiGrantRepository.deleteByApiIdIn(apiIds);
+            openPlatformCache.publishRefresh();
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     // ============================= FlowApiDO CRUD =============================
@@ -82,6 +112,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     public FlowApiDO save(FlowApiDO flowApiDO) {
         // [Demo 模式] 禁止新建写入类 DB API
         demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
+        flowDirectoryService.assertDirectoryBizType(flowApiDO.getDirectoryId(), "api");
 
         if (flowApiDO.getLogEnabled() == null) {
             flowApiDO.setLogEnabled(true);
@@ -138,6 +169,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // [Demo 模式] 系统预置 API 不可修改；禁止改为写入类 API
         demoModeGuard.checkModifyOrDelete(flowApiDO.getId(), "API 接口");
         demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
+        flowDirectoryService.assertDirectoryBizType(flowApiDO.getDirectoryId(), "api");
 
         Optional<FlowApiDO> existing = flowApiRepository.findById(flowApiDO.getId());
         if (!existing.isPresent()) {
@@ -156,6 +188,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         }
         if (flowApiDO.getCacheConfig() == null) {
             flowApiDO.setCacheConfig(dbRecord.getCacheConfig());
+        }
+        if (flowApiDO.getSecurityConfig() == null) {
+            flowApiDO.setSecurityConfig(dbRecord.getSecurityConfig());
         }
         boolean cacheConfigChanged = !Objects.equals(
                 StrUtil.nullToEmpty(flowApiDO.getCacheConfig()),
@@ -180,10 +215,12 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
         // [Demo 模式] 系统预置 API 不可删除
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         flowApiReferenceChecker.assertDeletable(id);
+        purgeOpenGrantsForApi(id);
         flowApiRepository.deleteById(id);
         apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
@@ -197,6 +234,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             // [Demo 模式] 逐一检查，只要有一个受保护的 ID 就整体拒绝
             ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
             ids.forEach(flowApiReferenceChecker::assertDeletable);
+            purgeOpenGrantsForApis(ids);
             flowApiRepository.logicDeleteByIds(ids);
             ids.forEach(apiResponseCacheService::evictAll);
             flowApiCacheManager.publishRefreshEvent();
@@ -412,7 +450,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     // ============================= 发布/下线/回滚 =============================
 
-    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
     /**
      * 发布 API：将草稿内容冻结为发布快照
@@ -441,6 +479,10 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // 刷新缓存，线上生效
         flowApiCacheManager.publishRefreshEvent();
         notifyRefIndex();
+        auditLogService.record("API_PUBLISH", "API", id,
+                "{\"method\":\"" + StrUtil.nullToEmpty(api.getMethod())
+                        + "\",\"url\":\"" + StrUtil.nullToEmpty(api.getUrl())
+                        + "\",\"name\":\"" + StrUtil.nullToEmpty(api.getName()) + "\"}");
         return api;
     }
 
@@ -460,6 +502,11 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
         apiResponseCacheService.evictAll(id);
         flowApiCacheManager.publishRefreshEvent();
+        // 授权保留但网关 404；刷新开放缓存以便文档/授权视图尽快感知
+        try {
+            openPlatformCache.publishRefresh();
+        } catch (Exception ignored) {
+        }
         notifyRefIndex();
         return api;
     }
@@ -548,6 +595,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             applyText(snap, "responseType", api::setResponseType);
             applyText(snap, "contract", api::setContract);
             applyText(snap, "cacheConfig", api::setCacheConfig);
+            applyText(snap, "securityConfig", api::setSecurityConfig);
             applyText(snap, "templateId", api::setTemplateId);
             applyText(snap, "customSuccessWrapper", api::setCustomSuccessWrapper);
             applyText(snap, "customPageWrapper", api::setCustomPageWrapper);
@@ -586,6 +634,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             snap.put("responseType", api.getResponseType());
             snap.put("contract", api.getContract());
             snap.put("cacheConfig", api.getCacheConfig());
+            snap.put("securityConfig", api.getSecurityConfig());
             snap.put("templateId", api.getTemplateId());
             snap.put("customSuccessWrapper", api.getCustomSuccessWrapper());
             snap.put("customPageWrapper", api.getCustomPageWrapper());

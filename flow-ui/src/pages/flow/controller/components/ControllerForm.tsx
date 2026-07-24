@@ -23,24 +23,83 @@ import { history, request } from '@umijs/max';
 import {
   addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi,
   listApiVersions, restoreApiVersion, queryAutoApiConfigDetail,
-} from '../services/flowController';
-import AssetVersionHistoryDrawer, { HistoryVersionButton } from '../../components/AssetVersionHistoryDrawer';
-import { buildApiCurl, copyText } from '../utils/apiDocsActions';
+} from '@/services/flow/flowController';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
+import { buildApiCurl, copyText, openPublishedApiDocCenter } from '@/utils/apiDocsActions';
 
 // ── Panel 子组件 ──
-import ImplementationPanel from './panels/ImplementationPanel';
+import ImplementationPanel, { getStaticJsonError } from './panels/ImplementationPanel';
 import ReqSchemaPanel from './panels/ReqSchemaPanel';
 import ResSchemaPanel from './panels/ResSchemaPanel';
 import BasicInfoPanel from './panels/BasicInfoPanel';
-import AssetRuntimePanel from '../../components/AssetRuntimePanel';
+import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
 import type { EngineMode } from './panels/ImplementationPanel';
-import type { SchemaNode, BodyType } from './ApiContractDesigner/types';
-import { buildApiTriggerPrefillFromContract } from './debugger/apiTriggerPrefill';
+import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
+import { buildApiTriggerPrefillFromContract } from '@/components/flow/debugger/apiTriggerPrefill';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  类型定义
 // ═══════════════════════════════════════════════════════════════════════════
+
+/** Tab Key 类型 */
+type TabKey = 'implementation' | 'req-schema' | 'res-schema' | 'basic-info' | 'runtime';
+
+/** 将 securityConfig JSON 还原为表单字段 */
+function parseSecurityConfigToForm(raw?: string | object | null) {
+  const defaults = {
+    secAuthMode: 'INHERIT',
+    secAntiReplayOverride: false,
+    secAntiReplay: true,
+    secRateLimitOverride: false,
+    secRateLimitEnabled: false,
+    secRateLimitQps: 100,
+    secIpOverride: false,
+    secIpAllowlist: '',
+    secTimeoutOverride: false,
+    secTimeoutMs: 30000,
+  };
+  if (!raw) return defaults;
+  try {
+    const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const authMode = cfg?.authMode || 'INHERIT';
+    return {
+      secAuthMode: ['INHERIT', 'NONE', 'HOST', 'OPEN'].includes(authMode) ? authMode : 'INHERIT',
+      secAntiReplayOverride: cfg?.antiReplay !== null && cfg?.antiReplay !== undefined,
+      secAntiReplay: cfg?.antiReplay !== false,
+      secRateLimitOverride:
+        (cfg?.rateLimitEnabled !== null && cfg?.rateLimitEnabled !== undefined)
+        || (cfg?.rateLimitQps !== null && cfg?.rateLimitQps !== undefined),
+      secRateLimitEnabled: !!cfg?.rateLimitEnabled,
+      secRateLimitQps: typeof cfg?.rateLimitQps === 'number' ? cfg.rateLimitQps : 100,
+      secIpOverride: cfg?.ipAllowlist !== null && cfg?.ipAllowlist !== undefined,
+      secIpAllowlist: typeof cfg?.ipAllowlist === 'string' ? cfg.ipAllowlist : '',
+      secTimeoutOverride: cfg?.timeoutMs !== null && cfg?.timeoutMs !== undefined,
+      secTimeoutMs: typeof cfg?.timeoutMs === 'number' ? cfg.timeoutMs : 30000,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+/** 由表单字段组装 securityConfig 对象 */
+function buildSecurityConfigFromForm(formValues: Record<string, any>) {
+  const authMode = formValues.secAuthMode || 'INHERIT';
+  return {
+    authMode,
+    antiReplay: formValues.secAntiReplayOverride ? !!formValues.secAntiReplay : null,
+    rateLimitEnabled: formValues.secRateLimitOverride ? !!formValues.secRateLimitEnabled : null,
+    rateLimitQps: formValues.secRateLimitOverride
+      ? (formValues.secRateLimitQps ?? 100)
+      : null,
+    ipAllowlist: formValues.secIpOverride
+      ? (formValues.secIpAllowlist ?? '')
+      : null,
+    timeoutMs: formValues.secTimeoutOverride
+      ? (typeof formValues.secTimeoutMs === 'number' ? formValues.secTimeoutMs : 30000)
+      : null,
+  };
+}
 
 export type ControllerFormV2Props = {
   onCancel: () => void;
@@ -48,11 +107,9 @@ export type ControllerFormV2Props = {
   modalVisible: boolean;
   values?: Partial<any>;
   isEdit: boolean;
-
+  /** 打开时默认 Tab（如运行中心深链） */
+  initialTab?: TabKey;
 };
-
-/** Tab Key 类型 */
-type TabKey = 'implementation' | 'req-schema' | 'res-schema' | 'basic-info' | 'runtime';
 
 /** HTTP Method → 主题色映射 */
 const METHOD_COLORS: Record<string, string> = {
@@ -182,8 +239,7 @@ const ApiPathInput = React.forwardRef<any, {
 });
 
 const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
-  modalVisible, onCancel, onSubmit, values = {}, isEdit
-
+  modalVisible, onCancel, onSubmit, values = {}, isEdit, initialTab,
 }) => {
   // ─── Tab 状态 ──────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>('implementation');
@@ -325,6 +381,12 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   const [dbDatasource, setDbDatasource] = useState<string | undefined>(undefined);
   const [responseType, setResponseType] = useState<string | undefined>(undefined);
 
+  /** 静态 JSON 模式：非法时禁止保存 / 发布 */
+  const staticJsonError = useMemo(
+    () => (engineMode === 'JSON' ? getStaticJsonError(jsonContent) : null),
+    [engineMode, jsonContent],
+  );
+
   /** 契约 → 调试触发器预填 + 完整契约 JSON（可选校验） */
   const triggerPrefill = useMemo(
     () => buildApiTriggerPrefillFromContract({
@@ -374,6 +436,8 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         } catch { /* ignore */ }
       }
 
+      const secFields = parseSecurityConfigToForm(processedValues.securityConfig);
+
       form.setFieldsValue({
         ...processedValues,
         isCustomSuccess: !!processedValues.customSuccessWrapper,
@@ -383,6 +447,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         cacheTtlSeconds,
         cacheIncludePageable,
         cacheKeyParams,
+        ...secFields,
       });
       setMethod(processedValues.method || 'GET');
       setUrl(processedValues.url || '');
@@ -397,7 +462,11 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       setResponseType(processedValues.responseType);
       setPublishStatus(processedValues.publishStatus ?? 0);
 
-      setActiveTab('implementation');
+      setActiveTab(
+        initialTab && (initialTab !== 'runtime' || !!processedValues.id)
+          ? initialTab
+          : 'implementation',
+      );
 
       // 还原契约数据：从 contract 字段解析（持久化）
       let contract = null;
@@ -428,7 +497,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         setStatusCode(200);
       }
     }
-  }, [processedValues, form, modalVisible]);
+  }, [processedValues, form, modalVisible, initialTab]);
 
   // ═══════════════════════════════════════════════════════════════════
   //  提交逻辑
@@ -447,6 +516,13 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     if (urlConflictMsg) {
       message.warning('接口路径存在冲突，请修改后再保存');
       return { success: false };
+    }
+    if (engineMode === 'JSON') {
+      const jsonErr = getStaticJsonError(jsonContent);
+      if (jsonErr) {
+        message.error(jsonErr);
+        return { success: false };
+      }
     }
     let hide = null;
     try {
@@ -514,6 +590,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             ? formValues.cacheKeyParams.filter((p: any) => p?.source && p?.name)
             : [],
         }),
+        securityConfig: JSON.stringify(buildSecurityConfigFromForm(formValues)),
       };
 
       hide = message.loading(isEdit ? '正在更新...' : '正在添加...');
@@ -652,11 +729,21 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         />
       )}
 
-      <Tooltip title="打开 OpenAPI 文档页">
+      <Tooltip title={publishStatus === 1 ? '打开 API 文档中心（导出 OpenAPI）' : '请先发布后再查看文档'}>
         <Button
           size={headerCtrlSize}
           icon={<FileTextOutlined />}
-          onClick={() => history.push('/api-docs')}
+          onClick={() => {
+            const r = openPublishedApiDocCenter({
+              apiId: values?.id,
+              publishStatus,
+            });
+            if (r.reason === 'unpublished') {
+              message.warning('请先发布该接口后再查看文档');
+            } else if (r.reason === 'missing_id') {
+              message.warning('请先保存接口后再查看文档');
+            }
+          }}
         >
           文档
         </Button>
@@ -703,15 +790,20 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       )}
 
       {(publishStatus === 0 || isEdit) && (
-        <Button
-          size={headerCtrlSize}
-          type="primary"
-          style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
-          icon={<CloudUploadOutlined />}
-          onClick={handlePublishCurrentDraft}
-        >
-          {publishStatus === 1 ? '保存并发布' : '发布上线'}
-        </Button>
+        <Tooltip title={staticJsonError || undefined}>
+          <span>
+            <Button
+              size={headerCtrlSize}
+              type="primary"
+              style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
+              icon={<CloudUploadOutlined />}
+              disabled={!!staticJsonError}
+              onClick={handlePublishCurrentDraft}
+            >
+              {publishStatus === 1 ? '保存并发布' : '发布上线'}
+            </Button>
+          </span>
+        </Tooltip>
       )}
 
       {isEdit && publishStatus === 1 && (
@@ -738,9 +830,19 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       )}
 
       <Button size={headerCtrlSize} icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Button size={headerCtrlSize} type="primary" icon={<SaveOutlined />} onClick={() => handleSubmit()}>
-        保存草稿
-      </Button>
+      <Tooltip title={staticJsonError || undefined}>
+        <span>
+          <Button
+            size={headerCtrlSize}
+            type="primary"
+            icon={<SaveOutlined />}
+            disabled={!!staticJsonError}
+            onClick={() => handleSubmit()}
+          >
+            保存草稿
+          </Button>
+        </span>
+      </Tooltip>
     </Space>
   );
 
@@ -991,6 +1093,8 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 } catch { /* ignore */ }
               }
 
+              const secFields = parseSecurityConfigToForm(detail.securityConfig);
+
               form.setFieldsValue({
                 ...form.getFieldsValue(),
                 name: detail.name,
@@ -1016,6 +1120,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 cacheTtlSeconds,
                 cacheIncludePageable,
                 cacheKeyParams,
+                ...secFields,
                 responseType: detail.responseType,
                 datasource: detail.datasource,
                 serviceType: detail.serviceType,

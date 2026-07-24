@@ -43,117 +43,218 @@ export default defineConfig({
     {
       path: '/login',
       component: './Login',
-      layout: false, // 禁用登录页的布局
+      layout: false,
     },
     {
       path: '/home',
       component: './Home',
-      //redirect: '/home',
-      //wrappers: ['@/wrappers/auth'],
-      name: '首页', // 添加名称，用于菜单显示
+      name: '首页',
+      icon: 'HomeOutlined',
+      access: 'canHome',
     },
+
+    // ── 流程资产：接口 / 任务 / 服务 / 页面 ──
+    // 注意：分组节点不要写 path；子路由是绝对路径（如 /flow/api），父级挂 /asset 会触发 RR6 报错白屏
     {
-      name: '数据源管理',
-      icon: 'CloudServerOutlined',
-      path: '/flow/dataSource',
-      component: './flow/dataSource',
-    },
-    {
-      name: '数据模型',
-      icon: 'DatabaseOutlined',
-      path: '/data-model/list',
-      component: './DataModel/List',
-    },
-    {
-      name: '接口管理',
-      icon: 'ApiOutlined',
-      path: '/flow/api',
-      component: './flow/controller',
-    },
-    {
-      path: '/flow/controller',
-      redirect: '/flow/api',
-    },
-    {
-      name: '任务管理',
-      icon: 'ClockCircleOutlined',
-      path: '/flow/task',
-      component: './flow/task',
-    },
-    {
-      name: '服务管理',
-      icon: 'ClusterOutlined',
-      path: '/flow/service',
-      component: './flow/service',
-    },
-    {
-      name: '运行中心',
-      icon: 'DashboardOutlined',
-      path: '/flow/runtime',
-      component: './flow/runtime',
-    },
-    {
-      name: '页面管理',
-      path: '/page-manage/list',
-      icon: 'LayoutOutlined',
-      component: './PageManage/List',
-    },
-    {
-      name: '全局参数',
-      path: '/sys-macro/manage',
-      icon: 'SettingOutlined',
-      component: './SysMacroManage',
-    },
-    {
-      name: '系统配置',
-      path: '/sys-config/manage',
-      icon: 'ControlOutlined',
-      component: './SysConfig',
-    },
-    {
-      name: '响应模板',
-      path: '/response-template/manage',
-      icon: 'FileTextOutlined',
-      component: './ResponseTemplate',
-    },
-    {
-      name: '日志',
-      icon: 'FileSearchOutlined',
-      path: '/log',
+      name: '流程资产',
+      icon: 'AppstoreOutlined',
+      key: 'menu-asset',
+      access: 'canAssetGroup',
       routes: [
         {
-          name: '登录日志',
-          path: '/log/login',
-          component: './Log/LoginLog',
+          name: '接口管理',
+          icon: 'ApiOutlined',
+          path: '/flow/api',
+          component: './flow/controller',
+          access: 'canApi',
         },
         {
-          name: '接口日志',
-          path: '/log/execution',
-          component: './Log/ExecutionLog',
+          path: '/flow/controller',
+          redirect: '/flow/api',
         },
         {
-          name: '任务日志',
-          path: '/log/task',
-          component: './Log/TaskLog',
+          name: '任务管理',
+          icon: 'ClockCircleOutlined',
+          path: '/flow/task',
+          component: './flow/task',
+          access: 'canTask',
         },
         {
-          name: '服务日志',
-          path: '/log/service',
-          component: './Log/ServiceLog',
+          name: '服务管理',
+          icon: 'ClusterOutlined',
+          path: '/flow/service',
+          component: './flow/service',
+          access: 'canService',
         },
         {
-          name: '三方日志',
-          path: '/log/third',
-          component: './Log/ThirdLog',
+          name: '页面管理',
+          icon: 'LayoutOutlined',
+          path: '/page-manage/list',
+          component: './PageManage/List',
+          access: 'canPage',
         },
       ],
     },
+
+    // ── 运行观测：运行 / 开放 / 日志 ──
     {
-      name: 'API 文档',
-      path: '/api-docs',
-      icon: 'FileTextOutlined',
-      component: './ApiDocs',
+      name: '运行观测',
+      icon: 'DashboardOutlined',
+      key: 'menu-ops',
+      access: 'canOpsGroup',
+      routes: [
+        {
+          name: '运行中心',
+          icon: 'ThunderboltOutlined',
+          path: '/flow/runtime',
+          component: './flow/runtime',
+          access: 'canRuntime',
+        },
+        {
+          name: '告警规则',
+          icon: 'AlertOutlined',
+          path: '/flow/alert/rules',
+          component: './flow/alert/rules',
+          access: 'canAlert',
+        },
+        {
+          name: '告警历史',
+          icon: 'HistoryOutlined',
+          path: '/flow/alert/history',
+          component: './flow/alert/history',
+          access: 'canAlert',
+        },
+        {
+          name: '开放平台',
+          icon: 'KeyOutlined',
+          path: '/flow/open-platform',
+          component: './flow/openPlatform',
+          access: 'canOpen',
+        },
+        {
+          name: '日志中心',
+          icon: 'FileSearchOutlined',
+          path: '/log',
+          access: 'canLog',
+          routes: [
+            {
+              name: '接口日志',
+              path: '/log/execution',
+              component: './Log/ExecutionLog',
+              access: 'canLog',
+            },
+            {
+              name: '任务日志',
+              path: '/log/task',
+              component: './Log/TaskLog',
+              access: 'canLog',
+            },
+            {
+              name: '服务日志',
+              path: '/log/service',
+              component: './Log/ServiceLog',
+              access: 'canLog',
+            },
+            {
+              name: '三方日志',
+              path: '/log/third',
+              component: './Log/ThirdLog',
+              access: 'canLog',
+            },
+            {
+              name: '登录日志',
+              path: '/log/login',
+              component: './Log/LoginLog',
+              access: 'canLog',
+            },
+            {
+              name: '变更审计',
+              path: '/log/audit',
+              component: './Log/AuditLog',
+              access: 'canLog',
+            },
+          ],
+        },
+      ],
     },
+
+    // ── 基础设施：数据源 / 模型 ──
+    {
+      name: '基础设施',
+      icon: 'CloudServerOutlined',
+      key: 'menu-infra',
+      access: 'canInfraGroup',
+      routes: [
+        {
+          name: '数据源',
+          icon: 'CloudOutlined',
+          path: '/flow/dataSource',
+          component: './flow/dataSource',
+          access: 'canDs',
+        },
+        {
+          name: '数据模型',
+          icon: 'DatabaseOutlined',
+          path: '/data-model/list',
+          component: './DataModel/List',
+          access: 'canModel',
+        },
+      ],
+    },
+
+    // ── 平台设置：模板 / 参数 / 配置 / 用户 / 文档 ──
+    {
+      name: '平台设置',
+      icon: 'SettingOutlined',
+      key: 'menu-platform',
+      access: 'canPlatformGroup',
+      routes: [
+        {
+          name: '响应模板',
+          icon: 'FileTextOutlined',
+          path: '/response-template/manage',
+          component: './ResponseTemplate',
+          access: 'canTemplate',
+        },
+        {
+          name: '全局参数',
+          icon: 'CodeOutlined',
+          path: '/sys-macro/manage',
+          component: './SysMacroManage',
+          access: 'canMacro',
+        },
+        {
+          name: '系统配置',
+          icon: 'ControlOutlined',
+          path: '/sys-config/manage',
+          component: './SysConfig',
+          access: 'canConfig',
+        },
+        {
+          name: '用户管理',
+          icon: 'TeamOutlined',
+          path: '/sys-user/manage',
+          component: './SysUser',
+          access: 'canUser',
+        },
+        {
+          name: '角色管理',
+          icon: 'SafetyCertificateOutlined',
+          path: '/sys-role/manage',
+          component: './SysRole',
+          access: 'canRole',
+        },
+        {
+          name: '接口文档',
+          icon: 'BookOutlined',
+          path: '/api-docs',
+          component: './ApiDocs',
+          access: 'canDocs',
+        },
+      ],
+    },
+
+    // ── 兼容跳转 / 无菜单页 ──
     {
       path: '/flow/task-log',
       redirect: '/log/task',

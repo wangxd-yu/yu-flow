@@ -1,8 +1,14 @@
 package org.yu.flow.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Flow 全局 Web MVC 配置
@@ -41,5 +47,27 @@ public class FlowWebConfig implements WebMvcConfigurer {
         // 对外发布页面（preview/designer → 直接放行）和管理页面（检查 UI 开关）
         registry.addInterceptor(flowUiInterceptor)
                 .addPathPatterns("/flow-ui/**");
+    }
+
+    /**
+     * 兼容浏览器 / umi 常见的 {@code application/json;charset=UTF-8}。
+     * Spring 6 默认 Jackson 转换器仅声明 {@code application/json}，部分环境下
+     * 带 charset 的 Content-Type 会触发 HttpMediaTypeNotSupportedException。
+     */
+    @Override
+    public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+        MediaType jsonUtf8 = MediaType.valueOf("application/json;charset=UTF-8");
+        for (HttpMessageConverter<?> converter : converters) {
+            if (converter instanceof MappingJackson2HttpMessageConverter jackson) {
+                List<MediaType> types = new ArrayList<>(jackson.getSupportedMediaTypes());
+                if (!types.contains(jsonUtf8)) {
+                    types.add(jsonUtf8);
+                }
+                if (!types.contains(MediaType.APPLICATION_JSON)) {
+                    types.add(0, MediaType.APPLICATION_JSON);
+                }
+                jackson.setSupportedMediaTypes(types);
+            }
+        }
     }
 }
