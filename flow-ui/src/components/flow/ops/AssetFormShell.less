@@ -43,13 +43,54 @@
   height: 32px;
 }
 
-/* 顶栏 Method/URL/名称 Compact 与右侧按钮同高对齐 */
+/* 顶栏 Method/URL/名称 Compact 与右侧按钮同高、垂直居中 */
 .yf-asset-form-shell .yf-header-title-compact {
   height: 32px;
-  align-items: stretch;
+  align-items: center;
+  width: 100%;
 }
 
-.yf-asset-form-shell .yf-header-title-compact .ant-select-selector,
+.yf-asset-form-shell .yf-header-title-compact > .ant-space-compact-item {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  flex: 0 0 auto;
+}
+
+/* 中间路径区占满剩余宽度，避免被压扁 */
+.yf-asset-form-shell .yf-header-title-compact > .ant-space-compact-item:has(.yf-header-path-wrap) {
+  flex: 1 1 auto;
+  min-width: 280px;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-select {
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-select-selector {
+  display: flex !important;
+  align-items: center !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding-block: 0 !important;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-select-selection-item {
+  line-height: 30px !important;
+  display: flex;
+  align-items: center;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-input-group-wrapper,
+.yf-asset-form-shell .yf-header-title-compact .ant-input-wrapper,
+.yf-asset-form-shell .yf-header-title-compact .ant-input-group {
+  height: 32px !important;
+  display: flex !important;
+  align-items: stretch !important;
+}
+
 .yf-asset-form-shell .yf-header-title-compact .ant-input,
 .yf-asset-form-shell .yf-header-title-compact .ant-input-affix-wrapper,
 .yf-asset-form-shell .yf-header-title-compact .ant-input-group-addon {
@@ -57,9 +98,46 @@
   box-sizing: border-box;
 }
 
-.yf-asset-form-shell .yf-header-title-compact .ant-select-selection-item,
+.yf-asset-form-shell .yf-header-title-compact .ant-input-group-addon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  max-width: none !important;
+  height: 32px !important;
+  line-height: 1 !important;
+  padding: 0 11px !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-input-affix-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  padding-block: 0 !important;
+}
+
 .yf-asset-form-shell .yf-header-title-compact .ant-input-affix-wrapper > input.ant-input {
-  line-height: 30px;
+  line-height: 30px !important;
+  height: 30px !important;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .yf-header-path-wrap {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .yf-header-path-wrap .ant-input-group-wrapper {
+  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 .yf-asset-form-shell .yf-header-extra-actions {

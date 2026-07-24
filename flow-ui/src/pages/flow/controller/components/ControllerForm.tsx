@@ -196,6 +196,43 @@ const ApiPathInput = React.forwardRef<any, {
   return (
     <>
       <style>{`
+        .api-path-input-custom.ant-input-group-wrapper,
+        .api-path-input-custom .ant-input-wrapper,
+        .api-path-input-custom .ant-input-group {
+          height: 32px;
+          width: 100%;
+          display: flex;
+          align-items: stretch;
+        }
+        /* 前缀随文案自适应，禁止被 flex 挤扁裁切 */
+        .api-path-input-custom .ant-input-group-addon {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center;
+          flex: 0 0 auto !important;
+          width: auto !important;
+          max-width: none !important;
+          height: 32px !important;
+          box-sizing: border-box;
+          padding: 0 11px !important;
+          white-space: nowrap !important;
+          overflow: visible !important;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .api-path-input-custom .ant-input-affix-wrapper {
+          display: inline-flex !important;
+          align-items: center !important;
+          flex: 1 1 auto !important;
+          min-width: 0 !important;
+          height: 32px !important;
+          box-sizing: border-box;
+          padding-block: 0 !important;
+        }
+        .api-path-input-custom .ant-input-affix-wrapper > input.ant-input {
+          height: 30px !important;
+          line-height: 30px !important;
+        }
+
         /* 全局正常状态（未发布）：前缀背景色置为白色，保持和主输入框一致 */
         .api-path-input-custom:not(.flow-api-path-disabled) .ant-input-group-addon {
           background-color: #ffffff !important;
@@ -703,7 +740,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         size={headerCtrlSize}
         value={method}
         onChange={setMethod}
-        style={{ width: 116, height: headerCtrlHeight }}
+        style={{ width: 116, height: headerCtrlHeight, flexShrink: 0 }}
         popupMatchSelectWidth={false}
       >
         {METHOD_OPTIONS.map((m) => (
@@ -723,19 +760,22 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         placement="bottomLeft"
         overlayInnerStyle={urlConflictMsg ? { color: '#ff4d4f' } : undefined}
       >
-        <ApiPathInput
-          size={headerCtrlSize}
-          value={url}
-          onChange={setUrl}
-          status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
-        />
+        <div className="yf-header-path-wrap" style={{ flex: 1, minWidth: 280, width: '100%' }}>
+          <ApiPathInput
+            size={headerCtrlSize}
+            value={url}
+            onChange={setUrl}
+            status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
+            style={{ flex: 1, width: '100%', height: headerCtrlHeight, minWidth: 0 }}
+          />
+        </div>
       </Popover>
       <Input
         size={headerCtrlSize}
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="接口名称"
-        style={{ width: 180, height: headerCtrlHeight }}
+        style={{ width: 280, height: headerCtrlHeight, flexShrink: 0 }}
         status={submitAttempted && !name?.trim() ? 'error' : undefined}
       />
     </Space.Compact>
