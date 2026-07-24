@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.yu.flow.log.third.domain.FlowThirdLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Repository
 public interface FlowThirdLogRepository extends JpaRepository<FlowThirdLogDO, String>,
@@ -17,5 +17,5 @@ public interface FlowThirdLogRepository extends JpaRepository<FlowThirdLogDO, St
     /** 批量删除指定时间之前的第三方调用日志（定时清理） */
     @Modifying(clearAutomatically = true)
     @Query("DELETE FROM FlowThirdLogDO l WHERE l.createTime < :threshold")
-    int deleteByCreateTimeBefore(@Param("threshold") Date threshold);
+    int deleteByCreateTimeBefore(@Param("threshold") LocalDateTime threshold);
 }

@@ -16,7 +16,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -236,17 +237,18 @@ public class OpenAuthService {
             if (grace <= 0) {
                 throw OpenAuthException.denied("凭证已轮换失效");
             }
-            if (cred.getCredentialExpireAt() != null && cred.getCredentialExpireAt().before(new Date())) {
+            LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+            if (cred.getCredentialExpireAt() != null && cred.getCredentialExpireAt().isBefore(now)) {
                 throw OpenAuthException.expired();
             }
         }
-        Date now = new Date();
-        if (cred.getPlatformExpireAt() != null && cred.getPlatformExpireAt().before(now)) {
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        if (cred.getPlatformExpireAt() != null && cred.getPlatformExpireAt().isBefore(now)) {
             throw OpenAuthException.expired();
         }
         if (cs == FlowOpenCredentialDO.STATUS_ENABLED
                 && cred.getCredentialExpireAt() != null
-                && cred.getCredentialExpireAt().before(now)) {
+                && cred.getCredentialExpireAt().isBefore(now)) {
             throw OpenAuthException.expired();
         }
     }

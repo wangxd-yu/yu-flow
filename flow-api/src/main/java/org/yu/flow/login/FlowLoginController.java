@@ -7,6 +7,8 @@ import org.yu.flow.log.login.domain.LoginLogDO;
 import org.yu.flow.log.login.service.LoginLogService;
 import org.yu.flow.login.captcha.LoginCaptchaService;
 import org.yu.flow.login.dto.LoginDto;
+import org.yu.flow.security.AuthCookieSupport;
+import org.yu.flow.auto.util.JwtTokenUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -55,19 +58,22 @@ public class FlowLoginController {
     }
 
     @PostMapping("/login")
-    public R<String> login(@RequestBody LoginDto loginDto, HttpServletRequest request) {
+    public R<Map<String, Object>> login(@RequestBody LoginDto loginDto,
+                                        HttpServletRequest request,
+                                        HttpServletResponse response) {
         long startTime = System.currentTimeMillis();
         String ip = getClientIp(request);
         String userAgent = request.getHeader("User-Agent");
 
-        // 先校验验证码（一次性消费），再验账号密码
+        // 先校验验证码（一次性消费），再验账号密码；参数类失败用 HTTP 400（勿 200+业务 500）
         try {
             loginCaptchaService.verifyAndConsume(
                     loginDto != null ? loginDto.getCaptchaId() : null,
                     loginDto != null ? loginDto.getCaptchaCode() : null);
         } catch (IllegalArgumentException | IllegalStateException e) {
             saveFailLog(loginDto, ip, userAgent, System.currentTimeMillis() - startTime, e.getMessage());
-            return R.fail(e.getMessage());
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return R.fail(400, e.getMessage());
         }
 
         String token = loginService.login(loginDto);
@@ -105,7 +111,14 @@ public class FlowLoginController {
         logDO.setStatus(1);
         logDO.setMsg("登录成功");
         loginLogService.saveLog(logDO);
-        return R.ok(token);
+
+        // Cookie 会话：HttpOnly JWT，响应体不再回传 Token，降低 XSS 窃取面
+        String rawJwt = token.startsWith("Bearer ") ? token.substring(7).trim() : token.trim();
+        AuthCookieSupport.writeSessionCookies(request, response, rawJwt, (int) JwtTokenUtil.getExpireSeconds());
+        return R.ok(Map.of(
+                "authMode", "cookie",
+                "expiresIn", JwtTokenUtil.getExpireSeconds()
+        ));
     }
 
     private void saveFailLog(LoginDto loginDto, String ip, String userAgent, long duration, String msg) {

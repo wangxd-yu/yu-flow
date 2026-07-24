@@ -1,5 +1,6 @@
 package org.yu.flow.log.service.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
@@ -15,6 +16,7 @@ import jakarta.annotation.Resource;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/log/service")
+@RequirePerm("log:view")
 public class FlowServiceLogController {
 
     @Resource

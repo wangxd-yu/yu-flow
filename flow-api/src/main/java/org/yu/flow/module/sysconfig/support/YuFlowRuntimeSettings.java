@@ -117,6 +117,14 @@ public class YuFlowRuntimeSettings {
         return resolveBool(Keys.INGRESS_ENABLED, ingressYml().isEnabled());
     }
 
+    /**
+     * 是否允许运行时/配置将入站鉴权设为 NONE。仅 yml/环境变量，不走系统配置热更。
+     */
+    public boolean isAllowIngressAuthNone() {
+        YuFlowProperties.Security sec = yuFlowProperties.getSecurity();
+        return sec != null && sec.isAllowIngressAuthNone();
+    }
+
     public String getIngressDefaultAuthMode() {
         return resolveString(Keys.INGRESS_DEFAULT_AUTH_MODE, ingressYml().getDefaultAuthMode());
     }

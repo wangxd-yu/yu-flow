@@ -33,14 +33,14 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
             bodyType: 'json',
             timeout: 30000,
             logEnabled: false,
-            ignoreSsl: true,
+            ignoreSsl: false,
             apiType: '',
             params: [],
             headers: [],
             formData: [],
             ...d,
             logEnabled: !!d.logEnabled,
-            ignoreSsl: d.ignoreSsl !== false,
+            ignoreSsl: !!d.ignoreSsl,
             body: typeof d.body === 'object' ? JSON.stringify(d.body, null, 2) : (d.body || '')
         });
     }, [data, form]);

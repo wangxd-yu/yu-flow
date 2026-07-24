@@ -1,5 +1,6 @@
 package org.yu.flow.log.third.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,7 @@ import jakarta.annotation.Resource;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/log/third")
+@RequirePerm("log:view")
 public class FlowThirdLogController {
 
     @Resource

@@ -33,6 +33,18 @@ public class AlertWebhookSender {
             return false;
         }
         try {
+            boolean blockPrivate = false;
+            try {
+                org.yu.flow.config.YuFlowProperties props =
+                        cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.YuFlowProperties.class);
+                if (props != null && props.getSecurity() != null) {
+                    blockPrivate = props.getSecurity().isBlockPrivateOutbound();
+                }
+            } catch (Exception ignored) {
+            }
+            // Webhook 建议 https；兼容部分内网 http
+            org.yu.flow.security.OutboundUrlGuard.validate(url, true, blockPrivate);
+
             String body = objectMapper.writeValueAsString(payload);
             Request request = new Request.Builder()
                     .url(url)

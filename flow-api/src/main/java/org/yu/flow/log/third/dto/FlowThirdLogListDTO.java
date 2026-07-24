@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.log.third.domain.FlowThirdLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * 三方日志列表轻量 DTO（不含 requestParams/requestHeaders/responseBody/curl）
@@ -23,7 +23,7 @@ public class FlowThirdLogListDTO {
     private Integer isSuccess;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public FlowThirdLogListDTO() {
     }
@@ -32,7 +32,7 @@ public class FlowThirdLogListDTO {
     public FlowThirdLogListDTO(String id, String apiType, String source, String sourceRef,
                                String sourceName, String requestUrl, String requestMethod,
                                Integer responseStatus, Long elapsedTime, Integer isSuccess,
-                               Date createTime) {
+                               LocalDateTime createTime) {
         this.id = id;
         this.apiType = apiType;
         this.source = source;

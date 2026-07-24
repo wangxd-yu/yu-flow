@@ -30,7 +30,9 @@ import org.yu.flow.module.api.service.FlowApiCrudServiceImpl;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
-import java.text.SimpleDateFormat;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
@@ -57,6 +59,9 @@ import org.yu.flow.module.metrics.MetricsOutcome;
 @Slf4j
 @Service
 public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorService {
+
+    private static final DateTimeFormatter TRACE_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
 
     @Lazy
     @Resource
@@ -332,7 +337,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Override
     public FlowTrace debugRunDb(FlowDbDebugRequestDTO request) {
         long startMs = System.currentTimeMillis();
-        String startTimeStr = new SimpleDateFormat("HH:mm:ss.SSS").format(new Date());
+        String startTimeStr = LocalTime.now(ZONE_SH).format(TRACE_CLOCK);
 
         if (StrUtil.isBlank(request.getSqlContent())) {
             return buildDbDebugErrorTrace(startMs, startTimeStr, "SQL 内容不能为空", null, null);

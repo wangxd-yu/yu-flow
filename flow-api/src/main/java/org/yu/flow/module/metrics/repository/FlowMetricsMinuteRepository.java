@@ -6,22 +6,22 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.yu.flow.module.metrics.domain.FlowMetricsMinuteDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 public interface FlowMetricsMinuteRepository extends JpaRepository<FlowMetricsMinuteDO, String> {
 
     Optional<FlowMetricsMinuteDO> findByAssetTypeAndAssetIdAndTriggerTypeAndBucketStart(
-            String assetType, String assetId, String triggerType, Date bucketStart);
+            String assetType, String assetId, String triggerType, LocalDateTime bucketStart);
 
     List<FlowMetricsMinuteDO> findByAssetTypeAndAssetIdAndBucketStartGreaterThanEqualAndBucketStartLessThan(
-            String assetType, String assetId, Date fromInclusive, Date toExclusive);
+            String assetType, String assetId, LocalDateTime fromInclusive, LocalDateTime toExclusive);
 
     List<FlowMetricsMinuteDO> findByAssetTypeAndBucketStartGreaterThanEqualAndBucketStartLessThan(
-            String assetType, Date fromInclusive, Date toExclusive);
+            String assetType, LocalDateTime fromInclusive, LocalDateTime toExclusive);
 
     @Modifying(clearAutomatically = true)
     @Query("DELETE FROM FlowMetricsMinuteDO m WHERE m.bucketStart < :before")
-    int deleteByBucketStartBefore(@Param("before") Date before);
+    int deleteByBucketStartBefore(@Param("before") LocalDateTime before);
 }

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.log.third.domain.FlowThirdLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class FlowThirdLogDTO {
@@ -25,7 +25,7 @@ public class FlowThirdLogDTO {
     private String curl;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public static FlowThirdLogDTO fromDO(FlowThirdLogDO entity) {
         if (entity == null) {

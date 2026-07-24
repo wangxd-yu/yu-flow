@@ -90,6 +90,10 @@ public class RbacServiceImpl implements RbacService {
         Optional<SysUserDO> opt = userRepository.findByUsername(username);
         if (opt.isPresent()) {
             SysUserDO u = opt.get();
+            // 禁用用户不得继续持有权限（旧 JWT 亦失效）
+            if (u.getStatus() == null || u.getStatus() != 1) {
+                return null;
+            }
             List<String> roles = resolveRoleCodes(u.getId());
             Set<String> perms = resolvePermissions(u.getId());
             return AuthMeDTO.builder()
@@ -101,8 +105,10 @@ public class RbacServiceImpl implements RbacService {
                     .legacyAdmin(false)
                     .build();
         }
-        // yml 兜底账号：视为 ADMIN
-        if (username.equals(yuFlowProperties.getUsername())) {
+        // yml 兜底账号：仅 allow-yml-admin-fallback=true 时视为 ADMIN
+        boolean allowYmlAdmin = yuFlowProperties.getSecurity() != null
+                && yuFlowProperties.getSecurity().isAllowYmlAdminFallback();
+        if (allowYmlAdmin && username.equals(yuFlowProperties.getUsername())) {
             return AuthMeDTO.builder()
                     .userId(null)
                     .username(username)
@@ -112,13 +118,8 @@ public class RbacServiceImpl implements RbacService {
                     .legacyAdmin(true)
                     .build();
         }
-        return AuthMeDTO.builder()
-                .username(username)
-                .displayName(username)
-                .roles(List.of())
-                .permissions(List.of())
-                .legacyAdmin(false)
-                .build();
+        // 未知用户名：不颁发空权限主体（避免幽灵 JWT 通过网关）
+        return null;
     }
 
     @Override

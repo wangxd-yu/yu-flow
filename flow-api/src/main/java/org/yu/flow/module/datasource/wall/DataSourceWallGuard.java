@@ -27,13 +27,16 @@ public class DataSourceWallGuard {
             return;
         }
         if (config == null || !config.isEnabled()) {
-            cache.remove(code);
-            log.info("[DataSourceWallGuard] 已卸载安全墙, code={}", code);
+            // 显式关闭时仍挂载「默认安全墙」，禁止执行路径完全裸奔（WB-07）
+            WallConfig wallConfig = DataSourceWallConfig.enabledDefaults().toDruidWallConfig();
+            WallProvider provider = createProvider(dbType, wallConfig);
+            cache.put(code, new CachedWall(provider, dbType, false));
+            log.info("[DataSourceWallGuard] 配置未启用，已强制挂载默认安全墙, code={}, dbType={}", code, dbType);
             return;
         }
         WallConfig wallConfig = config.toDruidWallConfig();
         WallProvider provider = createProvider(dbType, wallConfig);
-        cache.put(code, new CachedWall(provider, dbType));
+        cache.put(code, new CachedWall(provider, dbType, true));
         log.info("[DataSourceWallGuard] 已加载安全墙, code={}, dbType={}", code, dbType);
     }
 
@@ -44,7 +47,7 @@ public class DataSourceWallGuard {
     }
 
     /**
-     * 校验 SQL；未启用或无缓存时直接放行。
+     * 校验 SQL；无缓存时按默认安全墙强制校验（fail-closed，不放行裸 SQL）。
      *
      * @throws IllegalArgumentException 违规时抛出（含中文原因）
      */
@@ -52,10 +55,12 @@ public class DataSourceWallGuard {
         if (StrUtil.isBlank(code) || StrUtil.isBlank(sql)) {
             return;
         }
-        CachedWall cached = cache.get(code);
-        if (cached == null) {
-            return;
-        }
+        CachedWall cached = cache.computeIfAbsent(code, c -> {
+            log.warn("[DataSourceWallGuard] 安全墙未预加载，已按默认规则强制挂载, code={}", c);
+            WallProvider provider = createProvider("mysql",
+                    DataSourceWallConfig.enabledDefaults().toDruidWallConfig());
+            return new CachedWall(provider, "mysql", false);
+        });
         WallCheckResult result = cached.provider.check(sql);
         if (result == null || result.getViolations() == null || result.getViolations().isEmpty()) {
             return;
@@ -72,7 +77,8 @@ public class DataSourceWallGuard {
     }
 
     public boolean isEnabled(String code) {
-        return StrUtil.isNotBlank(code) && cache.containsKey(code);
+        CachedWall w = StrUtil.isBlank(code) ? null : cache.get(code);
+        return w != null && w.configuredEnabled;
     }
 
     private WallProvider createProvider(String dbType, WallConfig wallConfig) {
@@ -86,10 +92,13 @@ public class DataSourceWallGuard {
     private static final class CachedWall {
         private final WallProvider provider;
         private final String dbType;
+        /** 数据源配置里是否显式启用（强制默认墙时为 false） */
+        private final boolean configuredEnabled;
 
-        private CachedWall(WallProvider provider, String dbType) {
+        private CachedWall(WallProvider provider, String dbType, boolean configuredEnabled) {
             this.provider = provider;
             this.dbType = dbType;
+            this.configuredEnabled = configuredEnabled;
         }
     }
 }

@@ -35,10 +35,14 @@ public class LoginServiceImpl implements LoginService {
                 String token = JwtTokenUtil.generateToken(user.getUsername(), user.getId(), roles);
                 return "Bearer " + token;
             }
-            // DB 无此用户 / 密码不匹配时，允许 yml 账号兜底（引导期 / 紧急运维）
         }
 
-        // 2) yml 单账号兜底：若库中已有同名用户，签发时带上 userId，避免变成「无法改密」的 legacy 会话
+        // 2) yml 兜底：默认关闭；仅 allow-yml-admin-fallback=true 时用于紧急运维
+        boolean allowFallback = flowProperties.getSecurity() != null
+                && flowProperties.getSecurity().isAllowYmlAdminFallback();
+        if (!allowFallback) {
+            return null;
+        }
         if (flowProperties.getUsername().equals(username)
                 && flowProperties.getPassword().equals(password)) {
             SysUserDO dbUser = rbacService.findEnabledUserByUsername(username);
@@ -49,8 +53,8 @@ public class LoginServiceImpl implements LoginService {
                 }
                 return "Bearer " + JwtTokenUtil.generateToken(dbUser.getUsername(), dbUser.getId(), roles);
             }
-            String token = JwtTokenUtil.generateToken(username, null, List.of("ADMIN"));
-            return "Bearer " + token;
+            // 禁止签发无 userId 的永久 ADMIN legacy 会话
+            return null;
         }
         return null;
     }

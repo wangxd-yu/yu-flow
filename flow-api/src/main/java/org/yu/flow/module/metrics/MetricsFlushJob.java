@@ -15,7 +15,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -213,10 +212,10 @@ public class MetricsFlushJob {
             hist[i] = readLong(hash, MetricsKeys.histField(i));
         }
 
-        Date bucketDate = MetricsKeys.toDate(parts.bucketStart());
+        LocalDateTime bucketStart = parts.bucketStart();
         FlowMetricsMinuteDO row = metricsMinuteRepository
                 .findByAssetTypeAndAssetIdAndTriggerTypeAndBucketStart(
-                        parts.assetType().name(), parts.assetId(), parts.triggerType(), bucketDate)
+                        parts.assetType().name(), parts.assetId(), parts.triggerType(), bucketStart)
                 .orElse(null);
 
         if (row == null) {
@@ -224,7 +223,7 @@ public class MetricsFlushJob {
                     .assetType(parts.assetType().name())
                     .assetId(parts.assetId())
                     .triggerType(parts.triggerType())
-                    .bucketStart(bucketDate)
+                    .bucketStart(bucketStart)
                     .successCnt(success)
                     .failCnt(fail)
                     .authFailCnt(authFail)

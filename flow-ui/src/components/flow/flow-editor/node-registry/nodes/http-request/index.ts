@@ -98,7 +98,7 @@ export const httpRequestNodeRegistration: NodeRegistration = {
             successCondition: 'status == 200',
             logEnabled: false,
             apiType: '',
-            ignoreSsl: true,
+            ignoreSsl: false,
             authType: 'none',
             authToken: '',
             authUsername: '',

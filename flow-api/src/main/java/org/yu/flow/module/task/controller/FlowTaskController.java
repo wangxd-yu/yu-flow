@@ -1,5 +1,6 @@
 package org.yu.flow.module.task.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.annotation.YuFlowApi;
 import org.yu.flow.auto.dto.PageBean;
@@ -19,8 +20,9 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 import cn.hutool.core.util.StrUtil;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,11 @@ import java.util.Map;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/task")
+@RequirePerm({"flow:task:view", "flow:task:write"})
 public class FlowTaskController {
+
+    private static final DateTimeFormatter TRACE_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
 
     @Resource
     private FlowTaskService flowTaskService;
@@ -186,7 +192,7 @@ public class FlowTaskController {
                     .setNodeName("Global Error")
                     .setNodeType("error")
                     .setStatus("error")
-                    .setStartTime(new SimpleDateFormat("HH:mm:ss.SSS").format(new Date()))
+                    .setStartTime(LocalTime.now(ZONE_SH).format(TRACE_CLOCK))
                     .setError(e.getMessage());
             FlowTrace errorTrace = new FlowTrace();
             errorTrace.setStatus("error");

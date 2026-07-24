@@ -5,12 +5,15 @@ import lombok.Data;
 import org.yu.flow.module.sysconfig.domain.SysConfigDO;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 /**
  * 系统配置 DTO (API 响应)
  */
 @Data
 public class SysConfigDTO {
+
+    public static final String MASKED_VALUE = "***";
 
     private String id;
 
@@ -20,7 +23,7 @@ public class SysConfigDTO {
     /** 配置值 */
     private String configValue;
 
-    /** 值类型 (STRING / NUMBER / BOOLEAN / JSON) */
+    /** 值类型 (STRING / NUMBER / BOOLEAN / JSON / ENUM) */
     private String valueType;
 
     /** 配置分组 */
@@ -49,7 +52,29 @@ public class SysConfigDTO {
     private LocalDateTime updateTime;
 
     /**
-     * DO → DTO
+     * 是否应按密钥类字段脱敏（PASSWORD / SECRET / WEBHOOK / TOKEN / API_KEY）。
+     */
+    public static boolean isSecretConfigKey(String configKey) {
+        if (configKey == null || configKey.isBlank()) {
+            return false;
+        }
+        String k = configKey.toUpperCase(Locale.ROOT);
+        return k.contains("PASSWORD")
+                || k.contains("SECRET")
+                || k.contains("WEBHOOK")
+                || k.contains("TOKEN")
+                || k.contains("API_KEY")
+                || k.endsWith("_CREDENTIAL")
+                || k.endsWith("_CREDENTIALS");
+    }
+
+    /** 读接口脱敏：密钥类返回 {@link #MASKED_VALUE} */
+    public static String maskIfSecret(String configKey, String configValue) {
+        return isSecretConfigKey(configKey) ? MASKED_VALUE : configValue;
+    }
+
+    /**
+     * DO → DTO（密钥类 configValue 脱敏）
      */
     public static SysConfigDTO fromDO(SysConfigDO entity) {
         if (entity == null) return null;
@@ -57,7 +82,7 @@ public class SysConfigDTO {
         SysConfigDTO dto = new SysConfigDTO();
         dto.setId(entity.getId());
         dto.setConfigKey(entity.getConfigKey());
-        dto.setConfigValue(entity.getConfigValue());
+        dto.setConfigValue(maskIfSecret(entity.getConfigKey(), entity.getConfigValue()));
         dto.setValueType(entity.getValueType());
         dto.setConfigGroup(entity.getConfigGroup());
         dto.setRemark(entity.getRemark());

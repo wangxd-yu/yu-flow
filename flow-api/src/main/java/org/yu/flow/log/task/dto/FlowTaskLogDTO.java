@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * 任务日志【完整详情 DTO】（含 traceData 大字段，用于快照回放）
@@ -22,7 +22,7 @@ public class FlowTaskLogDTO {
     private String traceData;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public static FlowTaskLogDTO fromDO(FlowTaskLogDO entity) {
         if (entity == null) return null;

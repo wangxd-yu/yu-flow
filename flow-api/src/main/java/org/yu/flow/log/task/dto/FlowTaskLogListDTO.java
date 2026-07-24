@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * 任务日志【列表轻量 DTO】
@@ -28,7 +28,7 @@ public class FlowTaskLogListDTO {
     private Boolean hasTrace;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public FlowTaskLogListDTO() {
     }
@@ -38,7 +38,7 @@ public class FlowTaskLogListDTO {
      * hasTrace 由 SQL {@code CASE WHEN trace_data IS NOT NULL} 计算，勿加载 LOB。
      */
     public FlowTaskLogListDTO(String id, String taskId, String taskName, String triggerType,
-                              String status, Long costTimeMs, Boolean hasTrace, Date createTime) {
+                              String status, Long costTimeMs, Boolean hasTrace, LocalDateTime createTime) {
         this.id = id;
         this.taskId = taskId;
         this.taskName = taskName;

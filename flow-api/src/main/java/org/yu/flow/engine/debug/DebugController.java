@@ -1,5 +1,6 @@
 package org.yu.flow.engine.debug;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
@@ -9,9 +10,12 @@ import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
+import org.yu.flow.auto.util.JwtTokenUtil;
 
 import jakarta.annotation.Resource;
-import java.text.SimpleDateFormat;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -44,7 +48,11 @@ import java.util.concurrent.Executor;
 @YuFlowApi
 @RestController
 @RequestMapping("flow-api/debug")
+@RequirePerm({"flow:api:view", "flow:api:write"})
 public class DebugController {
+
+    private static final DateTimeFormatter TRACE_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
 
     @Resource
     private DebugSessionRegistry debugSessionRegistry;
@@ -74,8 +82,12 @@ public class DebugController {
                 return R.fail(400, "断点列表不能为空，交互式调试至少需要设置一个断点");
             }
 
-            // 创建调试会话
-            DebugSession session = debugSessionRegistry.createSession(requestDTO.getBreakpoints());
+            // 创建调试会话（绑定当前用户，防 IDOR）
+            String owner = JwtTokenUtil.currentUsername();
+            if (owner == null || owner.isBlank()) {
+                return R.fail(401, "未登录，无法创建调试会话");
+            }
+            DebugSession session = debugSessionRegistry.createSession(requestDTO.getBreakpoints(), owner);
 
             // 构建引擎入参（复用 FlowApiController.debugRun 的参数组装逻辑）
             Map<String, Object> args = buildEngineArgs(requestDTO);
@@ -121,7 +133,7 @@ public class DebugController {
             @PathVariable String sessionId,
             @RequestParam(value = "stepOffset", required = false, defaultValue = "0") int stepOffset,
             @RequestParam(value = "stepLimit", required = false, defaultValue = "50") int stepLimit) {
-        DebugSession session = debugSessionRegistry.getSession(sessionId);
+        DebugSession session = requireOwnedSession(sessionId);
         if (session == null) {
             return R.fail(404, "调试会话不存在或已过期: " + sessionId);
         }
@@ -151,7 +163,7 @@ public class DebugController {
             @PathVariable String sessionId,
             @RequestBody DebugResumeDTO resumeDTO) {
 
-        DebugSession session = debugSessionRegistry.getSession(sessionId);
+        DebugSession session = requireOwnedSession(sessionId);
         if (session == null) {
             return R.fail(404, "调试会话不存在或已过期: " + sessionId);
         }
@@ -185,7 +197,7 @@ public class DebugController {
      */
     @DeleteMapping("/session/{sessionId}")
     public R<Void> cancelSession(@PathVariable String sessionId) {
-        DebugSession session = debugSessionRegistry.getSession(sessionId);
+        DebugSession session = requireOwnedSession(sessionId);
         if (session == null) {
             return R.fail(404, "调试会话不存在或已过期: " + sessionId);
         }
@@ -194,11 +206,20 @@ public class DebugController {
     }
 
     /**
-     * 列出所有活跃的调试会话（管理/监控用途）。
+     * 列出当前用户自己的活跃调试会话。
      */
     @GetMapping("/sessions")
     public R<List<Map<String, Object>>> listSessions() {
-        return R.ok(debugSessionRegistry.listSessions());
+        String username = JwtTokenUtil.currentUsername();
+        return R.ok(debugSessionRegistry.listSessions(username));
+    }
+
+    private DebugSession requireOwnedSession(String sessionId) {
+        String username = JwtTokenUtil.currentUsername();
+        if (username == null || username.isBlank()) {
+            return null;
+        }
+        return debugSessionRegistry.getOwnedSession(sessionId, username);
     }
 
     // ════════════════════════════ 私有辅助方法 ════════════════════════════
@@ -235,7 +256,7 @@ public class DebugController {
                 .setNodeName("Global Error")
                 .setNodeType("error")
                 .setStatus("error")
-                .setStartTime(new SimpleDateFormat("HH:mm:ss.SSS").format(new Date()))
+                .setStartTime(LocalTime.now(ZONE_SH).format(TRACE_CLOCK))
                 .setError(e.getMessage());
         FlowTrace errorTrace = new FlowTrace();
         errorTrace.setStatus("error");

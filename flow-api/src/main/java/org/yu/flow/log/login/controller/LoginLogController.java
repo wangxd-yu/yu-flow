@@ -1,5 +1,6 @@
 package org.yu.flow.log.login.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.annotation.YuFlowApi;
 import org.yu.flow.auto.dto.PageBean;
@@ -20,6 +21,7 @@ import jakarta.annotation.Resource;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/log/login")
+@RequirePerm("log:view")
 public class LoginLogController {
 
     @Resource

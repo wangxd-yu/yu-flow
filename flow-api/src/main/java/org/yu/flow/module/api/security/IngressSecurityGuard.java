@@ -65,7 +65,14 @@ public class IngressSecurityGuard {
                 }
             }
             case NONE -> {
-                // skip
+                // 运行时 fail-closed：存量接口若仍写 NONE，默认按 HOST 处理，除非显式允许匿名
+                if (!yuFlowRuntimeSettings.isAllowIngressAuthNone()) {
+                    boolean ok = hostAuthenticationProbe == null
+                            || hostAuthenticationProbe.isAuthenticated(request);
+                    if (!ok) {
+                        throw IngressException.hostAuthRequired();
+                    }
+                }
             }
         }
 

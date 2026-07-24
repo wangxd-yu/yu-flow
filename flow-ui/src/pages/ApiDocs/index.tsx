@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Button, Space, Typography, Divider, message } from 'antd';
+import { Card, Button, Space, Typography, Divider, message, Alert } from 'antd';
 import {
   FileTextOutlined,
   CopyOutlined,
@@ -59,8 +59,21 @@ const ApiDocsPage: React.FC = () => {
         </Title>
         <Paragraph type="secondary">
           Yu Flow 会根据所有已发布的动态接口，实时生成标准 <Text code>OpenAPI 3.0</Text> 契约。
-          可下载 JSON 或导入 Postman、Apifox 等工具（请求需携带登录态 <Text code>Flow-Authorization</Text>）。
+          可下载 JSON 或导入 Postman、Apifox 等工具（浏览器使用 Cookie 会话；工具调试可改用请求头 <Text code>Flow-Authorization: Bearer &lt;jwt&gt;</Text>）。
         </Paragraph>
+        <Alert
+          type="info"
+          showIcon
+          message="鉴权说明"
+          description={
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <li>管理端浏览器登录后使用 HttpOnly Cookie，无需手动拷贝 Token。</li>
+              <li>
+                第三方工具可用请求头 <Text code>Flow-Authorization</Text>（带 Bearer 前缀）；头鉴权时不强制 CSRF。
+              </li>
+            </ul>
+          }
+        />
       </Typography>
 
       <Divider />
@@ -73,7 +86,7 @@ const ApiDocsPage: React.FC = () => {
               <Text strong style={{ fontSize: 15 }}>OpenAPI 端点地址</Text>
               <br />
               <Text type="secondary" style={{ fontSize: 12, marginBottom: 8, display: 'block' }}>
-                需登录态（请求头 Flow-Authorization）。导入 Postman / Apifox 时请同步配置该 Header。
+                浏览器已登录即可访问；Postman / Apifox 可配置 Flow-Authorization（头鉴权不强制 CSRF）。
               </Text>
               <Space>
                 <Text code copyable={{ text: apiDocsUrl }}>

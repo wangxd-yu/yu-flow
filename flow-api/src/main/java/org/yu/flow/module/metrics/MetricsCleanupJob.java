@@ -77,7 +77,7 @@ public class MetricsCleanupJob {
         try {
             LocalDateTime before = MetricsKeys.nowMinute().minusDays(cfg.getRetainDays());
             Integer n = transactionTemplate.execute(status ->
-                    metricsMinuteRepository.deleteByBucketStartBefore(MetricsKeys.toDate(before)));
+                    metricsMinuteRepository.deleteByBucketStartBefore(before));
             if (n != null && n > 0) {
                 log.info("[MetricsCleanupJob] 已删除 {} 行（早于 {}）", n, before);
             }

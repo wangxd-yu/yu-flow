@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.module.open.domain.FlowOpenPlatformDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class FlowOpenPlatformDTO {
@@ -19,11 +19,11 @@ public class FlowOpenPlatformDTO {
     private Integer openCallLogEnabled;
     private Integer rateLimitQps;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date expireAt;
+    private LocalDateTime expireAt;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date updateTime;
+    private LocalDateTime updateTime;
     private Long credentialCount;
     private Long grantCount;
 

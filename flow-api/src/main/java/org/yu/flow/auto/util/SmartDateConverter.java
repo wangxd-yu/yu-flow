@@ -12,9 +12,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.Date;
 
 /**
- * 智能日期转换器（自动识别日期格式）
- * 使用 DateTimeFormatter 替代 ThreadLocal<SimpleDateFormat>，
- * DateTimeFormatter 是不可变且线程安全的，无需 ThreadLocal 包装。
+ * EasyExcel 写出边界：单元格值为 {@link Date} 时的格式化转换器（非领域模型）。
+ * <p>使用 DateTimeFormatter 替代 ThreadLocal&lt;SimpleDateFormat&gt;，
+ * DateTimeFormatter 是不可变且线程安全的，无需 ThreadLocal 包装。</p>
  */
 public class SmartDateConverter implements Converter<Date> {
     // DateTimeFormatter 是不可变的、线程安全的，可直接声明为 static final

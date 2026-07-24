@@ -1,5 +1,6 @@
 import { request } from '@umijs/max';
 import type { AssetVersionItem } from '@/components/flow/AssetVersionHistoryDrawer';
+import { csrfHeaders } from '@/utils/session';
 
 export type { AssetVersionItem };
 
@@ -75,6 +76,18 @@ export interface ViewExportConfig {
   templateFileId?: string;
   templateSheetNo?: number;
   columns?: ViewExportColumn[];
+  /** 对外业务 path/export，默认 false，需发布后生效 */
+  openExportEnabled?: boolean;
+  /** 是否允许签发短期下载链 */
+  signedLinkEnabled?: boolean;
+  /** 短期链 TTL 秒，默认 300，上限 3600 */
+  signedLinkTtlSeconds?: number;
+}
+
+export interface ApiExcelExportLink {
+  url: string;
+  expireAt?: string;
+  ttlSeconds?: number;
 }
 
 export interface ApiExcelTemplateMeta {
@@ -103,6 +116,17 @@ export interface ApiDataPreviewResult {
   page?: number;
   size?: number;
   pages?: number;
+}
+
+/** 管理端「数据查看 / Excel 导出」仅支持 DB 查询类结果集 */
+export function supportsApiDataView(api?: {
+  serviceType?: string;
+  responseType?: string;
+} | null): boolean {
+  if (!api) return false;
+  const st = (api.serviceType || '').toUpperCase();
+  const rt = (api.responseType || '').toUpperCase();
+  return st === 'DB' && (rt === 'PAGE' || rt === 'LIST' || rt === 'OBJECT');
 }
 
 export async function queryAutoApiConfigDetail(id: string): Promise<FlowController> {
@@ -351,8 +375,7 @@ export async function previewApiData(
 }
 
 function apiAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('flow_token') || '';
-  return { 'Flow-Authorization': token };
+  return { ...csrfHeaders() };
 }
 
 function apiContextPath(): string {
@@ -401,16 +424,34 @@ export async function exportApiDataExcel(
     credentials: 'include',
     body: JSON.stringify(data || {}),
   });
-  if (!res.ok) {
-    let msg = `导出失败 (${res.status})`;
+  const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+  const buf = await res.arrayBuffer();
+
+  const parseJsonError = () => {
     try {
-      const j = await res.json();
-      msg = j?.msg || j?.message || msg;
+      const j = JSON.parse(new TextDecoder().decode(buf));
+      return j?.msg || j?.message || j?.error || null;
     } catch {
-      /* ignore */
+      return null;
     }
-    throw new Error(msg);
+  };
+
+  if (!res.ok) {
+    throw new Error(parseJsonError() || `导出失败 (${res.status})`);
   }
+  // 部分失败场景会带 xlsx Content-Type 但 body 是 JSON / 空
+  if (ct.includes('application/json') || (buf.byteLength > 0 && buf.byteLength < 64 && ct.includes('json'))) {
+    throw new Error(parseJsonError() || '导出失败');
+  }
+  if (!buf || buf.byteLength === 0) {
+    throw new Error(parseJsonError() || '导出文件为空，请检查 SQL、列配置或后端日志');
+  }
+  // xlsx 是 ZIP，至少应以 PK 开头
+  const u8 = new Uint8Array(buf);
+  if (u8.length >= 2 && !(u8[0] === 0x50 && u8[1] === 0x4b)) {
+    throw new Error(parseJsonError() || '导出响应不是有效的 Excel 文件');
+  }
+
   const exportMode = res.headers.get('X-Export-Mode') || undefined;
   const fallback = res.headers.get('X-Export-Fallback') || undefined;
   let fallbackMessage: string | undefined;
@@ -424,12 +465,28 @@ export async function exportApiDataExcel(
   }
   const rowsHeader = res.headers.get('X-Export-Rows');
   const rows = rowsHeader != null && rowsHeader !== '' ? Number(rowsHeader) : undefined;
-  const blob = await res.blob();
-  if (!blob || blob.size === 0) {
-    throw new Error('导出文件为空，请检查 SQL 或列配置');
-  }
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
   triggerBlobDownload(blob, filenameFromContentDisposition(res.headers.get('Content-Disposition'), 'export.xlsx'));
   return { exportMode, fallback, fallbackMessage, rows };
+}
+
+/** 签发短期 Excel 下载链 */
+export async function createApiExcelExportLink(
+  id: string,
+  data?: {
+    ttlSeconds?: number;
+    queryParams?: Record<string, string>;
+    bodyParams?: Record<string, any>;
+    pathParams?: Record<string, string>;
+  },
+): Promise<ApiExcelExportLink> {
+  const result = await request(`/flow-api/api/${id}/data/export-link`, {
+    method: 'POST',
+    data: data || {},
+  });
+  return (result as any)?.data ?? result;
 }
 
 export async function getApiExcelTemplateMeta(id: string): Promise<ApiExcelTemplateMeta> {

@@ -32,4 +32,17 @@ public class ViewExportConfigDTO {
     private Integer templateSheetNo;
     @Builder.Default
     private List<ViewExportColumnDTO> columns = new ArrayList<>();
+
+    /**
+     * 是否启用对外业务 path/export 下载（默认 false，需发布后生效）
+     */
+    @Builder.Default
+    private Boolean openExportEnabled = false;
+    /**
+     * 是否允许管理端签发短期下载链（仅 openExportEnabled 时有意义）
+     */
+    @Builder.Default
+    private Boolean signedLinkEnabled = true;
+    /** 短期链有效期秒，默认 300，上限 3600 */
+    private Integer signedLinkTtlSeconds;
 }

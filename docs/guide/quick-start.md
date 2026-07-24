@@ -62,7 +62,7 @@ Yu Flow 需要几张元数据表来存储你创建的数据模型、API 配置�
 **请在你的 MySQL 数据库中，按顺序执行以下 SQL 脚本：**
 
 ```
-📂 yu-flow/flow-api/sql/
+📂 yu-flow/flow-api/sql-mysql/
 ├── flow_directory.sql           ← 全局目录树
 ├── flow_model.sql               ← 数据模型管理
 ├── flow_page.sql                ← 页面配置管理

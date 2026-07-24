@@ -18,8 +18,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
-import java.util.Calendar;
-import java.util.Date;
+import java.time.ZoneId;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -153,7 +152,7 @@ public class LogCleanupTask {
     }
 
     private void cleanupExecutionLogs() {
-        cleanupByDateDays(
+        cleanupByLocalDateTimeDays(
                 CONFIG_KEY_EXECUTION_RETENTION,
                 DEFAULT_EXECUTION_RETENTION_DAYS,
                 "执行日志",
@@ -169,7 +168,7 @@ public class LogCleanupTask {
     }
 
     private void cleanupTaskLogs() {
-        cleanupByDateDays(
+        cleanupByLocalDateTimeDays(
                 CONFIG_KEY_TASK_RETENTION,
                 DEFAULT_TASK_RETENTION_DAYS,
                 "任务日志",
@@ -177,7 +176,7 @@ public class LogCleanupTask {
     }
 
     private void cleanupServiceLogs() {
-        cleanupByDateDays(
+        cleanupByLocalDateTimeDays(
                 CONFIG_KEY_SERVICE_RETENTION,
                 DEFAULT_SERVICE_RETENTION_DAYS,
                 "服务日志",
@@ -185,7 +184,7 @@ public class LogCleanupTask {
     }
 
     private void cleanupThirdLogs() {
-        cleanupByDateDays(
+        cleanupByLocalDateTimeDays(
                 CONFIG_KEY_THIRD_RETENTION,
                 DEFAULT_THIRD_RETENTION_DAYS,
                 "第三方日志",
@@ -193,7 +192,7 @@ public class LogCleanupTask {
     }
 
     private void cleanupOpenCallLogs() {
-        cleanupByDateDays(
+        cleanupByLocalDateTimeDays(
                 CONFIG_KEY_OPEN_CALL_RETENTION,
                 DEFAULT_OPEN_CALL_RETENTION_DAYS,
                 "开放调用日志",
@@ -216,20 +215,6 @@ public class LogCleanupTask {
                 threshold -> alertEventRepository.deleteByFiredAtBefore(threshold));
     }
 
-    private void cleanupByDateDays(
-            String configKey, int defaultDays, String label, java.util.function.Function<Date, Integer> deleter) {
-        int retentionDays = sysConfigCacheManager.getIntConfig(configKey, defaultDays);
-        if (retentionDays <= 0) {
-            log.debug("[LogCleanupTask] {}清理已禁用（保留天数={}）", label, retentionDays);
-            return;
-        }
-        Calendar cal = Calendar.getInstance();
-        cal.add(Calendar.DAY_OF_MONTH, -retentionDays);
-        Date threshold = cal.getTime();
-        Integer deleted = transactionTemplate.execute(status -> deleter.apply(threshold));
-        logDeleted(label, retentionDays, deleted, threshold);
-    }
-
     private void cleanupByLocalDateTimeDays(
             String configKey,
             int defaultDays,
@@ -240,7 +225,7 @@ public class LogCleanupTask {
             log.debug("[LogCleanupTask] {}清理已禁用（保留天数={}）", label, retentionDays);
             return;
         }
-        LocalDateTime threshold = LocalDateTime.now().minusDays(retentionDays);
+        LocalDateTime threshold = LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusDays(retentionDays);
         Integer deleted = transactionTemplate.execute(status -> deleter.apply(threshold));
         logDeleted(label, retentionDays, deleted, threshold);
     }

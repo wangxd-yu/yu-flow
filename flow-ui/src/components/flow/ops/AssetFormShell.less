@@ -20,11 +20,57 @@
 }
 
 .yf-asset-form-shell .ant-page-header-heading {
+  display: flex;
+  align-items: center;
   max-width: 100%;
+}
+
+.yf-asset-form-shell .ant-page-header-heading-left {
+  margin-block: 0 !important;
+  align-items: center !important;
+}
+
+.yf-asset-form-shell .ant-page-header-heading-title {
+  margin-block: 0 !important;
+  line-height: 32px !important;
+  overflow: visible;
 }
 
 .yf-asset-form-shell .ant-page-header-heading-extra {
   margin-block: 0 !important;
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+
+/* 顶栏 Method/URL/名称 Compact 与右侧按钮同高对齐 */
+.yf-asset-form-shell .yf-header-title-compact {
+  height: 32px;
+  align-items: stretch;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-select-selector,
+.yf-asset-form-shell .yf-header-title-compact .ant-input,
+.yf-asset-form-shell .yf-header-title-compact .ant-input-affix-wrapper,
+.yf-asset-form-shell .yf-header-title-compact .ant-input-group-addon {
+  height: 32px !important;
+  box-sizing: border-box;
+}
+
+.yf-asset-form-shell .yf-header-title-compact .ant-select-selection-item,
+.yf-asset-form-shell .yf-header-title-compact .ant-input-affix-wrapper > input.ant-input {
+  line-height: 30px;
+}
+
+.yf-asset-form-shell .yf-header-extra-actions {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+}
+
+.yf-asset-form-shell .yf-header-extra-actions .ant-btn {
+  height: 32px;
+  padding-block: 0;
 }
 
 .yf-asset-form-shell .ant-tabs-nav {

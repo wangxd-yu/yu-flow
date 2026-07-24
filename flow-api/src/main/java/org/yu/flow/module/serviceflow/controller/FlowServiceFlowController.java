@@ -1,5 +1,6 @@
 package org.yu.flow.module.serviceflow.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -19,9 +20,10 @@ import org.yu.flow.module.serviceflow.service.FlowServiceFlowExecutionService;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowService;
 
 import jakarta.annotation.Resource;
-import java.text.SimpleDateFormat;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,11 @@ import java.util.Map;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/service-flow")
+@RequirePerm({"flow:service:view", "flow:service:write"})
 public class FlowServiceFlowController {
+
+    private static final DateTimeFormatter TRACE_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
 
     @Resource
     private FlowServiceFlowService flowServiceFlowService;
@@ -183,7 +189,7 @@ public class FlowServiceFlowController {
                     .setNodeName("Global Error")
                     .setNodeType("error")
                     .setStatus("error")
-                    .setStartTime(new SimpleDateFormat("HH:mm:ss.SSS").format(new Date()))
+                    .setStartTime(LocalTime.now(ZONE_SH).format(TRACE_CLOCK))
                     .setError(e.getMessage());
             FlowTrace errorTrace = new FlowTrace();
             errorTrace.setStatus("error");

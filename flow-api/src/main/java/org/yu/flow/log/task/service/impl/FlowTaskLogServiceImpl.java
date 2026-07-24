@@ -25,10 +25,10 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 /**
@@ -39,6 +39,8 @@ import java.util.List;
 @Slf4j
 @Service
 public class FlowTaskLogServiceImpl implements FlowTaskLogService {
+
+    private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Resource
     private FlowTaskLogRepository flowTaskLogRepository;
@@ -135,20 +137,19 @@ public class FlowTaskLogServiceImpl implements FlowTaskLogService {
             predicates.add(cb.equal(root.get("triggerType"), query.getTriggerType()));
         }
 
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         if (StrUtil.isNotBlank(query.getStartTime())) {
             try {
-                Date start = sdf.parse(query.getStartTime());
+                LocalDateTime start = LocalDateTime.parse(query.getStartTime().trim(), DATE_TIME_FMT);
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createTime"), start));
-            } catch (ParseException e) {
+            } catch (DateTimeParseException e) {
                 log.warn("[TaskLog] startTime 格式不合法, value={}", query.getStartTime());
             }
         }
         if (StrUtil.isNotBlank(query.getEndTime())) {
             try {
-                Date end = sdf.parse(query.getEndTime());
+                LocalDateTime end = LocalDateTime.parse(query.getEndTime().trim(), DATE_TIME_FMT);
                 predicates.add(cb.lessThanOrEqualTo(root.get("createTime"), end));
-            } catch (ParseException e) {
+            } catch (DateTimeParseException e) {
                 log.warn("[TaskLog] endTime 格式不合法, value={}", query.getEndTime());
             }
         }

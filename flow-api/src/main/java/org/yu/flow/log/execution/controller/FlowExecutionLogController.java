@@ -1,5 +1,6 @@
 package org.yu.flow.log.execution.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +17,7 @@ import jakarta.annotation.Resource;
 
 @RestController
 @RequestMapping("/flow-api/log/execution")
+@RequirePerm("log:view")
 public class FlowExecutionLogController {
 
     @Resource

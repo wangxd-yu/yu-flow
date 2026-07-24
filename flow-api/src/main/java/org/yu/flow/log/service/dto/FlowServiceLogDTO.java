@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.log.service.domain.FlowServiceLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class FlowServiceLogDTO {
@@ -19,7 +19,7 @@ public class FlowServiceLogDTO {
     private String traceData;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public static FlowServiceLogDTO fromDO(FlowServiceLogDO entity) {
         if (entity == null) return null;

@@ -14,8 +14,6 @@ import java.time.LocalDateTime;
 
 /**
  * 内部服务编排定义 JPA 实体（表 flow_service_info）
- *
- * <p>类名使用 FlowServiceFlow* 避免与遗留 FlowServiceDO / flow_service 混淆。
  */
 @Data
 @Builder

@@ -60,7 +60,7 @@ class FlowApiGatewayOpenFilterTest {
                 props, flowApiService, flowApiCacheManager, schemaValidatorService,
                 contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
-                null, null, null);
+                null, null, null, null, null);
     }
 
     @Test

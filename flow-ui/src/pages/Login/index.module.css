@@ -1,9 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
-
+/* Avoid remote CSS @import — CSP style-src 'self' would fail the whole Login chunk. */
 .container {
   display: flex;
   min-height: 100vh;
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background-color: #ffffff;
 }
 

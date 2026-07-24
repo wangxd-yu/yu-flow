@@ -1,0 +1,23 @@
+diff --git a/dist/server/server.js b/dist/server/server.js
+index 34361be570cf974e83fa5e0474ae7cc1192ecb33..418a90b06625907f1c821782e6eb9583f2e0e759 100644
+--- a/dist/server/server.js
++++ b/dist/server/server.js
+@@ -47,9 +47,17 @@ async function createServer(opts) {
+   const { proxy } = userConfig;
+   const app = (0, import_express.default)();
+   let ws;
++  // yu-flow 安全加固：禁 X-Powered-By；CORS 仅反射本机 Origin（避免任意站 + Credentials）
++  app.disable("x-powered-by");
+   app.use(
+     (0, import_cors.default)({
+-      origin: true,
++      origin(origin, callback) {
++        if (!origin) {
++          return callback(null, true);
++        }
++        const ok = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(origin));
++        callback(null, ok ? origin : false);
++      },
+       methods: ["GET", "HEAD", "PUT", "POST", "PATCH", "DELETE", "OPTIONS"],
+       credentials: true
+     })

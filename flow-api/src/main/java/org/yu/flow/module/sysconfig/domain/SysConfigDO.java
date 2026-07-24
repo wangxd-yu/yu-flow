@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * 系统配置表实体
  *
  * <p>用于动态管理诸如 SYSTEM_PREFIX、TOKEN_EXPIRE、OSS_CONFIG 等
- * 底层基础设施配置。配置以键值对形式存储，支持 STRING / NUMBER / BOOLEAN / JSON 四种值类型。</p>
+ * 底层基础设施配置。配置以键值对形式存储，支持 STRING / NUMBER / BOOLEAN / JSON / ENUM 值类型。</p>
  *
  * <h3>内置保护机制</h3>
  * <p>当 {@code isBuiltin = 1} 时，该配置项为系统内置参数，仅允许修改 configValue，
@@ -51,7 +51,8 @@ public class SysConfigDO {
     private String configValue;
 
     /**
-     * 值类型 (STRING / NUMBER / BOOLEAN / JSON)
+     * 值类型 (STRING / NUMBER / BOOLEAN / JSON / ENUM)
+     * <p>ENUM：remark 以 {@code [VALUE|VALUE:展示名|...] 说明} 声明选项，存库值仍为字符串。</p>
      */
     @Column(name = "value_type", nullable = false, length = 20)
     private String valueType;

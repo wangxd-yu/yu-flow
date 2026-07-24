@@ -1,5 +1,6 @@
 package org.yu.flow.module.page.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.annotation.YuFlowApi;
 
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import java.util.List;
 @YuFlowApi
 @RestController
 @RequestMapping("flow-api/page-directories")
+@RequirePerm({"flow:page:view", "flow:page:write"})
 public class PageDirectoryController {
 
     @Resource

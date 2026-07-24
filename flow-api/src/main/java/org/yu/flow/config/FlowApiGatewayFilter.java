@@ -26,15 +26,20 @@ import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.module.api.cache.ApiCacheConfig;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.dto.ApiDataExportRequestDTO;
 import org.yu.flow.module.api.security.IngressException;
 import org.yu.flow.module.api.security.IngressSecurityGuard;
 import org.yu.flow.module.api.security.IngressSecurityResolver;
 import org.yu.flow.module.api.security.IngressAuthMode;
 import org.yu.flow.module.api.security.EffectiveSecurity;
+import org.yu.flow.module.api.service.ApiDataViewService;
+import org.yu.flow.module.api.support.ApiExportPathSupport;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
+import org.yu.flow.module.metrics.MetricsKeys;
 import org.yu.flow.module.metrics.MetricsOutcome;
+import org.yu.flow.exception.ValidationException;
 import org.yu.flow.log.open.domain.FlowOpenCallLogDO;
 import org.yu.flow.log.open.support.OpenCallLogRecorder;
 import org.yu.flow.module.open.auth.HostAuthenticationProbe;
@@ -42,6 +47,7 @@ import org.yu.flow.module.open.auth.OpenAuthContext;
 import org.yu.flow.module.open.auth.OpenAuthException;
 import org.yu.flow.module.open.auth.OpenAuthService;
 import org.yu.flow.module.open.support.CachedBodyHttpServletRequest;
+import org.yu.flow.module.rbac.service.RbacService;
 import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.util.FlowObjectMapperUtil;
 import org.yu.flow.util.ThrowableUtil;
@@ -114,6 +120,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     private final IngressSecurityResolver ingressSecurityResolver;
     private final IngressSecurityGuard ingressSecurityGuard;
     private final YuFlowRuntimeSettings yuFlowRuntimeSettings;
+    private final ApiDataViewService apiDataViewService;
+    private final RbacService rbacService;
 
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
     private final UrlPathHelper urlPathHelper = createUrlPathHelper();
@@ -131,7 +139,9 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 HostAuthenticationProbe hostAuthenticationProbe,
                                 IngressSecurityResolver ingressSecurityResolver,
                                 IngressSecurityGuard ingressSecurityGuard,
-                                YuFlowRuntimeSettings yuFlowRuntimeSettings) {
+                                YuFlowRuntimeSettings yuFlowRuntimeSettings,
+                                ApiDataViewService apiDataViewService,
+                                RbacService rbacService) {
         this.flowProperties = flowProperties;
         this.flowApiService = flowApiService;
         this.flowApiCacheManager = flowApiCacheManager;
@@ -146,6 +156,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         this.ingressSecurityResolver = ingressSecurityResolver;
         this.ingressSecurityGuard = ingressSecurityGuard;
         this.yuFlowRuntimeSettings = yuFlowRuntimeSettings;
+        this.apiDataViewService = apiDataViewService;
+        this.rbacService = rbacService;
     }
 
     private UrlPathHelper createUrlPathHelper() {
@@ -169,6 +181,12 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
         // 2. 排除无需过滤的静态页面及 UI 路由路径
         if (requestPath.startsWith("/flow-ui/") || requestPath.equals("/flow-ui.html")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 2.1 短期 Excel 下载链：放行给 Spring MVC（不强制管理端 JWT）
+        if (requestPath.startsWith("/flow-api/download/excel/")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -201,18 +219,33 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                         R.fail(ResultCode.TOKEN_INVALID.getCode(), "token 已失效！"));
                 return;
             }
+            // 会话主体必须存在且启用（拒绝幽灵/禁用用户 JWT）
+            String sessionUser = JwtTokenUtil.getUsername(token);
+            if (!isActiveManagementPrincipal(sessionUser)) {
+                writeJsonResponse(response, HttpStatus.UNAUTHORIZED.value(),
+                        R.fail(ResultCode.TOKEN_INVALID.getCode(), "用户不存在或已禁用"));
+                return;
+            }
 
 
         }
 
         try {
+            String matchPath = requestPath;
+            boolean excelExport = false;
+            String businessPath = ApiExportPathSupport.stripExportSuffix(requestPath);
+            if (businessPath != null) {
+                excelExport = true;
+                matchPath = businessPath;
+            }
+
             // 4. 路由匹配（纯内存，零网络 I/O）
-            FlowApiDO flowApiDO = flowApiCacheManager.getExactMatch(requestMethod, requestPath);
+            FlowApiDO flowApiDO = flowApiCacheManager.getExactMatch(requestMethod, matchPath);
 
             // 精确未命中 → Ant 模式匹配 O(N)
             if (flowApiDO == null) {
                 FlowApiCacheManager.AntMatchResult matchResult =
-                        flowApiCacheManager.getPatternMatch(requestMethod, requestPath, ANT_PATH_MATCHER);
+                        flowApiCacheManager.getPatternMatch(requestMethod, matchPath, ANT_PATH_MATCHER);
                 if (matchResult != null) {
                     flowApiDO = matchResult.getApi();
                     if (matchResult.getPathVariables() != null && !matchResult.getPathVariables().isEmpty()) {
@@ -223,6 +256,11 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
             // 未匹配到动态路由（可能是宿主系统接口），放行
             if (flowApiDO == null) {
+                // 带 /export 但未命中业务 API → 统一 404
+                if (excelExport) {
+                    writeJsonResponse(response, HttpStatus.NOT_FOUND.value(), R.fail(404, "接口不存在"));
+                    return;
+                }
                 filterChain.doFilter(request, response);
                 return;
             }
@@ -241,6 +279,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                     if (sec.getAuthMode() == IngressAuthMode.OPEN) {
                         effectiveRequest = wrapOpenBody(request);
                     }
+                    // 鉴权 path 使用原始请求 path（含 /export）
                     OpenAuthContext ingressCtx = ingressSecurityGuard.enforce(
                             effectiveRequest, flowApiDO, requestPath, requestMethod);
                     if (ingressCtx != null) {
@@ -273,17 +312,25 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // 7. 执行业务逻辑
+            // 7. 执行业务逻辑（Excel 导出或 JSON）
             try {
-                executeAndWriteResponse(effectiveRequest, response, flowApiDO);
+                if (excelExport) {
+                    executeExcelExport(effectiveRequest, response, flowApiDO);
+                } else {
+                    executeAndWriteResponse(effectiveRequest, response, flowApiDO);
+                }
             } catch (Exception e) {
                 log.error("[FlowApiGatewayFilter] API 业务执行异常:\n{}", ThrowableUtil.getStackTrace(e));
-                handleExceptionResponse(response, flowApiDO, e);
-                // executeApi 未跑通时补记 FAIL（已执行路径由 FlowApiServiceImpl 记账）
+                if (excelExport) {
+                    handleExcelExportException(response, e);
+                } else {
+                    handleExceptionResponse(response, flowApiDO, e);
+                }
                 if (assetMetricsRecorder != null && flowApiDO.getId() != null
                         && request.getAttribute("yuApiMetricsByService") == null) {
                     assetMetricsRecorder.record(MetricsAssetType.API, flowApiDO.getId(),
-                            MetricsOutcome.FAIL, 0L);
+                            MetricsOutcome.FAIL, 0L,
+                            excelExport ? MetricsKeys.TRIGGER_EXPORT : MetricsKeys.TRIGGER_DEFAULT);
                 }
             }
 
@@ -465,6 +512,11 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
     private void recordApiMetricsIfNeeded(HttpServletRequest request, FlowApiDO flowApiDO,
                                           MetricsOutcome outcome, long startMs) {
+        recordApiMetricsIfNeeded(request, flowApiDO, outcome, startMs, MetricsKeys.TRIGGER_DEFAULT);
+    }
+
+    private void recordApiMetricsIfNeeded(HttpServletRequest request, FlowApiDO flowApiDO,
+                                          MetricsOutcome outcome, long startMs, String trigger) {
         if (assetMetricsRecorder == null || flowApiDO == null || flowApiDO.getId() == null) {
             return;
         }
@@ -472,7 +524,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             return;
         }
         assetMetricsRecorder.record(MetricsAssetType.API, flowApiDO.getId(), outcome,
-                System.currentTimeMillis() - startMs);
+                System.currentTimeMillis() - startMs, trigger);
         request.setAttribute("yuApiMetricsByService", Boolean.TRUE);
     }
 
@@ -558,6 +610,16 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         return StrUtil.isNotBlank(appKey);
     }
 
+    /**
+     * 管理端会话主体须存在且启用（含受控的 yml 兜底账号）；拒绝幽灵/禁用用户 JWT。
+     */
+    private boolean isActiveManagementPrincipal(String username) {
+        if (StrUtil.isBlank(username) || rbacService == null) {
+            return false;
+        }
+        return rbacService.buildMe(username) != null;
+    }
+
     private boolean isIngressEnabled() {
         boolean enabled = yuFlowRuntimeSettings != null
                 ? yuFlowRuntimeSettings.isIngressEnabled()
@@ -586,12 +648,18 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         }
         try {
             JwtTokenUtil.validateToken(token);
-            return true;
         } catch (ValidateException e) {
             writeJsonResponse(response, HttpStatus.UNAUTHORIZED.value(),
                     R.fail(ResultCode.TOKEN_INVALID.getCode(), "token 已失效！"));
             return false;
         }
+        String sessionUser = JwtTokenUtil.getUsername(token);
+        if (!isActiveManagementPrincipal(sessionUser)) {
+            writeJsonResponse(response, HttpStatus.UNAUTHORIZED.value(),
+                    R.fail(ResultCode.TOKEN_INVALID.getCode(), "用户不存在或已禁用"));
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -642,6 +710,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
     /**
      * 开放鉴权执行：{@code preMatched} 非空时跳过路由查找（直连真实 path 场景）。
+     * <p>path 以 /export 结尾时：验签 path 含后缀，路由匹配剥离后缀后的业务 path，执行 Excel 导出。</p>
      */
     private void handleOpenOnRealPath(HttpServletRequest request, HttpServletResponse response,
                                       String realPath, String requestMethod,
@@ -649,19 +718,23 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         long start = System.currentTimeMillis();
         HttpServletRequest effectiveRequest = wrapOpenBody(request);
 
+        boolean excelExport = ApiExportPathSupport.isExportPath(realPath);
+        String matchPath = excelExport ? ApiExportPathSupport.stripExportSuffix(realPath) : realPath;
+
         OpenAuthContext authCtx = null;
         FlowApiDO flowApiDO = preMatched;
         MetricsOutcome outcome = MetricsOutcome.FAIL;
         Integer httpStatus = null;
         String errorCode = null;
         try {
+            // 验签使用完整 realPath（含 /export），与调用方签名一致
             authCtx = openAuthService.authenticate(effectiveRequest, realPath, requestMethod);
 
             if (flowApiDO == null) {
-                flowApiDO = flowApiCacheManager.getExactMatch(requestMethod, realPath);
+                flowApiDO = flowApiCacheManager.getExactMatch(requestMethod, matchPath);
                 if (flowApiDO == null) {
                     FlowApiCacheManager.AntMatchResult matchResult =
-                            flowApiCacheManager.getPatternMatch(requestMethod, realPath, ANT_PATH_MATCHER);
+                            flowApiCacheManager.getPatternMatch(requestMethod, matchPath, ANT_PATH_MATCHER);
                     if (matchResult != null) {
                         flowApiDO = matchResult.getApi();
                         if (matchResult.getPathVariables() != null && !matchResult.getPathVariables().isEmpty()) {
@@ -692,8 +765,12 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             effectiveRequest.setAttribute("yuOpenPlatformId", authCtx.getPlatformId());
             effectiveRequest.setAttribute("yuOpenAppKey", authCtx.getAppKey());
 
-            // API 维度由 executeApi / 短路径记账；此处仅取业务 outcome 供 PLATFORM
-            outcome = executeAndWriteResponse(effectiveRequest, response, flowApiDO);
+            if (excelExport) {
+                outcome = executeExcelExport(effectiveRequest, response, flowApiDO);
+            } else {
+                // API 维度由 executeApi / 短路径记账；此处仅取业务 outcome 供 PLATFORM
+                outcome = executeAndWriteResponse(effectiveRequest, response, flowApiDO);
+            }
             httpStatus = response.getStatus() > 0 ? response.getStatus() : HttpStatus.OK.value();
             if (outcome == MetricsOutcome.FAIL) {
                 errorCode = "OPEN_BIZ_FAIL";
@@ -711,7 +788,10 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             log.error("[FlowApiGatewayFilter] 开放入口执行异常:\n{}", ThrowableUtil.getStackTrace(e));
             httpStatus = HttpStatus.INTERNAL_SERVER_ERROR.value();
             errorCode = "OPEN_INTERNAL_ERROR";
-            if (flowApiDO != null) {
+            if (excelExport) {
+                handleExcelExportException(response, e);
+                httpStatus = response.getStatus() > 0 ? response.getStatus() : httpStatus;
+            } else if (flowApiDO != null) {
                 handleExceptionResponse(response, flowApiDO, e);
             } else {
                 writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(),
@@ -726,6 +806,51 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             }
             writeOpenCallLog(authCtx, flowApiDO, requestMethod, realPath, httpStatus, cost, errorCode, effectiveRequest);
         }
+    }
+
+    /**
+     * 对外 /export：复用已发布快照导出；未开启 openExportEnabled 统一 404。
+     */
+    private MetricsOutcome executeExcelExport(HttpServletRequest request, HttpServletResponse response,
+                                              FlowApiDO flowApiDO) throws Exception {
+        long gateStart = System.currentTimeMillis();
+        ApiDataExportRequestDTO exportReq = new ApiDataExportRequestDTO();
+        exportReq.setUseDraft(false);
+        exportReq.setQueryParams(extractQueryParams(request));
+        exportReq.setBodyParams(extractBodyParams(request));
+        Map<String, Object> pathObj = toObjectMap(request.getAttribute("flowPathVariables"));
+        Map<String, String> pathParams = new LinkedHashMap<>();
+        if (pathObj != null) {
+            pathObj.forEach((k, v) -> pathParams.put(k, v == null ? null : String.valueOf(v)));
+        }
+        exportReq.setPathParams(pathParams);
+
+        try {
+            apiDataViewService.exportPublishedOpenExcel(flowApiDO, exportReq, response);
+            recordApiMetricsIfNeeded(request, flowApiDO, MetricsOutcome.SUCCESS, gateStart, MetricsKeys.TRIGGER_EXPORT);
+            return MetricsOutcome.SUCCESS;
+        } catch (ValidationException e) {
+            handleExcelExportException(response, e);
+            recordApiMetricsIfNeeded(request, flowApiDO, MetricsOutcome.FAIL, gateStart, MetricsKeys.TRIGGER_EXPORT);
+            return MetricsOutcome.FAIL;
+        }
+    }
+
+    private void handleExcelExportException(HttpServletResponse response, Exception e) throws IOException {
+        if (e instanceof ValidationException) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            // 未开启对外导出 / 类型不支持：统一 404，避免探测
+            if (msg.contains("未启用对外") || msg.contains("不支持数据查看") || msg.contains("仅支持")
+                    || msg.contains("接口不存在") || msg.contains("已关闭数据导出")) {
+                writeJsonResponse(response, HttpStatus.NOT_FOUND.value(), R.fail(404, "接口不存在"));
+                return;
+            }
+            writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(), R.fail(400, msg));
+            return;
+        }
+        log.error("[FlowApiGatewayFilter] Excel 导出异常:\n{}", ThrowableUtil.getStackTrace(e));
+        writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                R.fail(500, "Excel 导出失败：" + e.getMessage()));
     }
 
     private HttpServletRequest wrapOpenBody(HttpServletRequest request) {

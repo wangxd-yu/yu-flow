@@ -12,6 +12,7 @@ import { render as renderAmis } from 'amis';
 
 import { getPageDetail } from './services/pageManage';
 import { createAmisEnv } from '@/utils/amisEnv';
+import { sanitizeAmisSchema } from '@/utils/amisSanitize';
 
 /**
  * ================================================================
@@ -48,7 +49,7 @@ const Preview: React.FC = () => {
             parsedJson = null;
           }
         }
-        setJson(parsedJson || null);
+        setJson(parsedJson ? sanitizeAmisSchema(parsedJson) : null);
       } catch (err) {
         message.error('获取页面配置失败');
         console.error('[Preview] 获取 Schema 失败:', err);

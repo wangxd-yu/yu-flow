@@ -9,7 +9,8 @@ import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
 
 import jakarta.persistence.*;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * 开放平台入站调用摘要（不含 body）。
@@ -56,12 +57,12 @@ public class FlowOpenCallLogDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "create_time")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     @PrePersist
     public void prePersist() {
         if (createTime == null) {
-            createTime = new Date();
+            createTime = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         }
     }
 }

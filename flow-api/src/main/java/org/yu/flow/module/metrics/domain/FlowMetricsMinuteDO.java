@@ -9,7 +9,8 @@ import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
 
 import jakarta.persistence.*;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Data
 @Builder
@@ -42,7 +43,7 @@ public class FlowMetricsMinuteDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "bucket_start", nullable = false)
-    private Date bucketStart;
+    private LocalDateTime bucketStart;
 
     @Column(name = "success_cnt", nullable = false)
     private Long successCnt;
@@ -67,12 +68,12 @@ public class FlowMetricsMinuteDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "update_time")
-    private Date updateTime;
+    private LocalDateTime updateTime;
 
     @PrePersist
     @PreUpdate
     public void touch() {
-        updateTime = new Date();
+        updateTime = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         if (successCnt == null) successCnt = 0L;
         if (failCnt == null) failCnt = 0L;
         if (authFailCnt == null) authFailCnt = 0L;

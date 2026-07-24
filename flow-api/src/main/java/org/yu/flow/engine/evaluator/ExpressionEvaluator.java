@@ -1,6 +1,7 @@
 package org.yu.flow.engine.evaluator;
 
 import org.yu.flow.auto.util.FlowSystemParamsUtil;
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.engine.util.SpELUtils;
 import org.springframework.expression.EvaluationContext;
@@ -22,28 +23,16 @@ public class ExpressionEvaluator {
         return EXPR_CACHE.computeIfAbsent(expressionString, PARSER::parseExpression);
     }
 
-    /*public Object evaluate(String expr, ExecutionContext context) {
-        try {
-            return context.getVariable(expr);
-        } catch (Exception e) {
-            throw new FlowException("EXPRESSION_EVAL_ERROR", "表达式求值失败: " + expr, e);
-        }
-    }*/
-
     public static Object evaluate(String expr, ExecutionContext executionContext) {
         try {
-            // 以变量 Map 作为根对象，并额外暴露为变量 var（用于 var['x'] 访问）
-            EvaluationContext context = new StandardEvaluationContext(executionContext.getVar());
-            ((StandardEvaluationContext) context).setVariable("var", executionContext.getVar());
+            StandardEvaluationContext context = MacroSpelContexts.create(executionContext.getVar());
+            context.setVariable("var", executionContext.getVar());
 
-            // 解析 expr，将其中的 系统参数注册到 EvaluationContext，并修改 expr
             String exprFix = FlowSystemParamsUtil.resolveParams(expr, context);
             String finalExpr = CONVERT_CACHE.computeIfAbsent(exprFix, ExpressionConverter::convertJsonStringSupper);
-            // 解析表达式（使用缓存）
             Expression exp = getCachedExpression(finalExpr);
 
             return exp.getValue(context);
-            //return SpELUtils.safeParseExpression(ExpressionConverter.convertJsonStringSupper(exprFix), context);
         } catch (Exception e) {
             throw new FlowException("EXPRESSION_EVAL_ERROR", "表达式求值失败: " + expr, e);
         }
@@ -51,10 +40,8 @@ public class ExpressionEvaluator {
 
     public static Object evaluate(String expr, Object rootObject) {
         try {
-            // 设置根对象为 executionContext
-            EvaluationContext context = new StandardEvaluationContext(rootObject);
+            EvaluationContext context = MacroSpelContexts.create(rootObject);
 
-            // 解析 expr，将其中的 系统参数注册到 EvaluationContext，并修改 expr
             String exprFix = FlowSystemParamsUtil.resolveParams(expr, context);
             String finalExpr = CONVERT_CACHE.computeIfAbsent(exprFix, ExpressionConverter::convertJsonStringSupper);
             return SpELUtils.safeParseExpression(finalExpr, context);
@@ -65,9 +52,7 @@ public class ExpressionEvaluator {
 
     public static Object evaluateObj(String expr, Object object) {
         try {
-            // 设置根对象为 executionContext
-            EvaluationContext context = new StandardEvaluationContext(object);
-            // 解析表达式（使用缓存）
+            EvaluationContext context = MacroSpelContexts.create(object);
             Expression exp = getCachedExpression(ExpressionConverter.convertToBracketNotation(expr));
             return exp.getValue(context);
         } catch (Exception e) {

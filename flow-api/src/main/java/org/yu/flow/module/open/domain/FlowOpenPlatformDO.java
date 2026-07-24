@@ -9,7 +9,8 @@ import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
 
 import jakarta.persistence.*;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Data
 @Builder
@@ -46,7 +47,7 @@ public class FlowOpenPlatformDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "expire_at")
-    private Date expireAt;
+    private LocalDateTime expireAt;
 
     /** 是否记录入站摘要日志：0关 1开；null 跟随全局 */
     @Column(name = "open_call_log_enabled")
@@ -58,15 +59,15 @@ public class FlowOpenPlatformDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "create_time")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "update_time")
-    private Date updateTime;
+    private LocalDateTime updateTime;
 
     @PrePersist
     public void prePersist() {
-        Date now = new Date();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         if (createTime == null) createTime = now;
         updateTime = now;
         if (status == null) status = 1;
@@ -75,6 +76,6 @@ public class FlowOpenPlatformDO {
 
     @PreUpdate
     public void preUpdate() {
-        updateTime = new Date();
+        updateTime = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
     }
 }

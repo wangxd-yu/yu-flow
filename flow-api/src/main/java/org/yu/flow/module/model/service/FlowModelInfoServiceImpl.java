@@ -238,6 +238,10 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
 
     @Override
     public List<FieldMetaSchema> importFromDb(String datasourceCode, String tableName) {
+        final String safeTable = org.yu.flow.security.SqlIdentifierGuard.requireTableName(tableName);
+        final String plainTable = safeTable.contains(".")
+                ? safeTable.substring(safeTable.lastIndexOf('.') + 1)
+                : safeTable;
         if (StrUtil.isBlank(datasourceCode)) {
             datasourceCode = Constants.DEFAULT_DATASOURCE_NAME;
         }
@@ -252,25 +256,13 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
                 } catch (Exception e) {}
                 boolean isMysql = databaseProductName.contains("mysql") || databaseProductName.contains("mariadb");
 
-                Map<String, String> mysqlColumnTypeMap = new HashMap<>();
-                if (isMysql) {
-                    try (java.sql.Statement stmt = conn.createStatement();
-                         ResultSet rsCols = stmt.executeQuery("SHOW FULL COLUMNS FROM `" + tableName + "`")) {
-                        while (rsCols.next()) {
-                            mysqlColumnTypeMap.put(rsCols.getString("Field"), rsCols.getString("Type"));
-                        }
-                    } catch (Exception e) {
-                        // ignore
-                    }
-                }
-
-                // 尝试用大写表名或原名查（某些数据库对大小写敏感）
-                ResultSet rs = metaData.getColumns(null, null, tableName, "%");
+                // 使用 DatabaseMetaData，禁止 SHOW FULL COLUMNS 字符串拼接（防 SQLi）
+                ResultSet rs = metaData.getColumns(null, null, plainTable, "%");
                 if (!rs.isBeforeFirst()) {
-                    rs = metaData.getColumns(null, null, tableName.toUpperCase(), "%");
+                    rs = metaData.getColumns(null, null, plainTable.toUpperCase(), "%");
                 }
                 if (!rs.isBeforeFirst()) {
-                    rs = metaData.getColumns(null, null, tableName.toLowerCase(), "%");
+                    rs = metaData.getColumns(null, null, plainTable.toLowerCase(), "%");
                 }
 
                 List<FieldMetaSchema> list = new ArrayList<>();
@@ -283,14 +275,6 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
 
                     String dbType = typeName != null ? typeName.toUpperCase() : "VARCHAR";
                     String parseType = dbType;
-
-                    if (isMysql && mysqlColumnTypeMap.containsKey(colName)) {
-                        String fullType = mysqlColumnTypeMap.get(colName);
-                        if (fullType != null && fullType.toUpperCase().startsWith("ENUM")) {
-                            parseType = fullType;
-                            dbType = "ENUM";
-                        }
-                    }
 
                     List<Map<String, String>> options = parseOptions(parseType, remarks);
                     String uiType = options != null && !options.isEmpty() ? "select" : mapDbTypeToUiType(dbType);

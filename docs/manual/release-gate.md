@@ -49,7 +49,7 @@ P0 重点支持 **FLOW 类型接口**；非 FLOW 接口会在运行时提示不�
 首次使用请执行：
 
 ```text
-flow-api/sql/release_gate.sql
+flow-api/sql-mysql/flow_env.sql（发布门禁相关表见 sql-mysql / sql-pg）
 ```
 
 需要权限：`flow:release:view`（查看/预检）、`flow:release:edit`（管理套件与运行）。

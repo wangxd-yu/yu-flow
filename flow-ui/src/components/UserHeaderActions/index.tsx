@@ -3,6 +3,7 @@ import { Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import { history } from '@umijs/max';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { logoutRemote } from '@/services/auth';
 
 type Props = {
   displayName: string;
@@ -15,8 +16,8 @@ type Props = {
 const UserHeaderActions: React.FC<Props> = ({ displayName }) => {
   const [pwdOpen, setPwdOpen] = useState(false);
 
-  const onLogout = () => {
-    localStorage.removeItem('flow_token');
+  const onLogout = async () => {
+    await logoutRemote();
     history.push('/login');
   };
 

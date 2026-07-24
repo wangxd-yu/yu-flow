@@ -24,7 +24,7 @@ public class DataSourceWallConfig {
             "sleep", "benchmark", "load_file", "updatexml", "extractvalue", "pg_sleep"
     );
 
-    private boolean enabled = false;
+    private boolean enabled = true;
     private boolean multiStatementAllow = false;
     private boolean commentAllow = false;
     private boolean noneBaseStatementAllow = false;
@@ -40,6 +40,12 @@ public class DataSourceWallConfig {
     private List<String> functionBlackList = new ArrayList<>(DEFAULT_FUNCTION_BLACKLIST);
     private boolean variantCheck = true;
 
+    public static DataSourceWallConfig enabledDefaults() {
+        DataSourceWallConfig c = new DataSourceWallConfig();
+        c.setEnabled(true);
+        return c;
+    }
+
     public static DataSourceWallConfig disabledDefaults() {
         DataSourceWallConfig c = new DataSourceWallConfig();
         c.setEnabled(false);
@@ -48,13 +54,13 @@ public class DataSourceWallConfig {
 
     public static DataSourceWallConfig fromJson(String json) {
         if (StrUtil.isBlank(json)) {
-            return disabledDefaults();
+            return enabledDefaults();
         }
         try {
             DataSourceWallConfig c = JSONUtil.toBean(json, DataSourceWallConfig.class);
-            return c != null ? c : disabledDefaults();
+            return c != null ? c : enabledDefaults();
         } catch (Exception e) {
-            return disabledDefaults();
+            return enabledDefaults();
         }
     }
 

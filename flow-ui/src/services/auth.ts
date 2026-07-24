@@ -1,3 +1,5 @@
+import { clearAuthHint, hasAuthHint } from '@/utils/session';
+
 export interface AuthMe {
   userId?: string;
   username: string;
@@ -8,21 +10,14 @@ export interface AuthMe {
 }
 
 /**
- * 拉取当前登录用户权限。
- * 注意：getInitialState 阶段不要用 umi request（易循环依赖/阻塞白屏），故用原生 fetch。
+ * 拉取当前登录用户权限（依赖 Cookie 会话，credentials: include）。
  */
 export async function fetchAuthMe(): Promise<AuthMe | null> {
-  const token = localStorage.getItem('flow_token');
-  if (!token) return null;
-
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch('/flow-api/auth/me', {
       method: 'GET',
-      headers: {
-        'Flow-Authorization': token.startsWith('Bearer ') ? token : `Bearer ${token}`,
-      },
       credentials: 'include',
       signal: controller.signal,
     });
@@ -63,4 +58,20 @@ export async function changePassword(body: {
     method: 'POST',
     data: body,
   });
+}
+
+export async function logoutRemote() {
+  try {
+    const { request } = await import('@umijs/max');
+    await request('/flow-api/auth/logout', { method: 'POST' });
+  } catch {
+    /* ignore */
+  } finally {
+    clearAuthHint();
+  }
+}
+
+/** 路由门禁 UX 提示；真正鉴权在 Cookie + /auth/me */
+export function mayBeLoggedIn(): boolean {
+  return hasAuthHint();
 }

@@ -27,6 +27,8 @@ import org.yu.flow.module.api.dto.ApiDataPreviewRequestDTO;
 import org.yu.flow.module.api.dto.ApiDataPreviewResultDTO;
 import org.yu.flow.module.api.dto.ApiDataExportRequestDTO;
 import org.yu.flow.module.api.dto.ApiExcelTemplateMetaDTO;
+import org.yu.flow.module.api.dto.ApiExcelExportLinkDTO;
+import org.yu.flow.module.api.dto.ApiExcelExportLinkRequestDTO;
 import org.springframework.web.multipart.MultipartFile;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.config.ContractParamTypeConverter;
@@ -36,10 +38,11 @@ import org.yu.flow.module.rbac.support.RequirePerm;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import cn.hutool.core.util.StrUtil;
-import java.text.SimpleDateFormat;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,6 +60,9 @@ import java.util.Map;
 @RequestMapping(value = {"flow-api/api"})
 @RequirePerm({"flow:api:view", "flow:api:write"})
 public class FlowApiController {
+
+    private static final DateTimeFormatter TRACE_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
 
     @Resource
     private FlowApiCrudService flowApiCrudService;
@@ -145,7 +151,7 @@ public class FlowApiController {
                 .setNodeName("Global Error")
                 .setNodeType("error")
                 .setStatus("error")
-                .setStartTime(new SimpleDateFormat("HH:mm:ss.SSS").format(new Date()))
+                .setStartTime(LocalTime.now(ZONE_SH).format(TRACE_CLOCK))
                 .setError(e.getMessage());
             FlowTrace errorTrace = new FlowTrace();
             errorTrace.setStatus("error");
@@ -395,6 +401,16 @@ public class FlowApiController {
                            @RequestBody(required = false) ApiDataExportRequestDTO body,
                            HttpServletResponse response) {
         apiDataViewService.exportExcel(id, body, response);
+    }
+
+    /**
+     * 签发短期 Excel 下载链（需已开启对外导出并发布）
+     */
+    @PostMapping("/{id}/data/export-link")
+    @RequirePerm("flow:api:write")
+    public R<ApiExcelExportLinkDTO> createExportLink(@PathVariable String id,
+                                                     @RequestBody(required = false) ApiExcelExportLinkRequestDTO body) {
+        return R.ok(apiDataViewService.createExportLink(id, body));
     }
 
     /** 导出模板元信息 */

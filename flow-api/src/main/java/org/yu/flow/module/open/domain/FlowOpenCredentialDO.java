@@ -9,7 +9,8 @@ import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
 
 import jakarta.persistence.*;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Data
 @Builder
@@ -49,15 +50,15 @@ public class FlowOpenCredentialDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "expire_at")
-    private Date expireAt;
+    private LocalDateTime expireAt;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "create_time")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     @PrePersist
     public void prePersist() {
-        if (createTime == null) createTime = new Date();
+        if (createTime == null) createTime = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         if (status == null) status = STATUS_ENABLED;
     }
 }

@@ -12,6 +12,7 @@ import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
+import org.yu.flow.module.api.support.ApiExportPathSupport;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
@@ -86,6 +87,16 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Resource
     private AuditLogService auditLogService;
 
+    @Resource
+    private org.yu.flow.config.YuFlowProperties yuFlowProperties;
+
+    private void assertSecurityConfigAllowed(String securityConfigJson) {
+        boolean allowNone = yuFlowProperties.getSecurity() != null
+                && yuFlowProperties.getSecurity().isAllowIngressAuthNone();
+        org.yu.flow.module.api.security.ApiSecurityConfigGuard.assertAuthModeAllowed(
+                securityConfigJson, allowNone);
+    }
+
     private void notifyRefIndex() {
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
@@ -120,6 +131,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (flowApiDO.getLogEnabled() == null) {
             flowApiDO.setLogEnabled(true);
         }
+        assertUrlNotReserved(flowApiDO.getUrl());
+        assertSecurityConfigAllowed(flowApiDO.getSecurityConfig());
         flowApiDO.setCreateTime(LocalDateTime.now());
         flowApiDO = flowApiRepository.save(flowApiDO);
 
@@ -148,6 +161,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             if (api.getLogEnabled() == null) {
                 api.setLogEnabled(true);
             }
+            assertSecurityConfigAllowed(api.getSecurityConfig());
             api.setCreateTime(now);
             if (!needRefreshCache && api.getPublishStatus() != null && api.getPublishStatus().equals(1)) {
                 needRefreshCache = true;
@@ -198,6 +212,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (flowApiDO.getViewExportConfig() == null) {
             flowApiDO.setViewExportConfig(dbRecord.getViewExportConfig());
         }
+        assertUrlNotReserved(flowApiDO.getUrl());
+        assertSecurityConfigAllowed(flowApiDO.getSecurityConfig());
         boolean cacheConfigChanged = !Objects.equals(
                 StrUtil.nullToEmpty(flowApiDO.getCacheConfig()),
                 StrUtil.nullToEmpty(dbRecord.getCacheConfig()));
@@ -454,6 +470,12 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
     }
 
+    private static void assertUrlNotReserved(String url) {
+        if (ApiExportPathSupport.urlEndsWithExportSuffix(url)) {
+            throw new RuntimeException("接口 URL 不能以 /export 结尾（该后缀保留给对外 Excel 下载）");
+        }
+    }
+
     // ============================= 发布/下线/回滚 =============================
 
     private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
@@ -479,6 +501,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             throw new RuntimeException("发布失败：路径 " + api.getMethod() + " " + api.getUrl()
                     + " 与其他已发布接口冲突");
         }
+        assertUrlNotReserved(api.getUrl());
+        assertSecurityConfigAllowed(api.getSecurityConfig());
 
         // 生成快照 JSON
         String snapshot = buildSnapshot(api);

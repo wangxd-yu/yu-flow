@@ -9,6 +9,8 @@ import cn.hutool.jwt.JWTValidator;
 import cn.hutool.jwt.signers.JWTSignerUtil;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.yu.flow.security.AuthCookieSupport;
+
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Locale;
@@ -56,10 +58,29 @@ public final class JwtTokenUtil {
         return LEGACY_DEFAULT_SECRET.equals(secretKey);
     }
 
+    public static long getExpireSeconds() {
+        return expireSeconds;
+    }
+
     public static String resolveToken(HttpServletRequest req) {
+        if (req == null) {
+            return null;
+        }
         String bearerToken = req.getHeader("Flow-Authorization");
         if (bearerToken != null && bearerToken.startsWith(TOKEN_HEADER)) {
             return bearerToken.substring(TOKEN_HEADER.length()).trim();
+        }
+        // 兼容误传纯 JWT（无 Bearer 前缀）
+        if (bearerToken != null && !bearerToken.isBlank() && bearerToken.chars().filter(ch -> ch == '.').count() == 2) {
+            return bearerToken.trim();
+        }
+        String cookie = AuthCookieSupport.readCookie(req, AuthCookieSupport.TOKEN_COOKIE);
+        if (cookie != null && !cookie.isBlank()) {
+            String v = cookie.trim();
+            if (v.startsWith(TOKEN_HEADER)) {
+                return v.substring(TOKEN_HEADER.length()).trim();
+            }
+            return v;
         }
         return null;
     }
@@ -103,7 +124,8 @@ public final class JwtTokenUtil {
     }
 
     public static String generateToken(String username, String password) {
-        return generateToken(username, null, null);
+        throw new UnsupportedOperationException(
+                "generateToken(username, password) 已移除：请使用 generateToken(username, userId, roles)");
     }
 
     /**

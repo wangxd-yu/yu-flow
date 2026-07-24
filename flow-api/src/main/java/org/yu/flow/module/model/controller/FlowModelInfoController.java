@@ -1,5 +1,6 @@
 package org.yu.flow.module.model.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.annotation.YuFlowApi;
 
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import jakarta.annotation.Resource;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/models")
+@RequirePerm({"flow:model:view", "flow:model:write"})
 public class FlowModelInfoController {
 
     @Resource
@@ -106,7 +108,11 @@ public class FlowModelInfoController {
         if ("[DEFAULT]".equals(datasourceCode)) {
             datasourceCode = null;
         }
-        return R.ok(flowModelInfoService.importFromDb(datasourceCode, tableName));
+        try {
+            return R.ok(flowModelInfoService.importFromDb(datasourceCode, tableName));
+        } catch (IllegalArgumentException e) {
+            return R.fail(400, e.getMessage());
+        }
     }
 
     /**

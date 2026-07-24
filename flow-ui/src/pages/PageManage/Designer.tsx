@@ -22,6 +22,7 @@ const loadPlugins = () => {
 
 import { getPageDetail, updatePageJson } from './services/pageManage';
 import { createAmisEnv } from '@/utils/amisEnv';
+import { sanitizeAmisSchema } from '@/utils/amisSanitize';
 
 /** 默认页面骨架（新页面使用） */
 const DEFAULT_JSON = {
@@ -152,7 +153,7 @@ const Designer: React.FC<DesignerProps> = ({ id: propId, onBack }) => {
             parsedJson = DEFAULT_JSON;
           }
         }
-        const finalJson = parsedJson || DEFAULT_JSON;
+        const finalJson = sanitizeAmisSchema(parsedJson || DEFAULT_JSON);
         jsonRef.current = finalJson;
         setEditorValue(finalJson);
       } catch (err) {
@@ -178,7 +179,19 @@ const Designer: React.FC<DesignerProps> = ({ id: propId, onBack }) => {
     setSaving(true);
     try {
       const currentJson = jsonRef.current;
-      const jsonStr = typeof currentJson === 'string' ? currentJson : JSON.stringify(currentJson);
+      const parsed =
+        typeof currentJson === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(currentJson);
+              } catch {
+                return null;
+              }
+            })()
+          : currentJson;
+      const sanitized = sanitizeAmisSchema(parsed);
+      const jsonStr = JSON.stringify(sanitized);
+      jsonRef.current = sanitized;
       await updatePageJson(id!, jsonStr);
       message.success('保存成功');
     } catch (err) {

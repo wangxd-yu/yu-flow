@@ -20,7 +20,7 @@ public class SaveSysConfigDTO {
     /** 配置值 */
     private String configValue;
 
-    /** 值类型 (STRING / NUMBER / BOOLEAN / JSON) */
+    /** 值类型 (STRING / NUMBER / BOOLEAN / JSON / ENUM) */
     @NotBlank(message = "值类型不能为空")
     private String valueType;
 

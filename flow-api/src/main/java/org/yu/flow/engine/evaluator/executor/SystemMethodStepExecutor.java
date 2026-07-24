@@ -1,15 +1,13 @@
 package org.yu.flow.engine.evaluator.executor;
 import org.yu.flow.engine.model.PortNames;
 
-import cn.hutool.extra.spring.SpringUtil;
 import org.yu.flow.engine.evaluator.ExecutionContext;
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.engine.model.step.SystemMethodStep;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import java.util.HashMap;
@@ -79,19 +77,8 @@ public class SystemMethodStepExecutor extends AbstractStepExecutor<SystemMethodS
             // 2. 提取入参原始值 (由 prepareInputs 处理 JSONPath 提取)
             Map<String, Object> inputValues = this.prepareInputs(step, context, flow);
 
-            // 3. 构建安全求值上下文
-            StandardEvaluationContext spelContext = new StandardEvaluationContext();
-
-            // 【安全提示】此处应注入之前定义的 SafeTypeLocator (黑名单沙盒)
-            // spelContext.setTypeLocator(new org.yu.flow.engine.evaluator.spel.SafeTypeLocator());
-
-            // 注入 Spring Bean 解析能力
-            try {
-                BeanFactory beanFactory = SpringUtil.getBeanFactory();
-                if (beanFactory != null) {
-                    spelContext.setBeanResolver(new BeanFactoryResolver(beanFactory));
-                }
-            } catch (Exception ignored) { }
+            // 3. 安全求值上下文（SafeTypeLocator + Bean 白名单）
+            StandardEvaluationContext spelContext = MacroSpelContexts.create();
 
             // 4. 装配参数进入变量池 (#p0, #p1 ...)
             String paramsStr = macro.getSysMacro().getMacroParams();

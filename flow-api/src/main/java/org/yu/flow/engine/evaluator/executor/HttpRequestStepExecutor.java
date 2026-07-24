@@ -81,8 +81,9 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
             // 1. 准备输入变量
             Map<String, Object> inputs = this.prepareInputs(step, context, flow);
 
-            // 2. 构建 HttpUrl
+            // 2. 构建 HttpUrl + SSRF 校验
             HttpUrl finalUrl = buildUrl(step, inputs);
+            assertOutboundUrlAllowed(finalUrl);
 
             // 3. 构建 Request
             Request request = buildRequest(step, finalUrl, inputs);
@@ -99,7 +100,7 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
             // 4. 定制超时 / SSL Client
             OkHttpClient stepClient = buildClient(step, ignoreSsl);
 
-            // 5. 执行请求；网络异常可按 retryCount 重试；证书失败时自动 insecure 再试一次
+            // 5. 执行请求；网络异常可按 retryCount 重试（不再自动降级忽略证书）
             int extraRetries = step.getRetryCount() == null ? 0 : Math.max(0, step.getRetryCount());
             long retryIntervalMs = step.getRetryIntervalMs() == null
                     ? 1000L
@@ -112,10 +113,8 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
                     return executeRequestAndParseResponse(step, request, stepClient, startTime, context, logDO);
                 } catch (Exception first) {
                     if (!ignoreSsl && isCertificateProblem(first)) {
-                        log.warn("HttpRequest [{}] SSL 证书校验失败，自动忽略证书重试。建议在节点开启「忽略SSL」。err={}",
+                        log.warn("HttpRequest [{}] SSL 证书校验失败。请在节点显式开启 ignoreSsl，或修复证书。err={}",
                                 step.getId(), first.getMessage());
-                        OkHttpClient insecureClient = buildClient(step, true);
-                        return executeRequestAndParseResponse(step, request, insecureClient, startTime, context, logDO);
                     }
                     lastError = first;
                     if (attempt < maxAttempts) {
@@ -178,26 +177,39 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
     /**
      * 解析 ignoreSsl。
      * <ul>
-     *   <li>null / 未配置 → true（兼容自签名内网 HTTPS，与常见集成任务一致）</li>
-     *   <li>显式 false → 严格校验证书</li>
+     *   <li>null / 未配置 → false（默认校验证书）</li>
+     *   <li>显式 true → 跳过校验（仅内网自签名场景）</li>
      * </ul>
      */
     private static boolean resolveIgnoreSsl(HttpRequestStep step) {
         Object raw = step.getIgnoreSsl();
         if (raw == null) {
-            return true;
+            return false;
         }
         if (raw instanceof Boolean) {
             return (Boolean) raw;
         }
         String s = String.valueOf(raw).trim();
         if (s.isEmpty()) {
-            return true;
+            return false;
         }
         if ("false".equalsIgnoreCase(s) || "0".equals(s) || "no".equalsIgnoreCase(s)) {
             return false;
         }
         return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
+    }
+
+    private static void assertOutboundUrlAllowed(HttpUrl url) {
+        boolean blockPrivate = false;
+        try {
+            org.yu.flow.config.YuFlowProperties props =
+                    cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.YuFlowProperties.class);
+            if (props != null && props.getSecurity() != null) {
+                blockPrivate = props.getSecurity().isBlockPrivateOutbound();
+            }
+        } catch (Exception ignored) {
+        }
+        org.yu.flow.security.OutboundUrlGuard.validate(url.toString(), true, blockPrivate);
     }
 
     private static boolean isCertificateProblem(Throwable e) {

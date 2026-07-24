@@ -181,9 +181,15 @@ public class FlowUiController {
                 + "</script>";
         html = html.replace("<head>", "<head>" + injectedScript);
 
-        // 输出最终 HTML
         response.setContentType("text/html;charset=UTF-8");
         response.setCharacterEncoding("UTF-8");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("X-Frame-Options", "DENY");
+        response.setHeader("Content-Security-Policy",
+                "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; "
+                        + "object-src 'none'; img-src 'self' data: blob:; font-src 'self' data:; "
+                        + "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                        + "connect-src 'self'; worker-src 'self' blob:");
         response.getWriter().write(html);
     }
 }

@@ -9,7 +9,8 @@ import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
 
 import jakarta.persistence.*;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Data
 @Builder
@@ -50,12 +51,12 @@ public class FlowMetricsMetaDO {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @Column(name = "update_time")
-    private Date updateTime;
+    private LocalDateTime updateTime;
 
     @PrePersist
     @PreUpdate
     public void touch() {
-        updateTime = new Date();
+        updateTime = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         if (consecFail == null) {
             consecFail = 0L;
         }

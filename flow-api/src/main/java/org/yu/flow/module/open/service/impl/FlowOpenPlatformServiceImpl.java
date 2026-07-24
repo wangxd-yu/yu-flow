@@ -33,6 +33,8 @@ import org.yu.flow.util.AesEncryptUtil;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -178,11 +180,12 @@ public class FlowOpenPlatformServiceImpl implements FlowOpenPlatformService {
             throw new FlowException("OPEN_CRED_NOT_FOUND", "凭证不属于该平台");
         }
         int grace = yuFlowRuntimeSettings.getOpenRotateGraceHours();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         old.setStatus(FlowOpenCredentialDO.STATUS_ROTATED);
         if (grace > 0) {
-            old.setExpireAt(new Date(System.currentTimeMillis() + grace * 3600_000L));
+            old.setExpireAt(now.plusHours(grace));
         } else {
-            old.setExpireAt(new Date());
+            old.setExpireAt(now);
             old.setStatus(FlowOpenCredentialDO.STATUS_DISABLED);
         }
         credentialRepository.save(old);

@@ -1,67 +1,106 @@
 import { request as umiRequest, history } from '@umijs/max';
 import { message } from 'antd';
 
+const isDev = process.env.NODE_ENV === 'development';
+
+function isAbsoluteHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+function pathAllowed(pathname: string): boolean {
+  return pathname.startsWith('/flow-api') || pathname.startsWith('/flow-amis');
+}
+
+function isAllowedAmisApiUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const u = url.trim();
+  if (!u || u.startsWith('//')) return false;
+  // 仅允许显式 /flow-api、/flow-amis 前缀（含 contextPath 下的绝对同源 URL）
+  if (u.startsWith('/flow-api') || u.startsWith('/flow-amis')) return true;
+  if (!isAbsoluteHttpUrl(u)) return false;
+  try {
+    const parsed = new URL(u, window.location.origin);
+    if (parsed.origin !== window.location.origin) return false;
+    const contextPath = (typeof window !== 'undefined' && (window as any).__CONTEXT_PATH__) || '';
+    let path = parsed.pathname;
+    if (contextPath && path.startsWith(contextPath)) {
+      path = path.substring(contextPath.length) || '/';
+      if (!path.startsWith('/')) path = '/' + path;
+    }
+    return pathAllowed(path);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 创建系统公共的 Amis 环境（Env）
- * 在内部分别实现了 fetcher、部分 UI 通知桥接和路有跳转
+ * 在内部分别实现了 fetcher、部分 UI 通知桥接和路由跳转
  */
 export const createAmisEnv = () => ({
   fetcher: ({ url, method, data, responseType, config, headers }: any) => {
     const normalizedMethod = (method || 'get').toLowerCase();
 
-    // 统一在 fetcher 接管 /flow-amis 前缀，防止被框架底层的配置或绕过影响
     let finalUrl = url;
-    if (finalUrl.startsWith('/flow-amis')) {
+    if (typeof finalUrl === 'string' && finalUrl.startsWith('/flow-amis')) {
       if (process.env.NODE_ENV === 'production') {
         const contextPath = (window as any).__CONTEXT_PATH__ || '';
         finalUrl = finalUrl.replace('/flow-amis', '');
         finalUrl = `${contextPath}${finalUrl.startsWith('/') ? finalUrl : `/${finalUrl}`}`;
       }
-      // 开发环境时保留 /flow-amis 交给 webpack proxy
+    }
+
+    if (!isAllowedAmisApiUrl(String(finalUrl))) {
+      return Promise.resolve({
+        status: 403,
+        data: {
+          status: 1,
+          msg: 'Amis 请求地址不在允许范围（仅同源 /flow-api、/flow-amis）',
+          data: null,
+        },
+      } as any);
     }
 
     return umiRequest(finalUrl, {
       method: normalizedMethod,
-      // GET 请求使用 params，其余使用 data(body)
       ...(normalizedMethod === 'get' ? { params: data } : { data }),
       headers,
       responseType: responseType as any,
-      getResponse: true, // 防止 umi 请求自动返回 res.data
+      getResponse: true,
       ...config,
     })
       .then((raw: any) => {
-        // 根据全局拦截器当前是直接返回 response 还是 data，做一层兼容提取
-        const res = (raw && raw.code === undefined && raw.data && raw.data.code !== undefined) ? raw.data : raw;
+        const res =
+          raw && raw.code === undefined && raw.data && raw.data.code !== undefined
+            ? raw.data
+            : raw;
 
-        console.log("Amis 响应拦截:", finalUrl, res);
-
-        // 如果已经是标准 Amis 格式：{ status: 0, data: {...} }，直接返回
-        if (res && res.status !== undefined && res.data !== undefined) {
-           return { status: 200, data: res } as any;
+        if (isDev) {
+          console.log('Amis 响应拦截:', finalUrl, res);
         }
 
-        // Adapter 转换层：处理我们后端的标准包裹 { code: 200, msg: '', data: ... }
+        if (res && res.status !== undefined && res.data !== undefined) {
+          return { status: 200, data: res } as any;
+        }
+
         if (res && res.code !== undefined) {
           return {
-            status: 200, // HTTP 层面强制给 200，防止 Amis 内部中断机制
+            status: 200,
             data: {
               status: res.code === 200 ? 0 : res.code,
               msg: res.msg || '',
-              // 对于下拉框这种期望 items 的，这里需要直接抛出后端包裹在 data 里的数组或者分页结构
               data: res.data,
             },
           } as any;
         }
 
-        // 走到这里，说明 res 没有 code 也没有 status，比如 MyBatis Plus 的 IPage 分页结果（没有套 R 响应体）
-        // 那就把整个 res 当做 data 包裹起来给 Amis
-        return { 
-          status: 200, 
+        return {
+          status: 200,
           data: {
-             status: 0, 
-             msg: '', 
-             data: res
-          } 
+            status: 0,
+            msg: '',
+            data: res,
+          },
         } as any;
       })
       .catch((err: any) => {
@@ -80,10 +119,17 @@ export const createAmisEnv = () => ({
 
   notify: (type: 'success' | 'error' | 'info' | 'warning', msg: string) => {
     switch (type) {
-      case 'success': message.success(msg); break;
-      case 'error': message.error(msg); break;
-      case 'warning': message.warning(msg); break;
-      default: message.info(msg);
+      case 'success':
+        message.success(msg);
+        break;
+      case 'error':
+        message.error(msg);
+        break;
+      case 'warning':
+        message.warning(msg);
+        break;
+      default:
+        message.info(msg);
     }
   },
 
@@ -97,11 +143,31 @@ export const createAmisEnv = () => ({
 
   jumpTo: (to: string) => {
     if (to === 'goBack') return history.back();
-    if (to.startsWith('http://') || to.startsWith('https://')) {
-      window.open(to, '_blank');
+    if (/^(javascript|data):/i.test(to)) {
+      message.warning('已拦截不安全跳转');
       return;
-    } 
-    
+    }
+    if (to.startsWith('http://') || to.startsWith('https://') || to.startsWith('//')) {
+      try {
+        const parsed = new URL(to.startsWith('//') ? `${window.location.protocol}${to}` : to);
+        if (parsed.origin !== window.location.origin) {
+          message.warning('已拦截外域跳转，仅允许站内路径');
+          return;
+        }
+        const contextPath = (window as any).__CONTEXT_PATH__ || '';
+        const basename = `${contextPath}/flow-ui`;
+        let path = parsed.pathname + parsed.search + parsed.hash;
+        if (path.startsWith(basename)) {
+          path = path.substring(basename.length) || '/';
+          if (!path.startsWith('/')) path = '/' + path;
+        }
+        history.push(path);
+      } catch {
+        message.warning('非法跳转地址');
+      }
+      return;
+    }
+
     let finalTo = to;
     if (finalTo.startsWith('?')) {
       finalTo = window.location.pathname + finalTo;
@@ -109,7 +175,7 @@ export const createAmisEnv = () => ({
 
     const contextPath = (window as any).__CONTEXT_PATH__ || '';
     const basename = `${contextPath}/flow-ui`;
-    
+
     if (finalTo.startsWith(basename)) {
       finalTo = finalTo.substring(basename.length);
       if (!finalTo.startsWith('/')) finalTo = '/' + finalTo;
@@ -119,17 +185,40 @@ export const createAmisEnv = () => ({
 
   updateLocation: (to: string, replace?: boolean) => {
     if (to === 'goBack') return history.back();
-    
+    if (/^(javascript|data):/i.test(to)) {
+      message.warning('已拦截不安全跳转');
+      return;
+    }
+    if (to.startsWith('http://') || to.startsWith('https://') || to.startsWith('//')) {
+      try {
+        const parsed = new URL(to.startsWith('//') ? `${window.location.protocol}${to}` : to);
+        if (parsed.origin !== window.location.origin) {
+          message.warning('已拦截外域跳转，仅允许站内路径');
+          return;
+        }
+        const contextPath = (window as any).__CONTEXT_PATH__ || '';
+        const basename = `${contextPath}/flow-ui`;
+        let path = parsed.pathname + parsed.search + parsed.hash;
+        if (path.startsWith(basename)) {
+          path = path.substring(basename.length) || '/';
+          if (!path.startsWith('/')) path = '/' + path;
+        }
+        if (replace) history.replace(path);
+        else history.push(path);
+      } catch {
+        message.warning('非法跳转地址');
+      }
+      return;
+    }
+
     let finalTo = to;
-    // 如果 Amis 传来的是纯参数 （比如 "?page=1"），把它和当前的路径结合
     if (finalTo.startsWith('?')) {
       finalTo = window.location.pathname + finalTo;
     }
 
     const contextPath = (window as any).__CONTEXT_PATH__ || '';
     const basename = `${contextPath}/flow-ui`;
-    
-    // 如果包含了 basename 则剥离它，因为 UmiJS 发起跳转时还会再拼接一次
+
     if (finalTo.startsWith(basename)) {
       finalTo = finalTo.substring(basename.length);
       if (!finalTo.startsWith('/')) finalTo = '/' + finalTo;

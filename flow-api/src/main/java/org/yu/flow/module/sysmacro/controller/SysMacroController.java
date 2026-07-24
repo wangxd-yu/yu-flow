@@ -1,5 +1,6 @@
 package org.yu.flow.module.sysmacro.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.annotation.YuFlowApi;
 
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ import java.util.stream.Collectors;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/sys-macros")
+@RequirePerm({"sys:macro:view", "sys:macro:write"})
 public class SysMacroController {
 
     @Resource
@@ -88,6 +90,7 @@ public class SysMacroController {
      * 新建宏定义
      */
     @PostMapping
+    @RequirePerm("sys:macro:write")
     public R<SysMacroDO> create(@Valid @RequestBody SaveSysMacroDTO dto) {
         return R.ok(flowSysMacroService.create(dto));
     }
@@ -99,6 +102,7 @@ public class SysMacroController {
      * @param dto 更新内容
      */
     @PutMapping("/{id}")
+    @RequirePerm("sys:macro:write")
     public R<SysMacroDO> update(@PathVariable String id, @RequestBody SaveSysMacroDTO dto) {
         return R.ok(flowSysMacroService.update(id, dto));
     }
@@ -109,6 +113,7 @@ public class SysMacroController {
      * @param id 宏定义主键
      */
     @DeleteMapping("/{id}")
+    @RequirePerm("sys:macro:write")
     public R<Void> delete(@PathVariable String id) {
         flowSysMacroService.delete(id);
         return R.ok();

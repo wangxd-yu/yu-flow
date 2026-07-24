@@ -3,7 +3,10 @@ package org.yu.flow.module.release.service.impl;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
 import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
+import org.yu.flow.module.api.security.ApiSecurityConfigGuard;
 import org.yu.flow.module.release.domain.FlowEnvDO;
 import org.yu.flow.module.release.domain.FlowRegressionRunDO;
 import org.yu.flow.module.release.domain.FlowRegressionSuiteDO;
@@ -47,6 +50,9 @@ public class PublishGateServiceImpl implements PublishGateService {
 
     @Resource
     private AuditLogService auditLogService;
+
+    @Resource
+    private YuFlowProperties yuFlowProperties;
 
     @Override
     public PublishGateResultDTO check(String assetType, String assetId, String envCode) {
@@ -124,6 +130,36 @@ public class PublishGateServiceImpl implements PublishGateService {
                                     + " 小时内有 PASSED 回归；请先运行套件")
                             .build());
                 }
+            }
+        }
+
+        if ("API".equals(type)) {
+            boolean allowNone = yuFlowProperties.getSecurity() != null
+                    && yuFlowProperties.getSecurity().isAllowIngressAuthNone();
+            FlowApiDO api = flowApiRepository.findById(assetId).orElse(null);
+            boolean none = api != null && ApiSecurityConfigGuard.isExplicitNone(api.getSecurityConfig());
+            if (none && !allowNone) {
+                checks.add(PublishGateCheckItemDTO.builder()
+                        .code("INGRESS_AUTH_NONE")
+                        .name("入站鉴权")
+                        .status("FAIL")
+                        .message("接口 authMode=NONE（匿名可调）已被禁止；请改为 HOST/OPEN/INHERIT，"
+                                + "或设置 YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true")
+                        .build());
+            } else if (none) {
+                checks.add(PublishGateCheckItemDTO.builder()
+                        .code("INGRESS_AUTH_NONE")
+                        .name("入站鉴权")
+                        .status("WARN")
+                        .message("接口显式配置了 authMode=NONE（匿名可调），请确认业务确需公开")
+                        .build());
+            } else {
+                checks.add(PublishGateCheckItemDTO.builder()
+                        .code("INGRESS_AUTH_NONE")
+                        .name("入站鉴权")
+                        .status("PASS")
+                        .message("未使用 NONE")
+                        .build());
             }
         }
 

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { message } from 'antd';
 import { useNavigate, useModel, request } from '@umijs/max';
 import { fetchAuthMe } from '@/services/auth';
+import { clearAuthHint, setAuthHint } from '@/utils/session';
 import styles from './index.module.css';
 import logo from '@/assets/logo1.svg';
 
@@ -98,7 +99,7 @@ const Login: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.removeItem('flow_token');
+    clearAuthHint();
     setInitialState((prev: any) => ({
       ...(prev || {}),
       name: '',
@@ -144,7 +145,7 @@ const Login: React.FC = () => {
 
     setLoading(true);
     try {
-      const response = await request('/flow-api/login', {
+      await request('/flow-api/login', {
         method: 'POST',
         data: {
           username: formData.username,
@@ -154,19 +155,11 @@ const Login: React.FC = () => {
         },
       });
 
-      const token =
-        typeof response === 'string' ? response : (response as any)?.data || response;
-      if (!token || typeof token !== 'string') {
-        message.error('登录响应异常');
-        refreshCaptcha();
-        return;
-      }
-      const normalized = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-      localStorage.setItem('flow_token', normalized);
+      setAuthHint();
       const me = await fetchAuthMe();
       if (!me?.permissions?.length) {
-        localStorage.removeItem('flow_token');
-        message.error('获取用户权限失败，请确认后端已启动');
+        clearAuthHint();
+        message.error('获取用户权限失败，请确认后端已启动且 Cookie 可写入');
         refreshCaptcha();
         return;
       }

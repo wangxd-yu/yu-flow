@@ -17,6 +17,7 @@ import org.yu.flow.module.open.repository.FlowOpenPlatformRepository;
 import org.yu.flow.util.AesEncryptUtil;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -183,8 +184,8 @@ public class OpenPlatformCache {
         private String appSecret;
         private Integer credentialStatus;
         private Integer platformStatus;
-        private Date platformExpireAt;
-        private Date credentialExpireAt;
+        private LocalDateTime platformExpireAt;
+        private LocalDateTime credentialExpireAt;
         private List<String> ipAllowlist;
         /** 平台级入站日志：null/1=开，0=关 */
         private Integer openCallLogEnabled;

@@ -53,6 +53,10 @@ public class DebugSession {
     @Getter
     private final String sessionId;
 
+    /** 创建者用户名（防 IDOR） */
+    @Getter
+    private final String ownerUsername;
+
     /** 断点集合（节点 ID） */
     @Getter
     private final Set<String> breakpoints;
@@ -113,11 +117,20 @@ public class DebugSession {
     // ════════════════════════════════════════════════════════════════
 
     public DebugSession(String sessionId, Set<String> breakpoints) {
-        this(sessionId, breakpoints, 5 * 60 * 1000L); // 默认 5 分钟超时
+        this(sessionId, breakpoints, null, 5 * 60 * 1000L);
+    }
+
+    public DebugSession(String sessionId, Set<String> breakpoints, String ownerUsername) {
+        this(sessionId, breakpoints, ownerUsername, 5 * 60 * 1000L);
     }
 
     public DebugSession(String sessionId, Set<String> breakpoints, long timeoutMs) {
+        this(sessionId, breakpoints, null, timeoutMs);
+    }
+
+    public DebugSession(String sessionId, Set<String> breakpoints, String ownerUsername, long timeoutMs) {
         this.sessionId = sessionId;
+        this.ownerUsername = ownerUsername;
         this.breakpoints = breakpoints != null
                 ? Collections.unmodifiableSet(new HashSet<>(breakpoints))
                 : Collections.emptySet();

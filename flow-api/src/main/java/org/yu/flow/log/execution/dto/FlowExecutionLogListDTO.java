@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.log.execution.domain.FlowExecutionLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * API 执行日志【列表轻量 DTO】
@@ -29,7 +29,7 @@ public class FlowExecutionLogListDTO {
     private Boolean hasTrace;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public FlowExecutionLogListDTO() {
     }
@@ -37,7 +37,7 @@ public class FlowExecutionLogListDTO {
     /** JPA Criteria {@code cb.construct} 专用构造器（勿传入 LOB 字段） */
     public FlowExecutionLogListDTO(String id, String apiId, String apiName, String url,
                                    String serviceType, String method, String status,
-                                   Long costTimeMs, Boolean hasTrace, Date createTime) {
+                                   Long costTimeMs, Boolean hasTrace, LocalDateTime createTime) {
         this.id = id;
         this.apiId = apiId;
         this.apiName = apiName;

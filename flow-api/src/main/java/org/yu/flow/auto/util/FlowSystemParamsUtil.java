@@ -1,10 +1,9 @@
 package org.yu.flow.auto.util;
 
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
@@ -39,12 +38,10 @@ public class FlowSystemParamsUtil {
     private static FlowSystemParamsUtil INSTANCE;
 
     private final SysMacroCacheManager sysMacroCacheManager;
-    private final BeanFactory beanFactory;
 
-    public FlowSystemParamsUtil(SysMacroCacheManager sysMacroCacheManager, BeanFactory beanFactory) {
+    public FlowSystemParamsUtil(SysMacroCacheManager sysMacroCacheManager) {
         INSTANCE = this;
         this.sysMacroCacheManager = sysMacroCacheManager;
-        this.beanFactory = beanFactory;
     }
 
     // ============================= 公共 API =============================
@@ -124,10 +121,7 @@ public class FlowSystemParamsUtil {
                     "宏定义未找到或未启用，请检查宏编码是否正确：" + macroCode);
         }
 
-        StandardEvaluationContext context = new StandardEvaluationContext();
-        // 注入 BeanResolver，使 SpEL 中 @beanName 语法可引用 Spring 容器中的 Bean
-        // 例如 GET_ENV 宏的表达式 @environment.getProperty(#p0) 需要解析 @environment
-        context.setBeanResolver(new BeanFactoryResolver(beanFactory));
+        StandardEvaluationContext context = MacroSpelContexts.create();
 
         if (contextParams != null && !contextParams.isEmpty()) {
             @SuppressWarnings("unchecked")

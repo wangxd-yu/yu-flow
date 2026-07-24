@@ -1,27 +1,34 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   PageContainer,
   ProForm,
   ProFormDigit,
+  ProFormSelect,
   ProFormSwitch,
   ProFormText,
   ProFormTextArea,
   ProCard,
 } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
-import { message, Tabs, Spin, Alert, Typography, Button } from 'antd';
+import { message, Tabs, Spin, Alert, Button, Tag } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import '@/styles/fullHeightTable.css';
 
-const { Title, Text } = Typography;
-
 const API_BASE = '/flow-api/sys-configs';
+
+/**
+ * 枚举配置约定（不改表结构）：
+ * - valueType = ENUM
+ * - remark 以方括号声明选项，其后为说明文案
+ *   [VALUE|VALUE:展示名|...] 说明文字
+ */
+const ENUM_REMARK_RE = /^\[([^\]]+)]\s*([\s\S]*)$/;
 
 export interface SysConfigDTO {
   id: string;
   configKey: string;
   configValue: string;
-  valueType: 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON';
+  valueType: 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON' | 'ENUM';
   configGroup: string;
   remark?: string;
   isBuiltin: 0 | 1;
@@ -29,20 +36,113 @@ export interface SysConfigDTO {
   sortOrder?: number;
 }
 
-const GROUP_NAMES: Record<string, string> = {
-  GENERAL: '通用配置',
-  SECURITY: '安全配置',
-  GATEWAY: '网关配置',
-  OPEN: '开放平台',
-  INGRESS: '入站防护',
-  ALERT: '运行告警',
-  MAIL: '邮件 SMTP',
-  OSS: '存储配置',
-  LOG: '日志配置',
-  FLOW: '流程配置',
+type SelectOption = { label: string; value: string };
+
+const parseEnumRemark = (
+  remark?: string,
+): { options: SelectOption[]; help: string } => {
+  const raw = (remark || '').trim();
+  const m = raw.match(ENUM_REMARK_RE);
+  if (!m) {
+    return { options: [], help: raw };
+  }
+  const options = m[1]
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const idx = part.indexOf(':');
+      if (idx <= 0) {
+        return { value: part, label: part };
+      }
+      const value = part.slice(0, idx).trim();
+      const labelTail = part.slice(idx + 1).trim();
+      return {
+        value,
+        label: labelTail ? `${value} · ${labelTail}` : value,
+      };
+    })
+    .filter((o) => o.value);
+  return { options, help: (m[2] || '').trim() };
 };
 
-// 辅助方法：获取数据
+const displayRemark = (config: SysConfigDTO): string => {
+  if ((config.valueType || '').toUpperCase() === 'ENUM') {
+    return parseEnumRemark(config.remark).help;
+  }
+  return (config.remark || '').trim();
+};
+
+const GROUP_NAMES: Record<string, string> = {
+  INGRESS: '入站防护',
+  OPEN: '开放平台',
+  SECURITY: '安全配置',
+  GATEWAY: '网关配置',
+  GENERAL: '通用配置',
+  FLOW: '流程配置',
+  ALERT: '运行告警',
+  MAIL: '邮件 SMTP',
+  LOG: '日志配置',
+  OSS: '存储配置',
+};
+
+const GROUP_TAB_ORDER = [
+  'INGRESS',
+  'OPEN',
+  'SECURITY',
+  'GATEWAY',
+  'GENERAL',
+  'FLOW',
+  'ALERT',
+  'MAIL',
+  'LOG',
+  'OSS',
+];
+
+const GROUP_ALERTS: Record<string, { message: string; description: string }> = {
+  INGRESS: {
+    message: '入站防护 · 已发布业务 API',
+    description:
+      '优先级：本页 > application.yml；接口 securityConfig 可再覆盖（需发布）。authMode=NONE 仍受 allow-ingress-auth-none 约束。',
+  },
+  OPEN: {
+    message: '开放平台 · AppKey 签名入口',
+    description: '优先级：本页 > application.yml；entry-prefix 仅 yml、不热更。',
+  },
+  SECURITY: {
+    message: '安全相关运行参数',
+    description: '部分项仅 yml/环境变量生效，请以各项 ? 说明为准。',
+  },
+  GATEWAY: {
+    message: '网关与路由相关',
+    description: '与入站鉴权策略配合使用。',
+  },
+  ALERT: {
+    message: '运行告警（Webhook）· 全局兜底',
+    description: '无告警规则时生效；推荐在「运行观测 → 告警规则」配置通道与规则。',
+  },
+  MAIL: {
+    message: '邮件 SMTP（全局）',
+    description: '告警 Email 与流程发信共用；优先级：本页 > yu.flow.mail。',
+  },
+  LOG: {
+    message: '日志定时清理',
+    description: '保留天数 0=不清理；多节点靠 Redis 锁单点执行。',
+  },
+  FLOW: {
+    message: '流程引擎相关',
+    description: '修改后经缓存通道热更新。',
+  },
+  GENERAL: {
+    message: '通用基础设施',
+    description: '修改后通过 Redis Pub/Sub 热部署到各节点。',
+  },
+  OSS: {
+    message: '对象存储',
+    description: '密钥类字段保存后前端掩码展示，回填掩码不会覆盖原值。',
+  },
+};
+
 const fetchAllConfigs = async (): Promise<SysConfigDTO[]> => {
   const result = await request(`${API_BASE}/page`, {
     method: 'GET',
@@ -51,11 +151,23 @@ const fetchAllConfigs = async (): Promise<SysConfigDTO[]> => {
   return result.items || [];
 };
 
-// 辅助方法：更新数据
 const updateSysConfig = async (id: string, data: any) => {
   return request(`${API_BASE}/${id}`, {
     method: 'PUT',
     data,
+  });
+};
+
+const sortGroupKeys = (keys: string[]): string[] => {
+  const rank = (g: string) => {
+    const i = GROUP_TAB_ORDER.indexOf(g);
+    return i >= 0 ? i : GROUP_TAB_ORDER.length + g.localeCompare('');
+  };
+  return [...keys].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b);
   });
 };
 
@@ -64,11 +176,15 @@ const SysConfigManage: React.FC = () => {
   const [groupedData, setGroupedData] = useState<Record<string, SysConfigDTO[]>>({});
   const [activeTab, setActiveTab] = useState<string>('');
 
+  const orderedGroups = useMemo(
+    () => sortGroupKeys(Object.keys(groupedData)),
+    [groupedData],
+  );
+
   const loadData = async () => {
     setLoading(true);
     try {
       const data = await fetchAllConfigs();
-      // 根据 configGroup 分组
       const grouped: Record<string, SysConfigDTO[]> = {};
       data.forEach((item) => {
         const group = item.configGroup || 'GENERAL';
@@ -77,7 +193,6 @@ const SysConfigManage: React.FC = () => {
         }
         grouped[group].push(item);
       });
-      // 组内按 sortOrder / key 排序（后端已排序，此处兜底）
       Object.keys(grouped).forEach((g) => {
         grouped[g].sort((a, b) => {
           const sa = a.sortOrder ?? 100;
@@ -87,9 +202,8 @@ const SysConfigManage: React.FC = () => {
         });
       });
       setGroupedData(grouped);
-      setActiveTab((prev) =>
-        prev && grouped[prev] ? prev : Object.keys(grouped)[0] || prev,
-      );
+      const keys = sortGroupKeys(Object.keys(grouped));
+      setActiveTab((prev) => (prev && grouped[prev] ? prev : keys[0] || prev));
     } catch (error) {
       message.error('加载系统配置失败');
     } finally {
@@ -101,7 +215,6 @@ const SysConfigManage: React.FC = () => {
     loadData();
   }, []);
 
-  // 解析后端字符串值为前端表单需要的类型
   const parseValue = (config: SysConfigDTO) => {
     if (config.valueType === 'BOOLEAN') {
       return config.configValue === 'true' || config.configValue === '1';
@@ -112,7 +225,6 @@ const SysConfigManage: React.FC = () => {
     return config.configValue;
   };
 
-  // 序列化前端表单值为后端保存需要的字符串
   const stringifyValue = (config: SysConfigDTO, val: any) => {
     if (config.valueType === 'BOOLEAN') {
       return val ? 'true' : 'false';
@@ -122,12 +234,9 @@ const SysConfigManage: React.FC = () => {
 
   const handleSaveGroup = async (group: string, values: Record<string, any>) => {
     const configsInGroup = groupedData[group] || [];
-    
-    // 找出该分组下被修改的配置项
     const changedConfigs = configsInGroup.filter((cfg) => {
       const formVal = values[cfg.configKey];
-      const newStrVal = stringifyValue(cfg, formVal);
-      return newStrVal !== (cfg.configValue || '');
+      return stringifyValue(cfg, formVal) !== (cfg.configValue || '');
     });
 
     if (changedConfigs.length === 0) {
@@ -136,63 +245,131 @@ const SysConfigManage: React.FC = () => {
     }
 
     try {
-      // 通过 Promise.all 批量发送多次更新请求
       await Promise.all(
-        changedConfigs.map((cfg) => {
-          const formVal = values[cfg.configKey];
-          return updateSysConfig(cfg.id, {
+        changedConfigs.map((cfg) =>
+          updateSysConfig(cfg.id, {
             ...cfg,
-            configValue: stringifyValue(cfg, formVal),
-          });
-        }),
+            configValue: stringifyValue(cfg, values[cfg.configKey]),
+          }),
+        ),
       );
       message.success('配置已保存生效');
-      loadData(); // 重新加载以更新本地缓存原始值
+      loadData();
       return true;
     } catch (error) {
-      // 错误由全局拦截器处理
       return false;
     }
   };
 
   const renderField = (config: SysConfigDTO) => {
-    // 允许空串的配置（如 IP 白名单「不限制」）
     const allowEmpty = config.configKey === 'INGRESS_DEFAULT_IP_ALLOWLIST';
-    const commonProps = {
+    const helpText = displayRemark(config);
+    const valueType = (config.valueType || 'STRING').toUpperCase();
+    // 不用 Form label 槽：antd 默认 label 高度 32px 会裁切多行说明
+    const controlProps = {
       name: config.configKey,
-      label: config.configKey,
-      tooltip: config.isBuiltin === 1 ? '系统内置核心参数' : '用户自定义参数',
-      extra: config.remark,
+      label: false as const,
       rules: allowEmpty ? [] : [{ required: true, message: `请输入 ${config.configKey}` }],
-      width: 'md' as const,
-      formItemProps: { style: { marginBottom: 12 } },
+      formItemProps: { style: { marginBottom: 0 } },
     };
 
-    switch (config.valueType) {
-      case 'BOOLEAN':
-        return <ProFormSwitch {...commonProps} />;
-      case 'NUMBER':
-        return <ProFormDigit {...commonProps} />;
-      case 'JSON':
-        return (
-          <ProFormTextArea
-            {...commonProps}
-            fieldProps={{ rows: 6 }}
-            style={{ fontFamily: 'monospace' }}
+    let control: React.ReactNode | undefined;
+    if (valueType === 'ENUM') {
+      const { options } = parseEnumRemark(config.remark);
+      if (options.length > 0) {
+        control = (
+          <ProFormSelect
+            {...controlProps}
+            width="md"
+            options={options}
+            fieldProps={{ allowClear: false, showSearch: false }}
           />
         );
-      case 'STRING':
-      default:
-        if (config.configKey === 'MAIL_PASSWORD' || /PASSWORD|SECRET/i.test(config.configKey)) {
-          return (
-            <ProFormText.Password
-              {...commonProps}
-              fieldProps={{ visibilityToggle: true }}
+      }
+    }
+    if (!control) {
+      switch (valueType) {
+        case 'BOOLEAN':
+          control = <ProFormSwitch {...controlProps} />;
+          break;
+        case 'NUMBER':
+          control = <ProFormDigit {...controlProps} width="sm" />;
+          break;
+        case 'JSON':
+          control = (
+            <ProFormTextArea
+              {...controlProps}
+              width="xl"
+              fieldProps={{ rows: 4, style: { fontFamily: 'monospace' } }}
             />
           );
-        }
-        return <ProFormText {...commonProps} />;
+          break;
+        default:
+          if (config.configKey === 'MAIL_PASSWORD' || /PASSWORD|SECRET/i.test(config.configKey)) {
+            control = (
+              <ProFormText.Password
+                {...controlProps}
+                width="md"
+                fieldProps={{ visibilityToggle: true }}
+              />
+            );
+          } else {
+            control = <ProFormText {...controlProps} width="md" />;
+          }
+      }
     }
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 16,
+          marginBottom: 16,
+          paddingBottom: 12,
+          borderBottom: '1px solid rgba(0,0,0,0.04)',
+        }}
+      >
+        <div style={{ width: 420, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {!allowEmpty ? (
+              <span style={{ color: '#ff4d4f', lineHeight: 1 }}>*</span>
+            ) : (
+              <span style={{ width: 7 }} />
+            )}
+            <span
+              style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                fontSize: 13,
+                fontWeight: 600,
+                color: 'rgba(0,0,0,0.88)',
+              }}
+            >
+              {config.configKey}
+            </span>
+            <Tag style={{ margin: 0, lineHeight: '16px', fontSize: 11, padding: '0 4px' }}>
+              {valueType}
+            </Tag>
+          </div>
+          {helpText ? (
+            <div
+              style={{
+                marginTop: 4,
+                marginLeft: 13,
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: 'rgba(0,0,0,0.45)',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }}
+            >
+              {helpText}
+            </div>
+          ) : null}
+        </div>
+        <div style={{ flex: 1, minWidth: 200, maxWidth: 420, paddingTop: 2 }}>{control}</div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -205,84 +382,47 @@ const SysConfigManage: React.FC = () => {
     );
   }
 
-  const tabItems = Object.entries(groupedData).map(([group, configs]) => {
-    // 组装 initialValues
+  const tabItems = orderedGroups.map((group) => {
+    const configs = groupedData[group] || [];
     const initialValues = configs.reduce((acc, cfg) => {
       acc[cfg.configKey] = parseValue(cfg);
       return acc;
     }, {} as Record<string, any>);
+    const alert = GROUP_ALERTS[group];
 
     return {
       key: group,
       label: GROUP_NAMES[group] || group,
       children: (
-        <div style={{ maxWidth: 800, padding: '24px 0' }}>
-          <Title level={4} style={{ marginBottom: 8 }}>{GROUP_NAMES[group] || group}</Title>
-          {group === 'INGRESS' ? (
+        <div style={{ maxWidth: 980, padding: '8px 8px 24px 16px' }}>
+          {alert ? (
             <Alert
               type="info"
               showIcon
-              style={{ marginBottom: 16 }}
-              message="优先级：系统配置 > application.yml"
-              description="本页启用的 INGRESS_* 会覆盖 yu.flow.ingress；停用或删除配置项后自动回退 yml。接口 securityConfig 可再覆盖鉴权/限流/超时等，需发布后生效。"
+              style={{ marginBottom: 12 }}
+              message={alert.message}
+              description={alert.description}
             />
-          ) : group === 'OPEN' ? (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="优先级：系统配置 > application.yml"
-              description="本页启用的 OPEN_* 会覆盖 yu.flow.open；entry-prefix 仅 yml 配置、不热更。"
-            />
-          ) : group === 'ALERT' ? (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="运行告警（Webhook）· 全局兜底"
-              description="无启用「告警规则」时，本页配置生效：按间隔扫描近窗口异常 TopN 并 POST 到 Webhook。推荐在「运行观测 → 告警规则」配置通道与规则；同一资产在静默期内不会重复推送。"
-            />
-          ) : group === 'MAIL' ? (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="邮件 SMTP（全局）"
-              description="告警 Email 通道与后续流程编排发信节点共用此 SMTP。优先级：系统配置 > application.yml（yu.flow.mail）。配置后可在告警通道里点「测试」验证。"
-            />
-          ) : group === 'LOG' ? (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="日志定时清理"
-              description="服务启动约 1 分钟后首轮清理，之后每 24 小时执行一次。各 LOG_*_RETENTION_DAYS 为对应表保留天数；设为 0 表示不清理该类日志。多节点部署时通过 Redis 锁保证仅一节点执行。"
-            />
-          ) : (
-            <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-              该面板展示属于【{GROUP_NAMES[group] || group}】类别的所有底层基础设施配置。
-            </Text>
-          )}
-          
+          ) : null}
+
           <ProForm
+            key={group}
+            layout="horizontal"
+            submitter={{
+              render: (props) => (
+                <div style={{ marginTop: 8 }}>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={() => props.form?.submit?.()}
+                  >
+                    保存配置
+                  </Button>
+                </div>
+              ),
+            }}
             initialValues={initialValues}
             onFinish={async (values) => handleSaveGroup(group, values)}
-            submitter={{
-              render: (props, doms) => {
-                return (
-                  <div style={{ marginTop: 24 }}>
-                    <Button
-                      type="primary"
-                      key="submit"
-                      icon={<SaveOutlined />}
-                      onClick={() => props.form?.submit?.()}
-                    >
-                      保存配置
-                    </Button>
-                  </div>
-                );
-              },
-            }}
           >
             {configs.map((config) => (
               <React.Fragment key={config.id}>{renderField(config)}</React.Fragment>
@@ -300,8 +440,7 @@ const SysConfigManage: React.FC = () => {
       header={{ title: '系统配置', subTitle: '热更新基础设施参数' }}
     >
       <Alert
-        message="基础设施参数设置"
-        description="此处参数修改后将通过底层 L2 缓存通道 (Redis Pub/Sub) 实时热部署广播至所有集群节点内存，无须重启服务即可生效。请谨慎操作。"
+        message="修改后经 Redis Pub/Sub 热更新至各节点，无需重启；请谨慎操作。"
         type="warning"
         showIcon
         closable
@@ -309,7 +448,7 @@ const SysConfigManage: React.FC = () => {
       />
       <ProCard
         style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
-        bodyStyle={{ height: '100%' }}
+        bodyStyle={{ height: '100%', paddingTop: 8 }}
       >
         <Tabs
           activeKey={activeTab}

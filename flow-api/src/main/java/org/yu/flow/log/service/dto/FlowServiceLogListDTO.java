@@ -3,7 +3,7 @@ package org.yu.flow.log.service.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class FlowServiceLogListDTO {
@@ -17,13 +17,13 @@ public class FlowServiceLogListDTO {
     private Boolean hasTrace;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public FlowServiceLogListDTO() {
     }
 
     public FlowServiceLogListDTO(String id, String serviceId, String serviceName, String triggerType,
-                                 String status, Long costTimeMs, Boolean hasTrace, Date createTime) {
+                                 String status, Long costTimeMs, Boolean hasTrace, LocalDateTime createTime) {
         this.id = id;
         this.serviceId = serviceId;
         this.serviceName = serviceName;

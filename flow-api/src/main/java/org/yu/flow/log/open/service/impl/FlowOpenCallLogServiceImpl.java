@@ -22,15 +22,17 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 @Slf4j
 @Service
 public class FlowOpenCallLogServiceImpl implements FlowOpenCallLogService {
+
+    private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Resource
     private FlowOpenCallLogRepository flowOpenCallLogRepository;
@@ -110,8 +112,8 @@ public class FlowOpenCallLogServiceImpl implements FlowOpenCallLogService {
         if (StrUtil.isNotBlank(query.getErrorCode())) {
             ps.add(cb.equal(root.get("errorCode"), query.getErrorCode().trim()));
         }
-        Date start = parseTime(query.getStartTime());
-        Date end = parseTime(query.getEndTime());
+        LocalDateTime start = parseTime(query.getStartTime());
+        LocalDateTime end = parseTime(query.getEndTime());
         if (start != null) {
             ps.add(cb.greaterThanOrEqualTo(root.get("createTime"), start));
         }
@@ -121,13 +123,13 @@ public class FlowOpenCallLogServiceImpl implements FlowOpenCallLogService {
         return ps;
     }
 
-    private static Date parseTime(String s) {
+    private static LocalDateTime parseTime(String s) {
         if (StrUtil.isBlank(s)) {
             return null;
         }
         try {
-            return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(s.trim());
-        } catch (ParseException e) {
+            return LocalDateTime.parse(s.trim(), DATE_TIME_FMT);
+        } catch (DateTimeParseException e) {
             return null;
         }
     }

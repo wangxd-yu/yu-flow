@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.module.open.domain.FlowOpenCredentialDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class FlowOpenCredentialDTO {
@@ -16,9 +16,9 @@ public class FlowOpenCredentialDTO {
     private String secretHint;
     private Integer status;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date expireAt;
+    private LocalDateTime expireAt;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
-    private Date createTime;
+    private LocalDateTime createTime;
 
     public static FlowOpenCredentialDTO fromDO(FlowOpenCredentialDO d) {
         if (d == null) return null;

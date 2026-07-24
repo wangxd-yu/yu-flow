@@ -1,4 +1,10 @@
 import { defineConfig } from '@umijs/max';
+import path from 'path';
+
+const linkifyItReal = path.join(
+  __dirname,
+  'node_modules/linkify-it/build/index.cjs.js',
+);
 
 export default defineConfig({
   antd: {},
@@ -7,16 +13,37 @@ export default defineConfig({
   model: {},
   initialState: {},
   request: {},
+  // Amis/安全 overrides 兼容：TinyMCE7 无 template；linkify-it5+ 无 default export
+  // linkify-it$ 精确匹配，真实包经 @yu-flow/linkify-it-real 绝对路径加载
+  alias: {
+    'tinymce/plugins/template': path.join(__dirname, 'src/shims/tinymce-plugin-template.js'),
+    'linkify-it$': path.join(__dirname, 'src/shims/linkify-it-compat.cjs'),
+    '@yu-flow/linkify-it-real': linkifyItReal,
+  },
+  plugins: [path.join(__dirname, 'plugin.security-headers.ts')],
   proxy: {
     '/flow-api': {
       target: 'http://127.0.0.1:11281/flow/flow-api/',
       changeOrigin: true,
       pathRewrite: { '^/flow-api': '' },
+      // Umi bundler-utils 会注入 x-real-url，开发态剥离以免泄露上游
+      onProxyRes(proxyRes: any) {
+        if (proxyRes?.headers) {
+          delete proxyRes.headers['x-real-url'];
+          delete proxyRes.headers['X-Real-Url'];
+        }
+      },
     },
     '/flow-amis': {
       target: 'http://127.0.0.1:11281/flow/',
       changeOrigin: true,
       pathRewrite: { '^/flow-amis': '' },
+      onProxyRes(proxyRes: any) {
+        if (proxyRes?.headers) {
+          delete proxyRes.headers['x-real-url'];
+          delete proxyRes.headers['X-Real-Url'];
+        }
+      },
     },
   },
   // ============ 核心路由配置 ============
@@ -271,11 +298,13 @@ export default defineConfig({
       path: '/page-manage/designer/:id',
       component: './PageManage/Designer',
       layout: false,
+      access: 'canPage',
     },
     {
       path: '/page-manage/preview/:id',
       component: './PageManage/Preview',
       layout: false,
+      access: 'canPage',
     },
     {
       path: '/page-manage',

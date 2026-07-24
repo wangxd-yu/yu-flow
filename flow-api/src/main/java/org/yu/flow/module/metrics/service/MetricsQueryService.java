@@ -136,7 +136,7 @@ public class MetricsQueryService {
         LocalDateTime from = window.from(now);
         List<FlowMetricsMinuteDO> rows = metricsMinuteRepository
                 .findByAssetTypeAndBucketStartGreaterThanEqualAndBucketStartLessThan(
-                        type.name(), MetricsKeys.toDate(from), MetricsKeys.toDate(now.plusMinutes(1)));
+                        type.name(), from, now.plusMinutes(1));
 
         Map<String, MetricsBucketAgg> byAsset = new HashMap<>();
         for (FlowMetricsMinuteDO row : rows) {
@@ -224,9 +224,9 @@ public class MetricsQueryService {
         NavigableMap<LocalDateTime, MetricsBucketAgg> map = new TreeMap<>();
         List<FlowMetricsMinuteDO> rows = metricsMinuteRepository
                 .findByAssetTypeAndAssetIdAndBucketStartGreaterThanEqualAndBucketStartLessThan(
-                        type.name(), assetId, MetricsKeys.toDate(from), MetricsKeys.toDate(toExclusive));
+                        type.name(), assetId, from, toExclusive);
         for (FlowMetricsMinuteDO row : rows) {
-            LocalDateTime bucket = MetricsKeys.toLocal(row.getBucketStart());
+            LocalDateTime bucket = row.getBucketStart();
             map.computeIfAbsent(bucket, k -> new MetricsBucketAgg())
                     .addCounts(
                             nz(row.getSuccessCnt()), nz(row.getFailCnt()), nz(row.getSkippedCnt()),
@@ -414,7 +414,7 @@ public class MetricsQueryService {
             LocalDateTime from = now.minusHours(24);
             List<FlowMetricsMinuteDO> rows = metricsMinuteRepository
                     .findByAssetTypeAndAssetIdAndBucketStartGreaterThanEqualAndBucketStartLessThan(
-                            type.name(), assetId, MetricsKeys.toDate(from), MetricsKeys.toDate(now.plusMinutes(1)));
+                            type.name(), assetId, from, now.plusMinutes(1));
             if (rows == null || rows.isEmpty()) {
                 return;
             }
@@ -425,10 +425,10 @@ public class MetricsQueryService {
                 long s = nz(row.getSuccessCnt());
                 long f = nz(row.getFailCnt());
                 if (meta.lastFailAt == null && f > 0) {
-                    meta.lastFailAt = row.getBucketStart().getTime();
+                    meta.lastFailAt = row.getBucketStart().atZone(MetricsKeys.ZONE).toInstant().toEpochMilli();
                 }
                 if (meta.lastSuccessAt == null && s > 0) {
-                    meta.lastSuccessAt = row.getBucketStart().getTime();
+                    meta.lastSuccessAt = row.getBucketStart().atZone(MetricsKeys.ZONE).toInstant().toEpochMilli();
                 }
                 if (!streak) {
                     continue;

@@ -16,15 +16,29 @@ import {
   Space, Tag, Dropdown, Tooltip, Popover
 } from 'antd';
 import type { MenuProps } from 'antd';
-import { SaveOutlined, CloseOutlined, CopyOutlined, CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined, FileTextOutlined, CodeOutlined } from '@ant-design/icons';
+import {
+  SaveOutlined,
+  CloseOutlined,
+  CopyOutlined,
+  CloudUploadOutlined,
+  CloudDownloadOutlined,
+  RollbackOutlined,
+  FileTextOutlined,
+  CodeOutlined,
+  HistoryOutlined,
+  DatabaseOutlined,
+  ExperimentOutlined,
+  DownOutlined,
+  ToolOutlined,
+} from '@ant-design/icons';
 import { merge } from 'lodash';
 import { PageContainer } from '@ant-design/pro-components';
 import { history, request } from '@umijs/max';
 import {
   addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi,
-  listApiVersions, restoreApiVersion, queryAutoApiConfigDetail,
+  listApiVersions, restoreApiVersion, queryAutoApiConfigDetail, supportsApiDataView,
 } from '@/services/flow/flowController';
-import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
+import AssetVersionHistoryDrawer from '@/components/flow/AssetVersionHistoryDrawer';
 import {
   AssetFormShell,
   ASSET_FORM_SHELL_CLASS,
@@ -680,12 +694,16 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   const headerCtrlHeight = 32;
 
   const headerTitle = (
-    <Space.Compact style={{ display: 'flex', width: '100%' }} size={headerCtrlSize}>
+    <Space.Compact
+      className="yf-header-title-compact"
+      style={{ display: 'flex', width: '100%', height: headerCtrlHeight }}
+      size={headerCtrlSize}
+    >
       <Select
         size={headerCtrlSize}
         value={method}
         onChange={setMethod}
-        style={{ width: 116 }}
+        style={{ width: 116, height: headerCtrlHeight }}
         popupMatchSelectWidth={false}
       >
         {METHOD_OPTIONS.map((m) => (
@@ -717,116 +735,171 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="接口名称"
-        style={{ width: 180 }}
+        style={{ width: 180, height: headerCtrlHeight }}
         status={submitAttempted && !name?.trim() ? 'error' : undefined}
       />
     </Space.Compact>
   );
 
+  const dataViewSupported = supportsApiDataView({ serviceType: engineMode, responseType });
+
+  const toolMenuItems: MenuProps['items'] = [
+    ...(isEdit
+      ? [
+          {
+            key: 'history',
+            icon: <HistoryOutlined />,
+            label: '历史版本',
+            disabled: !values?.id,
+            onClick: () => setHistoryOpen(true),
+          },
+        ]
+      : []),
+    {
+      key: 'docs',
+      icon: <FileTextOutlined />,
+      label: 'API 文档',
+      onClick: () => {
+        const r = openPublishedApiDocCenter({
+          apiId: values?.id,
+          publishStatus,
+        });
+        if (r.reason === 'unpublished') {
+          message.warning('请先发布该接口后再查看文档');
+        } else if (r.reason === 'missing_id') {
+          message.warning('请先保存接口后再查看文档');
+        }
+      },
+    },
+    {
+      key: 'curl',
+      icon: <CodeOutlined />,
+      label: '复制 cURL',
+      onClick: async () => {
+        const curl = buildApiCurl(method, url);
+        const ok = await copyText(curl);
+        if (ok) message.success('cURL 已复制');
+        else message.error('复制失败');
+      },
+    },
+    ...(isEdit && values?.id
+      ? [
+          { type: 'divider' as const },
+          {
+            key: 'data-view',
+            icon: <DatabaseOutlined />,
+            label: '数据查看 / Excel',
+            disabled: !dataViewSupported,
+            title: dataViewSupported
+              ? undefined
+              : '仅 DB 模式且响应类型为 PAGE / LIST / OBJECT 可用',
+            onClick: () => setDataViewOpen(true),
+          },
+          {
+            key: 'regression',
+            icon: <ExperimentOutlined />,
+            label: '回归测试',
+            onClick: () => setRegressionOpen(true),
+          },
+        ]
+      : []),
+    ...(isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges
+      ? [
+          { type: 'divider' as const },
+          {
+            key: 'rollback',
+            icon: <RollbackOutlined />,
+            label: '回滚草稿到线上',
+            danger: true,
+            onClick: async () => {
+              if (!values?.id) return;
+              const hide = message.loading('正在回滚...');
+              try {
+                await rollbackApi(values.id);
+                hide();
+                message.success('已回滚到线上版本');
+                onSubmit(true);
+              } catch {
+                hide();
+              }
+            },
+          },
+        ]
+      : []),
+    ...(isEdit && publishStatus === 1
+      ? [
+          { type: 'divider' as const },
+          {
+            key: 'unpublish',
+            icon: <CloudDownloadOutlined />,
+            label: '下线',
+            danger: true,
+            onClick: async () => {
+              if (!values?.id) return;
+              const hide = message.loading('正在下线...');
+              try {
+                await unpublishApi(values.id);
+                hide();
+                message.success('下线成功');
+                onSubmit(true);
+              } catch {
+                hide();
+              }
+            },
+          },
+        ]
+      : []),
+  ];
+
   const headerExtra = (
-    <Space size={8} align="center" wrap={false} style={{ height: headerCtrlHeight }}>
+    <Space
+      className="yf-header-extra-actions"
+      size={8}
+      align="center"
+      wrap={false}
+      style={{ height: headerCtrlHeight }}
+    >
       <Tag
         color={publishStatus === 1 ? 'success' : 'default'}
         style={{
           margin: 0,
           height: headerCtrlHeight,
-          lineHeight: `${headerCtrlHeight - 2}px`,
+          lineHeight: `${headerCtrlHeight}px`,
           paddingInline: 10,
           fontSize: 13,
           borderRadius: 6,
           display: 'inline-flex',
           alignItems: 'center',
+          boxSizing: 'border-box',
         }}
       >
         {publishStatus === 1 ? '● 已发布' : '○ 未发布'}
       </Tag>
 
-      {isEdit && (
-        <HistoryVersionButton
-          size={headerCtrlSize}
-          disabled={!values?.id}
-          onClick={() => setHistoryOpen(true)}
-        />
-      )}
-
-      <Tooltip title={publishStatus === 1 ? '打开 API 文档中心（导出 OpenAPI）' : '请先发布后再查看文档'}>
-        <Button
-          size={headerCtrlSize}
-          icon={<FileTextOutlined />}
-          onClick={() => {
-            const r = openPublishedApiDocCenter({
-              apiId: values?.id,
-              publishStatus,
-            });
-            if (r.reason === 'unpublished') {
-              message.warning('请先发布该接口后再查看文档');
-            } else if (r.reason === 'missing_id') {
-              message.warning('请先保存接口后再查看文档');
-            }
-          }}
-        >
-          文档
+      <Dropdown menu={{ items: toolMenuItems }}>
+        <Button size={headerCtrlSize} icon={<ToolOutlined />}>
+          工具 <DownOutlined style={{ fontSize: 10 }} />
         </Button>
-      </Tooltip>
+      </Dropdown>
 
-      <Tooltip title="复制当前 Method + URL 的 cURL 模板">
-        <Button
-          size={headerCtrlSize}
-          icon={<CodeOutlined />}
-          onClick={async () => {
-            const curl = buildApiCurl(method, url);
-            const ok = await copyText(curl);
-            if (ok) message.success('cURL 已复制');
-            else message.error('复制失败');
-          }}
-        >
-          cURL
-        </Button>
-      </Tooltip>
-
-      {isEdit && publishStatus === 1 && processedValues?.hasUnpublishedChanges && (
-        <Tooltip title="将草稿回滚到已发布的线上版本">
+      <Tooltip title={staticJsonError || undefined}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', height: headerCtrlHeight }}>
           <Button
             size={headerCtrlSize}
-            danger
-            icon={<RollbackOutlined />}
-            onClick={async () => {
-              if (values?.id) {
-                const hide = message.loading('正在回滚...');
-                try {
-                  await rollbackApi(values.id);
-                  hide();
-                  message.success('已回滚到线上版本');
-                  onSubmit(true);
-                } catch (e) {
-                  hide();
-                }
-              }
-            }}
+            icon={<SaveOutlined />}
+            disabled={!!staticJsonError}
+            onClick={() => handleSubmit()}
           >
-            回滚草稿
+            保存草稿
           </Button>
-        </Tooltip>
-      )}
-
-      {isEdit && values?.id && (
-        <Button size={headerCtrlSize} onClick={() => setDataViewOpen(true)}>
-          数据查看
-        </Button>
-      )}
-      {isEdit && values?.id && (
-        <Button size={headerCtrlSize} onClick={() => setRegressionOpen(true)}>
-          回归测试
-        </Button>
-      )}
-
+        </span>
+      </Tooltip>
       {(publishStatus === 0 || isEdit) && (
         <Tooltip title={staticJsonError || undefined}>
-          <span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', height: headerCtrlHeight }}>
             <Button
               size={headerCtrlSize}
               type="primary"
-              style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
               icon={<CloudUploadOutlined />}
               disabled={!!staticJsonError}
               onClick={handlePublishCurrentDraft}
@@ -837,42 +910,15 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         </Tooltip>
       )}
 
-      {isEdit && publishStatus === 1 && (
+      <Tooltip title="关闭">
         <Button
           size={headerCtrlSize}
-          danger
-          icon={<CloudDownloadOutlined />}
-          onClick={async () => {
-            if (values?.id) {
-              const hide = message.loading('正在下线...');
-              try {
-                await unpublishApi(values.id);
-                hide();
-                message.success('下线成功');
-                onSubmit(true);
-              } catch (e) {
-                hide();
-              }
-            }
-          }}
-        >
-          下线
-        </Button>
-      )}
-
-      <Button size={headerCtrlSize} icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Tooltip title={staticJsonError || undefined}>
-        <span>
-          <Button
-            size={headerCtrlSize}
-            type="primary"
-            icon={<SaveOutlined />}
-            disabled={!!staticJsonError}
-            onClick={() => handleSubmit()}
-          >
-            保存草稿
-          </Button>
-        </span>
+          type="text"
+          icon={<CloseOutlined />}
+          onClick={onCancel}
+          aria-label="关闭"
+          style={{ width: headerCtrlHeight, paddingInline: 0 }}
+        />
       </Tooltip>
     </Space>
   );
@@ -1116,6 +1162,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           onClose={() => setDataViewOpen(false)}
           apiId={values.id}
           apiName={name || values.name}
+          onPublished={() => setPublishStatus(1)}
         />
       )}
     </AssetFormShell>

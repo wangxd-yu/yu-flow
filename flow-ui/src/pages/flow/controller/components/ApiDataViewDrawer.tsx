@@ -2,6 +2,7 @@
  * 管理端：DB 接口数据查看 / Excel 导出 / 公司模板灌数
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormInstance } from 'antd/es/form';
 import {
   Alert,
   Button,
@@ -26,18 +27,23 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   CloudUploadOutlined,
+  CopyOutlined,
   ExportOutlined,
+  LinkOutlined,
   ReloadOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
 import {
+  createApiExcelExportLink,
   deleteApiExcelTemplate,
   downloadApiExcelTemplateFile,
   downloadApiExcelTemplateSample,
   exportApiDataExcel,
   getApiExcelTemplateMeta,
   previewApiData,
+  publishApi,
   queryAutoApiConfigDetail,
+  republishApi,
   updateAutoApiConfig,
   uploadApiExcelTemplate,
   type ApiDataPreviewResult,
@@ -46,12 +52,17 @@ import {
   type ViewExportColumn,
   type ViewExportConfig,
 } from '@/services/flow/flowController';
+import { confirmPublishWithGate } from '@/components/flow/release/confirmPublishWithGate';
+import { copyText } from '@/utils/apiDocsActions';
+import { request } from '@umijs/max';
 
 type Props = {
   open: boolean;
   onClose: () => void;
   apiId: string;
   apiName?: string;
+  /** 抽屉内完成发布后回调（用于刷新列表/编辑页发布状态） */
+  onPublished?: () => void;
 };
 
 type ParamField = { name: string; title?: string; section: 'query' | 'body' | 'path' };
@@ -133,8 +144,28 @@ function syncColumnsFromContract(
   }
 }
 
-const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) => {
+function buildParamsFromForm(paramForm: FormInstance, paramFields: ParamField[]) {
+  const values = paramForm.getFieldsValue();
+  const queryParams: Record<string, string> = {};
+  const pathParams: Record<string, string> = {};
+  const bodyParams: Record<string, any> = {};
+  paramFields.forEach((f) => {
+    const v = values[`${f.section}__${f.name}`];
+    if (v === undefined || v === null || v === '') return;
+    if (f.section === 'query') queryParams[f.name] = String(v);
+    else if (f.section === 'path') pathParams[f.name] = String(v);
+    else bodyParams[f.name] = v;
+  });
+  return { queryParams, pathParams, bodyParams };
+}
+
+const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onPublished }) => {
   const [detail, setDetail] = useState<FlowController | null>(null);
+  const [systemPrefix, setSystemPrefix] = useState('/flow-api');
+  const [openEntryPrefix, setOpenEntryPrefix] = useState('/flow-api/open');
+  const [signingLink, setSigningLink] = useState(false);
+  const [signedLinkPreview, setSignedLinkPreview] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const [useDraft, setUseDraft] = useState(true);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -153,6 +184,9 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
   const paramFields = useMemo(() => parseContractParams(detail?.contract), [detail?.contract]);
   const exportEnabled = Form.useWatch('enabled', cfgForm) !== false;
   const exportMode = Form.useWatch('exportMode', cfgForm) === 'TEMPLATE' ? 'TEMPLATE' : 'DYNAMIC';
+  const openExportEnabled = Form.useWatch('openExportEnabled', cfgForm) === true;
+  const signedLinkEnabled = Form.useWatch('signedLinkEnabled', cfgForm) !== false;
+  const isPublished = Number(detail?.publishStatus) === 1;
 
   const markDirty = useCallback(() => setDirty(true), []);
 
@@ -166,8 +200,8 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
     }
   }, [apiId]);
 
-  const loadDetail = useCallback(async () => {
-    if (!apiId) return;
+  const loadDetail = useCallback(async (): Promise<FlowController | null> => {
+    if (!apiId) return null;
     const res: any = await queryAutoApiConfigDetail(apiId);
     const d: FlowController = res?.data || res;
     setDetail(d);
@@ -187,69 +221,268 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
       maxExportRows: cfg.maxExportRows || 50000,
       exportMode: cfg.exportMode === 'TEMPLATE' ? 'TEMPLATE' : 'DYNAMIC',
       templateSheetNo: cfg.templateSheetNo ?? 0,
+      openExportEnabled: cfg.openExportEnabled === true,
+      signedLinkEnabled: cfg.signedLinkEnabled !== false,
+      signedLinkTtlSeconds: cfg.signedLinkTtlSeconds || 300,
     });
+    setSignedLinkPreview(null);
     setColumns(
       (cfg.columns?.length ? cfg.columns : syncColumnsFromContract(d.contract)).map((c) => ({
         ...c,
         templateKey: c.templateKey || c.field,
       })),
     );
-    if (d.publishStatus !== 1) {
+    const draftPreferred = d.publishStatus !== 1;
+    if (draftPreferred) {
       setUseDraft(true);
     }
     setDirty(false);
     await loadTemplateMeta();
+    return d;
   }, [apiId, cfgForm, loadTemplateMeta]);
+
+  const runPreview = useCallback(
+    async (nextPage = 0, nextSize = pageSize, draftFlag?: boolean) => {
+      if (!apiId) return;
+      setLoading(true);
+      try {
+        const params = buildParamsFromForm(paramForm, paramFields);
+        const data = await previewApiData(apiId, {
+          useDraft: draftFlag ?? useDraft,
+          ...params,
+          page: nextPage,
+          size: nextSize,
+        });
+        setResult(data);
+        if (data.columns?.length) {
+          setColumns((prev) => {
+            if (prev.length) return prev;
+            return data.columns!.map((c) => ({ ...c, templateKey: c.templateKey || c.field }));
+          });
+        }
+        setPage(data.page ?? nextPage);
+        setPageSize(data.size ?? nextSize);
+      } catch (e: any) {
+        message.error(e?.message || '预览失败');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiId, pageSize, paramForm, paramFields, useDraft],
+  );
 
   useEffect(() => {
     if (!open) return;
+    request('/flow-api/sys-configs/key/SYSTEM_PREFIX', { method: 'GET' })
+      .then((res: any) => {
+        const data = typeof res === 'string' ? res : res?.data;
+        setSystemPrefix(data || '/flow-api');
+      })
+      .catch(() => setSystemPrefix('/flow-api'));
+    request('/flow-api/open-platforms/meta/entry', { method: 'GET' })
+      .then((res: any) => {
+        const data = res?.data ?? res;
+        setOpenEntryPrefix(data?.entryPrefix || '/flow-api/open');
+      })
+      .catch(() => setOpenEntryPrefix('/flow-api/open'));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !apiId) return;
+    let cancelled = false;
     setResult(null);
     setPage(0);
     setActiveTab('data');
     setDirty(false);
     paramForm.resetFields();
-    loadDetail().catch(() => message.error('加载接口失败'));
-  }, [open, apiId, loadDetail, paramForm]);
+    (async () => {
+      try {
+        const d = await loadDetail();
+        if (cancelled || !d) return;
+        const st = (d.serviceType || '').toUpperCase();
+        if (st !== 'DB') return;
+        const draft = d.publishStatus !== 1 ? true : useDraft;
+        await runPreview(0, pageSize, draft);
+      } catch {
+        if (!cancelled) message.error('加载接口失败');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 仅在打开抽屉 / 切换接口时自动拉数；勿依赖 runPreview 以免改参反复请求
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, apiId]);
 
-  const buildParams = () => {
-    const values = paramForm.getFieldsValue();
-    const queryParams: Record<string, string> = {};
-    const pathParams: Record<string, string> = {};
-    const bodyParams: Record<string, any> = {};
-    paramFields.forEach((f) => {
-      const v = values[`${f.section}__${f.name}`];
-      if (v === undefined || v === null || v === '') return;
-      if (f.section === 'query') queryParams[f.name] = String(v);
-      else if (f.section === 'path') pathParams[f.name] = String(v);
-      else bodyParams[f.name] = v;
-    });
-    return { queryParams, pathParams, bodyParams };
+  const buildParams = () => buildParamsFromForm(paramForm, paramFields);
+
+  const joinUrl = (prefix: string, path: string) => {
+    const p = (prefix || '').replace(/\/+$/, '');
+    const u = (path || '').startsWith('/') ? path : `/${path || ''}`;
+    return `${p}${u}`.replace(/(?<!:)\/\/+/g, '/');
   };
 
-  const runPreview = async (nextPage = page, nextSize = pageSize) => {
-    if (!apiId) return;
-    setLoading(true);
+  const exportDirectUrl = useMemo(() => {
+    const apiUrl = detail?.url || '';
+    if (!apiUrl) return '';
+    return `${joinUrl(systemPrefix, apiUrl)}/export`;
+  }, [detail?.url, systemPrefix]);
+
+  const exportOpenUrl = useMemo(() => {
+    const apiUrl = detail?.url || '';
+    if (!apiUrl) return '';
+    return `${joinUrl(openEntryPrefix, apiUrl)}/export`;
+  }, [detail?.url, openEntryPrefix]);
+
+  const handleCopyUrl = async (text: string) => {
+    if (!text) return;
+    const ok = await copyText(text);
+    if (ok) message.success('已复制');
+    else message.error('复制失败');
+  };
+
+  const buildViewExportConfig = (override?: Partial<ViewExportConfig>): ViewExportConfig => {
+    const cfgValues = cfgForm.getFieldsValue();
+    const base: ViewExportConfig = {
+      enabled: cfgValues.enabled !== false,
+      sheetName: cfgValues.sheetName || '数据',
+      maxExportRows: cfgValues.maxExportRows || 50000,
+      exportMode: cfgValues.exportMode === 'TEMPLATE' ? 'TEMPLATE' : 'DYNAMIC',
+      templateFileId: templateMeta?.present ? templateMeta.id : undefined,
+      templateSheetNo: cfgValues.templateSheetNo ?? 0,
+      openExportEnabled: cfgValues.openExportEnabled === true,
+      signedLinkEnabled: cfgValues.signedLinkEnabled !== false,
+      signedLinkTtlSeconds: cfgValues.signedLinkTtlSeconds || 300,
+      columns: columns.map((c) => ({
+        ...c,
+        templateKey: (c.templateKey || c.field || '').trim() || c.field,
+      })),
+    };
+    return { ...base, ...override };
+  };
+
+  const issueSignedLinkCore = async () => {
+    const ttl = cfgForm.getFieldValue('signedLinkTtlSeconds') || 300;
+    const link = await createApiExcelExportLink(apiId, {
+      ttlSeconds: ttl,
+      ...buildParams(),
+    });
+    const abs = link.url?.startsWith('http')
+      ? link.url
+      : `${typeof window !== 'undefined' ? window.location.origin : ''}${link.url}`;
+    setSignedLinkPreview(abs);
+    const ok = await copyText(abs);
+    message.success(
+      ok
+        ? `已签发并复制（${link.ttlSeconds || ttl}s，过期 ${link.expireAt || '-'}）`
+        : `已签发（${link.ttlSeconds || ttl}s，过期 ${link.expireAt || '-'}）`,
+    );
+  };
+
+  /** 保存导出配置到草稿；成功返回最新详情 */
+  const saveColumnConfig = async (
+    override?: Partial<ViewExportConfig>,
+    silent?: boolean,
+  ): Promise<FlowController | null> => {
+    if (!apiId || !detail) return null;
+    setSaving(true);
+    const viewExportConfig = buildViewExportConfig(override);
     try {
-      const params = buildParams();
-      const data = await previewApiData(apiId, {
-        useDraft,
-        ...params,
-        page: nextPage,
-        size: nextSize,
-      });
-      setResult(data);
-      if (data.columns?.length) {
-        setColumns((prev) => {
-          if (prev.length) return prev;
-          return data.columns!.map((c) => ({ ...c, templateKey: c.templateKey || c.field }));
-        });
+      const res: any = await queryAutoApiConfigDetail(apiId);
+      const latest: FlowController = res?.data || res;
+      await updateAutoApiConfig(apiId, {
+        ...latest,
+        viewExportConfig: JSON.stringify(viewExportConfig),
+      } as any);
+      if (!silent) {
+        message.success('导出配置已保存到草稿');
       }
-      setPage(data.page ?? nextPage);
-      setPageSize(data.size ?? nextSize);
+      setDirty(false);
+      const d = await loadDetail();
+      return d;
     } catch (e: any) {
-      message.error(e?.message || '预览失败');
+      const msg = e?.message || '';
+      if (msg && !msg.includes('status code') && !msg.includes('VALIDATION_ERROR')) {
+        message.error(msg || '保存失败');
+      }
+      return null;
     } finally {
-      setLoading(false);
+      setSaving(false);
+    }
+  };
+
+  /** 保存当前导出配置并发布 */
+  const saveAndPublishExport = async (opts?: { quiet?: boolean }): Promise<boolean> => {
+    if (!apiId) return false;
+    if (!openExportEnabled) {
+      message.warning('请先开启「对外 Excel 下载」');
+      return false;
+    }
+    setPublishing(true);
+    try {
+      const afterSave = await saveColumnConfig(undefined, true);
+      if (!afterSave) return false;
+
+      const envCode = await confirmPublishWithGate({
+        assetType: 'API',
+        assetId: apiId,
+        assetName: apiName || afterSave.name,
+      });
+      if (!envCode) return false;
+
+      const alreadyPublished = Number(afterSave.publishStatus) === 1;
+      const hide = message.loading(alreadyPublished ? '正在发布更新…' : '正在发布…', 0);
+      try {
+        if (alreadyPublished) {
+          await republishApi(apiId, envCode);
+        } else {
+          await publishApi(apiId, envCode);
+        }
+        await loadDetail();
+        onPublished?.();
+        if (!opts?.quiet) {
+          message.success(alreadyPublished ? '已保存并发布更新，对外导出已生效' : '已保存并发布，对外导出已生效');
+        }
+        return true;
+      } catch (e: any) {
+        const msg = e?.message || '';
+        if (msg && !msg.includes('status code') && !msg.includes('VALIDATION_ERROR')) {
+          message.error(msg || '发布失败');
+        }
+        return false;
+      } finally {
+        hide();
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleIssueSignedLink = async () => {
+    if (!apiId) return;
+    if (!openExportEnabled) {
+      message.warning('请先开启「对外 Excel 下载」');
+      return;
+    }
+    if (!signedLinkEnabled) {
+      message.warning('已关闭短期下载链');
+      return;
+    }
+    setSigningLink(true);
+    try {
+      const needsPublishPipeline = !isPublished || dirty;
+      if (needsPublishPipeline) {
+        const ok = await saveAndPublishExport({ quiet: true });
+        if (!ok) return;
+      }
+      await issueSignedLinkCore();
+    } catch (e: any) {
+      const msg = e?.message || '';
+      if (msg && !msg.includes('status code') && !msg.includes('VALIDATION_ERROR')) {
+        message.error(msg);
+      }
+    } finally {
+      setSigningLink(false);
     }
   };
 
@@ -277,46 +510,6 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
     } finally {
       hide();
       setExporting(false);
-    }
-  };
-
-  const buildViewExportConfig = (override?: Partial<ViewExportConfig>): ViewExportConfig => {
-    const cfgValues = cfgForm.getFieldsValue();
-    const base: ViewExportConfig = {
-      enabled: cfgValues.enabled !== false,
-      sheetName: cfgValues.sheetName || '数据',
-      maxExportRows: cfgValues.maxExportRows || 50000,
-      exportMode: cfgValues.exportMode === 'TEMPLATE' ? 'TEMPLATE' : 'DYNAMIC',
-      templateFileId: templateMeta?.present ? templateMeta.id : undefined,
-      templateSheetNo: cfgValues.templateSheetNo ?? 0,
-      columns: columns.map((c) => ({
-        ...c,
-        templateKey: (c.templateKey || c.field || '').trim() || c.field,
-      })),
-    };
-    return { ...base, ...override };
-  };
-
-  const saveColumnConfig = async (override?: Partial<ViewExportConfig>, silent?: boolean) => {
-    if (!apiId || !detail) return;
-    setSaving(true);
-    const viewExportConfig = buildViewExportConfig(override);
-    try {
-      const res: any = await queryAutoApiConfigDetail(apiId);
-      const latest: FlowController = res?.data || res;
-      await updateAutoApiConfig(apiId, {
-        ...latest,
-        viewExportConfig: JSON.stringify(viewExportConfig),
-      } as any);
-      if (!silent) {
-        message.success('导出配置已保存到草稿（发布后随快照生效）');
-      }
-      setDirty(false);
-      await loadDetail();
-    } catch (e: any) {
-      message.error(e?.message || '保存失败');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -397,13 +590,25 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
       open={open}
       onClose={onClose}
       destroyOnClose
+      styles={{
+        body: {
+          padding: '12px 16px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+        },
+      }}
       extra={
         <Space>
           <span>
             使用草稿{' '}
             <Switch
               checked={useDraft}
-              onChange={setUseDraft}
+              onChange={(checked) => {
+                setUseDraft(checked);
+                runPreview(0, pageSize, checked);
+              }}
               disabled={detail?.publishStatus !== 1}
             />
           </span>
@@ -431,11 +636,12 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
         </Space>
       }
     >
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {!dbOk && (
         <Alert
           type="warning"
           showIcon
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 12, flexShrink: 0 }}
           message="当前仅支持 DB 模式（PAGE / LIST / OBJECT）接口"
         />
       )}
@@ -444,7 +650,7 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
           type="warning"
           showIcon
           closable
-          style={{ marginBottom: 12 }}
+          style={{ marginBottom: 12, flexShrink: 0 }}
           message="导出配置有未保存修改"
           action={
             <Button size="small" type="primary" loading={saving} onClick={() => saveColumnConfig()}>
@@ -453,7 +659,7 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
           }
         />
       )}
-      <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 12 }}>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 0, marginBottom: 8, flexShrink: 0 }}>
         业务发布 URL 仍只返回 JSON；此处为管理端旁路。列中文名优先读响应契约「中文名」；公司表头请用「导出模板」上传
         .xlsx（无需安装 Office）。
       </Typography.Paragraph>
@@ -461,12 +667,15 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        className="api-data-view-tabs"
         items={[
           {
             key: 'data',
             label: '数据',
             children: (
-              <Space direction="vertical" style={{ width: '100%' }} size={16}>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+                <div style={{ flexShrink: 0, marginBottom: 12 }}>
                 {paramFields.length > 0 ? (
                   <Form form={paramForm} layout="inline" style={{ rowGap: 8 }}>
                     {paramFields.map((f) => (
@@ -482,8 +691,10 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
                 ) : (
                   <Alert type="info" showIcon message="未配置请求契约参数，将按空参查询" />
                 )}
+                </div>
 
                 {isObject ? (
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                   <Descriptions bordered size="small" column={1}>
                     {Object.entries(result?.object || result?.rows?.[0] || {}).map(([k, v]) => {
                       const col = (result?.columns || columns).find((c) => c.field === k);
@@ -494,6 +705,7 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
                       );
                     })}
                   </Descriptions>
+                  </div>
                 ) : (
                   <Table
                     size="small"
@@ -501,7 +713,7 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
                     loading={loading}
                     columns={tableColumns}
                     dataSource={result?.rows || []}
-                    scroll={{ x: true }}
+                    scroll={{ x: true, y: 'calc(100vh - 280px)' }}
                     pagination={{
                       current: (result?.page ?? page) + 1,
                       pageSize: result?.size ?? pageSize,
@@ -517,7 +729,7 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
                     }}
                   />
                 )}
-              </Space>
+              </div>
             ),
           },
           {
@@ -802,8 +1014,151 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName }) =
               </Space>
             ),
           },
+          {
+            key: 'open-export',
+            label: (
+              <span>
+                对外下载{' '}
+                {openExportEnabled ? (
+                  <Tag color={isPublished && !dirty ? 'success' : 'warning'} style={{ marginInlineEnd: 0 }}>
+                    {isPublished && !dirty ? '已生效' : isPublished ? '待发布更新' : '未发布'}
+                  </Tag>
+                ) : (
+                  <Tag style={{ marginInlineEnd: 0 }}>默认关</Tag>
+                )}
+              </span>
+            ),
+            children: (
+              <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="对外地址为业务 path + /export，不改动原 JSON 契约"
+                  description="开启后点「保存并发布」即可对外；需要浏览器直链时再点签发（未就绪会自动保存并发布）。"
+                />
+                <Form form={cfgForm} layout="vertical" onValuesChange={() => markDirty()}>
+                  <Form.Item
+                    name="openExportEnabled"
+                    label="启用对外 Excel 下载"
+                    valuePropName="checked"
+                    extra="仅 DB + PAGE/LIST/OBJECT；默认关闭"
+                  >
+                    <Switch disabled={!dbOk} />
+                  </Form.Item>
+                  <Form.Item
+                    name="signedLinkEnabled"
+                    label="允许签发短期下载链"
+                    valuePropName="checked"
+                    extra="浏览器直链，无需 AppKey"
+                  >
+                    <Switch disabled={!openExportEnabled} />
+                  </Form.Item>
+                  <Form.Item
+                    name="signedLinkTtlSeconds"
+                    label="短期链有效期（秒）"
+                    extra="默认 300，范围 30–3600"
+                  >
+                    <InputNumber min={30} max={3600} style={{ width: 160 }} disabled={!openExportEnabled} />
+                  </Form.Item>
+                </Form>
+
+                <Descriptions size="small" bordered column={1} title="导出 URL 预览">
+                  <Descriptions.Item label={`${(detail?.method || 'GET').toUpperCase()} 直连`}>
+                    <Space wrap>
+                      <Typography.Text code copyable={false} style={{ wordBreak: 'break-all' }}>
+                        {exportDirectUrl || '-'}
+                      </Typography.Text>
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        disabled={!exportDirectUrl}
+                        onClick={() => handleCopyUrl(exportDirectUrl)}
+                      >
+                        复制
+                      </Button>
+                    </Space>
+                  </Descriptions.Item>
+                  <Descriptions.Item label={`${(detail?.method || 'GET').toUpperCase()} 开放入口`}>
+                    <Space wrap>
+                      <Typography.Text code copyable={false} style={{ wordBreak: 'break-all' }}>
+                        {exportOpenUrl || '-'}
+                      </Typography.Text>
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        disabled={!exportOpenUrl}
+                        onClick={() => handleCopyUrl(exportOpenUrl)}
+                      >
+                        复制
+                      </Button>
+                    </Space>
+                  </Descriptions.Item>
+                </Descriptions>
+
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    loading={saving || publishing}
+                    disabled={!openExportEnabled || !dbOk}
+                    onClick={() => saveAndPublishExport()}
+                  >
+                    保存并发布
+                  </Button>
+                  <Button
+                    icon={<LinkOutlined />}
+                    loading={signingLink || publishing}
+                    disabled={!openExportEnabled || !signedLinkEnabled || !dbOk}
+                    onClick={handleIssueSignedLink}
+                  >
+                    {!isPublished || dirty ? '保存发布并签发' : '签发下载链接'}
+                  </Button>
+                  <Button loading={saving} disabled={!dbOk} onClick={() => saveColumnConfig()}>
+                    仅保存草稿
+                  </Button>
+                </Space>
+
+                {signedLinkPreview && (
+                  <Alert
+                    type="success"
+                    showIcon
+                    message="最近签发的短期链"
+                    description={
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        <Typography.Text code style={{ wordBreak: 'break-all' }}>
+                          {signedLinkPreview}
+                        </Typography.Text>
+                        <Button
+                          size="small"
+                          icon={<CopyOutlined />}
+                          onClick={() => handleCopyUrl(signedLinkPreview)}
+                        >
+                          再次复制
+                        </Button>
+                      </Space>
+                    }
+                  />
+                )}
+              </Space>
+            ),
+          },
         ]}
       />
+      </div>
+      <style>{`
+        .api-data-view-tabs .ant-tabs-content-holder {
+          flex: 1;
+          min-height: 0;
+          overflow: auto;
+        }
+        .api-data-view-tabs .ant-tabs-content,
+        .api-data-view-tabs .ant-tabs-tabpane {
+          height: 100%;
+        }
+        .api-data-view-tabs.ant-tabs {
+          overflow: hidden;
+        }
+      `}</style>
     </Drawer>
   );
 };

@@ -87,12 +87,15 @@ public class FlowAutoConfiguration {
             org.yu.flow.module.open.auth.HostAuthenticationProbe hostAuthenticationProbe,
             org.yu.flow.module.api.security.IngressSecurityResolver ingressSecurityResolver,
             org.yu.flow.module.api.security.IngressSecurityGuard ingressSecurityGuard,
-            org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings yuFlowRuntimeSettings) {
+            org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings yuFlowRuntimeSettings,
+            org.yu.flow.module.api.service.ApiDataViewService apiDataViewService,
+            org.yu.flow.module.rbac.service.RbacService rbacService) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
                 schemaValidatorService, contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
-                ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings);
+                ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings, apiDataViewService,
+                rbacService);
 
         FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/*");

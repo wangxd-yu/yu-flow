@@ -28,6 +28,20 @@ const IngressSecuritySection: React.FC = () => {
         description="全局默认由 yu.flow.ingress 控制（默认关闭=信任宿主网关）。开放入口 /flow-api/open/** 始终走开放鉴权，不受本接口 authMode=NONE 影响。"
       />
 
+      <ProFormDependency name={['secAuthMode']}>
+        {({ secAuthMode }) =>
+          secAuthMode === 'NONE' ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="NONE = 匿名可调"
+              description="生产默认禁止保存/发布 authMode=NONE。确需公开接口请改用开放平台 OPEN，或由管理员设置 YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true。"
+            />
+          ) : null
+        }
+      </ProFormDependency>
+
       <Row gutter={[16, 0]}>
         <Col span={24}>
           <ProFormRadio.Group

@@ -1,5 +1,6 @@
 package org.yu.flow.log.task.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
@@ -20,6 +21,7 @@ import jakarta.annotation.Resource;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/log/task")
+@RequirePerm("log:view")
 public class FlowTaskLogController {
 
     @Resource

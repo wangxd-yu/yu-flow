@@ -196,7 +196,7 @@ export function HttpRequestPropertyEditor({ data, onChange }: PropertyEditorProp
                     control={
                         <Switch
                             size="small"
-                            checked={data.ignoreSsl !== false}
+                            checked={!!data.ignoreSsl}
                             onChange={(checked) => onChange({ ignoreSsl: checked })}
                         />
                     }

@@ -187,9 +187,9 @@ export const HttpRequestNodeComponent = ({ node }: { node: Node }) => {
             changed = true;
         }
 
-        // 历史节点无 ignoreSsl 时默认开启（自签名内网 HTTPS）
+        // 历史节点无 ignoreSsl：与后端一致，默认校验证书（不自动补 true）
         if (d.ignoreSsl === undefined) {
-            updates.ignoreSsl = true;
+            updates.ignoreSsl = false;
             changed = true;
         }
 

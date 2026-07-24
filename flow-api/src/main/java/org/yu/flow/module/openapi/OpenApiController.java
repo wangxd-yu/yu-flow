@@ -1,5 +1,6 @@
 package org.yu.flow.module.openapi;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +36,7 @@ import java.nio.charset.StandardCharsets;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/v3")
+@RequirePerm("docs:view")
 public class OpenApiController {
 
     @Resource

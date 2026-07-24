@@ -16,8 +16,10 @@ import org.springframework.web.multipart.MultipartFile;
 import org.yu.flow.auto.druid.DynamicSqlParser;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.auto.dto.SqlAndParams;
+import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.engine.service.SqlExecutorService;
 import org.yu.flow.exception.ValidationException;
 import org.yu.flow.module.api.domain.FlowApiDO;
@@ -26,6 +28,7 @@ import org.yu.flow.module.api.dto.*;
 import org.yu.flow.module.api.repository.FlowApiExcelTemplateRepository;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.api.service.ApiDataViewService;
+import org.yu.flow.module.api.support.ExcelExportLinkToken;
 import org.yu.flow.module.api.support.ExcelTemplateInspector;
 import org.yu.flow.module.datasource.service.DynamicDataSourceService;
 import org.yu.flow.module.datasource.wall.DataSourceWallGuard;
@@ -66,6 +69,8 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
     private DemoModeGuard demoModeGuard;
     @Resource
     private DataSourceWallGuard dataSourceWallGuard;
+    @Resource
+    private YuFlowProperties yuFlowProperties;
 
     @Override
     public ApiDataPreviewResultDTO preview(String apiId, ApiDataPreviewRequestDTO request) {
@@ -160,6 +165,94 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
         if (Boolean.FALSE.equals(cfg.getEnabled())) {
             throw new ValidationException("该接口已关闭数据导出");
         }
+        doExportCore(api, cfg, request, response);
+    }
+
+    @Override
+    public void exportPublishedOpenExcel(FlowApiDO cachedApi, ApiDataExportRequestDTO request,
+                                         HttpServletResponse response) {
+        if (cachedApi == null || StrUtil.isBlank(cachedApi.getId())) {
+            throw new ValidationException("接口不存在");
+        }
+        // 强制已发布快照
+        FlowApiDO api = resolveWorkingApi(cachedApi.getId(), false);
+        assertDbQueryable(api);
+        ViewExportConfigDTO cfg = parseConfig(api.getViewExportConfig());
+        if (Boolean.FALSE.equals(cfg.getEnabled())) {
+            throw new ValidationException("该接口已关闭数据导出");
+        }
+        if (!Boolean.TRUE.equals(cfg.getOpenExportEnabled())) {
+            throw new ValidationException("未启用对外 Excel 下载");
+        }
+        if (request == null) {
+            request = new ApiDataExportRequestDTO();
+        }
+        request.setUseDraft(false);
+        doExportCore(api, cfg, request, response);
+    }
+
+    @Override
+    public ApiExcelExportLinkDTO createExportLink(String apiId, ApiExcelExportLinkRequestDTO request) {
+        FlowApiDO draft = flowApiRepository.findById(apiId)
+                .orElseThrow(() -> new ValidationException("API 不存在"));
+        demoModeGuard.checkModifyOrDelete(apiId, "签发 Excel 下载链");
+        if (draft.getPublishStatus() == null || draft.getPublishStatus() != 1
+                || StrUtil.isBlank(draft.getPublishedSnapshot())) {
+            throw new ValidationException("请先发布接口后再签发下载链（短期链按已发布快照导出，不能使用草稿）");
+        }
+        // 签发以已发布配置为准
+        FlowApiDO api = resolveWorkingApi(apiId, false);
+        assertDbQueryable(api);
+        ViewExportConfigDTO cfg = parseConfig(api.getViewExportConfig());
+        if (!Boolean.TRUE.equals(cfg.getOpenExportEnabled())) {
+            throw new ValidationException("已发布快照未开启「对外 Excel 下载」，请保存配置后重新发布再签发");
+        }
+        if (Boolean.FALSE.equals(cfg.getSignedLinkEnabled())) {
+            throw new ValidationException("该接口已关闭短期下载链");
+        }
+        int ttl = cfg.getSignedLinkTtlSeconds() == null || cfg.getSignedLinkTtlSeconds() <= 0
+                ? 300 : cfg.getSignedLinkTtlSeconds();
+        if (request != null && request.getTtlSeconds() != null && request.getTtlSeconds() > 0) {
+            ttl = request.getTtlSeconds();
+        }
+        ttl = Math.min(Math.max(ttl, 30), 3600);
+
+        ApiDataExportRequestDTO params = new ApiDataExportRequestDTO();
+        params.setUseDraft(false);
+        if (request != null) {
+            params.setQueryParams(request.getQueryParams());
+            params.setBodyParams(request.getBodyParams());
+            params.setPathParams(request.getPathParams());
+        }
+        String token = ExcelExportLinkToken.issue(
+                yuFlowProperties, apiId, JwtTokenUtil.currentUsername(), params, ttl);
+        long exp = java.time.Instant.now().getEpochSecond() + ttl;
+        String url = "/flow-api/download/excel/" + token;
+        return ApiExcelExportLinkDTO.builder()
+                .url(url)
+                .expireAt(java.time.LocalDateTime.ofEpochSecond(exp, 0, java.time.ZoneOffset.ofHours(8))
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                .ttlSeconds(ttl)
+                .build();
+    }
+
+    @Override
+    public void exportBySignedToken(String token, HttpServletResponse response) {
+        ExcelExportLinkToken.Parsed parsed = ExcelExportLinkToken.verify(yuFlowProperties, token);
+        FlowApiDO api = resolveWorkingApi(parsed.apiId(), false);
+        assertDbQueryable(api);
+        ViewExportConfigDTO cfg = parseConfig(api.getViewExportConfig());
+        if (!Boolean.TRUE.equals(cfg.getOpenExportEnabled())) {
+            throw new ValidationException("未启用对外 Excel 下载");
+        }
+        if (Boolean.FALSE.equals(cfg.getEnabled())) {
+            throw new ValidationException("该接口已关闭数据导出");
+        }
+        doExportCore(api, cfg, parsed.request(), response);
+    }
+
+    private void doExportCore(FlowApiDO api, ViewExportConfigDTO cfg,
+                              ApiDataExportRequestDTO request, HttpServletResponse response) {
         int maxRows = cfg.getMaxExportRows() == null || cfg.getMaxExportRows() <= 0
                 ? DEFAULT_MAX_EXPORT_ROWS
                 : Math.min(cfg.getMaxExportRows(), DEFAULT_MAX_EXPORT_ROWS);
@@ -172,6 +265,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
         String responseType = StrUtil.blankToDefault(api.getResponseType(), "LIST").toUpperCase(Locale.ROOT);
         String sheetName = StrUtil.blankToDefault(cfg.getSheetName(), "数据");
         String fileName = buildFileName(api.getName());
+        String apiId = api.getId();
 
         boolean preferTemplate = "TEMPLATE".equalsIgnoreCase(StrUtil.blankToDefault(cfg.getExportMode(), "DYNAMIC"));
         FlowApiExcelTemplateDO template = preferTemplate
@@ -195,11 +289,6 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
         }
 
         try {
-            applyDownloadHeaders(response, fileName);
-            if (fallbackCode != null) {
-                applyFallbackHeaders(response, fallbackCode, fallbackMessage);
-            }
-
             if (preferTemplate && template != null) {
                 List<Map<String, Object>> rows = null;
                 List<ViewExportColumnDTO> columns = null;
@@ -208,8 +297,13 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
                     columns = resolveColumns(cfg, api.getContract(), rows,
                             rows.isEmpty() ? null : rows.get(0), true);
                     byte[] filled = fillExcelByTemplate(template.getContent(), cfg, api.getName(), columns, rows);
+                    applyDownloadHeaders(response, fileName);
+                    if (fallbackCode != null) {
+                        applyFallbackHeaders(response, fallbackCode, fallbackMessage);
+                    }
                     response.setHeader("X-Export-Mode", "TEMPLATE");
                     response.setHeader("X-Export-Rows", String.valueOf(rows.size()));
+                    response.setContentLength(filled.length);
                     response.getOutputStream().write(filled);
                     response.getOutputStream().flush();
                     log.info("[ApiDataView] 模板导出完成 apiId={}, rows={}", apiId, rows.size());
@@ -217,35 +311,51 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
                 } catch (Exception fillEx) {
                     log.warn("[ApiDataView] 模板填充失败，回退 DYNAMIC apiId={}: {}",
                             apiId, fillEx.getMessage(), fillEx);
-                    applyFallbackHeaders(response, "TEMPLATE_FILL_FAILED",
-                            "模板填充失败，已使用动态表头导出："
-                                    + StrUtil.blankToDefault(fillEx.getMessage(), fillEx.getClass().getSimpleName()));
-                    // 复用已取数，避免二次查库
+                    fallbackCode = "TEMPLATE_FILL_FAILED";
+                    fallbackMessage = "模板填充失败，已使用动态表头导出："
+                            + StrUtil.blankToDefault(fillEx.getMessage(), fillEx.getClass().getSimpleName());
                     if (rows != null) {
-                        response.setHeader("X-Export-Mode", "DYNAMIC");
-                        response.setHeader("X-Export-Rows", String.valueOf(rows.size()));
                         if (columns == null) {
                             columns = resolveColumns(cfg, api.getContract(), rows,
                                     rows.isEmpty() ? null : rows.get(0), true);
                         }
-                        writeExcel(response, sheetName, columns, rows);
+                        applyDownloadHeaders(response, fileName);
+                        applyFallbackHeaders(response, fallbackCode, fallbackMessage);
+                        response.setHeader("X-Export-Mode", "DYNAMIC");
+                        writeExcelBytes(response, sheetName, columns, rows);
                         return;
                     }
                 }
             }
 
-            response.setHeader("X-Export-Mode", "DYNAMIC");
             if ("OBJECT".equals(responseType)) {
                 Map<String, Object> one = castObjectRow(
                         sqlExecutorService.executeObjectQuery(api.getDatasource(), sqlAndParams));
                 List<Map<String, Object>> rows = one == null ? List.of() : List.of(one);
                 List<ViewExportColumnDTO> columns = resolveColumns(cfg, api.getContract(), rows, one, true);
-                response.setHeader("X-Export-Rows", String.valueOf(rows.size()));
-                writeExcel(response, sheetName, columns, rows);
+                applyDownloadHeaders(response, fileName);
+                if (fallbackCode != null) {
+                    applyFallbackHeaders(response, fallbackCode, fallbackMessage);
+                }
+                response.setHeader("X-Export-Mode", "DYNAMIC");
+                writeExcelBytes(response, sheetName, columns, rows);
                 return;
             }
 
-            streamExport(api.getDatasource(), sqlAndParams, sheetName, cfg, api.getContract(), maxRows, response);
+            List<Map<String, Object>> rows = loadExportRows(api, sqlAndParams, responseType, maxRows);
+            List<ViewExportColumnDTO> columns = resolveColumns(
+                    cfg, api.getContract(), rows, rows.isEmpty() ? null : rows.get(0), true);
+            if (!rows.isEmpty()) {
+                List<String> labels = new ArrayList<>(rows.get(0).keySet());
+                List<String> camels = labels.stream().map(StrUtil::toCamelCase).collect(Collectors.toList());
+                columns = alignColumnsToSqlFields(columns, labels, camels, api.getContract());
+            }
+            applyDownloadHeaders(response, fileName);
+            if (fallbackCode != null) {
+                applyFallbackHeaders(response, fallbackCode, fallbackMessage);
+            }
+            response.setHeader("X-Export-Mode", "DYNAMIC");
+            writeExcelBytes(response, sheetName, columns, rows);
         } catch (ValidationException ve) {
             throw ve;
         } catch (Exception e) {
@@ -552,24 +662,49 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
     private void writeExcel(HttpServletResponse response, String sheetName,
                             List<ViewExportColumnDTO> columns,
                             List<Map<String, Object>> rows) throws Exception {
+        writeExcelBytes(response, sheetName, columns, rows);
+    }
+
+    /** 先生成完整 xlsx 再写出，避免异常时出现 Content-Type 已是文件但 body 为空 */
+    private void writeExcelBytes(HttpServletResponse response, String sheetName,
+                                 List<ViewExportColumnDTO> columns,
+                                 List<Map<String, Object>> rows) throws Exception {
         if (columns == null || columns.isEmpty()) {
             columns = inferColumnsFromRows(rows);
+        }
+        if (columns.isEmpty()) {
+            columns = List.of(ViewExportColumnDTO.builder()
+                    .field("message").header("提示").exportable(true).visible(true).build());
+            rows = List.of(Map.of("message", "无导出列，请检查列配置或 SQL 结果"));
         }
         List<List<String>> head = columns.stream()
                 .map(c -> List.of(StrUtil.blankToDefault(c.getHeader(), c.getField())))
                 .collect(Collectors.toList());
         List<List<Object>> data = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            List<Object> line = new ArrayList<>();
-            for (ViewExportColumnDTO col : columns) {
-                line.add(cellValue(row, col.getField()));
+        if (rows != null) {
+            for (Map<String, Object> row : rows) {
+                List<Object> line = new ArrayList<>();
+                for (ViewExportColumnDTO col : columns) {
+                    line.add(cellValue(row, col.getField()));
+                }
+                data.add(line);
             }
-            data.add(line);
         }
-        EasyExcel.write(response.getOutputStream())
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        EasyExcel.write(bos)
                 .head(head)
-                .sheet(sheetName)
+                .sheet(StrUtil.blankToDefault(sheetName, "数据"))
                 .doWrite(data);
+        byte[] bytes = bos.toByteArray();
+        if (bytes.length == 0) {
+            throw new ValidationException("生成 Excel 失败：文件内容为空");
+        }
+        response.setHeader("X-Export-Rows", String.valueOf(rows == null ? 0 : rows.size()));
+        response.setContentLength(bytes.length);
+        response.getOutputStream().write(bytes);
+        response.getOutputStream().flush();
+        log.info("[ApiDataView] 动态导出完成 rows={}, cols={}, bytes={}",
+                rows == null ? 0 : rows.size(), columns.size(), bytes.length);
     }
 
     /**
@@ -789,19 +924,70 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
         if (row == null || StrUtil.isBlank(field)) {
             return null;
         }
+        Object raw = null;
         if (row.containsKey(field)) {
-            return row.get(field);
-        }
-        for (Map.Entry<String, Object> e : row.entrySet()) {
-            if (e.getKey() != null && e.getKey().equalsIgnoreCase(field)) {
-                return e.getValue();
+            raw = row.get(field);
+        } else {
+            for (Map.Entry<String, Object> e : row.entrySet()) {
+                if (e.getKey() != null && e.getKey().equalsIgnoreCase(field)) {
+                    raw = e.getValue();
+                    break;
+                }
+            }
+            if (raw == null) {
+                String camel = StrUtil.toCamelCase(field);
+                if (row.containsKey(camel)) {
+                    raw = row.get(camel);
+                }
             }
         }
-        String camel = StrUtil.toCamelCase(field);
-        if (row.containsKey(camel)) {
-            return row.get(camel);
+        return toExcelCellValue(raw);
+    }
+
+    /**
+     * EasyExcel 4 对 java.util.Date / sql.Date 等缺省 Converter，统一转成字符串写出。
+     */
+    private static Object toExcelCellValue(Object raw) {
+        if (raw == null) {
+            return null;
         }
-        return null;
+        if (raw instanceof String || raw instanceof Number || raw instanceof Boolean) {
+            return raw;
+        }
+        if (raw instanceof LocalDateTime ldt) {
+            return ldt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (raw instanceof java.time.LocalDate ld) {
+            return ld.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
+        if (raw instanceof java.time.LocalTime lt) {
+            return lt.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        }
+        if (raw instanceof java.sql.Timestamp ts) {
+            return ts.toLocalDateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (raw instanceof java.sql.Date d) {
+            return d.toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
+        if (raw instanceof java.sql.Time t) {
+            return t.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        }
+        if (raw instanceof java.util.Date d) {
+            return LocalDateTime.ofInstant(d.toInstant(), java.time.ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (raw instanceof java.time.OffsetDateTime odt) {
+            return odt.toLocalDateTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (raw instanceof java.time.Instant instant) {
+            return LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (raw instanceof byte[]) {
+            return "[binary]";
+        }
+        // Clob / 其它对象：尽量 toString，避免 EasyExcel Converter 找不到
+        return String.valueOf(raw);
     }
 
     private List<ViewExportColumnDTO> inferColumnsFromRows(List<Map<String, Object>> rows) {

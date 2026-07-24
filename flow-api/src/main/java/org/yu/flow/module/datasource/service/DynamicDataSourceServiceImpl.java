@@ -1,7 +1,6 @@
 package org.yu.flow.module.datasource.service;
 import org.yu.flow.config.DemoModeGuard;
 
-import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.druid.filter.Filter;
 import com.alibaba.druid.pool.DruidDataSource;
@@ -18,12 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.yu.flow.Constants;
 import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.auto.util.SnowIdGenerator;
 import org.yu.flow.module.datasource.domain.DataSourceDO;
 import org.yu.flow.module.datasource.dto.DataSourceWallConfig;
 import org.yu.flow.module.datasource.dto.TestConnectionDTO;
 import org.yu.flow.module.datasource.metadata.DatabaseMetadataQueries;
 import org.yu.flow.module.datasource.metadata.DatabaseMetadataQueriesFactory;
 import org.yu.flow.module.datasource.wall.DataSourceWallGuard;
+import org.yu.flow.security.JdbcUrlGuard;
 import org.yu.flow.util.AesEncryptUtil;
 import org.yu.flow.util.CamelCaseColumnMapRowMapper;
 
@@ -152,6 +153,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private void loadAllEnabledDataSources() {
         String sql = "SELECT " + BASE_COLUMNS + " FROM flow_datasource WHERE status = 1";
         try {
+            ensureSystemDefaultDataSource();
             // 默认将本机数据源存储到 map 中
             registerDefaultDataSource();
 
@@ -169,6 +171,72 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         } catch (Exception e) {
             logger.error("从数据库加载数据源失败", e);
         }
+    }
+
+    /**
+     * 确保系统默认数据源哨兵行存在：以 code=[DEFAULT] 为业务键；主键用雪花 ID。
+     * <p>
+     * 连接池仍走 {@code spring.datasource}；库中只存展示用连接信息 + 可编辑的安全墙。
+     * 不存在则按当前 spring.datasource 补插；历史英文主键 {@code ds_system_default} 会就地改为雪花 ID。
+     */
+    private void ensureSystemDefaultDataSource() {
+        try {
+            List<Map<String, Object>> rows = defaultJdbcTemplate.queryForList(
+                    "SELECT id FROM flow_datasource WHERE code = ?",
+                    Constants.DEFAULT_DATASOURCE_NAME);
+            if (rows != null && !rows.isEmpty()) {
+                String legacyId = String.valueOf(rows.get(0).get("id"));
+                if ("ds_system_default".equals(legacyId)) {
+                    String snowId = SnowIdGenerator.getId();
+                    int n = defaultJdbcTemplate.update(
+                            "UPDATE flow_datasource SET id = ? WHERE id = ? AND code = ?",
+                            snowId, legacyId, Constants.DEFAULT_DATASOURCE_NAME);
+                    if (n > 0) {
+                        logger.info("系统默认数据源主键已从英文 id 迁移为雪花: {} -> {}", legacyId, snowId);
+                    }
+                }
+                return;
+            }
+
+            String id = SnowIdGenerator.getId();
+            String dbType = inferDbTypeFromJdbcUrl(springDatasourceUrl);
+            String driver = StrUtil.blankToDefault(springDatasourceDriver, defaultDriverClassName(dbType));
+            String url = StrUtil.nullToEmpty(springDatasourceUrl);
+            String username = StrUtil.nullToEmpty(springDatasourceUsername);
+            String wallJson = DataSourceWallConfig.enabledDefaults().toJson();
+
+            String sql = "INSERT INTO flow_datasource(id, name, code, db_type, driver_class_name, url, "
+                    + "username, password, initial_size, min_idle, max_active, status, wall_config, is_system, "
+                    + "health_status, error_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+            defaultJdbcTemplate.update(sql,
+                    id,
+                    "系统默认数据源",
+                    Constants.DEFAULT_DATASOURCE_NAME,
+                    dbType,
+                    driver,
+                    url,
+                    username,
+                    "",
+                    5, 5, 20, 1,
+                    wallJson,
+                    1,
+                    "UNKNOWN",
+                    0);
+            logger.info("已根据 spring.datasource 补插系统默认数据源: id={}, dbType={}", id, dbType);
+        } catch (Exception e) {
+            logger.warn("确保系统默认数据源失败（表未就绪或并发写入可忽略）: {}", e.getMessage());
+        }
+    }
+
+    private static String defaultDriverClassName(String dbType) {
+        String t = StrUtil.blankToDefault(dbType, "mysql").toLowerCase();
+        if (t.contains("postgre") || "pgsql".equals(t) || "pg".equals(t)) {
+            return "org.postgresql.Driver";
+        }
+        if (t.contains("highgo")) {
+            return "com.highgo.jdbc.Driver";
+        }
+        return "com.mysql.cj.jdbc.Driver";
     }
 
     /**
@@ -249,6 +317,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
      * 根据配置创建 Druid 连接池。
      */
     private DruidDataSource createDataSource(DataSourceDO config) {
+        JdbcUrlGuard.validate(config.getUrl());
         DruidDataSource ds = new DruidDataSource();
         ds.setName(config.getName());
         ds.setDbType(config.getDbType());
@@ -413,8 +482,10 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         c.setHealthStatus(rs.getString("health_status"));
         c.setErrorCount(rs.getInt("error_count"));
         c.setLastErrorMsg(rs.getString("last_error_msg"));
-        c.setCreateTime(rs.getTimestamp("create_time"));
-        c.setUpdateTime(rs.getTimestamp("update_time"));
+        java.sql.Timestamp createTs = rs.getTimestamp("create_time");
+        c.setCreateTime(createTs == null ? null : createTs.toLocalDateTime());
+        java.sql.Timestamp updateTs = rs.getTimestamp("update_time");
+        c.setUpdateTime(updateTs == null ? null : updateTs.toLocalDateTime());
         return c;
     }
 
@@ -474,17 +545,19 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
                 throw new IllegalArgumentException("不允许创建系统数据源编码");
             }
 
+            JdbcUrlGuard.validate(config.getUrl());
+
             String encryptedPassword = aesEncryptUtil.encrypt(config.getPassword());
             DataSourceWallConfig wall = config.getWallConfig() != null
                     ? config.getWallConfig()
-                    : DataSourceWallConfig.disabledDefaults();
+                    : DataSourceWallConfig.enabledDefaults();
             config.setWallConfig(wall);
 
             String sql = "INSERT INTO flow_datasource(id, name, code, db_type, driver_class_name, url, "
                     + "username, password, initial_size, min_idle, max_active, status, wall_config, is_system) "
                     + "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-            config.setId(String.valueOf(IdUtil.getSnowflake(1, 1).nextId()));
+            config.setId(SnowIdGenerator.getId());
 
             int affected = defaultJdbcTemplate.update(sql,
                     config.getId(), config.getName(), config.getCode(),
@@ -519,7 +592,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             if (existing.systemDataSource()) {
                 DataSourceWallConfig wall = config.getWallConfig() != null
                         ? config.getWallConfig()
-                        : DataSourceWallConfig.disabledDefaults();
+                        : DataSourceWallConfig.enabledDefaults();
                 String displayName = StrUtil.isNotBlank(config.getName()) ? config.getName() : existing.getName();
                 int affected = defaultJdbcTemplate.update(
                         "UPDATE flow_datasource SET name=?, wall_config=?, update_time=NOW() WHERE id=? AND is_system=1",
@@ -537,6 +610,8 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
             // [Demo 模式] 业务预置数据源不可修改
             demoModeGuard.checkModifyOrDelete(config.getId(), "数据源");
+
+            JdbcUrlGuard.validate(config.getUrl());
 
             DataSourceWallConfig wall = config.getWallConfig() != null
                     ? config.getWallConfig()
@@ -838,6 +913,8 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         Map<String, Object> result = new LinkedHashMap<>();
         Connection conn = null;
         try {
+            JdbcUrlGuard.validate(dto.getUrl());
+
             // 1. 加载驱动
             Class.forName(dto.getDriverClassName());
 
@@ -869,6 +946,10 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             result.put("success", false);
             result.put("message", "驱动类未找到: " + e.getMessage());
             logger.warn("[testConnectionByDTO] 驱动加载失败", e);
+        } catch (IllegalArgumentException e) {
+            result.put("success", false);
+            result.put("message", e.getMessage());
+            logger.warn("[testConnectionByDTO] URL 校验失败: {}", e.getMessage());
         } catch (SQLException e) {
             result.put("success", false);
             result.put("message", e.getMessage());

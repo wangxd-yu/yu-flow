@@ -134,8 +134,9 @@ public class SysConfigServiceImpl implements SysConfigService {
 
         // 内置参数无法改变其 configKey，通常也无法改变分组或类型，但可以修改 value
         if (existing.getIsBuiltin() != null && existing.getIsBuiltin() == 1) {
-            // 只允许修改值、备注、排序
-            if (dto.getConfigValue() != null) {
+            // 只允许修改值、备注、排序；密钥类回传 *** 时保留原值
+            if (dto.getConfigValue() != null
+                    && !isMaskedSecretUpdate(existing.getConfigKey(), dto.getConfigValue())) {
                 existing.setConfigValue(dto.getConfigValue());
             }
             if (dto.getRemark() != null) {
@@ -157,7 +158,10 @@ public class SysConfigServiceImpl implements SysConfigService {
             existing.setConfigKey(dto.getConfigKey());
             configKey = dto.getConfigKey();
         }
-        existing.setConfigValue(dto.getConfigValue());
+        if (dto.getConfigValue() != null
+                && !isMaskedSecretUpdate(configKey, dto.getConfigValue())) {
+            existing.setConfigValue(dto.getConfigValue());
+        }
         if (StrUtil.isNotBlank(dto.getValueType())) {
             existing.setValueType(dto.getValueType());
         }
@@ -181,9 +185,7 @@ public class SysConfigServiceImpl implements SysConfigService {
 
     private void auditConfigUpdate(String configKey, String oldValue, String newValue) {
         String key = StrUtil.nullToEmpty(configKey);
-        boolean secret = key.toUpperCase().contains("SECRET")
-                || key.toUpperCase().contains("PASSWORD")
-                || key.toUpperCase().contains("WEBHOOK");
+        boolean secret = SysConfigDTO.isSecretConfigKey(key);
         String ov = secret ? "***" : StrUtil.nullToEmpty(oldValue);
         String nv = secret ? "***" : StrUtil.nullToEmpty(newValue);
         if (ov.length() > 120) ov = ov.substring(0, 120) + "...";
@@ -191,6 +193,12 @@ public class SysConfigServiceImpl implements SysConfigService {
         auditLogService.record("SYS_CONFIG_UPDATE", "SYS_CONFIG", key,
                 "{\"key\":\"" + key + "\",\"old\":\"" + ov.replace("\"", "'")
                         + "\",\"new\":\"" + nv.replace("\"", "'") + "\"}");
+    }
+
+    /** 读接口脱敏后的 *** 回写时不得覆盖真实密钥 */
+    private static boolean isMaskedSecretUpdate(String configKey, String value) {
+        return SysConfigDTO.isSecretConfigKey(configKey)
+                && SysConfigDTO.MASKED_VALUE.equals(value);
     }
 
     @Override

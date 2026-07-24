@@ -1,15 +1,13 @@
 package org.yu.flow.engine.evaluator.executor;
 import org.yu.flow.engine.model.PortNames;
 
-import cn.hutool.extra.spring.SpringUtil;
 import org.yu.flow.engine.evaluator.ExecutionContext;
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.engine.model.step.SystemVarStep;
 import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import java.util.HashMap;
@@ -41,24 +39,13 @@ public class SystemVarStepExecutor extends AbstractStepExecutor<SystemVarStep> {
                         "系统宏未找到或已停用: " + macroCode, step.getId(), context.getVar());
             }
 
-            // 2. 配置安全求值上下文
-            StandardEvaluationContext spelContext = new StandardEvaluationContext();
-
-            // 【安全提示】此处应注入预先定义好的 SafeTypeLocator (黑名单沙盒)
-            // spelContext.setTypeLocator(new org.yu.flow.engine.evaluator.spel.SafeTypeLocator());
+            // 2. 安全求值上下文（SafeTypeLocator + Bean 白名单）
+            StandardEvaluationContext spelContext = MacroSpelContexts.create();
 
             // 将当前流程上下文变量作为变量池注入
             if (context.getVar() != null) {
                 spelContext.setVariables(context.getVar());
             }
-
-            // 注入 Spring 容器支持（如 @bean 调用）
-            try {
-                BeanFactory beanFactory = SpringUtil.getBeanFactory();
-                if (beanFactory != null) {
-                    spelContext.setBeanResolver(new BeanFactoryResolver(beanFactory));
-                }
-            } catch (Exception ignored) { }
 
             // 3. 执行预编译的 SpEL 表达式
             Object result = macro.getCompiledExpression().getValue(spelContext);

@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.yu.flow.log.execution.domain.FlowExecutionLogDO;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Repository
 public interface FlowExecutionLogRepository extends JpaRepository<FlowExecutionLogDO, String>, JpaSpecificationExecutor<FlowExecutionLogDO> {
@@ -22,5 +22,5 @@ public interface FlowExecutionLogRepository extends JpaRepository<FlowExecutionL
      */
     @Modifying
     @Query("DELETE FROM FlowExecutionLogDO e WHERE e.createTime < :threshold")
-    int deleteByCreateTimeBefore(@Param("threshold") Date threshold);
+    int deleteByCreateTimeBefore(@Param("threshold") LocalDateTime threshold);
 }

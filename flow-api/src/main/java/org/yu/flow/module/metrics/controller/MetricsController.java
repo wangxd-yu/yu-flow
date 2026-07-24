@@ -1,5 +1,6 @@
 package org.yu.flow.module.metrics.controller;
 
+import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.annotation.YuFlowApi;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.metrics.MetricsAssetType;
@@ -16,6 +17,7 @@ import java.util.List;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/metrics")
+@RequirePerm("flow:runtime:view")
 public class MetricsController {
 
     @Resource

@@ -59,7 +59,8 @@ const DataSourceList: React.FC = () => {
       title: '名称',
       dataIndex: 'name',
       tip: '数据源名称',
-      width: 180,
+      width: 240,
+      ellipsis: true,
       formItemProps: {
         rules: [
           {
@@ -69,15 +70,35 @@ const DataSourceList: React.FC = () => {
         ],
       },
       render: (_, record) => (
-        <span>
-          {record.name}
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            maxWidth: '100%',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+          }}
+        >
+          <Tooltip title={record.name}>
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+              }}
+            >
+              {record.name}
+            </span>
+          </Tooltip>
           {isSystemRow(record) && (
-            <Tag color="gold" style={{ marginLeft: 6 }}>
+            <Tag color="gold" style={{ margin: 0, flexShrink: 0 }}>
               系统
             </Tag>
           )}
           {record.wallConfig?.enabled && (
-            <Tag color="red" style={{ marginLeft: 6 }}>
+            <Tag color="red" style={{ margin: 0, flexShrink: 0 }}>
               墙已开
             </Tag>
           )}
@@ -88,7 +109,7 @@ const DataSourceList: React.FC = () => {
       title: '数据源编码',
       dataIndex: 'code',
       tip: '全局唯一编码，用于跨环境关联',
-      width: 150,
+      width: 140,
       copyable: true,
       ellipsis: true,
       search: false,
@@ -98,7 +119,8 @@ const DataSourceList: React.FC = () => {
       title: '数据库类型',
       dataIndex: 'dbType',
       valueType: 'text',
-      width: 120,
+      width: 100,
+      ellipsis: true,
       valueEnum: {
         mysql: { text: 'MySQL' },
         postgresql: { text: 'PostgreSQL' },
@@ -111,7 +133,9 @@ const DataSourceList: React.FC = () => {
           highgo: 'orange',
         };
         return (
-          <Tag color={colorMap[record.dbType || 'mysql']}>{record.dbType}</Tag>
+          <Tag color={colorMap[record.dbType || 'mysql']} style={{ margin: 0 }}>
+            {record.dbType}
+          </Tag>
         );
       },
     },
@@ -119,20 +143,22 @@ const DataSourceList: React.FC = () => {
       title: 'URL',
       dataIndex: 'url',
       valueType: 'text',
-      width: 200,
+      width: 220,
       ellipsis: true,
     },
     {
       title: '用户名',
       dataIndex: 'username',
       valueType: 'text',
-      width: 120,
+      width: 100,
+      ellipsis: true,
       search: false,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: 80,
+      ellipsis: true,
       valueEnum: {
         0: { text: '禁用', status: 'Error' },
         1: { text: '启用', status: 'Success' },
@@ -142,7 +168,8 @@ const DataSourceList: React.FC = () => {
       title: '健康度',
       dataIndex: 'healthStatus',
       search: false,
-      width: 100,
+      width: 90,
+      ellipsis: true,
       render: (_, record) => {
         const { healthStatus, errorCount, lastErrorMsg } = record;
 
@@ -186,14 +213,16 @@ const DataSourceList: React.FC = () => {
       title: '创建时间',
       dataIndex: 'createTime',
       valueType: 'dateTime',
-      width: 180,
+      width: 170,
+      ellipsis: true,
       search: false,
     },
     {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 300,
+      width: 260,
+      fixed: 'right',
       render: (_, record) => {
         const system = isSystemRow(record);
         const ops: React.ReactNode[] = [
@@ -280,7 +309,11 @@ const DataSourceList: React.FC = () => {
             ),
           );
         }
-        return ops;
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+            {ops}
+          </span>
+        );
       },
     },
   ];
@@ -300,7 +333,7 @@ const DataSourceList: React.FC = () => {
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"
-        scroll={{ x: 1420, y: 100000 }}
+        scroll={{ x: 1500, y: 100000 }}
         search={{
           labelWidth: 120,
         }}

@@ -6,6 +6,7 @@ import org.springframework.expression.*;
 import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 
 import java.util.List;
 import java.util.Map;
@@ -21,16 +22,12 @@ public class SpELUtils {
     }
 
     /**
-     * 通用 SpEL 处理动态数据
-     *
-     * @param input          输入数据（Map/POJO/JSON String/List）
-     * @param spelExpression SpEL 表达式
-     * @param returnType     返回类型（如 Map.class, List.class, String.class）
+     * 通用 SpEL 处理动态数据（SafeTypeLocator + Bean 白名单）。
      */
     public static <T> T process(Object input, String spelExpression, Class<T> returnType) {
         try {
             JsonNode rootNode = mapper.valueToTree(input);
-            StandardEvaluationContext context = new StandardEvaluationContext(rootNode);
+            StandardEvaluationContext context = MacroSpelContexts.create(rootNode);
             Object result = getCachedExpression(spelExpression).getValue(context);
             return mapper.convertValue(result, returnType);
         } catch (Exception e) {
@@ -38,7 +35,6 @@ public class SpELUtils {
         }
     }
 
-    // 重载方法（返回 Map 或 List）
     public static Map<String, Object> processToMap(Object input, String spel) {
         return process(input, spel, Map.class);
     }
@@ -65,26 +61,15 @@ public class SpELUtils {
 
     public static Object safeParseExpression(String input, EvaluationContext evalContext) {
         if (!isPotentialSpELExpression(input)) {
-            return input; // 不是 SpEL，直接返回原字符串
+            return input;
         }
 
         try {
             Expression exp = getCachedExpression(input);
-            return (evalContext != null)
-                    ? exp.getValue(evalContext)  // 使用传入的 EvaluationContext
-                    : exp.getValue();            // 默认使用空上下文
+            EvaluationContext ctx = evalContext != null ? evalContext : MacroSpelContexts.create();
+            return exp.getValue(ctx);
         } catch (SpelEvaluationException | ParseException e) {
-            return input; // 解析失败，返回原字符串
+            return input;
         }
-    }
-
-    public static void main(String[] args) {
-        String test1 = "你好";          // 普通字符串
-        String test2 = "#{1 + 1}";     // SpEL 表达式
-        String test3 = "${user.name}"; // 属性占位符风格（需自定义 ParserContext）
-
-        // [DEBUG] removed println // 输出: 你好
-        // [DEBUG] removed println // 输出: 2
-        // [DEBUG] removed println // 输出: ${user.name}（未提供上下文，无法解析）
     }
 }

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ModalForm, ProFormText } from '@ant-design/pro-components';
 import { message } from 'antd';
 import { history, request, useModel } from '@umijs/max';
+import { clearAuthHint } from '@/utils/session';
 import { evaluatePassword, passwordComplexityValidator } from '@/utils/passwordPolicy';
 import styles from './index.module.css';
 
@@ -62,7 +63,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           });
           message.success('密码已更新，请重新登录');
           onOpenChange(false);
-          localStorage.removeItem('flow_token');
+          clearAuthHint();
           history.push('/login');
           return true;
         } catch {

@@ -38,11 +38,17 @@ class HighgoMetadataQueries implements DatabaseMetadataQueries {
 
     @Override
     public String getColumnsQuery(String schema, String tableName) {
+        String safeSchema = org.yu.flow.security.SqlIdentifierGuard.requireSchema(schema);
+        String safeTable = org.yu.flow.security.SqlIdentifierGuard.requireTableName(tableName);
+        String plain = safeTable.contains(".")
+                ? safeTable.substring(safeTable.lastIndexOf('.') + 1)
+                : safeTable;
+        // 标识符已白名单校验；仍避免拼用户自由文本
         return "SELECT column_name, data_type, " +
                "col_description((table_schema||'.'||table_name)::regclass::oid, ordinal_position) AS column_comment, " +
                "is_nullable, column_default " +
                "FROM information_schema.columns " +
-               "WHERE table_schema = '" + schema + "' AND table_name = '" + tableName + "' " +
+               "WHERE table_schema = '" + safeSchema + "' AND table_name = '" + plain + "' " +
                "ORDER BY ordinal_position";
     }
 }

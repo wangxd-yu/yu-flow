@@ -8,6 +8,7 @@ import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
@@ -143,21 +144,8 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
          */
         @Override
         public Object execute(Value... arguments) {
-            // ╔══════════════════════════════════════════════════════════════════╗
-            // ║  ⚠️ 安全警告：此处需要结合系统现有的安全策略/黑名单配置            ║
-            // ║                                                                  ║
-            // ║  当前使用 StandardEvaluationContext，拥有完整的 SpEL 能力，        ║
-            // ║  包括 T() 类型引用、Runtime.exec() 等危险操作。                    ║
-            // ║                                                                  ║
-            // ║  生产环境上线前，务必实现以下安全措施之一：                          ║
-            // ║  1. 使用 SimpleEvaluationContext 替代（最严格，禁用类型引用）       ║
-            // ║  2. 自定义 TypeLocator 实现类型白名单                             ║
-            // ║  3. 自定义 MethodResolver 实现方法黑名单                          ║
-            // ║  4. 对 macro.getExpression() 进行正则预校验，拦截危险模式           ║
-            // ║                                                                  ║
-            // ║  参考：Spring 官方建议对用户输入的表达式使用 SimpleEvaluationContext ║
-            // ╚══════════════════════════════════════════════════════════════════╝
-            StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+            // SafeTypeLocator + Bean 白名单（与系统宏路径一致）
+            StandardEvaluationContext spelCtx = MacroSpelContexts.create();
             spelCtx.setTypeConverter(CUSTOM_TYPE_CONVERTER);
 
             if (arguments != null) {
@@ -338,11 +326,8 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
 
                 try {
                     if ("VARIABLE".equalsIgnoreCase(macroType)) {
-                        // ---- VARIABLE 宏：立即求值并注入 ----
-                        // ╔══════════════════════════════════════════════════════════════════╗
-                        // ║  ⚠️ 安全警告：此处需要结合系统现有的安全策略/黑名单配置            ║
-                        // ╚══════════════════════════════════════════════════════════════════╝
-                        StandardEvaluationContext spelCtx = new StandardEvaluationContext();
+                        // ---- VARIABLE 宏：立即求值并注入（SafeTypeLocator）----
+                        StandardEvaluationContext spelCtx = MacroSpelContexts.create();
                         spelCtx.setTypeConverter(CUSTOM_TYPE_CONVERTER);
                         // 注入当前请求参数到 SpEL 上下文
                         if (context != null && !context.isEmpty()) {

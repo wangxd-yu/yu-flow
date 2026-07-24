@@ -4,7 +4,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 
 /**
  * Redis / 时间桶工具。
@@ -33,6 +32,8 @@ public final class MetricsKeys {
 
     /** API 无触发维度时的占位 */
     public static final String TRIGGER_DEFAULT = "_";
+    /** 对外 Excel 导出 */
+    public static final String TRIGGER_EXPORT = "EXPORT";
 
     private MetricsKeys() {
     }
@@ -51,14 +52,6 @@ public final class MetricsKeys {
 
     public static LocalDateTime parseMinuteLabel(String label) {
         return LocalDateTime.parse(label, MINUTE_FMT);
-    }
-
-    public static Date toDate(LocalDateTime ldt) {
-        return Date.from(ldt.atZone(ZONE).toInstant());
-    }
-
-    public static LocalDateTime toLocal(Date date) {
-        return LocalDateTime.ofInstant(date.toInstant(), ZONE);
     }
 
     public static String minuteBucketKey(MetricsAssetType type, String assetId, String trigger, LocalDateTime bucket) {

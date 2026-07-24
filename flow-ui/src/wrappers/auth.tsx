@@ -1,13 +1,12 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { mayBeLoggedIn } from '@/services/auth';
 
-const AuthWrapper = ({ children }) => {
-  const token = localStorage.getItem('flow_token');
-  if (!token) {
+const AuthWrapper = ({ children }: { children?: React.ReactNode }) => {
+  if (!mayBeLoggedIn()) {
     return <Navigate to="/login" replace />;
   }
-  console.log('token 存在，放行');
-  return children;
+  return <>{children}</>;
 };
 
 export default AuthWrapper;

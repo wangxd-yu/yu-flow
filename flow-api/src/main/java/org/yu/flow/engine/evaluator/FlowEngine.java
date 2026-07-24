@@ -25,6 +25,9 @@ import org.yu.flow.engine.model.TraceSnapshotLimits;
 import org.yu.flow.engine.model.step.ResponseResult;
 
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -35,6 +38,9 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 public class FlowEngine {
+    private static final DateTimeFormatter TRACE_CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
+    private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
+
     private final FlowParser parser = new FlowParser();
     private final ExpressionEvaluator evaluator = new ExpressionEvaluator();
     private final Map<String, StepExecutor<? extends Step>> executors = new HashMap<>();
@@ -696,7 +702,7 @@ public class FlowEngine {
                 .setNodeId(step.getId())
                 .setNodeName(step.getName())
                 .setNodeType(step.getType())
-                .setStartTime(new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new Date(startTime)))
+                .setStartTime(Instant.ofEpochMilli(startTime).atZone(ZONE_SH).toLocalTime().format(TRACE_CLOCK))
                 .setStatus("running")
                 // 快照：节点执行前的上下文变量（可 JSON 序列化）
                 .setInputs(context.snapshotVarsForTrace());

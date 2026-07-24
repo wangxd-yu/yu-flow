@@ -67,37 +67,59 @@ public class DebugSessionRegistry {
     /**
      * 创建新的调试会话。
      *
-     * @param breakpoints  断点节点 ID 集合
+     * @param breakpoints    断点节点 ID 集合
+     * @param ownerUsername  创建者用户名（必填，用于属主校验）
      * @return 新创建的 DebugSession
      * @throws IllegalStateException 如果活跃会话数超出限制
      */
-    public DebugSession createSession(Set<String> breakpoints) {
+    public DebugSession createSession(Set<String> breakpoints, String ownerUsername) {
         if (sessions.size() >= MAX_SESSIONS) {
             throw new IllegalStateException(
                     "调试会话数已达上限（" + MAX_SESSIONS + "），请先关闭已有的调试会话。");
         }
+        if (ownerUsername == null || ownerUsername.isBlank()) {
+            throw new IllegalArgumentException("调试会话必须绑定创建者");
+        }
         String sessionId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        DebugSession session = new DebugSession(sessionId, breakpoints);
+        DebugSession session = new DebugSession(sessionId, breakpoints, ownerUsername.trim());
         sessions.put(sessionId, session);
-        log.info("[DebugSessionRegistry] 创建调试会话: sessionId={}, 断点数={}, 当前活跃会话数={}",
-                sessionId, breakpoints != null ? breakpoints.size() : 0, sessions.size());
+        log.info("[DebugSessionRegistry] 创建调试会话: sessionId={}, owner={}, 断点数={}, 当前活跃会话数={}",
+                sessionId, ownerUsername, breakpoints != null ? breakpoints.size() : 0, sessions.size());
         return session;
+    }
+
+    /** @deprecated 使用 {@link #createSession(Set, String)} */
+    @Deprecated
+    public DebugSession createSession(Set<String> breakpoints) {
+        return createSession(breakpoints, "_anonymous_");
     }
 
     /**
      * 根据 sessionId 获取会话。
-     *
-     * @param sessionId 会话 ID
-     * @return 对应的 DebugSession，不存在时返回 null
      */
     public DebugSession getSession(String sessionId) {
         return sessions.get(sessionId);
     }
 
     /**
-     * 移除并销毁指定会话。
-     *
-     * @param sessionId 会话 ID
+     * 获取会话并校验属主；不匹配返回 null（对外表现为不存在，防探测）。
+     */
+    public DebugSession getOwnedSession(String sessionId, String username) {
+        DebugSession session = sessions.get(sessionId);
+        if (session == null) {
+            return null;
+        }
+        String owner = session.getOwnerUsername();
+        if (owner == null || username == null || !owner.equals(username)) {
+            log.warn("[DebugSessionRegistry] 拒绝跨用户访问调试会话: sessionId={}, owner={}, requester={}",
+                    sessionId, owner, username);
+            return null;
+        }
+        return session;
+    }
+
+    /**
+     * 移除并销毁指定会话（调用方须已通过属主校验）。
      */
     public void removeSession(String sessionId) {
         DebugSession session = sessions.remove(sessionId);
@@ -108,13 +130,17 @@ public class DebugSessionRegistry {
     }
 
     /**
-     * 获取所有活跃会话的摘要信息（用于管理 API 或监控面板）。
+     * 列出当前用户自己的活跃会话摘要。
      */
-    public List<Map<String, Object>> listSessions() {
+    public List<Map<String, Object>> listSessions(String username) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (DebugSession session : sessions.values()) {
+            if (username != null && !username.equals(session.getOwnerUsername())) {
+                continue;
+            }
             Map<String, Object> info = new LinkedHashMap<>();
             info.put("sessionId", session.getSessionId());
+            info.put("ownerUsername", session.getOwnerUsername());
             info.put("status", session.getStatus().name());
             info.put("suspendedNodeId", session.getSuspendedNodeId());
             info.put("suspendedNodeName", session.getSuspendedNodeName());
@@ -123,6 +149,12 @@ public class DebugSessionRegistry {
             result.add(info);
         }
         return result;
+    }
+
+    /** @deprecated 使用 {@link #listSessions(String)} */
+    @Deprecated
+    public List<Map<String, Object>> listSessions() {
+        return listSessions(null);
     }
 
     /**

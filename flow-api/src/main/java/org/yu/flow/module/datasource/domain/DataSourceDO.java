@@ -1,9 +1,10 @@
 package org.yu.flow.module.datasource.domain;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import org.yu.flow.module.datasource.dto.DataSourceWallConfig;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 public class DataSourceDO {
@@ -31,8 +32,12 @@ public class DataSourceDO {
     private Integer minIdle = 5;
     private Integer maxActive = 20;
     private Integer status = 1; // 0-停用,1-启用
-    private Date createTime;
-    private Date updateTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime updateTime;
 
     /** 系统数据源（1 = 如 [DEFAULT]，连接只读、仅可改安全墙） */
     private Integer isSystem = 0;

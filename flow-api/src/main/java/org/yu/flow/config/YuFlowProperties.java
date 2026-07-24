@@ -478,10 +478,34 @@ public class YuFlowProperties {
         private long jwtExpireSeconds = 7200L;
 
         /**
-         * Groovy 脚本可通过 spring.getBean(name) 获取的 Bean 名称白名单。
-         * 默认空列表，不向脚本暴露任何 Spring Bean。
+         * Groovy / 系统宏 SpEL 可通过 getBean / @bean 获取的 Bean 名称白名单。
+         * 默认空列表；宏侧另内置允许 {@code environment}。
          */
         private List<String> scriptAllowedBeans = new ArrayList<>();
+
+        /**
+         * 为 true 时：JWT/AES 仍为历史默认值则拒绝启动；弱默认管理员口令亦拒绝启动。
+         * 本地开发可设 {@code YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=false}。
+         */
+        private boolean failOnInsecureDefaults = true;
+
+        /**
+         * 出站 HTTP（流程 HttpRequest / Webhook）是否拒绝私网与环回地址。
+         * 默认 false（内网集成常见）；公网多租户可设 true。
+         */
+        private boolean blockPrivateOutbound = true;
+
+        /**
+         * 是否允许 yml 账号在 RBAC 库用户鉴权失败后兜底登录（仅紧急运维）。
+         * 生产建议 false。
+         */
+        private boolean allowYmlAdminFallback = false;
+
+        /**
+         * 是否允许接口 {@code securityConfig.authMode=NONE}（匿名可调业务 API）。
+         * 默认 false；仅应急可设 {@code YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true}。
+         */
+        private boolean allowIngressAuthNone = false;
 
         public String getAesSecretKey() {
             return aesSecretKey;
@@ -513,6 +537,38 @@ public class YuFlowProperties {
 
         public void setScriptAllowedBeans(List<String> scriptAllowedBeans) {
             this.scriptAllowedBeans = scriptAllowedBeans == null ? new ArrayList<>() : scriptAllowedBeans;
+        }
+
+        public boolean isFailOnInsecureDefaults() {
+            return failOnInsecureDefaults;
+        }
+
+        public void setFailOnInsecureDefaults(boolean failOnInsecureDefaults) {
+            this.failOnInsecureDefaults = failOnInsecureDefaults;
+        }
+
+        public boolean isBlockPrivateOutbound() {
+            return blockPrivateOutbound;
+        }
+
+        public void setBlockPrivateOutbound(boolean blockPrivateOutbound) {
+            this.blockPrivateOutbound = blockPrivateOutbound;
+        }
+
+        public boolean isAllowYmlAdminFallback() {
+            return allowYmlAdminFallback;
+        }
+
+        public void setAllowYmlAdminFallback(boolean allowYmlAdminFallback) {
+            this.allowYmlAdminFallback = allowYmlAdminFallback;
+        }
+
+        public boolean isAllowIngressAuthNone() {
+            return allowIngressAuthNone;
+        }
+
+        public void setAllowIngressAuthNone(boolean allowIngressAuthNone) {
+            this.allowIngressAuthNone = allowIngressAuthNone;
         }
     }
 

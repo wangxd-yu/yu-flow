@@ -26,6 +26,7 @@ import {
   clearApiCacheEntry,
   publishApi,
   unpublishApi,
+  supportsApiDataView,
   FlowController,
   ApiCacheEntry,
 } from '@/services/flow/flowController';
@@ -522,14 +523,20 @@ const AutoApiConfigList: React.FC = () => {
         <span style={{ whiteSpace: 'nowrap' }}>
           <a onClick={() => handleEdit(record)}>编辑</a>
           <Divider type="vertical" />
-          <a
-            onClick={() => {
-              setDataViewApi({ id: record.id, name: record.name });
-              setDataViewOpen(true);
-            }}
-          >
-            数据查看
-          </a>
+          {supportsApiDataView(record) ? (
+            <a
+              onClick={() => {
+                setDataViewApi({ id: record.id, name: record.name });
+                setDataViewOpen(true);
+              }}
+            >
+              数据查看
+            </a>
+          ) : (
+            <Tooltip title="仅 DB 模式且响应类型为 PAGE / LIST / OBJECT 的查询接口可用">
+              <span style={{ color: 'rgba(0,0,0,0.25)', cursor: 'not-allowed' }}>数据查看</span>
+            </Tooltip>
+          )}
           <Divider type="vertical" />
           {record.publishStatus === 1 ? (
             <a
@@ -1008,6 +1015,7 @@ const AutoApiConfigList: React.FC = () => {
           }}
           apiId={dataViewApi.id}
           apiName={dataViewApi.name}
+          onPublished={() => actionRef.current?.reload()}
         />
       )}
     </PageContainer>

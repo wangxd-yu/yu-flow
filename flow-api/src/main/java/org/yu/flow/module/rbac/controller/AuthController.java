@@ -8,6 +8,7 @@ import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.rbac.dto.AuthMeDTO;
 import org.yu.flow.module.rbac.dto.ChangePasswordDTO;
 import org.yu.flow.module.rbac.service.RbacService;
+import org.yu.flow.security.AuthCookieSupport;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 @YuFlowApi
 @RestController
@@ -35,10 +38,21 @@ public class AuthController {
     }
 
     /**
+     * 退出登录：清除 HttpOnly 会话 Cookie 与 CSRF Cookie。
+     */
+    @PostMapping("/logout")
+    public R<Boolean> logout(HttpServletRequest request, HttpServletResponse response) {
+        AuthCookieSupport.clearSessionCookies(request, response);
+        return R.ok(true);
+    }
+
+    /**
      * 当前用户修改密码（需登录；校验旧密码与复杂度）。
      */
     @PostMapping("/change-password")
-    public R<Boolean> changePassword(@RequestBody ChangePasswordDTO dto) {
+    public R<Boolean> changePassword(@RequestBody ChangePasswordDTO dto,
+                                     HttpServletRequest request,
+                                     HttpServletResponse response) {
         String username = JwtTokenUtil.currentUsername();
         if (StrUtil.isBlank(username)) {
             return R.fail("未登录");
@@ -52,6 +66,7 @@ public class AuthController {
         }
         try {
             rbacService.changeOwnPassword(username, dto.getOldPassword(), dto.getNewPassword());
+            AuthCookieSupport.clearSessionCookies(request, response);
             return R.ok(true, "密码已更新，请使用新密码重新登录");
         } catch (FlowException e) {
             return R.fail(stripErrorCode(e.getMessage()));

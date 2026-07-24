@@ -5,6 +5,7 @@ import org.yu.flow.engine.model.ContextKeys;
 import com.jayway.jsonpath.JsonPath;
 import org.yu.flow.engine.evaluator.ExecutionContext;
 import org.yu.flow.engine.evaluator.StepExecutor;
+import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.engine.model.Step;
 import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.engine.model.step.SystemVarStep;
@@ -12,8 +13,6 @@ import org.yu.flow.exception.FlowException;
 import cn.hutool.extra.spring.SpringUtil;
 import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.context.expression.BeanFactoryResolver;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 import java.util.HashMap;
@@ -155,22 +154,11 @@ public abstract class AbstractStepExecutor<T extends Step> implements StepExecut
                                 "系统宏未找到或已停用: " + macroCode, nodeId, context.getVar());
                     }
 
-                    StandardEvaluationContext spelCtx = new StandardEvaluationContext();
-
-                    // 【安全提示】此处应注入预先定义好的 SafeTypeLocator (黑名单沙盒)
-                    // spelCtx.setTypeLocator(new org.yu.flow.engine.evaluator.spel.SafeTypeLocator());
+                    StandardEvaluationContext spelCtx = MacroSpelContexts.create();
 
                     if (context.getVar() != null) {
                         spelCtx.setVariables(context.getVar());
                     }
-
-                    // 注入 Spring 容器支持（如 @bean 调用）
-                    try {
-                        BeanFactory beanFactory = SpringUtil.getBeanFactory();
-                        if (beanFactory != null) {
-                            spelCtx.setBeanResolver(new BeanFactoryResolver(beanFactory));
-                        }
-                    } catch (Exception ignored) { }
 
                     evalResult = macro.getCompiledExpression().getValue(spelCtx);
 
