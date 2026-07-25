@@ -95,16 +95,6 @@ public class FlowEngineTest {
     // 基础功能测试
     // ==========================================
 
-    /** 外网可达性探测（TCP 443，3 秒超时），用于外网依赖用例的 Assumption 跳过。 */
-    private boolean isExternalHostReachable(String host) {
-        try (java.net.Socket socket = new java.net.Socket()) {
-            socket.connect(new java.net.InetSocketAddress(host, 443), 3000);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     @Test
     @DisplayName("01、测试空流程")
     void testEmptyFlow() throws JsonProcessingException {
