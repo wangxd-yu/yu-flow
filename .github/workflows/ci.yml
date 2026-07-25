@@ -1,0 +1,72 @@
+# Yu-Flow 质量门禁 CI
+# 后端：mvn 编译 + 全量单测（必跑，覆盖 -DskipTests 默认跳过配置）
+# 前端：pnpm 构建（类型检查随构建执行）
+name: CI
+
+on:
+  push:
+    branches: [ master, main, 'support/**' ]
+  pull_request:
+    branches: [ master, main, 'support/**' ]
+
+jobs:
+  backend-test:
+    name: Backend · mvn test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # pom.xml 中 skipTests 默认 true（本地打包提速），CI 必须显式开启单测
+      - name: Build & Test
+        working-directory: flow-api
+        run: mvn -B test -DskipTests=false -Dmaven.test.skip=false
+
+      - name: Test Report Summary
+        if: always()
+        working-directory: flow-api
+        run: |
+          if ls target/surefire-reports/*.txt >/dev/null 2>&1; then
+            grep -hE "^Tests run" target/surefire-reports/*.txt \
+              | awk -F'[:,]' '{t+=$2; f+=$4; e+=$6; s+=$8} END {printf "TOTAL: tests=%d failures=%d errors=%d skipped=%d\n", t, f, e, s}' \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Surefire Reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: flow-api/target/surefire-reports/
+          retention-days: 7
+
+  frontend-build:
+    name: Frontend · pnpm build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: pnpm
+          cache-dependency-path: flow-ui/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: flow-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: flow-ui
+        run: pnpm build

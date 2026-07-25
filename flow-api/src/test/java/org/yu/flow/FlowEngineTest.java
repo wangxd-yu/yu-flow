@@ -81,9 +81,29 @@ public class FlowEngineTest {
         return String.valueOf(result);
     }
 
+    /** 外网可达性探测（TCP 443，3 秒超时），用于外网依赖用例的 Assumption 跳过。 */
+    private boolean isExternalHostReachable(String host) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, 443), 3000);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // ==========================================
     // 基础功能测试
     // ==========================================
+
+    /** 外网可达性探测（TCP 443，3 秒超时），用于外网依赖用例的 Assumption 跳过。 */
+    private boolean isExternalHostReachable(String host) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, 443), 3000);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     @Test
     @DisplayName("01、测试空流程")
@@ -889,6 +909,9 @@ public class FlowEngineTest {
     @Test
     @DisplayName("29、HttpRequest节点 - GET 请求")
     void testHttpRequestNode() throws JsonProcessingException {
+        // CI 稳定性：外网不可达时跳过（视为环境问题而非引擎回归）
+        org.junit.jupiter.api.Assumptions.assumeTrue(isExternalHostReachable("httpbin.org"),
+                "httpbin.org 不可达，跳过外网用例");
         String flowJson = "{" +
                 "\"nodes\": [" +
                 "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
