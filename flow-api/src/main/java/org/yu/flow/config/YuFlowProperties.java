@@ -484,6 +484,15 @@ public class YuFlowProperties {
         private List<String> scriptAllowedBeans = new ArrayList<>();
 
         /**
+         * Evaluate / Switch 等节点允许使用的脚本语言白名单。
+         * <p>默认 {@code aviator, spel, javascript}（保障预置演示流程可用）；
+         * {@code groovy}、{@code python} 逃逸面较大，需显式加入白名单。
+         * 置空列表表示不限制（不建议）。</p>
+         */
+        private List<String> scriptAllowedLanguages =
+                new ArrayList<>(List.of("aviator", "spel", "javascript"));
+
+        /**
          * 为 true 时：JWT/AES 仍为历史默认值则拒绝启动；弱默认管理员口令亦拒绝启动。
          * 本地开发可设 {@code YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=false}。
          */
@@ -506,6 +515,13 @@ public class YuFlowProperties {
          * 默认 false；仅应急可设 {@code YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true}。
          */
         private boolean allowIngressAuthNone = false;
+
+        /**
+         * 是否允许 HttpRequest 节点 {@code ignoreSsl=true}（跳过证书与主机名校验）。
+         * <p>默认 true（内网自签名常见）；生产建议设
+         * {@code YU_FLOW_ALLOW_IGNORE_SSL=false} 一刀切禁用。</p>
+         */
+        private boolean allowIgnoreSsl = true;
 
         public String getAesSecretKey() {
             return aesSecretKey;
@@ -539,6 +555,15 @@ public class YuFlowProperties {
             this.scriptAllowedBeans = scriptAllowedBeans == null ? new ArrayList<>() : scriptAllowedBeans;
         }
 
+        public List<String> getScriptAllowedLanguages() {
+            return scriptAllowedLanguages;
+        }
+
+        public void setScriptAllowedLanguages(List<String> scriptAllowedLanguages) {
+            this.scriptAllowedLanguages = scriptAllowedLanguages == null
+                    ? new ArrayList<>() : scriptAllowedLanguages;
+        }
+
         public boolean isFailOnInsecureDefaults() {
             return failOnInsecureDefaults;
         }
@@ -569,6 +594,14 @@ public class YuFlowProperties {
 
         public void setAllowIngressAuthNone(boolean allowIngressAuthNone) {
             this.allowIngressAuthNone = allowIngressAuthNone;
+        }
+
+        public boolean isAllowIgnoreSsl() {
+            return allowIgnoreSsl;
+        }
+
+        public void setAllowIgnoreSsl(boolean allowIgnoreSsl) {
+            this.allowIgnoreSsl = allowIgnoreSsl;
         }
     }
 

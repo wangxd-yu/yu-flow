@@ -1,13 +1,13 @@
 # 入站防护与宿主网关分工
 
-Yu Flow 在网关层提供**可选**的入站防护（鉴权 / 防重放 / 限流 / IP 白名单），用于宿主尚未建设完整 API 网关时的兜底。默认关闭，避免与宿主网关「双鉴权」。
+Yu Flow 在网关层提供入站防护（鉴权 / 防重放 / 限流 / IP 白名单），用于宿主尚未建设完整 API 网关时的兜底。**安全默认开启**（`ingress.enabled=true` + `default-auth-mode=HOST`）；宿主已有完整网关时可显式关闭，避免「双鉴权」。
 
 ## 职责边界
 
 | 场景 | 建议 |
 |------|------|
-| 宿主已有统一鉴权、限流、WAF | 保持 `yu.flow.ingress.enabled=false`（默认） |
-| 宿主仅放行动态 API，缺少防重放/限流 | 打开 `ingress.enabled`，用全局默认 + 按接口覆盖 |
+| 宿主已有统一鉴权、限流、WAF | 显式设置 `yu.flow.ingress.enabled=false`（信任宿主） |
+| 宿主仅放行动态 API，缺少防重放/限流 | 保持 `ingress.enabled=true`（默认），用全局默认 + 按接口覆盖 |
 | 第三方调用 | 始终使用 `/flow-api/open/**` 开放入口（HMAC + nonce + 平台授权），**不受**接口 `authMode=NONE` 影响 |
 | 管理端 `/flow-api/*` | 仍走管理 JWT，不在本能力范围内 |
 
@@ -29,17 +29,17 @@ Yu Flow 在网关层提供**可选**的入站防护（鉴权 / 防重放 / 限�
 yu:
   flow:
     ingress:
-      # 总开关：false = 信任宿主（与历史行为一致）
-      enabled: ${YU_FLOW_INGRESS_ENABLED:false}
-      # 默认鉴权：NONE | HOST | OPEN
-      default-auth-mode: ${YU_FLOW_INGRESS_DEFAULT_AUTH_MODE:NONE}
+      # 总开关：安全默认 true；false = 信任宿主网关（此时网关仍对动态 API 要求管理端 JWT）
+      enabled: ${YU_FLOW_INGRESS_ENABLED:true}
+      # 默认鉴权：NONE | HOST | OPEN（安全默认 HOST，需管理端登录）
+      default-auth-mode: ${YU_FLOW_INGRESS_DEFAULT_AUTH_MODE:HOST}
       # 默认防重放（仅 OPEN 鉴权生效；复用开放平台 nonce/skew）
       default-anti-replay: ${YU_FLOW_INGRESS_DEFAULT_ANTI_REPLAY:true}
       default-rate-limit-enabled: ${YU_FLOW_INGRESS_DEFAULT_RATE_LIMIT_ENABLED:false}
       default-rate-limit-qps: ${YU_FLOW_INGRESS_DEFAULT_RATE_LIMIT_QPS:100}
       # 空 = 不限制；支持单 IP / IPv4 CIDR，逗号分隔
       default-ip-allowlist: ${YU_FLOW_INGRESS_DEFAULT_IP_ALLOWLIST:}
-      # 限流 Redis 失败策略（与开放平台一致，建议 fail-open）
+      # 限流 Redis 失败策略：true=fail-open（放行）；高危环境建议 false 并确保 Redis 高可用
       rate-limit-fail-open: ${YU_FLOW_INGRESS_RATE_LIMIT_FAIL_OPEN:true}
 ```
 
@@ -71,6 +71,8 @@ yu:
 | `ipAllowlist` | `null` / `""` / `"ip,cidr"` | `null` → 全局；`""` → 明确不限制 |
 
 单字段优先级：**接口显式值 > 全局默认**。`ingress.enabled=false` 时强制等效 `NONE` + 无限流 + 无 IP 限制（开放入口除外）。
+
+> **匿名可调约束**：将接口 `authMode` 保存为 `NONE`（匿名可调）默认被拒绝（`INGRESS_AUTH_NONE_FORBIDDEN`）。仅本地联调/应急可设 `yu.flow.security.allow-ingress-auth-none=true` / `YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true` 放开，生产默认 `false`。
 
 ## 请求处理顺序（真实 path）
 

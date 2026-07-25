@@ -50,9 +50,12 @@ export default defineConfig({
             { text: '后端功能扩展', link: '/advanced/backend-extension' },
             { text: '前端组件扩展', link: '/advanced/frontend-extension' },
             { text: '系统深度集成', link: '/advanced/embed-integration' },
+            { text: '宿主 API 托管（替换/包裹）', link: '/advanced/host-api-governance' },
             { text: '第三方开放平台接入', link: '/advanced/open-platform-integration' },
             { text: '入站防护与宿主网关', link: '/advanced/ingress-security' },
-            { text: '权限与安全', link: '/advanced/security' }
+            { text: '权限与安全', link: '/advanced/security' },
+            { text: '权限码矩阵参考', link: '/advanced/permission-matrix' },
+            { text: '生产环境加固清单', link: '/advanced/production-hardening' }
           ]
         }
       ],

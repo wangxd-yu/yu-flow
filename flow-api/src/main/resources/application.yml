@@ -36,6 +36,9 @@ yu:
     demo:
       max-steps: 200
       max-for-loop-items: 50
+    # 宿主同名演示接口 /yu-demo/**；默认关闭，本地验收 WRAP 时显式开启
+    host-demo:
+      enabled: ${YU_FLOW_HOST_DEMO_ENABLED:false}
     engine:
       expression-engine: simple
       strict-mode: true
@@ -54,11 +57,15 @@ yu:
       jwt-secret-key: ${YU_FLOW_JWT_SECRET:}
       jwt-expire-seconds: ${YU_FLOW_JWT_EXPIRE_SECONDS:7200}
       script-allowed-beans: []
+      # 脚本语言白名单；groovy / python 逃逸面较大，需显式加入（逗号分隔）
+      script-allowed-languages: ${YU_FLOW_SCRIPT_ALLOWED_LANGUAGES:aviator,spel,javascript}
       fail-on-insecure-defaults: ${YU_FLOW_FAIL_ON_INSECURE_DEFAULTS:true}
       block-private-outbound: ${YU_FLOW_BLOCK_PRIVATE_OUTBOUND:true}
       allow-yml-admin-fallback: ${YU_FLOW_ALLOW_YML_ADMIN_FALLBACK:false}
-      # 默认禁止接口 authMode=NONE；应急可 true
-      allow-ingress-auth-none: ${YU_FLOW_ALLOW_INGRESS_AUTH_NONE:true}
+      # 默认禁止接口 authMode=NONE（匿名可调）；仅应急可设 YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true
+      allow-ingress-auth-none: ${YU_FLOW_ALLOW_INGRESS_AUTH_NONE:false}
+      # HttpRequest 节点 ignoreSsl 总开关；生产建议 false（一刀切禁用跳过证书校验）
+      allow-ignore-ssl: ${YU_FLOW_ALLOW_IGNORE_SSL:true}
     task:
       lock-ttl-minutes: ${YU_FLOW_TASK_LOCK_TTL_MINUTES:30}
       lock-renew-interval-seconds: ${YU_FLOW_TASK_LOCK_RENEW_SECONDS:60}

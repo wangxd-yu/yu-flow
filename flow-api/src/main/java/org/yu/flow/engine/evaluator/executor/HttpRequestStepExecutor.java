@@ -94,6 +94,7 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
 
             boolean ignoreSsl = resolveIgnoreSsl(step);
             if (ignoreSsl) {
+                assertIgnoreSslAllowed(step);
                 log.info("HttpRequest [{}] ignoreSsl=true，跳过 SSL 证书校验 → {}", step.getId(), finalUrl);
             }
 
@@ -210,6 +211,27 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
         } catch (Exception ignored) {
         }
         org.yu.flow.security.OutboundUrlGuard.validate(url.toString(), true, blockPrivate);
+    }
+
+    /**
+     * 全局开关 {@code yu.flow.security.allow-ignore-ssl} 为 false 时，
+     * 节点即使显式配置 ignoreSsl=true 也拒绝执行（生产一刀切禁用跳过证书校验）。
+     */
+    private static void assertIgnoreSslAllowed(HttpRequestStep step) {
+        boolean allowIgnoreSsl = true;
+        try {
+            org.yu.flow.config.YuFlowProperties props =
+                    cn.hutool.extra.spring.SpringUtil.getBean(org.yu.flow.config.YuFlowProperties.class);
+            if (props != null && props.getSecurity() != null) {
+                allowIgnoreSsl = props.getSecurity().isAllowIgnoreSsl();
+            }
+        } catch (Exception ignored) {
+        }
+        if (!allowIgnoreSsl) {
+            throw new org.yu.flow.exception.FlowException("IGNORE_SSL_DISABLED",
+                    "节点 [" + step.getId() + "] 配置了 ignoreSsl=true，但当前环境已禁用跳过证书校验"
+                            + "（yu.flow.security.allow-ignore-ssl=false）；请修复目标站证书或联系管理员");
+        }
     }
 
     private static boolean isCertificateProblem(Throwable e) {

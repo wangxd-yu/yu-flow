@@ -11,11 +11,11 @@ import java.util.Map;
 
 /**
  * 宿主 MVC 演示接口，用于验收「同名拦截 / WRAP」提示与转发。
- * <p>默认开启；生产可设 {@code yu.flow.host-demo.enabled=false} 关闭。</p>
+ * <p>默认关闭（生产安全默认）；本地验收可设 {@code yu.flow.host-demo.enabled=true} 显式开启。</p>
  */
 @RestController
 @RequestMapping("/yu-demo")
-@ConditionalOnProperty(prefix = "yu.flow.host-demo", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "yu.flow.host-demo", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class HostDemoController {
 
     /**

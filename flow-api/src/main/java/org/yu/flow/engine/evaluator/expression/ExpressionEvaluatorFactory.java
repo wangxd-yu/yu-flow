@@ -1,8 +1,19 @@
 package org.yu.flow.engine.evaluator.expression;
 
+import cn.hutool.extra.spring.SpringUtil;
+import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.exception.FlowException;
+
+import java.util.List;
+import java.util.Locale;
+
 /**
  * 表达式求值器工厂
  * 根据语言类型返回对应的求值器实现
+ *
+ * <p>受 {@code yu.flow.security.script-allowed-languages} 白名单约束：
+ * 未列入白名单的语言在获取求值器时直接抛出 {@code SCRIPT_LANGUAGE_DISABLED}。
+ * 默认仅开放 aviator / spel / javascript；groovy、python 需显式放开。</p>
  */
 public class ExpressionEvaluatorFactory {
 
@@ -34,6 +45,7 @@ public class ExpressionEvaluatorFactory {
         if (language == null) {
             return AVIATOR_EVALUATOR;
         }
+        assertLanguageAllowed(language);
 
         switch (language) {
             case SPEL:
@@ -47,6 +59,56 @@ public class ExpressionEvaluatorFactory {
             case AVIATOR:
             default:
                 return AVIATOR_EVALUATOR;
+        }
+    }
+
+    /**
+     * 校验语言是否在 {@code yu.flow.security.script-allowed-languages} 白名单内。
+     * 非 Spring 场景（纯单测直调）无法取到配置时放行，保持既有行为。
+     */
+    static void assertLanguageAllowed(ExpressionLanguage language) {
+        List<String> allowed;
+        try {
+            YuFlowProperties properties = SpringUtil.getBean(YuFlowProperties.class);
+            if (properties == null || properties.getSecurity() == null) {
+                return;
+            }
+            allowed = properties.getSecurity().getScriptAllowedLanguages();
+        } catch (Exception e) {
+            // 非 Spring 场景不做限制。
+            return;
+        }
+        if (allowed == null || allowed.isEmpty()) {
+            return;
+        }
+        String value = language.getValue();
+        for (String item : allowed) {
+            if ((item != null && value.equalsIgnoreCase(item.trim()))
+                    || normalizeAlias(item) == language) {
+                return;
+            }
+        }
+        throw new FlowException("SCRIPT_LANGUAGE_DISABLED",
+                "脚本语言 " + value + " 未在白名单内（yu.flow.security.script-allowed-languages），请联系管理员开启");
+    }
+
+    /**
+     * 兼容 js / py 等别名写法。
+     */
+    private static ExpressionLanguage normalizeAlias(String item) {
+        if (item == null || item.trim().isEmpty()) {
+            return null;
+        }
+        String normalized = item.trim().toLowerCase(Locale.ROOT);
+        switch (normalized) {
+            case "js":
+            case "javascript":
+                return ExpressionLanguage.JAVASCRIPT;
+            case "py":
+            case "python":
+                return ExpressionLanguage.PYTHON;
+            default:
+                return null;
         }
     }
 

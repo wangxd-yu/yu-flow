@@ -44,7 +44,11 @@ public class FlowServiceLogController {
         return R.fail("Log not found");
     }
 
+    /**
+     * 清空某服务的全部日志（写操作，需 log:write）
+     */
     @DeleteMapping("/clear/{serviceId}")
+    @RequirePerm("log:write")
     public R<Void> clear(@PathVariable String serviceId) {
         flowServiceLogService.clearByServiceId(serviceId);
         return R.ok();

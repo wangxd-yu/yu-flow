@@ -9,6 +9,9 @@ spring:
 yu:
   flow:
     password: change-me-admin-password
+    # 本地验收「同名拦截 / WRAP」需要宿主演示接口 /yu-demo/**；生产默认关闭
+    host-demo:
+      enabled: true
     security:
       fail-on-insecure-defaults: false
       jwt-secret-key: change-me-jwt-secret-at-least-32-chars!!
@@ -17,5 +20,7 @@ yu:
       allow-yml-admin-fallback: true
       # 本地调试 HttpRequest 访问私网时可保持 false；生产默认 true
       block-private-outbound: false
-      # 仅应急：允许接口 authMode=NONE
-      # allow-ingress-auth-none: true
+      # 本地联调可放开接口 authMode=NONE；生产默认 false（禁止匿名可调）
+      allow-ingress-auth-none: true
+      # 本地放开全部脚本语言；生产默认仅 aviator,spel,javascript
+      script-allowed-languages: aviator,spel,javascript,groovy,python

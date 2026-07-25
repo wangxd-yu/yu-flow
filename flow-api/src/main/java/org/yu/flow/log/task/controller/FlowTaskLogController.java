@@ -56,9 +56,10 @@ public class FlowTaskLogController {
     }
 
     /**
-     * 清空某任务的全部日志
+     * 清空某任务的全部日志（写操作，需 log:write）
      */
     @DeleteMapping("/clear/{taskId}")
+    @RequirePerm("log:write")
     public R<Void> clear(@PathVariable String taskId) {
         flowTaskLogService.clearByTaskId(taskId);
         return R.ok();
