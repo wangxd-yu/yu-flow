@@ -38,12 +38,33 @@ jobs:
               | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Coverage Summary
+        if: always()
+        working-directory: flow-api
+        run: |
+          if [ -f target/site/jacoco/index.html ]; then
+            echo "### JaCoCo Coverage" >> "$GITHUB_STEP_SUMMARY"
+            grep -oP 'Total.*?</tfoot>' target/site/jacoco/index.html \
+              | grep -oP '\d+%' \
+              | head -2 \
+              | awk 'NR==1{print "- Instruction coverage: " $0} NR==2{print "- Branch coverage: " $0}' \
+              | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
       - name: Upload Surefire Reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: surefire-reports
           path: flow-api/target/surefire-reports/
+          retention-days: 7
+
+      - name: Upload JaCoCo Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: flow-api/target/site/jacoco/
           retention-days: 7
 
   frontend-build:

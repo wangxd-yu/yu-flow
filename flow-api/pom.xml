@@ -273,6 +273,67 @@
                 </configuration>
             </plugin>
 
+            <!-- JaCoCo 代码覆盖率 -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <configuration>
+                    <excludes>
+                        <!-- 启动类、配置类、常量/异常/领域对象等通常不直接写单元测 -->
+                        <exclude>org/yu/flow/app/*</exclude>
+                        <exclude>org/yu/flow/config/*</exclude>
+                        <exclude>org/yu/flow/exception/*</exclude>
+                        <exclude>org/yu/flow/vo/*</exclude>
+                        <exclude>org/yu/flow/module/**/domain/**</exclude>
+                        <exclude>org/yu/flow/module/**/entity/**</exclude>
+                        <exclude>org/yu/flow/module/**/dto/**</exclude>
+                        <exclude>org/yu/flow/module/**/vo/**</exclude>
+                        <exclude>org/yu/flow/module/**/query/**</exclude>
+                    </excludes>
+                    <rules>
+                        <rule>
+                            <element>BUNDLE</element>
+                            <limits>
+                                <!-- 初始阈值设低，避免 CI 立即失败；后续逐步提高 -->
+                                <limit>
+                                    <counter>INSTRUCTION</counter>
+                                    <value>COVEREDRATIO</value>
+                                    <minimum>0.00</minimum>
+                                </limit>
+                                <limit>
+                                    <counter>BRANCH</counter>
+                                    <value>COVEREDRATIO</value>
+                                    <minimum>0.00</minimum>
+                                </limit>
+                            </limits>
+                        </rule>
+                    </rules>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Spring Boot 打包插件，配置 classifier=exec 使得原 jar 作为普通依赖，新增 -exec.jar 为可执行包 -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
