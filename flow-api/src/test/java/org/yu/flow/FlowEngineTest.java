@@ -103,7 +103,7 @@ public class FlowEngineTest {
                 "    { \"id\": \"node_calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], \n" +
                 "      \"data\": { \"expression\": \"'Hello ' + 'World'\" } },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"body\": \"${node_calc.out}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"node_calc\": \"$.node_calc\" }, \"body\": \"${node_calc.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_calc\", \"port\": \"in\"} },\n" +
@@ -167,14 +167,14 @@ public class FlowEngineTest {
     void testSwitchStepAdminCase() throws JsonProcessingException {
         // Aviator: 字符串比较直接使用 == (Aviator 重载了操作符)
         String flowJson = getSwitchFlowJson();
-        assertEquals("Admin Access", ((ExecutionResult) engine.execute(flowJson, paramsArgs("role", "ADMIN"))).getData());
+        assertEquals("Admin Access", resultData(engine.execute(flowJson, paramsArgs("role", "ADMIN"))));
     }
 
     @Test
     @DisplayName("06、测试 Switch 节点 - Default 分支")
     void testSwitchStepDefaultCase() throws JsonProcessingException {
         String flowJson = getSwitchFlowJson();
-        assertEquals("Unknown Role", ((ExecutionResult) engine.execute(flowJson, paramsArgs("role", "UNKNOWN"))).getData());
+        assertEquals("Unknown Role", resultData(engine.execute(flowJson, paramsArgs("role", "UNKNOWN"))));
     }
 
     private String getSwitchFlowJson() {
@@ -227,7 +227,7 @@ public class FlowEngineTest {
                 "  ]\n" +
                 "}";
 
-        assertEquals("OK", ((ExecutionResult) engine.execute(flowJson, paramsArgs("code", 200))).getData());
+        assertEquals("OK", resultData(engine.execute(flowJson, paramsArgs("code", 200))));
     }
 
 
@@ -296,7 +296,7 @@ public class FlowEngineTest {
                 "  \"nodes\": [\n" +
                 "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}],\n" +
-                "      \"data\": { \"body\": \"${start.params.name}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"start\": \"$.start\" }, \"body\": \"${start.params.name}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"end\", \"port\": \"in\"} }\n" +
@@ -320,7 +320,7 @@ public class FlowEngineTest {
                 "        \"expression\": \"g + ', ' + n\" \n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"body\": \"${calc.out}\" } }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": { \"inputs\": { \"calc\": \"$.calc\" }, \"body\": \"${calc.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} },\n" +
@@ -357,7 +357,7 @@ public class FlowEngineTest {
                 "      }\n" +
                 "    },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}],\n" +
-                "      \"data\": { \"body\": \"${join.out}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"join\": \"$.join\" }, \"body\": \"${join.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"branch_a\", \"port\": \"in\"} },\n" +
@@ -393,7 +393,7 @@ public class FlowEngineTest {
                 "        \"expression\": \"bVal + '_' + cVal\"\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\":\"${node_z.out}\"} }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"node_z\": \"$.node_z\" }, \"body\":\"${node_z.out}\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
@@ -428,7 +428,7 @@ public class FlowEngineTest {
                 "        \"expression\": \"dVal + cVal\"\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\":\"${node_z.out}\"} }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"node_z\": \"$.node_z\" }, \"body\":\"${node_z.out}\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
@@ -462,7 +462,7 @@ public class FlowEngineTest {
                 "        \"expression\": \"cVal == null ? 'EARLY_' + bVal : bVal + '_' + cVal\"\n" +
                 "      }\n" +
                 "    },\n" +
-                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\":\"${node_z.out}\"} }\n" +
+                "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"node_z\": \"$.node_z\" }, \"body\":\"${node_z.out}\"} }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_b\", \"port\": \"in\"} },\n" +
@@ -498,7 +498,7 @@ public class FlowEngineTest {
                 "      }\n" +
                 "    },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"body\": \"${node_spel.out}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"node_spel\": \"$.node_spel\" }, \"body\": \"${node_spel.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"node_spel\", \"port\": \"in\"} },\n" +
@@ -548,10 +548,10 @@ public class FlowEngineTest {
                 "}";
 
         // Case 1: 100 * 0.8 = 80 (<100) -> CHEAP
-        assertEquals("CHEAP", ((ExecutionResult) engine.execute(flowJson, paramsArgs("price", 100))).getData());
+        assertEquals("CHEAP", resultData(engine.execute(flowJson, paramsArgs("price", 100))));
 
         // Case 2: 200 * 0.8 = 160 (>100) -> EXPENSIVE
-        assertEquals("EXPENSIVE", ((ExecutionResult) engine.execute(flowJson, paramsArgs("price", 200))).getData());
+        assertEquals("EXPENSIVE", resultData(engine.execute(flowJson, paramsArgs("price", 200))));
     }
 
     // =================================================================
@@ -635,7 +635,7 @@ public class FlowEngineTest {
                 "    \"data\": { " +
                 "      \"inputs\": { \"a\": {\"extractPath\": \"$.start.params.a\"}, \"b\": {\"extractPath\": \"$.start.params.b\"} }," +
                 "      \"expression\": \"#Math.max(#a, #b)\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${calc.out}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"calc\": \"$.calc\" }, \"body\": \"${calc.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
@@ -659,7 +659,7 @@ public class FlowEngineTest {
                 "    \"data\": { " +
                 "      \"inputs\": { \"x\": {\"extractPath\": \"$.start.params.x\"} }," +
                 "      \"expression\": \"#x * 2 + 10\", \"language\": \"spel\" } }," +
-                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${calc.out}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"calc\": \"$.calc\" }, \"body\": \"${calc.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
@@ -922,13 +922,13 @@ public class FlowEngineTest {
                 "\"nodes\": [" +
                 "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"loop\", \"type\": \"for\", \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}], " +
-                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.params.items\"} } } }," +
+                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"list\": {\"extractPath\": \"$.start.params.items\"} } } }," +
                 "  { \"id\": \"mapStep\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { \"expression\": \"item\", \"inputs\": { \"item\": \"$.loop.item\" } } }," +
                 "  { \"id\": \"collector\", \"type\": \"collect\", \"ports\": [{\"id\":\"item\"},{\"id\":\"list\"}], " +
                 "    \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.mapStep.out\"} } } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"body\": \"${collector.count}\"} }" +
+                "    \"data\": {\"inputs\": { \"collector\": \"$.collector\" }, \"body\": \"${collector.count}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} }," +
@@ -988,7 +988,7 @@ public class FlowEngineTest {
                 "\"nodes\": [" +
                 "  { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] }," +
                 "  { \"id\": \"loop\", \"type\": \"for\", \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}], " +
-                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.params.numbers\"} } } }," +
+                "    \"data\": { \"collectStepId\": \"collector\", \"inputs\": { \"list\": {\"extractPath\": \"$.start.params.numbers\"} } } }," +
                 "  { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}], " +
                 "    \"data\": { " +
                 "      \"expression\": \"n * 10\"," +
@@ -997,7 +997,7 @@ public class FlowEngineTest {
                 "  { \"id\": \"collector\", \"type\": \"collect\", \"ports\": [{\"id\":\"item\"},{\"id\":\"list\"}], " +
                 "    \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.calc.out\"} } } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"body\": \"${collector.list}\"} }" +
+                "    \"data\": {\"inputs\": { \"collector\": \"$.collector\" }, \"body\": \"${collector.list}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} }," +
@@ -1037,7 +1037,7 @@ public class FlowEngineTest {
                 "      \"isAdult\": \"${calc.out}\" " +
                 "    } } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": {\"body\": \"${rec.out}\"} }" +
+                "    \"data\": {\"inputs\": { \"rec\": \"$.rec\" }, \"body\": \"${rec.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
@@ -1190,7 +1190,7 @@ public class FlowEngineTest {
                     "      }\n" +
                     "    },\n" +
                     "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
-                    "      \"data\": { \"body\": \"${http_req.body}\" } }\n" + // 获取解析后的 JSON Body
+                    "      \"data\": { \"inputs\": { \"http_req\": \"$.http_req\" }, \"body\": \"${http_req.body}\" } }\n" + // 获取解析后的 JSON Body
                     "  ],\n" +
                     "  \"edges\": [\n" +
                     "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"http_req\", \"port\": \"in\"} },\n" +
@@ -1243,7 +1243,7 @@ public class FlowEngineTest {
                 "      }\n" +
                 "    },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"body\": \"${tpl.out}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"tpl\": \"$.tpl\" }, \"body\": \"${tpl.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"tpl\", \"port\": \"in\"} },\n" +
@@ -1273,7 +1273,7 @@ public class FlowEngineTest {
                 "      }\n" +
                 "    },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \n" +
-                "      \"data\": { \"body\": \"${rec.out}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"rec\": \"$.rec\" }, \"body\": \"${rec.out}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"rec\", \"port\": \"in\"} },\n" +
@@ -1298,13 +1298,13 @@ public class FlowEngineTest {
                 "  \"nodes\": [\n" +
                 "    { \"id\": \"start\", \"type\": \"request\", \"ports\": [{\"id\":\"params\"}] },\n" +
                 "    { \"id\": \"loop\", \"type\": \"for\", \"ports\": [{\"id\":\"in\"},{\"id\":\"item\"}],\n" +
-                "      \"data\": { \"collectStepId\": \"coll\", \"inputs\": { \"collection\": {\"extractPath\": \"$.start.params.list\"} } } },\n" +
+                "      \"data\": { \"collectStepId\": \"coll\", \"inputs\": { \"list\": {\"extractPath\": \"$.start.params.list\"} } } },\n" +
                 "    { \"id\": \"calc\", \"type\": \"evaluate\", \"ports\": [{\"id\":\"in\"},{\"id\":\"out\"}],\n" +
                 "      \"data\": { \"expression\": \"item * 10\", \"inputs\": {\"item\": \"$.loop.item\"} } },\n" +
                 "    { \"id\": \"coll\", \"type\": \"collect\", \"ports\": [{\"id\":\"item\"},{\"id\":\"list\"}],\n" +
                 "      \"data\": { \"inputs\": { \"val\": {\"extractPath\": \"$.calc.out\"} } } },\n" +
                 "    { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}],\n" +
-                "      \"data\": { \"body\": \"${coll.list}\" } }\n" +
+                "      \"data\": { \"inputs\": { \"coll\": \"$.coll\" }, \"body\": \"${coll.list}\" } }\n" +
                 "  ],\n" +
                 "  \"edges\": [\n" +
                 "    { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"loop\", \"port\": \"in\"} },\n" +
@@ -1363,7 +1363,7 @@ public class FlowEngineTest {
                 "      \"sql\": \"SELECT * FROM users WHERE age > ${age}\", " +
                 "      \"inputs\": { \"age\": {\"extractPath\": \"$.start.params.minAge\"} } " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${db_node.out[0].name}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"db_node\": \"$.db_node\" }, \"body\": \"${db_node.out[0].name}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"db_node\", \"port\": \"in\"} }," +
@@ -1403,7 +1403,7 @@ public class FlowEngineTest {
                 "      \"sql\": \"UPDATE users SET status = 1 WHERE id IN (${ids})\", " +
                 "      \"inputs\": { \"ids\": {\"extractPath\": \"$.start.params.list\"} } " +
                 "    } }," +
-                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"body\": \"${db_update.out}\"} }" +
+                "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], \"data\": {\"inputs\": { \"db_update\": \"$.db_update\" }, \"body\": \"${db_update.out}\"} }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"db_update\", \"port\": \"in\"} }," +
@@ -1648,7 +1648,7 @@ public class FlowEngineTest {
                 + "    } },"
                 + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"body\": \"${gather.list}\" } }"
+                + "    \"data\": { \"inputs\": { \"gather\": \"$.gather\" }, \"body\": \"${gather.list}\" } }"
                 + "],"
                 + "\"edges\": ["
                 + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
@@ -1695,7 +1695,7 @@ public class FlowEngineTest {
                 + "    \"data\": {} },"
                 + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"body\": \"${gather.count}\" } }"
+                + "    \"data\": { \"inputs\": { \"gather\": \"$.gather\" }, \"body\": \"${gather.count}\" } }"
                 + "],"
                 + "\"edges\": ["
                 + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
@@ -1729,7 +1729,7 @@ public class FlowEngineTest {
                 + "    \"data\": {} },"
                 + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"body\": \"${gather.count}\" } }"
+                + "    \"data\": { \"inputs\": { \"gather\": \"$.gather\" }, \"body\": \"${gather.count}\" } }"
                 + "],"
                 + "\"edges\": ["
                 + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
@@ -1761,7 +1761,7 @@ public class FlowEngineTest {
                 + "    \"data\": { \"inputs\": { \"val\": { \"extractPath\": \"$.calc.out\" } } } },"
                 + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"body\": \"${gather.list}\" } }"
+                + "    \"data\": { \"inputs\": { \"gather\": \"$.gather\" }, \"body\": \"${gather.list}\" } }"
                 + "],"
                 + "\"edges\": ["
                 + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
@@ -1835,7 +1835,7 @@ public class FlowEngineTest {
                 + "    \"data\": { \"inputs\": { \"val\": { \"extractPath\": \"$.double.out\" } } } },"
                 + "  { \"id\": \"end\", \"type\": \"response\","
                 + "    \"ports\": [{\"id\":\"in\"}],"
-                + "    \"data\": { \"body\": \"${gather.count}\" } }"
+                + "    \"data\": { \"inputs\": { \"gather\": \"$.gather\" }, \"body\": \"${gather.count}\" } }"
                 + "],"
                 + "\"edges\": ["
                 + "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"scatter\", \"port\": \"in\"} },"
@@ -1869,7 +1869,7 @@ public class FlowEngineTest {
                 "      \"expression\": \"a * b + 10\" " +
                 "    } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"body\": \"${js_calc.out}\" } }" +
+                "    \"data\": { \"inputs\": { \"js_calc\": \"$.js_calc\" }, \"body\": \"${js_calc.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_calc\", \"port\": \"in\"} }," +
@@ -1899,7 +1899,7 @@ public class FlowEngineTest {
                 "      \"expression\": \"items.filter(x => x > 50).map(x => x * 2)\" " +
                 "    } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"body\": \"${js_filter.out}\" } }" +
+                "    \"data\": { \"inputs\": { \"js_filter\": \"$.js_filter\" }, \"body\": \"${js_filter.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_filter\", \"port\": \"in\"} }," +
@@ -1933,7 +1933,7 @@ public class FlowEngineTest {
                 "      \"expression\": \"({fullName: 'User: ' + name, isAdult: age >= 18, doubleAge: age * 2})\" " +
                 "    } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"body\": \"${js_transform.out}\" } }" +
+                "    \"data\": { \"inputs\": { \"js_transform\": \"$.js_transform\" }, \"body\": \"${js_transform.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_transform\", \"port\": \"in\"} }," +
@@ -1967,7 +1967,7 @@ public class FlowEngineTest {
                 "      \"expression\": \"`${greeting}, ${user}!`\" " +
                 "    } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"body\": \"${js_str.out}\" } }" +
+                "    \"data\": { \"inputs\": { \"js_str\": \"$.js_str\" }, \"body\": \"${js_str.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_str\", \"port\": \"in\"} }," +
@@ -2055,7 +2055,7 @@ public class FlowEngineTest {
                 "      \"expression\": \"arr.map(x => x * 10)\" " +
                 "    } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"body\": \"${js_step2.out}\" } }" +
+                "    \"data\": { \"inputs\": { \"js_step2\": \"$.js_step2\" }, \"body\": \"${js_step2.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"js_step1\", \"port\": \"in\"} }," +
@@ -2095,7 +2095,7 @@ public class FlowEngineTest {
                 "      \"expression\": \"val * 3\" " +
                 "    } }," +
                 "  { \"id\": \"end\", \"type\": \"response\", \"ports\": [{\"id\":\"in\"}], " +
-                "    \"data\": { \"body\": \"${js_step.out}\" } }" +
+                "    \"data\": { \"inputs\": { \"js_step\": \"$.js_step\" }, \"body\": \"${js_step.out}\" } }" +
                 "]," +
                 "\"edges\": [" +
                 "  { \"source\": {\"cell\": \"start\", \"port\": \"params\"}, \"target\": {\"cell\": \"calc\", \"port\": \"in\"} }," +
@@ -2125,7 +2125,7 @@ public class FlowEngineTest {
                 + "\"inputs\":{\"items\":{\"extractPath\":\"$.start.params.items\"}},"
                 + "\"expression\":\"total = sum(input['items'])\\nreturn {'total': total, 'values': [x * 2 for x in items]}\"}},"
                 + "{\"id\":\"end\",\"type\":\"response\",\"ports\":[{\"id\":\"in\"}],"
-                + "\"data\":{\"body\":\"${python_calc.out}\"}}],"
+                + "\"data\":{\"inputs\":{\"python_calc\":\"$.python_calc\"},\"body\":\"${python_calc.out}\"}}],"
                 + "\"edges\":["
                 + "{\"source\":{\"cell\":\"start\",\"port\":\"params\"},\"target\":{\"cell\":\"python_calc\",\"port\":\"in\"}},"
                 + "{\"source\":{\"cell\":\"python_calc\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
@@ -2152,7 +2152,7 @@ public class FlowEngineTest {
                 + "\"prefix\":{\"extractPath\":\"$.start.params.prefix\"}},"
                 + "\"expression\":\"def doubled = items.collect { it * 2 }\\nreturn [label: prefix + doubled.sum(), values: doubled]\"}},"
                 + "{\"id\":\"end\",\"type\":\"response\",\"ports\":[{\"id\":\"in\"}],"
-                + "\"data\":{\"body\":\"${groovy_calc.out}\"}}],"
+                + "\"data\":{\"inputs\":{\"groovy_calc\":\"$.groovy_calc\"},\"body\":\"${groovy_calc.out}\"}}],"
                 + "\"edges\":["
                 + "{\"source\":{\"cell\":\"start\",\"port\":\"params\"},\"target\":{\"cell\":\"groovy_calc\",\"port\":\"in\"}},"
                 + "{\"source\":{\"cell\":\"groovy_calc\",\"port\":\"out\"},\"target\":{\"cell\":\"end\",\"port\":\"in\"}}]}";
