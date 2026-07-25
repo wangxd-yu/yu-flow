@@ -51,7 +51,7 @@ export class CRUD3TablePlugin extends BaseCRUDPlugin {
   }
 
   /** 非实体数据源走默认构建 */
-  panelBodyCreator = (context: BuildPanelEventContext) => {
+  panelBodyCreator = (context: any) => {
     return this.baseCRUDPanelBody(context);
   };
 }

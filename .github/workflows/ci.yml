@@ -88,6 +88,10 @@ jobs:
         working-directory: flow-ui
         run: pnpm install --frozen-lockfile
 
+      - name: TypeScript Check
+        working-directory: flow-ui
+        run: npx tsc --noEmit
+
       - name: Build
         working-directory: flow-ui
         run: pnpm build

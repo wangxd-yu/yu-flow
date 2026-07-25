@@ -8,7 +8,7 @@ import { useMemoizedFn } from 'ahooks';
 import { Alert, message, Modal, Tooltip, Typography } from 'antd';
 
 import { PlusOutlined, CopyOutlined, DeleteOutlined, GroupOutlined, UngroupOutlined, RightOutlined, LeftOutlined } from '@ant-design/icons';
-import { FlowDebugger } from './debugger';
+import { FlowDebugger, type ExecutionLog } from './debugger';
 import { Graph, Node, Dnd, History, Keyboard, MiniMap, Shape, Snapline, Selection, Clipboard } from '@antv/x6';
 import debounce from 'lodash/debounce';
 import isEqual from 'lodash/isEqual';
@@ -741,10 +741,7 @@ function FlowEditorInner(props: ExtendedFlowEditorProps) {
                     name: 'stroke',
                     args: { attrs: { fill: '#5F95FF', stroke: '#5F95FF' } },
                 },
-                magnetReject: {
-                    name: 'stroke',
-                    args: { attrs: { fill: '#ff4d4f', stroke: '#ff4d4f' } },
-                },
+
             },
             connecting: {
                 router: EDGE_CONFIG.router,
@@ -1756,7 +1753,7 @@ function FlowEditorInner(props: ExtendedFlowEditorProps) {
                                     />
                                 )}
                                 <NodePropertyDrawer
-                                    node={selectedNodeId && graphRef.current ? graphRef.current.getCellById(selectedNodeId) as Node : undefined}
+                                    node={selectedNodeId && graphRef.current ? graphRef.current.getCellById(selectedNodeId) as Node : null}
                                     onDataChange={(node, changes) => {
                                         const prev = (node.getData?.() as Record<string, any>) || {};
                                         node.setData({ ...prev, ...changes }, { overwrite: true });

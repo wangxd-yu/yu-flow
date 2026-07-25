@@ -1,5 +1,6 @@
 // 运行时配置
 import { requestConfig } from '@/utils/request';
+// @ts-ignore
 import { history } from 'umi';
 import logo from '@/assets/logo1.svg';
 import React from 'react';

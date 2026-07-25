@@ -1,4 +1,5 @@
 import React from 'react';
+// @ts-ignore
 import { Navigate } from 'react-router-dom';
 import { mayBeLoggedIn } from '@/services/auth';
 

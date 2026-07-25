@@ -106,7 +106,7 @@ const DataSourceForm: React.FC<FormProps> = (props) => {
         password: password || undefined,
       });
 
-      const testResult = res?.data || res;
+      const testResult = (res as any)?.data || res;
       if (testResult?.success) {
         message.success('连接测试成功');
       } else {

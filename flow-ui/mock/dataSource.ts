@@ -77,7 +77,7 @@ const dataSourceList = [
 ];
 export default {
   // 获取数据源列表
-  'GET /flow-api/dataSource/page1': (req: Request, res: Response) => {
+  'GET /flow-api/dataSource/page1': (req: Request, res: any) => {
     res.json({
       ok: true,
       code: 200,
@@ -87,7 +87,7 @@ export default {
         size: 20,
         page: 0,
         totalPage: 1,
-        totalSize: dataSourceList.size,
+        totalSize: dataSourceList.length,
       },
       timestamp: 1745567006656,
     });

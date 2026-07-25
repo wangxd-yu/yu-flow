@@ -1,4 +1,4 @@
-import type { DslNodeType } from '../types';
+import type { DslNodeType } from './types';
 
 /** 流程编辑器所属资产上下文 */
 export type FlowEditorContext = 'api' | 'task' | 'service';

@@ -32,8 +32,6 @@ export default function HttpNodeConfig({ node, data, onChange }: HttpNodeConfigP
             method: 'GET',
             bodyType: 'json',
             timeout: 30000,
-            logEnabled: false,
-            ignoreSsl: false,
             apiType: '',
             params: [],
             headers: [],

@@ -16,6 +16,7 @@ import { request } from '@umijs/max';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 
 import { generateAmisSchema, DataModel } from '@/utils/amisGenerator';
+import type { CapabilityRow } from '@/utils/traits';
 import { generateCrudApis } from '@/utils/apiGenerator';
 import { addPage } from '@/pages/PageManage/services/pageManage';
 
@@ -165,16 +166,14 @@ const GenerateWizardModal: React.FC<GenerateWizardProps> = ({
     // 2. 生成 Amis 页面 Schema（使用 getAmisApiPrefix() + apiBasePath）
     const { getAmisApiPrefix } = await import('@/utils/env');
     const amisBaseUrl = `${getAmisApiPrefix()}${apiBasePath}`;
-    const defaultTraits = ['page', 'detail', 'insert', 'update', 'delete'];
-    const traitApiMap = {
-      page: `${amisBaseUrl}/page`,
-      detail: `${amisBaseUrl}/detail?id=\${id}`,
-      insert: `${amisBaseUrl}`,
-      update: `${amisBaseUrl}?id=\${id}`,
-      delete: `${amisBaseUrl}?id=\${id}`,
-      bulkDelete: `${amisBaseUrl}?id=\${ids|raw}`,
-    };
-    const schema = generateAmisSchema(model as DataModel, defaultTraits, traitApiMap);
+    const defaultTraits: CapabilityRow[] = [
+      { id: '1', name: '分页查询', position: 'toolbar', interaction: 'local', dataStrategy: 'generate', apiMethod: 'GET', apiPath: `${amisBaseUrl}/page`, conditionType: 'always', conditionField: '', conditionOperator: '', conditionValue: '', sourceTrait: 'page' },
+      { id: '2', name: '详情查询', position: 'row', interaction: 'drawer', dataStrategy: 'generate', apiMethod: 'GET', apiPath: `${amisBaseUrl}/detail?id=\${id}`, conditionType: 'always', conditionField: '', conditionOperator: '', conditionValue: '', sourceTrait: 'detail' },
+      { id: '3', name: '新增', position: 'toolbar', interaction: 'dialog', dataStrategy: 'generate', apiMethod: 'POST', apiPath: amisBaseUrl, conditionType: 'always', conditionField: '', conditionOperator: '', conditionValue: '', sourceTrait: 'insert' },
+      { id: '4', name: '修改', position: 'row', interaction: 'dialog', dataStrategy: 'generate', apiMethod: 'PUT', apiPath: `${amisBaseUrl}?id=\${id}`, conditionType: 'always', conditionField: '', conditionOperator: '', conditionValue: '', sourceTrait: 'update' },
+      { id: '5', name: '删除', position: 'row', interaction: 'ajax', dataStrategy: 'generate', apiMethod: 'DELETE', apiPath: `${amisBaseUrl}?id=\${id}`, conditionType: 'always', conditionField: '', conditionOperator: '', conditionValue: '', sourceTrait: 'delete' },
+    ];
+    const schema = generateAmisSchema(model as DataModel, defaultTraits);
 
     // 3. 保存页面
     try {

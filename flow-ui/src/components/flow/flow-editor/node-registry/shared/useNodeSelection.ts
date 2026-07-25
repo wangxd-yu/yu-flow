@@ -32,7 +32,7 @@ function NodeInfoPopover({
     children,
     iconColor,
 }: {
-    description: string;
+    description?: string;
     title?: string;
     children: React.ReactElement;
     iconColor?: string;
@@ -393,17 +393,17 @@ export const NodeHeader: React.FC<NodeHeaderProps> = ({
         },
     }, titleEl, idEl);
 
-    const infoBtn = description
-        ? React.createElement(
+    const infoBtn = description ? (
+        React.createElement(
             NodeInfoPopover,
             {
                 description,
                 title: title || '节点说明',
                 iconColor: t.primary,
+                children: React.createElement(InfoCircleOutlined, { style: { fontSize: 14 } }),
             },
-            React.createElement(InfoCircleOutlined, { style: { fontSize: 14 } }),
         )
-        : null;
+    ) : null;
 
     return React.createElement('div', {
         style: {
@@ -484,7 +484,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = ({
             height: '100%',
             overflow: 'visible',
             // 快照模式整卡不接收指针，交给 X6 处理选中；空白处可平移/缩放
-            pointerEvents: (isReadonly ? 'none' : 'auto') as const,
+            pointerEvents: isReadonly ? ('none' as const) : ('auto' as const),
         },
     },
         React.createElement(NodeToolbar, { node, selected, themeColor, visible: hovered && selected && !isReadonly }),
@@ -869,8 +869,7 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ node, selected, themeC
                 const label = type ? getNodeRegistration(type)?.label : undefined;
                 return React.createElement(
                     NodeInfoPopover,
-                    { description: desc, title: label || '节点说明' },
-                    infoIcon,
+                    { description: desc, title: label || '节点说明', children: infoIcon },
                 );
             })(),
             React.createElement('div', {

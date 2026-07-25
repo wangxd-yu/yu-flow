@@ -41,7 +41,7 @@ const { TabPane } = Tabs;
 //  类型定义
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type RunStatus = 'idle' | 'running' | 'finished' | 'error';
+export type RunStatus = 'idle' | 'running' | 'finished' | 'success' | 'error';
 
 /** 单个节点的执行日志 */
 export interface ExecutionLog {
@@ -556,7 +556,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             duration: 0,
             inputs: res.variables || {},
             outputs: {},
-            error: null,
+            error: undefined,
           }]);
         }
 

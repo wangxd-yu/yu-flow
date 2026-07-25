@@ -43,7 +43,18 @@ import {
 // ================================================================
 // 路由路径校验规则
 // ================================================================
-const routePathRules = [
+interface PageConfig {
+  id?: string | number;
+  name?: string;
+  routePath?: string;
+  json?: string | object;
+  status?: number;
+  directoryId?: string;
+  directoryName?: string;
+  createTime?: string;
+}
+
+const routePathRules =[
   { required: true, message: '访问路径为必填项' },
   {
     pattern: /^\//,
@@ -63,13 +74,13 @@ const PageManageList: React.FC = () => {
 
   // ---- 弹窗相关 ----
   const [modalVisible, setModalVisible] = useState(false);
-  const [currentRow, setCurrentRow] = useState<PageManage.PageConfig>();
+  const [currentRow, setCurrentRow] = useState<PageConfig>();
 
   const [designerModalVisible, setDesignerModalVisible] = useState(false);
   const [currentDesignerId, setCurrentDesignerId] = useState<string>();
 
   // ---- 批量操作 ----
-  const [selectedRowsState, setSelectedRows] = useState<PageManage.PageConfig[]>([]);
+  const [selectedRowsState, setSelectedRows] = useState<PageConfig[]>([]);
   const [batchMoveModalVisible, setBatchMoveModalVisible] = useState(false);
 
   // ---- 状态切换 ----
@@ -84,7 +95,7 @@ const PageManageList: React.FC = () => {
   };
 
   // ---- 克隆页面 ----
-  const handleClone = async (record: PageManage.PageConfig) => {
+  const handleClone = async (record: PageConfig) => {
     try {
       await clonePage(record.id as string);
       message.success('克隆成功');
@@ -97,7 +108,7 @@ const PageManageList: React.FC = () => {
   // ================================================================
   // ProTable 列定义
   // ================================================================
-  const columns: ProColumns<PageManage.PageConfig>[] = [
+  const columns: ProColumns<PageConfig>[] = [
     {
       title: '页面名称',
       dataIndex: 'name',
@@ -125,7 +136,7 @@ const PageManageList: React.FC = () => {
       search: false,
       render: (_, record) => (
         <Switch
-          checked={record.status === 1 || record.status === true}
+          checked={record.status === 1}
           onChange={(val) => handleStatusChange(record.id as string, val)}
           checkedChildren="已发布"
           unCheckedChildren="草稿"
@@ -213,7 +224,7 @@ const PageManageList: React.FC = () => {
       <DirectoryTreeLayout bizType="page" height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <>
-            <ProTable<PageManage.PageConfig>
+            <ProTable<PageConfig>
               className="fh-table"
               headerTitle={`页面列表 (${selectedDirectoryName || '全部'})`}
               tableLayout="fixed"
@@ -271,7 +282,7 @@ const PageManageList: React.FC = () => {
       </DirectoryTreeLayout>
 
       {/* ========== 新建 / 编辑弹窗 ========== */}
-      <ModalForm<PageManage.PageConfig>
+      <ModalForm<PageConfig>
         title={currentRow?.id ? '编辑基础信息' : '新建页面'}
         width="480px"
         open={modalVisible}
@@ -284,7 +295,7 @@ const PageManageList: React.FC = () => {
               await updatePage(currentRow.id as string, value);
               message.success('更新成功');
             } else {
-              await addPage(value);
+              await addPage(value as { name: string; routePath: string; directoryId?: string });
               message.success('创建成功');
             }
             setModalVisible(false);
