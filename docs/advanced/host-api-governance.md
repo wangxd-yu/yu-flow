@@ -7,7 +7,7 @@ Yu Flow 嵌入宿主后，可在 **接口管理（Controller）** 中纳管宿�
 | 原则 | 说明 |
 |------|------|
 | 零改造 | 宿主业务 Controller / 调用方 **无需** 为托管加参数或改 URL |
-| 默认宿主鉴权 | `yu.flow.ingress.enabled=false`（默认）时，**包裹（WRAP）** 不强制管理端 JWT |
+| 宿主鉴权可信任 | 显式设 `yu.flow.ingress.enabled=false`（信任宿主）时，**包裹（WRAP）** 不强制管理端 JWT；注意入站防护**安全默认开启** |
 | 显式纳管 | 未登记发布的宿主路由仍透明放行，行为与接入前一致 |
 | 按接口模式 | 每条资产选择 **替换 REPLACE** 或 **包裹 WRAP** |
 
@@ -32,6 +32,8 @@ WRAP    + ingress 关 → 信任宿主 Security（可选 open.require-host-auth 
   └─ 授权 WRAP 资产后：鉴权通过 → 改写为业务 path → 受控转发宿主（响应透传）
   └─ WRAP 不支持开放 /export 导出
 ```
+
+> WRAP 资产授权给第三方平台的完整链路（AppKey / HMAC 签名、限流、错误码）见 [第三方开放平台接入](./open-platform-integration.md)。
 
 ## 运营建议
 
@@ -65,5 +67,6 @@ WRAP    + ingress 关 → 信任宿主 Security（可选 open.require-host-auth 
 ## 相关文档
 
 - [入站防护与宿主网关分工](./ingress-security.md)
+- [第三方开放平台接入](./open-platform-integration.md)（WRAP 资产对外开放的鉴权与授权语义）
 - [系统深度集成](./embed-integration.md)
 - [动态 API 手册](../manual/dynamic-api.md)

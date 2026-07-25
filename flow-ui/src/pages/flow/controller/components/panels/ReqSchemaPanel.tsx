@@ -7,8 +7,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useMemo } from 'react';
-import { Alert, Divider, Empty, Input, Radio, Space, Tabs } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
+import { Alert, Button, Divider, Empty, Input, Radio, Space, Tabs } from 'antd';
+import { ImportOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import SchemaTreeTable from '@/components/flow/ApiContractDesigner/SchemaTreeTable';
 import useSchemaDrawer from '@/components/flow/ApiContractDesigner/useSchemaDrawer';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
@@ -45,6 +45,8 @@ export interface ReqSchemaPanelProps {
   onBodyTypeChange: (v: BodyType) => void;
   rawBody: string;
   onRawBodyChange: (v: string) => void;
+  /** 打开「从 cURL 导入」弹窗；提供后在空契约时展示引导提示 */
+  onCurlImport?: () => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -62,6 +64,7 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
   bodyNodes, onBodyNodesChange,
   bodyType, onBodyTypeChange,
   rawBody, onRawBodyChange,
+  onCurlImport,
 }) => {
   // ── 为 Body JSON 模式的 SchemaNode[] 构建带根节点的数据
   //    与 SchemaTreeTable 内部 dataSource 逻辑保持一致 ──────────
@@ -82,6 +85,14 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
     nodes: bodyDataSource,
     onNodesChange: onBodyNodesChange,
   });
+
+  // ── 空契约判定：尚未定义任何请求参数时，引导「从 cURL 导入」──
+  const isContractEmpty =
+    queryParams.length === 0
+    && headers.length === 0
+    && bodyNodes.length === 0
+    && bodyType === 'none'
+    && !rawBody?.trim();
 
   /** Body 内容渲染 — 根据 bodyType 切换不同编辑器 */
   const renderBodyContent = () => {
@@ -120,6 +131,23 @@ const ReqSchemaPanel: React.FC<ReqSchemaPanelProps> = ({
         closable
         style={{ marginBottom: 16 }}
       />
+
+      {/* 空契约引导：一条 cURL 即可填入 Method / Path / Query / Header / Body */}
+      {isContractEmpty && onCurlImport && (
+        <Alert
+          type="success"
+          showIcon
+          icon={<ImportOutlined />}
+          message="还没有定义任何请求参数"
+          description="如果已有现成接口（Postman / 浏览器 DevTools 均可复制 cURL），可以一键填入请求定义，无需手动逐个录入。"
+          action={
+            <Button size="small" type="primary" ghost icon={<ImportOutlined />} onClick={onCurlImport}>
+              从 cURL 导入
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Tabs
         defaultActiveKey="params"

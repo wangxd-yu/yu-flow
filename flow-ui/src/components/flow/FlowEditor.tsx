@@ -13,6 +13,7 @@ import { Graph, Node, Dnd, History, Keyboard, MiniMap, Shape, Snapline, Selectio
 import debounce from 'lodash/debounce';
 import isEqual from 'lodash/isEqual';
 import CodeEditor from './flow-editor/components/CodeEditor';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // V3.2 Modules
 import type { FlowDsl, DslNodeType, FlowEditorProps } from './flow-editor/types';
@@ -142,6 +143,15 @@ function unwrapDebugResult(result: any, fallbackMsg: string) {
 }
 
 export default function FlowEditor(props: ExtendedFlowEditorProps) {
+    // X6 / CodeMirror 等重型依赖崩溃时局部降级，避免编辑页白屏丢现场
+    return (
+        <ErrorBoundary name="流程编辑器">
+            <FlowEditorInner {...props} />
+        </ErrorBoundary>
+    );
+}
+
+function FlowEditorInner(props: ExtendedFlowEditorProps) {
     const {
         value,
         onChange,

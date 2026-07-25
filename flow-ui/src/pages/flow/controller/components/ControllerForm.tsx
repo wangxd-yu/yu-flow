@@ -393,30 +393,6 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     };
   }, [modalVisible, method, url]);
 
-  // WRAP：加载宿主路由供地址下拉
-  useEffect(() => {
-    if (!modalVisible || interceptMode !== 'WRAP') {
-      return;
-    }
-    let cancelled = false;
-    setHostRoutesLoading(true);
-    listHostApiRoutes()
-      .then((res: any) => {
-        if (cancelled) return;
-        const list = Array.isArray(res) ? res : (res?.data ?? []);
-        setHostRoutes(list);
-      })
-      .catch(() => {
-        if (!cancelled) setHostRoutes([]);
-      })
-      .finally(() => {
-        if (!cancelled) setHostRoutesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [modalVisible, interceptMode]);
-
   // ─── 从 URL 自动提取 Path 参数 ─────────────────────────────
   useEffect(() => {
     if (!url) {
@@ -472,6 +448,30 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   /** WRAP：宿主路由列表，供路径下拉选择 */
   const [hostRoutes, setHostRoutes] = useState<HostApiRoute[]>([]);
   const [hostRoutesLoading, setHostRoutesLoading] = useState(false);
+
+  // WRAP：加载宿主路由供地址下拉
+  useEffect(() => {
+    if (!modalVisible || interceptMode !== 'WRAP') {
+      return;
+    }
+    let cancelled = false;
+    setHostRoutesLoading(true);
+    listHostApiRoutes()
+      .then((res: any) => {
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : (res?.data ?? []);
+        setHostRoutes(list);
+      })
+      .catch(() => {
+        if (!cancelled) setHostRoutes([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHostRoutesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modalVisible, interceptMode]);
 
   // ─── 4 个隔离的内容 State（状态绝对隔离） ────────────────────────
   const [dslContent, setDslContent] = useState<string>('');
@@ -1299,6 +1299,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             onBodyTypeChange={setBodyType}
             rawBody={rawBody}
             onRawBodyChange={setRawBody}
+            onCurlImport={() => setCurlImportOpen(true)}
           />
         );
       case 'res-schema':

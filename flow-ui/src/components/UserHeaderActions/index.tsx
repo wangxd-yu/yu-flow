@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { history } from '@umijs/max';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { logoutRemote } from '@/services/auth';
@@ -11,7 +12,7 @@ type Props = {
 };
 
 /**
- * 顶栏用户入口：修改密码 / 退出登录
+ * 顶栏用户入口：帮助文档 / 修改密码 / 退出登录
  */
 const UserHeaderActions: React.FC<Props> = ({ displayName }) => {
   const [pwdOpen, setPwdOpen] = useState(false);
@@ -22,6 +23,12 @@ const UserHeaderActions: React.FC<Props> = ({ displayName }) => {
   };
 
   const flatItems: MenuProps['items'] = [
+    {
+      key: 'help-docs',
+      label: '帮助文档',
+      icon: <QuestionCircleOutlined />,
+    },
+    { type: 'divider' },
     {
       key: 'change-password',
       label: '修改密码',
@@ -35,6 +42,10 @@ const UserHeaderActions: React.FC<Props> = ({ displayName }) => {
   ];
 
   const onClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'help-docs') {
+      window.open('https://github.com/wangxd-yu/yu-flow#readme', '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (key === 'change-password') {
       setPwdOpen(true);
       return;

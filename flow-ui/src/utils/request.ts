@@ -1,6 +1,7 @@
 import { history, RequestConfig } from '@umijs/max';
 import { message, Modal } from 'antd';
 import { clearAuthHint, csrfHeaders } from '@/utils/session';
+import { markUiHandled } from '@/utils/errorText';
 
 function handleUnauthorized() {
   clearAuthHint();
@@ -91,7 +92,8 @@ export const requestConfig: RequestConfig = {
             data.code === 401004
           ) {
             handleUnauthorized();
-            throw new Error(data.msg || '请先登录');
+            // 已跳转登录页；标记避免页面重复弹错
+            throw markUiHandled(new Error(data.msg || '请先登录'));
           }
 
           if (data.code === 403) {
@@ -116,7 +118,8 @@ export const requestConfig: RequestConfig = {
             } else {
               message.error(errorMsg);
             }
-            throw new Error(errorMsg);
+            // 已向用户提示；标记后页面 catch 不再重复弹
+            throw markUiHandled(new Error(errorMsg));
           }
 
           if (process.env.NODE_ENV === 'development') {
@@ -155,7 +158,7 @@ export const requestConfig: RequestConfig = {
           message.error(error.message || '网络或服务器异常');
         }
 
-        return Promise.reject(error);
+        return Promise.reject(markUiHandled(error));
       },
     ],
   ],

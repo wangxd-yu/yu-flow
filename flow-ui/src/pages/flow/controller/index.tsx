@@ -39,6 +39,7 @@ import ApiDataViewDrawer from './components/ApiDataViewDrawer';
 import HostApiImportModal from './components/HostApiImportModal';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import TableEmpty from '@/components/TableEmpty';
 import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
 import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
@@ -176,6 +177,8 @@ const AutoApiConfigList: React.FC = () => {
   const [row, setRow] = useState<FlowController>();
   const [selectedRowsState, setSelectedRows] = useState<FlowController[]>([]);
   const [batchMoveModalVisible, setBatchMoveModalVisible] = useState<boolean>(false);
+  // 空态区分：是否处于筛选（目录 / 搜索条件）
+  const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
 
   // 状态定义
   const [formVisible, setFormVisible] = useState<boolean>(false);
@@ -716,6 +719,12 @@ const AutoApiConfigList: React.FC = () => {
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}, sort, filter) => {
               const { current, pageSize, directoryId, ...restParams } = params as any;
+              setEmptyFiltered(
+                !!directoryId ||
+                  Object.values(restParams).some(
+                    (v) => v !== undefined && v !== null && v !== '',
+                  ),
+              );
               const data = await queryAutoApiConfigList({
                 ...restParams,
                 directoryId,
@@ -760,6 +769,27 @@ const AutoApiConfigList: React.FC = () => {
               };
             }}
             columns={columns}
+            locale={{
+              emptyText: (
+                <TableEmpty
+                  entityName="接口"
+                  filtered={emptyFiltered}
+                  hint="支持 SQL 一键成接口、可视化编排，或从 cURL / 宿主路由导入"
+                  onCreate={() => openCreateForm(selectedDirectoryId)}
+                  extraActions={
+                    <Button
+                      icon={<CloudServerOutlined />}
+                      onClick={() => {
+                        setHostImportDirectoryId(selectedDirectoryId);
+                        setHostImportOpen(true);
+                      }}
+                    >
+                      从宿主导入
+                    </Button>
+                  }
+                />
+              ),
+            }}
             rowSelection={{
               onChange: (_, selectedRows) => setSelectedRows(selectedRows),
             }}

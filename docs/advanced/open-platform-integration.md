@@ -2,7 +2,7 @@
 
 宿主系统可通过 Yu Flow **开放入口**把已发布 API 安全暴露给外部伙伴，使用 AppKey + HMAC 签名鉴权，并按平台粒度做接口授权、IP 白名单与限流。
 
-> 非开放入口的已发布 API 入站兜底（HOST/OPEN/限流/IP）见 [入站防护与宿主网关分工](./ingress-security.md)。
+> 非开放入口的已发布 API 入站兜底（HOST/OPEN/限流/IP）见 [入站防护与宿主网关分工](./ingress-security.md)；宿主原生接口纳管（REPLACE / WRAP）见 [宿主 API 托管](./host-api-governance.md)。
 
 ## 1. 调用入口
 
@@ -30,9 +30,14 @@
 ## 3. 签名串
 
 ```
-METHOD\nrealPath\ntimestamp\nonce\nbodySha256OrEmpty
+METHOD
+realPath
+timestamp
+nonce
+bodySha256OrEmpty
 ```
 
+- 以上 5 段按顺序用 `\n`（LF）拼接为待签名串
 - `realPath`：去掉开放前缀后的路径（与发布 path 一致，建议以 `/` 开头）
 - `bodySha256OrEmpty`：当 `yu.flow.open.include-body-hash=true` 时为 body 的 SHA-256 hex；无 body 时为空串
 - 时钟偏差默认 ±300 秒（`yu.flow.open.skew-seconds`）
@@ -43,6 +48,7 @@ METHOD\nrealPath\ntimestamp\nonce\nbodySha256OrEmpty
 - 平台须勾选「已发布」接口后才能通过开放入口访问
 - `allow_methods` 为空：跟随接口发布 method
 - `allow_methods` 显式配置（如 `GET,POST`）：请求方法必须命中，否则返回 `403 OPEN_AUTH_METHOD_DENIED`
+- **WRAP（宿主包裹）资产**同样可被授权开放：鉴权通过后改写为业务 path 受控转发宿主 Controller，响应透传；但 **不支持** 开放 `/export` 导出。托管模式与转发语义见 [宿主 API 托管（替换 / 包裹）](./host-api-governance.md)
 
 ## 5. 常见错误码
 

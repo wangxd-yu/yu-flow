@@ -1,4 +1,4 @@
-/** Flow 领域 API 客户端（从 pages/flow/*/services 抽出） */
+/** Flow 领域 API 客户端（从 pages/flow 下各模块 services 抽出） */
 export * from './assetMetrics';
 export * from './flowController';
 export * from './taskService';

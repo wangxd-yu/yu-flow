@@ -24,6 +24,7 @@ import ServiceFlowForm from './components/ServiceFlowForm';
 import ServiceManualRunModal from './components/ServiceManualRunModal';
 import { confirmServiceUnpublish } from './components/confirmServiceUnpublish';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
+import TableEmpty from '@/components/TableEmpty';
 import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
 import '@/styles/fullHeightTable.css';
@@ -83,6 +84,8 @@ const ServiceFlowManagement: React.FC = () => {
   const [manualRunTarget, setManualRunTarget] = useState<FlowServiceFlow | null>(null);
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
   const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
+  // 空态区分：是否处于筛选（目录 / 搜索条件）
+  const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -151,7 +154,6 @@ const ServiceFlowManagement: React.FC = () => {
       dataIndex: 'name',
       ellipsis: true,
       width: 200,
-      ellipsis: true,
       render: (_, record) => (
         <a onClick={() => handleEditAction(record)} title={record.name}>
           {record.name}
@@ -386,6 +388,9 @@ const ServiceFlowManagement: React.FC = () => {
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}) => {
               const { current, pageSize, directoryId, name, enabled, publishStatus } = params as any;
+              setEmptyFiltered(
+                !!directoryId || !!name || enabled !== undefined || publishStatus !== undefined,
+              );
               const enabledParam =
                 enabled === true || enabled === 'true'
                   ? true
@@ -427,6 +432,16 @@ const ServiceFlowManagement: React.FC = () => {
               };
             }}
             columns={columns}
+            locale={{
+              emptyText: (
+                <TableEmpty
+                  entityName="服务"
+                  filtered={emptyFiltered}
+                  hint="沉淀可复用的编排流程，供接口 / 任务作为子流程调用"
+                  onCreate={() => handleAddAction(selectedDirectoryId)}
+                />
+              ),
+            }}
             rowSelection={{
               onChange: (_, selectedRows) => setSelectedRows(selectedRows),
             }}

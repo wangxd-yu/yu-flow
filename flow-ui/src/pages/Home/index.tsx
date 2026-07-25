@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
-import { Button, Col, Empty, Row, Spin, Typography } from 'antd';
+import { Alert, Button, Col, Empty, Row, Space, Spin, Typography } from 'antd';
 import { history, useModel } from '@umijs/max';
 import {
   ApiOutlined,
@@ -281,6 +281,41 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
+      {/* 零资产引导：还没有任何资产时给出第一步 CTA */}
+      {!loading && totalAssets === 0 && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 14 }}
+          message="还没有任何资产，从创建第一个接口开始"
+          description="支持 SQL 一键成接口、可视化编排，也可以从 cURL / 宿主路由导入存量接口。"
+          action={
+            <Space>
+              <Button
+                type="primary"
+                size="small"
+                icon={<ApiOutlined />}
+                onClick={() => history.push('/flow/api')}
+              >
+                创建第一个接口
+              </Button>
+              <Button
+                size="small"
+                onClick={() =>
+                  window.open(
+                    'https://github.com/wangxd-yu/yu-flow#readme',
+                    '_blank',
+                    'noopener,noreferrer',
+                  )
+                }
+              >
+                快速上手文档
+              </Button>
+            </Space>
+          }
+        />
+      )}
+
       {/* Asset metrics */}
       <Spin spinning={loading} wrapperClassName={styles.metricSpin}>
         <div className={styles.metricGrid}>
@@ -384,7 +419,11 @@ const HomePage: React.FC = () => {
             </div>
             <Spin spinning={loading}>
               {totalAssets === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无资产数据" />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无资产数据">
+                  <Button type="primary" size="small" onClick={() => history.push('/flow/api')}>
+                    去创建第一个接口
+                  </Button>
+                </Empty>
               ) : (
                 <div className={styles.composition}>
                   <div className={styles.donutWrap}>

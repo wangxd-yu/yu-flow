@@ -25,6 +25,7 @@ import React, { useRef, useState, Suspense } from 'react';
 import { Spin } from 'antd';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import '@/styles/fullHeightTable.css';
 // 懒加载 Designer，避免将 amis-editor 的 ~20MB 打入页面管理列表页的 chunk
 const Designer = React.lazy(() => import('./Designer'));
@@ -161,7 +162,7 @@ const PageManageList: React.FC = () => {
           key="preview"
           onClick={() => {
             const contextPath = window.__CONTEXT_PATH__ || '';
-            window.open(`${contextPath}/flow-ui/page-manage/preview/${record.id}`, '_blank');
+            window.open(`${contextPath}/flow-ui/page-manage/preview/${record.id}`, '_blank', 'noopener,noreferrer');
           }}
         >
           预览
@@ -348,9 +349,18 @@ const PageManageList: React.FC = () => {
         closable={false}
       >
         {currentDesignerId && (
-          <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}><Spin size="large" tip="加载编辑器..." /></div>}>
-            <Designer id={currentDesignerId} onBack={() => setDesignerModalVisible(false)} />
-          </Suspense>
+          <ErrorBoundary
+            name="页面设计器"
+            extraActions={
+              <Button key="back" onClick={() => setDesignerModalVisible(false)}>
+                返回列表
+              </Button>
+            }
+          >
+            <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}><Spin size="large" tip="加载编辑器..." /></div>}>
+              <Designer id={currentDesignerId} onBack={() => setDesignerModalVisible(false)} />
+            </Suspense>
+          </ErrorBoundary>
         )}
       </Modal>
     </PageContainer>
