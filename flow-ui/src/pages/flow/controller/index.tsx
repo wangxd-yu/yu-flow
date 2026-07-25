@@ -10,6 +10,7 @@ import {
   ModalForm,
 } from '@ant-design/pro-components';
 import { Button, Divider, Drawer, Modal, message, Tag, Popconfirm, Space, Switch, Tooltip, Table, Spin } from 'antd';
+import { CloudServerOutlined, PlusOutlined } from '@ant-design/icons';
 import { history, useLocation } from '@umijs/max';
 import {
   queryAutoApiConfigDetail,
@@ -27,11 +28,15 @@ import {
   publishApi,
   unpublishApi,
   supportsApiDataView,
+  batchHostApiProbe,
+  checkHostApiRouteExists,
   FlowController,
   ApiCacheEntry,
+  HostApiProbeResult,
 } from '@/services/flow/flowController';
 import ApiConfigForm from './components/ControllerForm';
 import ApiDataViewDrawer from './components/ApiDataViewDrawer';
+import HostApiImportModal from './components/HostApiImportModal';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
@@ -165,6 +170,8 @@ const handleRemove = async (selectedRows: FlowController[]) => {
 const AutoApiConfigList: React.FC = () => {
   const location = useLocation();
   const [createModalVisible, handleModalVisible] = useState<boolean>(false);
+  const [hostImportOpen, setHostImportOpen] = useState(false);
+  const [hostImportDirectoryId, setHostImportDirectoryId] = useState<string | undefined>();
   const actionRef = useRef<ActionType>();
   const [row, setRow] = useState<FlowController>();
   const [selectedRowsState, setSelectedRows] = useState<FlowController[]>([]);
@@ -221,10 +228,16 @@ const AutoApiConfigList: React.FC = () => {
   const [cacheContentText, setCacheContentText] = useState('');
   const [cacheContentTruncated, setCacheContentTruncated] = useState(false);
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
+  const [probeMap, setProbeMap] = useState<Record<string, HostApiProbeResult>>({});
 
-  // 新建配置
-  const handleAddAction = (directoryId?: string) => {
-    setCurrentRow({ directoryId });
+  /** 新建直进表单，模式在页内选择（默认替换） */
+  const openCreateForm = (directoryId?: string) => {
+    setCurrentRow({
+      directoryId,
+      interceptMode: 'REPLACE',
+      serviceType: 'FLOW',
+      logEnabled: true,
+    });
     setIsEditMode(false);
     setFormInitialTab(undefined);
     setFormVisible(true);
@@ -401,6 +414,18 @@ const AutoApiConfigList: React.FC = () => {
       },
     },
     {
+      title: '拦截',
+      dataIndex: 'interceptMode',
+      width: 88,
+      hideInSearch: true,
+      render: (_, record) => {
+        const wrap = record.interceptMode === 'WRAP' || record.serviceType === 'HOST';
+        return wrap
+          ? <Tag color="cyan" style={{ margin: 0 }}>包裹</Tag>
+          : <Tag color="orange" style={{ margin: 0 }}>替换</Tag>;
+      },
+    },
+    {
       title: '实现方式',
       dataIndex: 'serviceType',
       width: 110,
@@ -410,6 +435,7 @@ const AutoApiConfigList: React.FC = () => {
         DB: { text: '数据库', status: 'Success' },
         JSON: { text: '静态 JSON', status: 'Warning' },
         STRING: { text: '静态文本', status: 'Default' },
+        HOST: { text: '宿主转发', status: 'Default' },
       },
     },
     {
@@ -418,15 +444,20 @@ const AutoApiConfigList: React.FC = () => {
       hideInSearch: true,
       width: 90,
       align: 'center',
-      render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.logEnabled !== false}
-          checkedChildren="开"
-          unCheckedChildren="关"
-          onChange={(checked) => handleLogEnabledChange(record, checked)}
-        />
-      ),
+      render: (_, record) => {
+        const wrap = record.interceptMode === 'WRAP' || record.serviceType === 'HOST';
+        return (
+          <Tooltip title={wrap ? '包裹流量可能很大，建议按需开启' : undefined}>
+            <Switch
+              size="small"
+              checked={record.logEnabled === true || (!wrap && record.logEnabled !== false)}
+              checkedChildren="开"
+              unCheckedChildren="关"
+              onChange={(checked) => handleLogEnabledChange(record, checked)}
+            />
+          </Tooltip>
+        );
+      },
     },
     {
       title: '标签',
@@ -485,7 +516,7 @@ const AutoApiConfigList: React.FC = () => {
       dataIndex: 'runtimeHealth',
       hideInSearch: true,
       width: 100,
-      render: (_, record) => renderHealthTag(healthMap[record.id]),
+      render: (_, record) => renderHealthTag(healthMap[record.id], probeMap[record.id]),
     },
     {
       title: '防护',
@@ -556,6 +587,30 @@ const AutoApiConfigList: React.FC = () => {
             <a
               onClick={async () => {
                 try {
+                  const isWrap = record.interceptMode === 'WRAP' || record.serviceType === 'HOST';
+                  if (!isWrap && record.method && record.url) {
+                    let hostExists = false;
+                    try {
+                      const existsRes: any = await checkHostApiRouteExists(record.method, record.url);
+                      hostExists = existsRes?.exists === true || existsRes?.data?.exists === true;
+                    } catch {
+                      hostExists = false;
+                    }
+                    if (hostExists) {
+                      const ok = await new Promise<boolean>((resolve) => {
+                        Modal.confirm({
+                          title: '确认发布「同名替换」？',
+                          content: `检测到宿主已注册 ${record.method} ${record.url}。发布后将接管该路径，宿主同名接口不再被调用。`,
+                          okText: '确认替换并发布',
+                          okButtonProps: { danger: true },
+                          cancelText: '取消',
+                          onOk: () => resolve(true),
+                          onCancel: () => resolve(false),
+                        });
+                      });
+                      if (!ok) return;
+                    }
+                  }
                   const { confirmPublishWithGate } = await import(
                     '@/components/flow/release/confirmPublishWithGate'
                   );
@@ -626,7 +681,7 @@ const AutoApiConfigList: React.FC = () => {
               className="fh-table fh-table-fit"
               headerTitle={`接口列表 (${selectedDirectoryName || '全部'})`}
               tableLayout="fixed"
-              scroll={{ x: 2160, y: 100000 }}
+              scroll={{ x: 2240, y: 100000 }}
               pagination={{
                 defaultPageSize: 20,
                 showSizeChanger: true,
@@ -640,12 +695,23 @@ const AutoApiConfigList: React.FC = () => {
             }}
             toolBarRender={() => [
               <Button
-                key="1"
+                key="create"
                 type="primary"
-                onClick={() => handleAddAction(selectedDirectoryId)}
+                icon={<PlusOutlined />}
+                onClick={() => openCreateForm(selectedDirectoryId)}
               >
                 新建接口
-              </Button>
+              </Button>,
+              <Button
+                key="host-import"
+                icon={<CloudServerOutlined />}
+                onClick={() => {
+                  setHostImportDirectoryId(selectedDirectoryId);
+                  setHostImportOpen(true);
+                }}
+              >
+                从宿主导入
+              </Button>,
             ]}
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}, sort, filter) => {
@@ -668,6 +734,24 @@ const AutoApiConfigList: React.FC = () => {
                 setHealthMap(map);
               } catch {
                 setHealthMap({});
+              }
+              try {
+                const wrapIds = items
+                  .filter((i) => i.id && (i.interceptMode === 'WRAP' || i.serviceType === 'HOST'))
+                  .map((i) => i.id);
+                if (wrapIds.length) {
+                  const probes: any = await batchHostApiProbe(wrapIds);
+                  const list = Array.isArray(probes) ? probes : (probes?.data ?? []);
+                  const pmap: Record<string, HostApiProbeResult> = {};
+                  list.forEach((p: HostApiProbeResult) => {
+                    if (p?.apiId) pmap[p.apiId] = p;
+                  });
+                  setProbeMap(pmap);
+                } else {
+                  setProbeMap({});
+                }
+              } catch {
+                setProbeMap({});
               }
               return {
                 data: items,
@@ -809,6 +893,15 @@ const AutoApiConfigList: React.FC = () => {
           </Button>
         </FooterToolbar>
       )}
+      <HostApiImportModal
+        open={hostImportOpen}
+        directoryId={hostImportDirectoryId}
+        onCancel={() => setHostImportOpen(false)}
+        onImported={() => {
+          setHostImportOpen(false);
+          actionRef.current?.reload();
+        }}
+      />
       <ApiConfigForm
         isEdit={isEditMode}
         modalVisible={formVisible}
@@ -825,7 +918,8 @@ const AutoApiConfigList: React.FC = () => {
           }
         }}
         values={currentRow}
-      />      <Drawer
+      />
+      <Drawer
         width={600}
         open={!!row}
         onClose={() => {

@@ -20,6 +20,7 @@ import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
 import { DbDebugger } from '@/components/flow/debugger';
 import { debugRunDbApiConfig } from '@/services/flow/flowController';
 import { queryDataSourceList } from '@/services/flow/dataSource';
+import HostWrapConfig, { type HostWrapBinding } from './HostWrapConfig';
 
 const { Text } = Typography;
 
@@ -27,12 +28,18 @@ const { Text } = Typography;
 //  类型定义
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type EngineMode = 'FLOW' | 'DB' | 'JSON' | 'STRING';
+export type EngineMode = 'FLOW' | 'DB' | 'JSON' | 'STRING' | 'HOST';
 
 export interface ImplementationPanelProps {
   // ── 引擎模式 ──
   engineMode: EngineMode;
   onEngineModeChange: (mode: EngineMode) => void;
+  /** 同名拦截模式；HOST 实现固定为 WRAP */
+  interceptMode?: 'REPLACE' | 'WRAP' | string;
+  hostBinding?: HostWrapBinding;
+  onHostBindingChange?: (v: HostWrapBinding) => void;
+  onProbeNow?: () => void;
+  probing?: boolean;
 
   // ── 4 个隔离的内容 State ──
   dslContent: string;
@@ -97,6 +104,8 @@ export function getStaticJsonError(content?: string): string | null {
 
 const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
   engineMode, onEngineModeChange,
+  interceptMode,
+  hostBinding, onHostBindingChange, onProbeNow, probing,
   dslContent, onDslContentChange,
   sqlContent, onSqlContentChange,
   jsonContent, onJsonContentChange,
@@ -193,6 +202,19 @@ const ImplementationPanel: React.FC<ImplementationPanelProps> = ({
   );
 
   // ─── 渲染 ──────────────────────────────────────────────────────────
+  if (engineMode === 'HOST' || interceptMode === 'WRAP') {
+    return (
+      <HostWrapConfig
+        apiMethod={apiMethod}
+        apiUrl={apiUrl}
+        value={hostBinding || { forward: 'LOCAL', logMode: 'ERROR_ONLY', probeEnabled: true }}
+        onChange={(v) => onHostBindingChange?.(v)}
+        onProbeNow={onProbeNow}
+        probing={probing}
+      />
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* 非 FLOW 模式：引擎切换单独一行；FLOW 模式并入画布工具条，少占一行 */}

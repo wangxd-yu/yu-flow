@@ -55,6 +55,7 @@ import org.yu.flow.util.ThrowableUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URLDecoder;
@@ -92,6 +93,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     private static final String SECURITY_LEVEL_HEADER = "ss-level";
     private static final String JSON_CONTENT_TYPE = "application/json;charset=UTF-8";
     private static final String CACHE_HEADER = "ss-flow-cache";
+    /** WRAP 防重入标记：已进入受控转发，后续再匹配到本 Filter 时直接放行 */
+    private static final String ATTR_HOST_WRAP_FORWARDED = "yu.flow.host-wrap.forwarded";
     private static final AntPathMatcher ANT_PATH_MATCHER = new AntPathMatcher();
 
     /** 接口执行超时专用线程池（daemon，避免阻塞关闭） */
@@ -122,6 +125,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     private final YuFlowRuntimeSettings yuFlowRuntimeSettings;
     private final ApiDataViewService apiDataViewService;
     private final RbacService rbacService;
+    private final org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService;
 
     private final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
     private final UrlPathHelper urlPathHelper = createUrlPathHelper();
@@ -142,6 +146,30 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 YuFlowRuntimeSettings yuFlowRuntimeSettings,
                                 ApiDataViewService apiDataViewService,
                                 RbacService rbacService) {
+        this(flowProperties, flowApiService, flowApiCacheManager, schemaValidatorService,
+                contractParamTypeConverter, responseStrategyResolver, responseTransformer,
+                apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
+                ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings,
+                apiDataViewService, rbacService, null);
+    }
+
+    public FlowApiGatewayFilter(YuFlowProperties flowProperties,
+                                FlowApiExecutionService flowApiService,
+                                FlowApiCacheManager flowApiCacheManager,
+                                SchemaValidatorService schemaValidatorService,
+                                ContractParamTypeConverter contractParamTypeConverter,
+                                ResponseStrategyResolver responseStrategyResolver,
+                                ResponseTransformer responseTransformer,
+                                ApiResponseCacheService apiResponseCacheService,
+                                OpenAuthService openAuthService,
+                                AssetMetricsRecorder assetMetricsRecorder,
+                                HostAuthenticationProbe hostAuthenticationProbe,
+                                IngressSecurityResolver ingressSecurityResolver,
+                                IngressSecurityGuard ingressSecurityGuard,
+                                YuFlowRuntimeSettings yuFlowRuntimeSettings,
+                                ApiDataViewService apiDataViewService,
+                                RbacService rbacService,
+                                org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService) {
         this.flowProperties = flowProperties;
         this.flowApiService = flowApiService;
         this.flowApiCacheManager = flowApiCacheManager;
@@ -158,6 +186,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         this.yuFlowRuntimeSettings = yuFlowRuntimeSettings;
         this.apiDataViewService = apiDataViewService;
         this.rbacService = rbacService;
+        this.flowExecutionLogService = flowExecutionLogService;
     }
 
     private UrlPathHelper createUrlPathHelper() {
@@ -173,6 +202,12 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
         // 1. 全局开关关闭，直接放行
         if (!flowProperties.isEnabled()) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // WRAP 受控转发防重入：已标记则不再二次匹配/执行
+        if (Boolean.TRUE.equals(request.getAttribute(ATTR_HOST_WRAP_FORWARDED))) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -195,7 +230,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
         // 2.5 第三方开放入口：/flow-api/open/{真实path}（不走管理端 JWT）
         if (isOpenEntryPath(requestPath)) {
-            handleOpenEntry(request, response, requestPath, requestMethod);
+            handleOpenEntry(request, response, filterChain, requestPath, requestMethod);
             return;
         }
 
@@ -265,13 +300,52 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // 4.5 可选：真实 path + AppKey → 开放鉴权（凭证头分流，默认关）
+            // 4.4 可选：真实 path + AppKey → 开放鉴权（须在 WRAP 之前，以便开放入口同样可纳管 WRAP）
             if (shouldHandleDirectOpen(request)) {
-                handleOpenOnRealPath(request, response, requestPath, requestMethod, flowApiDO);
+                handleOpenOnRealPath(request, response, filterChain, requestPath, requestMethod, flowApiDO);
                 return;
             }
 
-            // 4.6 入站防护（全局+按接口）；关闭时仍强制管理端 JWT（禁止已发布 API 匿名裸奔）
+            // 4.5 同名包裹（WRAP）：信任宿主鉴权（ingress 关时不强制管理 JWT），转发宿主后写观测
+            if (PublishedApiSnapshot.isWrap(flowApiDO)) {
+                if (excelExport) {
+                    writeJsonResponse(response, HttpStatus.BAD_REQUEST.value(),
+                            R.fail(400, "宿主包裹接口不支持 /export 导出"));
+                    return;
+                }
+                HttpServletRequest wrapRequest = request;
+                if (isIngressEnabled()) {
+                    try {
+                        EffectiveSecurity sec = ingressSecurityResolver.resolve(flowApiDO);
+                        if (sec.getAuthMode() == IngressAuthMode.OPEN) {
+                            wrapRequest = wrapOpenBody(request);
+                        }
+                        OpenAuthContext ingressCtx = ingressSecurityGuard.enforce(
+                                wrapRequest, flowApiDO, requestPath, requestMethod);
+                        if (ingressCtx != null) {
+                            wrapRequest.setAttribute("yuOpenPlatformId", ingressCtx.getPlatformId());
+                            wrapRequest.setAttribute("yuOpenAppKey", ingressCtx.getAppKey());
+                        }
+                    } catch (IngressException e) {
+                        writeJsonResponse(response, e.getHttpStatus(),
+                                R.failWithErrorCode(e.getHttpStatus(), e.getCode(), e.getMessage()));
+                        return;
+                    }
+                } else if (!assertHostAuthIfRequired(request, response)) {
+                    return;
+                }
+                String wrapMethod = PublishedApiSnapshot.resolveMethod(flowApiDO);
+                if (StrUtil.isNotBlank(wrapMethod) && !requestMethod.equalsIgnoreCase(wrapMethod)) {
+                    writeJsonResponse(response, HttpStatus.METHOD_NOT_ALLOWED.value(),
+                            R.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
+                                    String.format("此接口不支持 %s 请求。请改用 %s 请求。", requestMethod, wrapMethod)));
+                    return;
+                }
+                wrapForwardToHost(wrapRequest, response, filterChain, flowApiDO);
+                return;
+            }
+
+            // 4.6 入站防护（全局+按接口）；REPLACE 在关闭时仍强制管理端 JWT（禁止动态 API 匿名裸奔）
             HttpServletRequest effectiveRequest = request;
             if (isIngressEnabled()) {
                 try {
@@ -628,8 +702,100 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     }
 
     /**
-     * 已发布动态 API 在未启用 ingress 时的安全默认：必须携带合法管理端 JWT。
+     * 将请求查找 path 对齐到业务 path（开放入口 /flow-api/open/{biz} → {biz}）。
+     */
+    private HttpServletRequest alignRequestPath(HttpServletRequest request, String businessPath) {
+        if (request == null || StrUtil.isBlank(businessPath)) {
+            return request;
+        }
+        String current = urlPathHelper.getPathWithinApplication(request);
+        if (businessPath.equals(current)) {
+            return request;
+        }
+        final String target = businessPath.startsWith("/") ? businessPath : "/" + businessPath;
+        return new HttpServletRequestWrapper(request) {
+            @Override
+            public String getRequestURI() {
+                String ctx = request.getContextPath();
+                return (ctx == null ? "" : ctx) + target;
+            }
+
+            @Override
+            public String getServletPath() {
+                return target;
+            }
+
+            @Override
+            public String getPathInfo() {
+                return null;
+            }
+        };
+    }
+
+    /**
+     * WRAP：受控转发宿主 FilterChain，透传响应；异步记计量/可选执行日志（默认不落 body）。
+     */
+    private void wrapForwardToHost(HttpServletRequest request, HttpServletResponse response,
+                                   FilterChain filterChain, FlowApiDO flowApiDO)
+            throws IOException, ServletException {
+        long startNs = System.nanoTime();
+        request.setAttribute(ATTR_HOST_WRAP_FORWARDED, Boolean.TRUE);
+        boolean forwardedOk = false;
+        try {
+            filterChain.doFilter(request, response);
+            forwardedOk = true;
+        } finally {
+            long costMs = (System.nanoTime() - startNs) / 1_000_000L;
+            int status = response.getStatus();
+            boolean success = forwardedOk && status > 0 && status < 400;
+            if (assetMetricsRecorder != null && flowApiDO.getId() != null) {
+                try {
+                    assetMetricsRecorder.record(
+                            MetricsAssetType.API,
+                            flowApiDO.getId(),
+                            success ? MetricsOutcome.SUCCESS : MetricsOutcome.FAIL,
+                            costMs,
+                            MetricsKeys.TRIGGER_DEFAULT);
+                } catch (Exception metricEx) {
+                    log.debug("[FlowApiGatewayFilter] WRAP 计量失败 apiId={}", flowApiDO.getId(), metricEx);
+                }
+            }
+            if (shouldWriteWrapLog(flowApiDO, success) && flowExecutionLogService != null) {
+                try {
+                    org.yu.flow.log.execution.domain.FlowExecutionLogDO logDO =
+                            new org.yu.flow.log.execution.domain.FlowExecutionLogDO();
+                    logDO.setApiId(flowApiDO.getId());
+                    logDO.setApiName(PublishedApiSnapshot.resolveName(flowApiDO));
+                    logDO.setUrl(PublishedApiSnapshot.resolveUrl(flowApiDO));
+                    logDO.setServiceType(PublishedApiSnapshot.resolveServiceType(flowApiDO));
+                    logDO.setMethod(PublishedApiSnapshot.resolveMethod(flowApiDO));
+                    logDO.setStatus(success ? "SUCCESS" : "FAIL");
+                    logDO.setCostTimeMs(costMs);
+                    if (!success) {
+                        logDO.setErrorMsg("host wrap status=" + status);
+                    }
+                    // 性能：默认不落 request/response body
+                    flowExecutionLogService.saveLogAsync(logDO);
+                } catch (Exception logEx) {
+                    log.debug("[FlowApiGatewayFilter] WRAP 日志失败 apiId={}", flowApiDO.getId(), logEx);
+                }
+            }
+        }
+    }
+
+    /** logEnabled + hostBinding.logMode（ALL / ERROR_ONLY / SAMPLE） */
+    private static boolean shouldWriteWrapLog(FlowApiDO api, boolean success) {
+        if (api == null || !Boolean.TRUE.equals(api.getLogEnabled())) {
+            return false;
+        }
+        String bindingJson = PublishedApiSnapshot.resolveHostBinding(api);
+        return org.yu.flow.module.api.support.HostBindingConfig.parse(bindingJson).shouldLog(success);
+    }
+
+    /**
+     * 已发布动态 API（REPLACE）在未启用 ingress 时的安全默认：必须携带合法管理端 JWT。
      * （路径不一定以 /flow-api 开头，故不能只依赖上文管理端鉴权分支。）
+     * <p>WRAP 不走本方法，默认信任宿主鉴权。</p>
      *
      * @return false 表示已写出拒绝响应
      */
@@ -684,10 +850,11 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
     }
 
     /**
-     * 第三方开放入口：鉴权后按真实 path 匹配已发布 API 并执行。
+     * 第三方开放入口：鉴权后按真实 path 匹配已发布 API 并执行（WRAP 则转发宿主）。
      */
     private void handleOpenEntry(HttpServletRequest request, HttpServletResponse response,
-                                 String requestPath, String requestMethod) throws IOException {
+                                 FilterChain filterChain, String requestPath, String requestMethod)
+            throws IOException, ServletException {
         boolean openEnabled = yuFlowRuntimeSettings != null
                 ? yuFlowRuntimeSettings.isOpenEnabled()
                 : flowProperties.getOpen() != null && flowProperties.getOpen().isEnabled();
@@ -705,16 +872,17 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         if (!realPath.startsWith("/")) {
             realPath = "/" + realPath;
         }
-        handleOpenOnRealPath(request, response, realPath, requestMethod, null);
+        handleOpenOnRealPath(request, response, filterChain, realPath, requestMethod, null);
     }
 
     /**
      * 开放鉴权执行：{@code preMatched} 非空时跳过路由查找（直连真实 path 场景）。
      * <p>path 以 /export 结尾时：验签 path 含后缀，路由匹配剥离后缀后的业务 path，执行 Excel 导出。</p>
+     * <p>WRAP：开放鉴权通过后按业务 path 转发宿主（需改写 request path，避免仍打到 /flow-api/open/**）。</p>
      */
     private void handleOpenOnRealPath(HttpServletRequest request, HttpServletResponse response,
-                                      String realPath, String requestMethod,
-                                      FlowApiDO preMatched) throws IOException {
+                                      FilterChain filterChain, String realPath, String requestMethod,
+                                      FlowApiDO preMatched) throws IOException, ServletException {
         long start = System.currentTimeMillis();
         HttpServletRequest effectiveRequest = wrapOpenBody(request);
 
@@ -765,15 +933,35 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             effectiveRequest.setAttribute("yuOpenPlatformId", authCtx.getPlatformId());
             effectiveRequest.setAttribute("yuOpenAppKey", authCtx.getAppKey());
 
-            if (excelExport) {
+            if (PublishedApiSnapshot.isWrap(flowApiDO)) {
+                if (excelExport) {
+                    httpStatus = HttpStatus.BAD_REQUEST.value();
+                    errorCode = "OPEN_WRAP_EXPORT_UNSUPPORTED";
+                    writeJsonResponse(response, httpStatus,
+                            R.fail(400, "宿主包裹接口不支持 /export 导出"));
+                    return;
+                }
+                // 开放入口 path 是 /flow-api/open/{biz}，转发前改写为业务 path
+                HttpServletRequest hostReq = alignRequestPath(effectiveRequest, matchPath);
+                wrapForwardToHost(hostReq, response, filterChain, flowApiDO);
+                httpStatus = response.getStatus() > 0 ? response.getStatus() : HttpStatus.OK.value();
+                outcome = httpStatus < 400 ? MetricsOutcome.SUCCESS : MetricsOutcome.FAIL;
+                if (outcome == MetricsOutcome.FAIL) {
+                    errorCode = "OPEN_WRAP_HOST_FAIL";
+                }
+            } else if (excelExport) {
                 outcome = executeExcelExport(effectiveRequest, response, flowApiDO);
+                httpStatus = response.getStatus() > 0 ? response.getStatus() : HttpStatus.OK.value();
+                if (outcome == MetricsOutcome.FAIL) {
+                    errorCode = "OPEN_BIZ_FAIL";
+                }
             } else {
                 // API 维度由 executeApi / 短路径记账；此处仅取业务 outcome 供 PLATFORM
                 outcome = executeAndWriteResponse(effectiveRequest, response, flowApiDO);
-            }
-            httpStatus = response.getStatus() > 0 ? response.getStatus() : HttpStatus.OK.value();
-            if (outcome == MetricsOutcome.FAIL) {
-                errorCode = "OPEN_BIZ_FAIL";
+                httpStatus = response.getStatus() > 0 ? response.getStatus() : HttpStatus.OK.value();
+                if (outcome == MetricsOutcome.FAIL) {
+                    errorCode = "OPEN_BIZ_FAIL";
+                }
             }
         } catch (OpenAuthException e) {
             httpStatus = e.getHttpStatus();

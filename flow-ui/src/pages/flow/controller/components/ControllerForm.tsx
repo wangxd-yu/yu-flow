@@ -12,8 +12,8 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  message, Button, Form, Input, Select,
-  Space, Tag, Dropdown, Tooltip, Popover
+  message, Button, Form, Input, Select, Modal, Alert,
+  Space, Tag, Dropdown, Tooltip, Popover, Segmented,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -25,6 +25,7 @@ import {
   RollbackOutlined,
   FileTextOutlined,
   CodeOutlined,
+  ImportOutlined,
   HistoryOutlined,
   DatabaseOutlined,
   ExperimentOutlined,
@@ -37,6 +38,8 @@ import { history, request } from '@umijs/max';
 import {
   addAutoApiConfig, updateAutoApiConfig, publishApi, unpublishApi, rollbackApi, republishApi,
   listApiVersions, restoreApiVersion, queryAutoApiConfigDetail, supportsApiDataView,
+  probeHostApiNow, checkHostApiRouteExists, listHostApiRoutes,
+  type HostApiRoute,
 } from '@/services/flow/flowController';
 import AssetVersionHistoryDrawer from '@/components/flow/AssetVersionHistoryDrawer';
 import {
@@ -45,9 +48,11 @@ import {
   ASSET_FORM_FILL_CLASS,
 } from '@/components/flow/ops';
 import { buildApiCurl, copyText, openPublishedApiDocCenter } from '@/utils/apiDocsActions';
+import CurlImportModal, { type CurlImportApplyPayload } from './CurlImportModal';
 
 // ── Panel 子组件 ──
-import ImplementationPanel, { getStaticJsonError } from './panels/ImplementationPanel';
+import ImplementationPanel, { getStaticJsonError, type EngineMode } from './panels/ImplementationPanel';
+import { parseHostBinding, stringifyHostBinding, type HostWrapBinding } from './panels/HostWrapConfig';
 import ReqSchemaPanel from './panels/ReqSchemaPanel';
 import ResSchemaPanel from './panels/ResSchemaPanel';
 import BasicInfoPanel from './panels/BasicInfoPanel';
@@ -55,7 +60,6 @@ import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
 import { confirmPublishWithGate } from '@/components/flow/release/confirmPublishWithGate';
 import RegressionSuitePanel from '@/components/flow/release/RegressionSuitePanel';
 import ApiDataViewDrawer from './ApiDataViewDrawer';
-import type { EngineMode } from './panels/ImplementationPanel';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
 import { buildApiTriggerPrefillFromContract } from '@/components/flow/debugger/apiTriggerPrefill';
 
@@ -367,6 +371,52 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     return () => clearTimeout(timer);
   }, [method, url, isEdit, processedValues, values?.id]);
 
+  // 宿主是否存在同 method + path（决定「同名拦截」大提示是否展示）
+  useEffect(() => {
+    if (!modalVisible || !url?.trim() || !method) {
+      setHostRouteExists(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res: any = await checkHostApiRouteExists(method, url.trim());
+        const exists = res?.exists === true || res?.data?.exists === true;
+        if (!cancelled) setHostRouteExists(!!exists);
+      } catch {
+        if (!cancelled) setHostRouteExists(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [modalVisible, method, url]);
+
+  // WRAP：加载宿主路由供地址下拉
+  useEffect(() => {
+    if (!modalVisible || interceptMode !== 'WRAP') {
+      return;
+    }
+    let cancelled = false;
+    setHostRoutesLoading(true);
+    listHostApiRoutes()
+      .then((res: any) => {
+        if (cancelled) return;
+        const list = Array.isArray(res) ? res : (res?.data ?? []);
+        setHostRoutes(list);
+      })
+      .catch(() => {
+        if (!cancelled) setHostRoutes([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHostRoutesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modalVisible, interceptMode]);
+
   // ─── 从 URL 自动提取 Path 参数 ─────────────────────────────
   useEffect(() => {
     if (!url) {
@@ -412,8 +462,16 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     });
   }, [name, url, method, publishStatus, form]);
 
-  // ─── 服务实现: 引擎模式 ───────────────────────────────────────────
+  // ─── 服务实现: 引擎模式 / 同名拦截 ─────────────────────────────────
   const [engineMode, setEngineMode] = useState<EngineMode>('FLOW');
+  const [interceptMode, setInterceptMode] = useState<'REPLACE' | 'WRAP'>('REPLACE');
+  const [hostBinding, setHostBinding] = useState<HostWrapBinding>(() => parseHostBinding());
+  const [probing, setProbing] = useState(false);
+  /** 宿主 MVC 是否存在同 method+path（决定是否展示「同名拦截」提示） */
+  const [hostRouteExists, setHostRouteExists] = useState(false);
+  /** WRAP：宿主路由列表，供路径下拉选择 */
+  const [hostRoutes, setHostRoutes] = useState<HostApiRoute[]>([]);
+  const [hostRoutesLoading, setHostRoutesLoading] = useState(false);
 
   // ─── 4 个隔离的内容 State（状态绝对隔离） ────────────────────────
   const [dslContent, setDslContent] = useState<string>('');
@@ -516,7 +574,15 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       setSqlContent(processedValues.sqlContent || '');
       setJsonContent(processedValues.jsonContent || '');
       setTextContent(processedValues.textContent || '');
-      setEngineMode(processedValues.serviceType || 'FLOW');
+      {
+        const st = (processedValues.serviceType || 'FLOW') as EngineMode;
+        const im = (processedValues.interceptMode === 'WRAP' || st === 'HOST')
+          ? 'WRAP'
+          : 'REPLACE';
+        setInterceptMode(im);
+        setEngineMode(im === 'WRAP' ? 'HOST' : (st === 'HOST' ? 'FLOW' : st));
+        setHostBinding(parseHostBinding(processedValues.hostBinding));
+      }
       setDbDatasource(processedValues.datasource);
       setResponseType(processedValues.responseType);
       setPublishStatus(processedValues.publishStatus ?? 0);
@@ -620,6 +686,8 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         } catch { /* parse error → not blocking */ }
       }
 
+      const effectiveIntercept = interceptMode === 'WRAP' || engineMode === 'HOST' ? 'WRAP' : 'REPLACE';
+      const effectiveServiceType = effectiveIntercept === 'WRAP' ? 'HOST' : engineMode;
       const payload = {
         ...formValues,
         name,
@@ -627,7 +695,11 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         method,
         publishStatus,
         responseType,
-        serviceType: engineMode,
+        serviceType: effectiveServiceType,
+        interceptMode: effectiveIntercept,
+        hostBinding: effectiveIntercept === 'WRAP'
+          ? stringifyHostBinding(hostBinding)
+          : undefined,
         datasource: dbDatasource,
         dslContent: finalDsl,
         sqlContent,
@@ -640,9 +712,9 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         tags: formValues.tags && Array.isArray(formValues.tags) ? formValues.tags.join(',') : formValues.tags,
         // 将契约数据序列化为 JSON 字符串存入 contract 字段，后端用于入参校验
         contract: JSON.stringify(contractSnapshot),
-        // 查询响应缓存配置
+        // 查询响应缓存配置（WRAP 透传宿主，强制关闭）
         cacheConfig: JSON.stringify({
-          enabled: !!formValues.cacheEnabled,
+          enabled: effectiveIntercept !== 'WRAP' && !!formValues.cacheEnabled,
           ttlSeconds: formValues.cacheTtlSeconds ?? 300,
           includePageable: formValues.cacheIncludePageable !== false,
           keyParams: Array.isArray(formValues.cacheKeyParams)
@@ -684,14 +756,70 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     name, url, method, publishStatus, isEdit, values,
     queryParams, pathParams, headers, bodyNodes, bodyType, rawBody,
     responseBody, responseDesc, statusCode, onSubmit,
-    dbDatasource, engineMode, responseType,
+    dbDatasource, engineMode, interceptMode, hostBinding, responseType,
     urlConflictMsg,
   ]);
 
   const [regressionOpen, setRegressionOpen] = useState(false);
   const [dataViewOpen, setDataViewOpen] = useState(false);
+  const [curlImportOpen, setCurlImportOpen] = useState(false);
+
+  const handleCurlImportApply = useCallback((payload: CurlImportApplyPayload) => {
+    const apply = () => {
+      setMethod(payload.method);
+      setUrl(payload.path);
+      setQueryParams(payload.query);
+      setHeaders(payload.headers);
+      setBodyType(payload.bodyType);
+      setBodyNodes(payload.body);
+      setRawBody(payload.rawBody ?? '');
+      setActiveTab('req-schema');
+      setCurlImportOpen(false);
+      message.success('已从 cURL 填入请求定义（未改服务实现）');
+    };
+    const hasContract =
+      queryParams.length > 0
+      || headers.length > 0
+      || bodyNodes.length > 0
+      || bodyType !== 'none'
+      || !!rawBody?.trim();
+    if (hasContract || (url?.trim() && url.trim() !== payload.path)) {
+      Modal.confirm({
+        title: '用 cURL 覆盖当前请求定义？',
+        content: '将覆盖 Method / Path、Query、Header 与 Body 契约；服务实现（FLOW/DB 等）保持不变。',
+        okText: '覆盖填入',
+        cancelText: '取消',
+        onOk: apply,
+      });
+      return;
+    }
+    apply();
+  }, [queryParams, headers, bodyNodes, bodyType, rawBody, url]);
 
   const handlePublishCurrentDraft = useCallback(async () => {
+    const effectiveIntercept = interceptMode === 'WRAP' || engineMode === 'HOST' ? 'WRAP' : 'REPLACE';
+    // 仅当宿主确有同 method+path 时强警告（避免无冲突路径也弹危险确认）
+    if (effectiveIntercept === 'REPLACE' && hostRouteExists) {
+      const ok = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: '确认发布「同名替换」？',
+          content: (
+            <div>
+              <p>检测到宿主已注册 <code>{method} {url}</code>。</p>
+              <p>发布后，Yu Flow 将<strong>接管</strong>该路径，宿主同名 Controller <strong>不再被调用</strong>。</p>
+              <p style={{ color: 'rgba(0,0,0,0.45)', marginBottom: 0 }}>若只需监控/限流原接口，请改用「同名包裹」模式。</p>
+            </div>
+          ),
+          okText: '确认替换并发布',
+          okButtonProps: { danger: true },
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!ok) return;
+    }
+
     const saved = await handleSubmit(undefined, { notify: false, closeOnSuccess: false });
     if (!saved.success || !saved.id) {
       return;
@@ -720,7 +848,62 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     } catch (e) {
       hide();
     }
-  }, [handleSubmit, isEdit, publishStatus, onSubmit, name]);
+  }, [handleSubmit, isEdit, publishStatus, onSubmit, name, interceptMode, engineMode, method, url, hostRouteExists]);
+
+  const handleInterceptModeChange = useCallback((next: 'REPLACE' | 'WRAP') => {
+    if (next === interceptMode) return;
+    if (next === 'REPLACE') {
+      Modal.confirm({
+        title: '切换为「同名替换」？',
+        content: '替换模式下需配置 FLOW/DB 等实现；发布后宿主同名接口将不可达。',
+        okText: '切换为替换',
+        okButtonProps: { danger: true },
+        onOk: () => {
+          setInterceptMode('REPLACE');
+          setEngineMode((m) => (m === 'HOST' ? 'FLOW' : m));
+        },
+      });
+      return;
+    }
+    Modal.confirm({
+      title: '切换为「同名包裹」？',
+      content: '包裹模式将转发至宿主原接口，Yu Flow 仅做增强（日志/计量/可选防护）。现有引擎实现内容不会用于线上。',
+      okText: '切换为包裹',
+      onOk: () => {
+        setInterceptMode('WRAP');
+        setEngineMode('HOST');
+        setHostBinding((prev) => ({
+          ...parseHostBinding(),
+          ...prev,
+          probeEnabled: prev.probeEnabled ?? true,
+          logMode: prev.logMode || 'ERROR_ONLY',
+        }));
+      },
+    });
+  }, [interceptMode]);
+
+  const handleProbeNow = useCallback(async () => {
+    if (!values?.id) {
+      message.warning('请先保存接口后再探测');
+      return;
+    }
+    setProbing(true);
+    try {
+      const res: any = await probeHostApiNow(values.id);
+      const r = res?.data || res;
+      if (r?.status === 'ok') {
+        message.success(r.message || '探活成功：宿主已注册该路由');
+      } else if (r?.status === 'skip') {
+        message.info(r.message || '探活已跳过');
+      } else {
+        message.warning(r?.message || '探活失败：宿主未注册该路由');
+      }
+    } catch {
+      message.error('探活请求失败');
+    } finally {
+      setProbing(false);
+    }
+  }, [values?.id]);
 
   // ═══════════════════════════════════════════════════════════════════
   //  Header 区域配置
@@ -730,46 +913,132 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   const headerCtrlSize = 'middle' as const;
   const headerCtrlHeight = 32;
 
+  const hostRouteSelectValue = url?.trim() ? `${method} ${url.trim()}` : undefined;
+  const hostRouteOptions = useMemo(() => {
+    const opts = hostRoutes.map((r) => {
+      const value = `${r.method} ${r.path}`;
+      const takenByOther = !!r.managed && !!r.managedApiId && r.managedApiId !== values?.id;
+      return {
+        value,
+        disabled: takenByOther,
+        label: (
+          <Space size={6} wrap={false}>
+            <span style={{ color: METHOD_COLORS[r.method] || undefined, fontWeight: 700, fontFamily: 'monospace' }}>
+              {r.method}
+            </span>
+            <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>{r.path}</span>
+            {takenByOther ? (
+              <Tag color="default" style={{ margin: 0 }}>已纳管</Tag>
+            ) : r.managed ? (
+              <Tag color="blue" style={{ margin: 0 }}>当前</Tag>
+            ) : null}
+          </Space>
+        ),
+        searchText: `${r.method} ${r.path} ${r.handlerClass || ''} ${r.handlerMethod || ''} ${r.managedApiName || ''}`,
+      };
+    });
+    // 当前值不在列表中时仍展示（兼容历史手输草稿）
+    if (hostRouteSelectValue && !opts.some((o) => o.value === hostRouteSelectValue)) {
+      opts.unshift({
+        value: hostRouteSelectValue,
+        disabled: false,
+        label: (
+          <Space size={6}>
+            <span style={{ fontFamily: 'monospace' }}>{hostRouteSelectValue}</span>
+            <Tag style={{ margin: 0 }}>未在宿主扫描中</Tag>
+          </Space>
+        ),
+        searchText: hostRouteSelectValue,
+      });
+    }
+    return opts;
+  }, [hostRoutes, hostRouteSelectValue, values?.id]);
+
   const headerTitle = (
     <Space.Compact
       className="yf-header-title-compact"
       style={{ display: 'flex', width: '100%', height: headerCtrlHeight }}
       size={headerCtrlSize}
     >
-      <Select
-        size={headerCtrlSize}
-        value={method}
-        onChange={setMethod}
-        style={{ width: 116, height: headerCtrlHeight, flexShrink: 0 }}
-        popupMatchSelectWidth={false}
-      >
-        {METHOD_OPTIONS.map((m) => (
-          <Select.Option key={m} value={m}>
-            <span style={{ color: METHOD_COLORS[m], fontWeight: 700, fontFamily: 'monospace' }}>{m}</span>
-          </Select.Option>
-        ))}
-      </Select>
-      <Popover
-        content={
-          urlConflictMsg ||
-          (publishStatus === 1
-            ? '可修改草稿路径；重新发布后线上路由才会切换'
-            : undefined)
-        }
-        open={!!urlConflictMsg}
-        placement="bottomLeft"
-        overlayInnerStyle={urlConflictMsg ? { color: '#ff4d4f' } : undefined}
-      >
-        <div className="yf-header-path-wrap" style={{ flex: 1, minWidth: 280, width: '100%' }}>
-          <ApiPathInput
+      {interceptMode === 'WRAP' ? (
+        <Tooltip title="包裹模式请从宿主已有接口中选择路径（方法随选项带入）">
+          <div className="yf-header-path-wrap" style={{ flex: 1, minWidth: 360, width: '100%' }}>
+            <Select
+              size={headerCtrlSize}
+              showSearch
+              allowClear
+              loading={hostRoutesLoading}
+              value={hostRouteSelectValue}
+              placeholder="选择宿主接口，例如 GET /yu-demo/host-ping"
+              status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
+              style={{ width: '100%', height: headerCtrlHeight }}
+              options={hostRouteOptions}
+              optionFilterProp="searchText"
+              filterOption={(input, option) => {
+                const text = String((option as any)?.searchText || option?.value || '').toLowerCase();
+                return text.includes(input.trim().toLowerCase());
+              }}
+              onChange={(v) => {
+                if (!v) {
+                  setUrl('');
+                  return;
+                }
+                const idx = String(v).indexOf(' ');
+                if (idx <= 0) {
+                  setUrl(String(v));
+                  return;
+                }
+                const nextMethod = String(v).slice(0, idx).trim().toUpperCase();
+                const nextPath = String(v).slice(idx + 1).trim();
+                setMethod(nextMethod);
+                setUrl(nextPath);
+                if (!name?.trim()) {
+                  const short = nextPath.replace(/\//g, '_').replace(/^_|_$/g, '').slice(0, 14);
+                  setName(`${nextMethod}_${short || 'host'}`.slice(0, 20));
+                }
+              }}
+              notFoundContent={hostRoutesLoading ? '加载宿主路由…' : '未扫描到可纳管的宿主接口'}
+            />
+          </div>
+        </Tooltip>
+      ) : (
+        <>
+          <Select
             size={headerCtrlSize}
-            value={url}
-            onChange={setUrl}
-            status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
-            style={{ flex: 1, width: '100%', height: headerCtrlHeight, minWidth: 0 }}
-          />
-        </div>
-      </Popover>
+            value={method}
+            onChange={setMethod}
+            style={{ width: 116, height: headerCtrlHeight, flexShrink: 0 }}
+            popupMatchSelectWidth={false}
+          >
+            {METHOD_OPTIONS.map((m) => (
+              <Select.Option key={m} value={m}>
+                <span style={{ color: METHOD_COLORS[m], fontWeight: 700, fontFamily: 'monospace' }}>{m}</span>
+              </Select.Option>
+            ))}
+          </Select>
+          <Popover
+            content={
+              urlConflictMsg ||
+              (publishStatus === 1
+                ? '可修改草稿路径；重新发布后线上路由才会切换'
+                : undefined)
+            }
+            open={!!urlConflictMsg}
+            placement="bottomLeft"
+            overlayInnerStyle={urlConflictMsg ? { color: '#ff4d4f' } : undefined}
+          >
+            <div className="yf-header-path-wrap" style={{ flex: 1, minWidth: 280, width: '100%' }}>
+              <ApiPathInput
+                size={headerCtrlSize}
+                value={url}
+                onChange={setUrl}
+                status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
+                style={{ flex: 1, width: '100%', height: headerCtrlHeight, minWidth: 0 }}
+              />
+            </div>
+          </Popover>
+        </>
+      )}
       <Input
         size={headerCtrlSize}
         value={name}
@@ -810,6 +1079,12 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           message.warning('请先保存接口后再查看文档');
         }
       },
+    },
+    {
+      key: 'curl-import',
+      icon: <ImportOutlined />,
+      label: '从 cURL 导入',
+      onClick: () => setCurlImportOpen(true),
     },
     {
       key: 'curl',
@@ -975,6 +1250,11 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
             <ImplementationPanel
               engineMode={engineMode}
               onEngineModeChange={setEngineMode}
+              interceptMode={interceptMode}
+              hostBinding={hostBinding}
+              onHostBindingChange={setHostBinding}
+              onProbeNow={handleProbeNow}
+              probing={probing}
               dslContent={dslContent}
               onDslContentChange={setDslContent}
               sqlContent={sqlContent}
@@ -1039,7 +1319,13 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           ...headers.map((n) => ({ source: 'header', name: n.name })),
           ...bodyNodes.map((n) => ({ source: 'body', name: n.name })),
         ].filter((p) => !!p.name);
-        return <BasicInfoPanel form={form} paramSuggestions={paramSuggestions} />;
+        return (
+          <BasicInfoPanel
+            form={form}
+            paramSuggestions={paramSuggestions}
+            interceptMode={interceptMode}
+          />
+        );
       }
       case 'runtime':
         return (
@@ -1076,8 +1362,47 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           { tab: '基础信息 / 缓存', key: 'basic-info' },
           ...(values?.id ? [{ tab: '运行', key: 'runtime' }] : []),
         ]}
+        tabBarExtraContent={
+          <Space size={6} style={{ marginRight: 4 }} wrap={false}>
+            <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: 12, whiteSpace: 'nowrap' }}>
+              拦截模式
+            </span>
+            <Segmented
+              size="small"
+              value={interceptMode}
+              onChange={(v) => handleInterceptModeChange(v as 'REPLACE' | 'WRAP')}
+              options={[
+                { label: '替换', value: 'REPLACE' },
+                { label: '包裹', value: 'WRAP' },
+              ]}
+            />
+          </Space>
+        }
         style={{ height: '100%', overflow: 'hidden' }}
       >
+        {/* 仅宿主存在同名 path 时提示风险，模式切换已在 Tab 行右侧 */}
+        {hostRouteExists && (
+          <div style={{ padding: '0 4px 8px', flexShrink: 0 }}>
+            <Alert
+              type={interceptMode === 'WRAP' ? 'info' : 'warning'}
+              showIcon
+              style={{ marginBottom: 0 }}
+              message={
+                <Space size={6}>
+                  <span>同名拦截</span>
+                  <Tag color={interceptMode === 'WRAP' ? 'cyan' : 'orange'} style={{ margin: 0 }}>
+                    {interceptMode === 'WRAP' ? '包裹' : '替换'}
+                  </Tag>
+                </Space>
+              }
+              description={
+                interceptMode === 'WRAP'
+                  ? `宿主已有 ${method} ${url}：请求仍由宿主执行，Yu Flow 叠加计量 / 可选日志 / 可选防护。`
+                  : `宿主已有 ${method} ${url}：发布后 Yu Flow 将接管该 path，宿主同名接口不再被调用。`
+              }
+            />
+          </div>
+        )}
         {renderTabContent()}
       </PageContainer>
 
@@ -1103,7 +1428,13 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               setSqlContent(detail.sqlContent || '');
               setJsonContent(detail.jsonContent || '');
               setTextContent(detail.textContent || '');
-              setEngineMode(detail.serviceType || 'FLOW');
+              {
+                const st = (detail.serviceType || 'FLOW') as EngineMode;
+                const im = (detail.interceptMode === 'WRAP' || st === 'HOST') ? 'WRAP' : 'REPLACE';
+                setInterceptMode(im);
+                setEngineMode(im === 'WRAP' ? 'HOST' : (st === 'HOST' ? 'FLOW' : st));
+                setHostBinding(parseHostBinding(detail.hostBinding));
+              }
               setDbDatasource(detail.datasource);
               setResponseType(detail.responseType);
               setPublishStatus(detail.publishStatus === 1 ? 1 : 0);
@@ -1205,6 +1536,12 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           onPublished={() => setPublishStatus(1)}
         />
       )}
+
+      <CurlImportModal
+        open={curlImportOpen}
+        onCancel={() => setCurlImportOpen(false)}
+        onApply={handleCurlImportApply}
+      />
     </AssetFormShell>
   );
 };

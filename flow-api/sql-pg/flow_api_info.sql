@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS flow_api_info (
   module varchar(20),
   method varchar(10),
   service_type varchar(20),
+  intercept_mode varchar(16) NOT NULL DEFAULT 'REPLACE',
+  host_binding text,
   response_type varchar(10),
   version varchar(20),
   config text,
@@ -44,7 +46,9 @@ COMMENT ON COLUMN flow_api_info.url IS 'API的URL路径';
 COMMENT ON COLUMN flow_api_info.datasource IS '数据源名称';
 COMMENT ON COLUMN flow_api_info.module IS '所属模块名称';
 COMMENT ON COLUMN flow_api_info.method IS '请求方式：POST、PUT、GET、DELETE';
-COMMENT ON COLUMN flow_api_info.service_type IS '服务驱动类型：DB、FLOW、JSON、STRING';
+COMMENT ON COLUMN flow_api_info.service_type IS '服务驱动类型：DB、FLOW、JSON、STRING、HOST';
+COMMENT ON COLUMN flow_api_info.intercept_mode IS '同名拦截：REPLACE-替换执行引擎；WRAP-包裹转发宿主';
+COMMENT ON COLUMN flow_api_info.host_binding IS 'WRAP 宿主绑定 JSON：forward/targetPath/probePath';
 COMMENT ON COLUMN flow_api_info.response_type IS '响应数据类型：PAGE(分页)、LIST(列表)、OBJECT(对象)';
 COMMENT ON COLUMN flow_api_info.version IS 'API版本号';
 COMMENT ON COLUMN flow_api_info.config IS '核心逻辑配置，存储SQL、流编排JSON或静态数据';

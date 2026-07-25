@@ -34,6 +34,42 @@ public final class PublishedApiSnapshot {
         return fromSnap != null ? fromSnap : api.getMethod();
     }
 
+    /**
+     * 同名拦截模式：优先快照；缺省 {@link ApiInterceptMode#REPLACE}（兼容旧数据）。
+     */
+    public static String resolveInterceptMode(FlowApiDO api) {
+        String fromSnap = textFromSnapshot(api, "interceptMode");
+        if (fromSnap != null) {
+            return ApiInterceptMode.normalize(fromSnap);
+        }
+        if (api != null && StrUtil.isNotBlank(api.getInterceptMode())) {
+            return ApiInterceptMode.normalize(api.getInterceptMode());
+        }
+        // 历史：serviceType=HOST 视为 WRAP
+        String st = resolveServiceType(api);
+        if (ApiInterceptMode.SERVICE_TYPE_HOST.equalsIgnoreCase(st)) {
+            return ApiInterceptMode.WRAP;
+        }
+        return ApiInterceptMode.REPLACE;
+    }
+
+    public static String resolveServiceType(FlowApiDO api) {
+        String fromSnap = textFromSnapshot(api, "serviceType");
+        if (fromSnap != null) {
+            return fromSnap;
+        }
+        return api == null ? null : api.getServiceType();
+    }
+
+    public static String resolveHostBinding(FlowApiDO api) {
+        String fromSnap = textFromSnapshot(api, "hostBinding");
+        return fromSnap != null ? fromSnap : (api == null ? null : api.getHostBinding());
+    }
+
+    public static boolean isWrap(FlowApiDO api) {
+        return ApiInterceptMode.isWrap(resolveInterceptMode(api));
+    }
+
     public static String resolveName(FlowApiDO api) {
         String fromSnap = textFromSnapshot(api, "name");
         return fromSnap != null ? fromSnap : api.getName();

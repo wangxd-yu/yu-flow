@@ -14,6 +14,7 @@ import org.yu.flow.config.response.ResponseTransformer;
 import org.yu.flow.config.response.ResponseWrapperContext;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.support.ApiInterceptMode;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
 import org.yu.flow.module.metrics.MetricsOutcome;
@@ -21,6 +22,11 @@ import org.yu.flow.module.open.auth.HostAuthenticationProbe;
 import org.yu.flow.module.open.auth.OpenAuthContext;
 import org.yu.flow.module.open.auth.OpenAuthException;
 import org.yu.flow.module.open.auth.OpenAuthService;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -155,6 +161,59 @@ class FlowApiGatewayOpenFilterTest {
     }
 
     @Test
+    void openEntry_wrap_rewritesPathAndForwardsHost() throws Exception {
+        OpenAuthContext ctx = OpenAuthContext.builder()
+                .platformId("p1").appKey("yf_x").build();
+        FlowApiDO api = wrapApi("api-wrap-open", "/yu-demo/host-ping", "GET");
+        when(openAuthService.authenticate(any(), eq("/yu-demo/host-ping"), eq("GET"))).thenReturn(ctx);
+        when(flowApiCacheManager.getExactMatch("GET", "/yu-demo/host-ping")).thenReturn(api);
+        doNothing().when(openAuthService).assertApiGranted(eq(ctx), eq("api-wrap-open"), eq("GET"));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/flow-api/open/yu-demo/host-ping");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain() {
+            @Override
+            public void doFilter(jakarta.servlet.ServletRequest request, jakarta.servlet.ServletResponse response)
+                    throws IOException, ServletException {
+                HttpServletRequest http = (HttpServletRequest) request;
+                assertEquals("/yu-demo/host-ping", http.getRequestURI());
+                assertEquals(Boolean.TRUE, http.getAttribute("yu.flow.host-wrap.forwarded"));
+                ((HttpServletResponse) response).setStatus(200);
+                response.getWriter().write("{\"pong\":true}");
+            }
+        };
+
+        filter.doFilter(req, res, chain);
+
+        assertEquals(200, res.getStatus());
+        assertTrue(res.getContentAsString().contains("pong"));
+        verify(flowApiService, never()).executeApi(any(), any(), any(), any());
+        verify(assetMetricsRecorder).record(eq(MetricsAssetType.PLATFORM), eq("p1"),
+                eq(MetricsOutcome.SUCCESS), anyLong());
+        verify(assetMetricsRecorder).record(eq(MetricsAssetType.API), eq("api-wrap-open"),
+                eq(MetricsOutcome.SUCCESS), anyLong(), anyString());
+    }
+
+    @Test
+    void openEntry_wrap_export_unsupported() throws Exception {
+        OpenAuthContext ctx = OpenAuthContext.builder()
+                .platformId("p1").appKey("yf_x").build();
+        FlowApiDO api = wrapApi("api-wrap-export", "/yu-demo/host-ping", "GET");
+        when(openAuthService.authenticate(any(), eq("/yu-demo/host-ping"), eq("GET"))).thenReturn(ctx);
+        when(flowApiCacheManager.getExactMatch("GET", "/yu-demo/host-ping")).thenReturn(api);
+        doNothing().when(openAuthService).assertApiGranted(eq(ctx), eq("api-wrap-export"), eq("GET"));
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/flow-api/open/yu-demo/host-ping/export");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+
+        filter.doFilter(req, res, new MockFilterChain());
+
+        assertEquals(400, res.getStatus());
+        assertTrue(res.getContentAsString().contains("不支持"));
+        verify(flowApiService, never()).executeApi(any(), any(), any(), any());
+    }
+
+    @Test
     void directPath_withAppKey_whenEnabled() throws Exception {
         props.getOpen().setAllowDirectPath(true);
         OpenAuthContext ctx = OpenAuthContext.builder()
@@ -210,5 +269,17 @@ class FlowApiGatewayOpenFilterTest {
                 .publishStatus(1)
                 .responseType("OBJECT")
                 .build();
+    }
+
+    private static FlowApiDO wrapApi(String id, String url, String method) {
+        FlowApiDO api = new FlowApiDO();
+        api.setId(id);
+        api.setName("wrap-open");
+        api.setUrl(url);
+        api.setMethod(method);
+        api.setPublishStatus(1);
+        api.setServiceType(ApiInterceptMode.SERVICE_TYPE_HOST);
+        api.setInterceptMode(ApiInterceptMode.WRAP);
+        return api;
     }
 }

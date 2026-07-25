@@ -100,3 +100,5 @@ yu:
 | 真实发布 path + ingress HOST | `HostAuthenticationProbe`（宿主实现登录探测） |
 
 宿主侧实现 `HostAuthenticationProbe` Bean 即可对接自身 Session / JWT；未实现时默认宽松（视为已登录），生产务必自行实现。
+
+与 **宿主 API 托管（REPLACE / WRAP）** 的关系：`authMode=HOST` 只表示「调用方需已过宿主登录」，不是「接口由宿主实现」。WRAP 在 `ingress.enabled=false` 时信任宿主鉴权、不强制管理端 JWT。详见 [宿主 API 托管](./host-api-governance.md)。

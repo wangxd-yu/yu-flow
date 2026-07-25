@@ -46,6 +46,20 @@ public class FlowApiDO implements Serializable {
     private String method;
     private String serviceType;
 
+    /**
+     * 同名拦截模式：REPLACE（默认，引擎替换宿主）/ WRAP（包裹转发宿主）。
+     * <p>运行时以 publishedSnapshot 为准。</p>
+     */
+    @Column(length = 16)
+    private String interceptMode;
+
+    /**
+     * WRAP 宿主绑定 JSON。
+     * <p>结构示例：{"forward":"LOCAL","targetPath":"/biz/orders","probePath":null}</p>
+     */
+    @Column(columnDefinition = "TEXT")
+    private String hostBinding;
+
     /** 逻辑编排 (FLOW) — Flow DSL JSON */
     @Column(columnDefinition = "MEDIUMTEXT")
     private String dslContent;

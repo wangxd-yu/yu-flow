@@ -51,6 +51,10 @@ export interface FlowController {
   viewExportConfig?: string;
   responseType?: string;
   serviceType?: string;
+  /** 同名拦截：REPLACE（替换）/ WRAP（包裹） */
+  interceptMode?: 'REPLACE' | 'WRAP' | string;
+  /** WRAP 宿主绑定 JSON */
+  hostBinding?: string;
   contract?: string;
   createTime?: string;
   updateTime?: string;
@@ -545,4 +549,60 @@ export async function downloadApiExcelTemplateFile(id: string): Promise<void> {
     blob,
     filenameFromContentDisposition(res.headers.get('Content-Disposition'), 'template.xlsx'),
   );
+}
+
+// ── 宿主 API 发现 / 探活 ──────────────────────────────────────────
+
+export interface HostApiRoute {
+  method: string;
+  path: string;
+  handlerClass?: string;
+  handlerMethod?: string;
+  managed?: boolean;
+  managedApiId?: string;
+  managedApiName?: string;
+}
+
+export interface HostApiProbeResult {
+  apiId: string;
+  status: 'ok' | 'fail' | 'skip' | 'unknown' | string;
+  path?: string;
+  method?: string;
+  message?: string;
+  checkedAt?: string;
+}
+
+export async function listHostApiRoutes() {
+  return request<HostApiRoute[]>('/flow-api/api/host/routes', { method: 'GET' });
+}
+
+/** 宿主是否存在同 method + path */
+export async function checkHostApiRouteExists(method: string, path: string) {
+  return request<{ exists: boolean }>('/flow-api/api/host/routes/exists', {
+    method: 'GET',
+    params: { method, path },
+  });
+}
+
+export async function importHostApiRoutes(data: {
+  directoryId?: string;
+  items: Array<{ method: string; path: string }>;
+}) {
+  return request<{ created: number }>('/flow-api/api/host/routes/import', {
+    method: 'POST',
+    data,
+  });
+}
+
+export async function batchHostApiProbe(ids: string[]) {
+  return request<HostApiProbeResult[]>('/flow-api/api/host/probe/batch', {
+    method: 'POST',
+    data: { ids },
+  });
+}
+
+export async function probeHostApiNow(id: string) {
+  return request<HostApiProbeResult>(`/flow-api/api/host/probe/${id}`, {
+    method: 'POST',
+  });
 }

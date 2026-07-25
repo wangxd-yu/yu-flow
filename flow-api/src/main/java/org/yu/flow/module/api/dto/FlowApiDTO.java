@@ -28,6 +28,10 @@ public class FlowApiDTO {
     private String textContent;
     private String method;
     private String serviceType;
+    /** 同名拦截：REPLACE / WRAP */
+    private String interceptMode;
+    /** WRAP 宿主绑定 JSON */
+    private String hostBinding;
     private Integer publishStatus;
     private Boolean logEnabled;
     /** 查询响应 Redis 缓存配置 JSON */
@@ -76,6 +80,9 @@ public class FlowApiDTO {
         dto.setTextContent(configDO.getTextContent());
         dto.setMethod(configDO.getMethod());
         dto.setServiceType(configDO.getServiceType());
+        dto.setInterceptMode(configDO.getInterceptMode() == null || configDO.getInterceptMode().isBlank()
+                ? "REPLACE" : configDO.getInterceptMode());
+        dto.setHostBinding(configDO.getHostBinding());
         dto.setPublishStatus(configDO.getPublishStatus());
         dto.setLogEnabled(configDO.getLogEnabled() == null || configDO.getLogEnabled());
         dto.setCacheConfig(configDO.getCacheConfig());
@@ -112,6 +119,8 @@ public class FlowApiDTO {
         configDO.setTextContent(this.getTextContent());
         configDO.setMethod(this.getMethod());
         configDO.setServiceType(this.getServiceType());
+        configDO.setInterceptMode(this.getInterceptMode());
+        configDO.setHostBinding(this.getHostBinding());
         configDO.setPublishStatus(this.getPublishStatus());
         configDO.setLogEnabled(this.getLogEnabled());
         configDO.setCacheConfig(this.getCacheConfig());

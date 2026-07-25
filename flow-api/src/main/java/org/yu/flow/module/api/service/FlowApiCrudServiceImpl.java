@@ -13,6 +13,7 @@ import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.api.support.ApiExportPathSupport;
+import org.yu.flow.module.api.support.ApiInterceptMode;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
@@ -97,6 +98,31 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
                 securityConfigJson, allowNone);
     }
 
+    /**
+     * 归一化 interceptMode，并校验与 serviceType 的互斥约束。
+     */
+    private void normalizeAndAssertInterceptMode(FlowApiDO api) {
+        if (api == null) {
+            return;
+        }
+        String mode = ApiInterceptMode.normalize(api.getInterceptMode());
+        String serviceType = StrUtil.blankToDefault(api.getServiceType(), "").trim().toUpperCase();
+        if (ApiInterceptMode.WRAP.equals(mode)) {
+            if (!ApiInterceptMode.SERVICE_TYPE_HOST.equals(serviceType)) {
+                throw new RuntimeException("包裹模式（WRAP）的实现类型必须为 HOST");
+            }
+            if (StrUtil.isBlank(api.getHostBinding())) {
+                api.setHostBinding("{\"forward\":\"LOCAL\"}");
+            }
+        } else if (ApiInterceptMode.SERVICE_TYPE_HOST.equals(serviceType)) {
+            throw new RuntimeException("实现类型 HOST 仅可用于包裹模式（WRAP）");
+        }
+        api.setInterceptMode(mode);
+        if (api.getServiceType() != null) {
+            api.setServiceType(serviceType);
+        }
+    }
+
     private void notifyRefIndex() {
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
@@ -128,8 +154,10 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
         flowDirectoryService.assertDirectoryBizType(flowApiDO.getDirectoryId(), "api");
 
+        normalizeAndAssertInterceptMode(flowApiDO);
         if (flowApiDO.getLogEnabled() == null) {
-            flowApiDO.setLogEnabled(true);
+            // WRAP 默认关日志，避免宿主流量打爆；REPLACE 保持历史默认开
+            flowApiDO.setLogEnabled(!ApiInterceptMode.isWrap(flowApiDO.getInterceptMode()));
         }
         assertUrlNotReserved(flowApiDO.getUrl());
         assertSecurityConfigAllowed(flowApiDO.getSecurityConfig());
@@ -158,8 +186,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
                 demoModeGuard.checkModifyOrDelete(api.getId(), "API 接口");
             }
             demoModeGuard.checkApiResponseType(api.getResponseType());
+            normalizeAndAssertInterceptMode(api);
             if (api.getLogEnabled() == null) {
-                api.setLogEnabled(true);
+                api.setLogEnabled(!ApiInterceptMode.isWrap(api.getInterceptMode()));
             }
             assertSecurityConfigAllowed(api.getSecurityConfig());
             api.setCreateTime(now);
@@ -212,6 +241,13 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (flowApiDO.getViewExportConfig() == null) {
             flowApiDO.setViewExportConfig(dbRecord.getViewExportConfig());
         }
+        if (StrUtil.isBlank(flowApiDO.getInterceptMode())) {
+            flowApiDO.setInterceptMode(dbRecord.getInterceptMode());
+        }
+        if (flowApiDO.getHostBinding() == null) {
+            flowApiDO.setHostBinding(dbRecord.getHostBinding());
+        }
+        normalizeAndAssertInterceptMode(flowApiDO);
         assertUrlNotReserved(flowApiDO.getUrl());
         assertSecurityConfigAllowed(flowApiDO.getSecurityConfig());
         boolean cacheConfigChanged = !Objects.equals(
@@ -501,6 +537,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             throw new RuntimeException("发布失败：路径 " + api.getMethod() + " " + api.getUrl()
                     + " 与其他已发布接口冲突");
         }
+        normalizeAndAssertInterceptMode(api);
         assertUrlNotReserved(api.getUrl());
         assertSecurityConfigAllowed(api.getSecurityConfig());
 
@@ -626,6 +663,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             applyText(snap, "tags", api::setTags);
             applyText(snap, "version", api::setVersion);
             applyText(snap, "serviceType", api::setServiceType);
+            applyText(snap, "interceptMode", api::setInterceptMode);
+            applyText(snap, "hostBinding", api::setHostBinding);
             applyText(snap, "dslContent", api::setDslContent);
             applyText(snap, "sqlContent", api::setSqlContent);
             applyText(snap, "jsonContent", api::setJsonContent);
@@ -666,6 +705,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             snap.put("tags", api.getTags());
             snap.put("version", api.getVersion());
             snap.put("serviceType", api.getServiceType());
+            snap.put("interceptMode", ApiInterceptMode.normalize(api.getInterceptMode()));
+            snap.put("hostBinding", api.getHostBinding());
             snap.put("dslContent", api.getDslContent());
             snap.put("sqlContent", api.getSqlContent());
             snap.put("jsonContent", api.getJsonContent());

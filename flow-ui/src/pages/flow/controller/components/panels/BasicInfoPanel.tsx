@@ -7,8 +7,8 @@
  * 布局：左侧锚点导航 + 右侧内容区，点击导航滚动定位
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Col, Form, Row, Switch } from 'antd';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Col, Form, Row, Switch } from 'antd';
 import type { FormInstance } from 'antd';
 import {
   ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea,
@@ -28,28 +28,52 @@ export interface BasicInfoPanelProps {
   form: FormInstance;
   /** 来自请求契约的参数提示，用于缓存 Key 配置 */
   paramSuggestions?: Array<{ source: string; name: string }>;
+  /** 同名拦截模式；WRAP 时隐藏返回包装（透传宿主响应） */
+  interceptMode?: 'REPLACE' | 'WRAP' | string;
 }
 
-const NAV_ITEMS = [
+const ALL_NAV_ITEMS = [
   { key: 'meta', label: '接口元信息', icon: <InfoCircleOutlined /> },
   { key: 'ingress', label: '入站防护', icon: <SafetyCertificateOutlined /> },
   { key: 'cache', label: '查询响应缓存', icon: <DatabaseOutlined /> },
   { key: 'wrapper', label: '返回包装配置', icon: <GiftOutlined /> },
 ] as const;
 
-type NavKey = (typeof NAV_ITEMS)[number]['key'];
+type NavKey = (typeof ALL_NAV_ITEMS)[number]['key'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  组件实现
 // ═══════════════════════════════════════════════════════════════════════════
 
-const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions }) => {
+const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
+  form, paramSuggestions, interceptMode = 'REPLACE',
+}) => {
+  const isWrap = interceptMode === 'WRAP';
+  const navItems = useMemo(
+    () => (isWrap
+      ? ALL_NAV_ITEMS.filter((i) => i.key !== 'wrapper' && i.key !== 'cache')
+      : [...ALL_NAV_ITEMS]),
+    [isWrap],
+  );
   const cacheEnabled = Form.useWatch('cacheEnabled', form);
   const [activeKey, setActiveKey] = useState<NavKey>('meta');
   const scrollingByClick = useRef(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout>>();
   /** 面板自身的滚动容器，兼作锚点滚动/高亮的 root */
   const scrollRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isWrap && (activeKey === 'wrapper' || activeKey === 'cache')) {
+      setActiveKey('meta');
+    }
+  }, [isWrap, activeKey]);
+
+  // WRAP 透传宿主响应，强制关闭缓存开关，避免误以为会缓存宿主结果
+  useEffect(() => {
+    if (isWrap && form.getFieldValue('cacheEnabled')) {
+      form.setFieldsValue({ cacheEnabled: false });
+    }
+  }, [isWrap, form]);
 
   const scrollToSection = useCallback((key: NavKey) => {
     const el = document.getElementById(`basic-info-${key}`);
@@ -66,7 +90,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
   }, []);
 
   useEffect(() => {
-    const ids = NAV_ITEMS.map((item) => `basic-info-${item.key}`);
+    const ids = navItems.map((item) => `basic-info-${item.key}`);
     const elements = ids
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => !!el);
@@ -83,7 +107,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
         const top = visible[0];
         if (!top?.target?.id) return;
         const key = top.target.id.replace('basic-info-', '') as NavKey;
-        if (NAV_ITEMS.some((item) => item.key === key)) {
+        if (navItems.some((item) => item.key === key)) {
           setActiveKey(key);
         }
       },
@@ -99,7 +123,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
       observer.disconnect();
       clearTimeout(scrollTimer.current);
     };
-  }, []);
+  }, [navItems]);
 
   return (
     <div ref={scrollRootRef} className="basic-info-scroll">
@@ -151,7 +175,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
               boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
             }}
           >
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const active = activeKey === item.key;
               return (
                 <button
@@ -261,31 +285,43 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({ form, paramSuggestions 
             <IngressSecuritySection />
           </SectionCard>
 
-          <SectionCard
-            id="basic-info-cache"
-            tone="primary"
-            icon={<DatabaseOutlined />}
-            title="查询响应缓存"
-            description="开启后按选定入参缓存响应；需保存草稿后生效（已发布接口保存即可）"
-            bodyVisible={!!cacheEnabled}
-            extra={
-              <Form.Item name="cacheEnabled" valuePropName="checked" noStyle>
-                <Switch checkedChildren="开" unCheckedChildren="关" />
-              </Form.Item>
-            }
-          >
-            <CacheConfigSection form={form} paramSuggestions={paramSuggestions} />
-          </SectionCard>
+          {isWrap ? (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="查询缓存与返回包装仅「替换」模式生效"
+              description="包裹增强会透传宿主原始响应，不缓存、不套用成功 / 分页 / 失败包装。若需统一响应壳或查询缓存，请改用「替换宿主」并由 Yu Flow 引擎输出。"
+            />
+          ) : (
+            <>
+              <SectionCard
+                id="basic-info-cache"
+                tone="primary"
+                icon={<DatabaseOutlined />}
+                title="查询响应缓存"
+                description="开启后按选定入参缓存响应；需保存草稿后生效（已发布接口保存即可）"
+                bodyVisible={!!cacheEnabled}
+                extra={
+                  <Form.Item name="cacheEnabled" valuePropName="checked" noStyle>
+                    <Switch checkedChildren="开" unCheckedChildren="关" />
+                  </Form.Item>
+                }
+              >
+                <CacheConfigSection form={form} paramSuggestions={paramSuggestions} />
+              </SectionCard>
 
-          <SectionCard
-            id="basic-info-wrapper"
-            icon={<GiftOutlined />}
-            title="返回包装配置"
-            description="选择基座模板并可通过开关进行局部重载"
-            style={{ marginBottom: 0 }}
-          >
-            <ResponseWrapperSection form={form} />
-          </SectionCard>
+              <SectionCard
+                id="basic-info-wrapper"
+                icon={<GiftOutlined />}
+                title="返回包装配置"
+                description="选择基座模板并可通过开关进行局部重载"
+                style={{ marginBottom: 0 }}
+              >
+                <ResponseWrapperSection form={form} />
+              </SectionCard>
+            </>
+          )}
         </ProForm>
         </div>
       </div>

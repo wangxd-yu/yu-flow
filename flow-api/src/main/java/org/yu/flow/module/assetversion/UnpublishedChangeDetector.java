@@ -31,6 +31,8 @@ public final class UnpublishedChangeDetector {
                     || differs(api.getTags(), snap, "tags")
                     || differs(api.getVersion(), snap, "version")
                     || differs(api.getServiceType(), snap, "serviceType")
+                    || differsInterceptMode(api.getInterceptMode(), snap)
+                    || differs(api.getHostBinding(), snap, "hostBinding")
                     || differs(api.getDslContent(), snap, "dslContent")
                     || differs(api.getSqlContent(), snap, "sqlContent")
                     || differs(api.getJsonContent(), snap, "jsonContent")
@@ -114,5 +116,17 @@ public final class UnpublishedChangeDetector {
 
     private static String norm(String v) {
         return v == null ? "" : v.trim();
+    }
+
+    /** 草稿/快照缺省均视为 REPLACE，兼容旧快照无该字段 */
+    private static boolean differsInterceptMode(String draft, JsonNode snap) {
+        String d = StrUtil.isBlank(draft) ? "REPLACE" : draft.trim().toUpperCase();
+        String s = textOf(snap, "interceptMode");
+        if (StrUtil.isBlank(s)) {
+            s = "REPLACE";
+        } else {
+            s = s.trim().toUpperCase();
+        }
+        return !d.equals(s);
     }
 }
