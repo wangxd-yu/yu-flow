@@ -55,6 +55,13 @@ public class JwtSecurityInitializer implements ApplicationRunner {
                 throw new IllegalStateException(msg + "；或设 YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=false（仅本地）");
             }
             log.warn(msg);
+        } else if (aes.getBytes().length != 16 && aes.getBytes().length != 24 && aes.getBytes().length != 32) {
+            String msg = "[AES] 密钥长度不合法（当前 " + aes.getBytes().length
+                    + " 字节），必须为 16 / 24 / 32 字节。请设置 YU_FLOW_AES_SECRET / yu.flow.security.aes-secret-key";
+            if (failClosed) {
+                throw new IllegalStateException(msg + "；或设 YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=false（仅本地）");
+            }
+            log.warn(msg);
         }
 
         String adminPwd = yuFlowProperties.getPassword();

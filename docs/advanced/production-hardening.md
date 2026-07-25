@@ -9,8 +9,8 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 检查项 | 配置 / 环境变量 | 生产要求 |
 |--------|-----------------|----------|
 | JWT 密钥 | `YU_FLOW_JWT_SECRET` | 必须设置，≥32 字符高熵随机串；缺失时启动即失败（fail-closed） |
-| AES 密钥 | `YU_FLOW_AES_SECRET` | 必须设置，恰好 16/24/32 字节；缺失时启动即失败 |
-| 管理员口令 | `YU_FLOW_ADMIN_PASSWORD` | 必须通过环境变量注入强口令，禁止写入仓库 |
+| AES 密钥 | `YU_FLOW_AES_SECRET` | 必须设置，恰好 16/24/32 字节；缺失、为空或长度不合法时启动即失败 |
+| 管理员口令 | `YU_FLOW_ADMIN_PASSWORD` | 必须通过环境变量注入强口令；仍为默认值 `123456` 时启动即失败 |
 | 不安全默认拦截 | `YU_FLOW_FAIL_ON_INSECURE_DEFAULTS` | 保持 `true`（默认）；`false` 仅限本地 |
 | yml 管理员回退 | `YU_FLOW_ALLOW_YML_ADMIN_FALLBACK` | 保持 `false`（默认） |
 | 数据库口令 | `SPRING_DATASOURCE_PASSWORD` | 环境变量注入，禁止弱口令 |
