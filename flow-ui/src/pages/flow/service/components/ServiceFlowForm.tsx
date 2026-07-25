@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import type { FlowServiceFlow } from '@/services/flow/serviceFlowService';
-import FlowEditor from '@/components/flow/FlowEditor';
+import FlowEditor from '@/components/flow/FlowEditorLazy';
 import {
   debugRunServiceFlow,
   updateServiceFlow,

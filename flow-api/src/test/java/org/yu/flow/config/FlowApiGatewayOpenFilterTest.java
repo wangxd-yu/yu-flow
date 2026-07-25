@@ -199,7 +199,8 @@ class FlowApiGatewayOpenFilterTest {
         OpenAuthContext ctx = OpenAuthContext.builder()
                 .platformId("p1").appKey("yf_x").build();
         FlowApiDO api = wrapApi("api-wrap-export", "/yu-demo/host-ping", "GET");
-        when(openAuthService.authenticate(any(), eq("/yu-demo/host-ping"), eq("GET"))).thenReturn(ctx);
+        // 验签使用完整 realPath（含 /export），与网关实现约定一致
+        when(openAuthService.authenticate(any(), eq("/yu-demo/host-ping/export"), eq("GET"))).thenReturn(ctx);
         when(flowApiCacheManager.getExactMatch("GET", "/yu-demo/host-ping")).thenReturn(api);
         doNothing().when(openAuthService).assertApiGranted(eq(ctx), eq("api-wrap-export"), eq("GET"));
 
@@ -241,15 +242,15 @@ class FlowApiGatewayOpenFilterTest {
     void publishedApi_requireHostAuth_rejectsAnonymous() throws Exception {
         props.getOpen().setRequireHostAuth(true);
         when(flowApiCacheManager.getExactMatch("GET", "/demo/hello")).thenReturn(sampleApi());
-        when(hostAuthenticationProbe.isAuthenticated(any())).thenReturn(false);
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/demo/hello");
         MockHttpServletResponse res = new MockHttpServletResponse();
 
         filter.doFilter(req, res, new MockFilterChain());
 
+        // REPLACE 在未启用 ingress 时的安全默认：管理端 JWT 先行，匿名直接 401（宿主鉴权断言在其后）
         assertEquals(401, res.getStatus());
-        assertTrue(res.getContentAsString().contains("OPEN_HOST_AUTH_REQUIRED"));
+        assertTrue(res.getContentAsString().contains("token 不能为空"));
         verifyNoInteractions(flowApiService);
     }
 

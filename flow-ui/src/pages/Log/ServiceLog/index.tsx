@@ -7,8 +7,8 @@ import {
 } from '@ant-design/pro-components';
 import { Button, Drawer, message, Popconfirm, Tag, Typography } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import FlowEditor from '@/components/flow/FlowEditor';
-import { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
+import FlowEditor from '@/components/flow/FlowEditorLazy';
+import type { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
 import {
   queryServiceLogPage,
   getServiceLog,

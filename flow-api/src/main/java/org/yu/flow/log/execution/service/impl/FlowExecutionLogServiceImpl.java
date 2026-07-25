@@ -3,9 +3,6 @@ package org.yu.flow.log.execution.service.impl;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.yu.flow.log.execution.domain.FlowExecutionLogDO;
@@ -14,33 +11,24 @@ import org.yu.flow.log.execution.dto.FlowExecutionLogListDTO;
 import org.yu.flow.log.execution.query.FlowExecutionLogQueryDTO;
 import org.yu.flow.log.execution.repository.FlowExecutionLogRepository;
 import org.yu.flow.log.execution.service.FlowExecutionLogService;
+import org.yu.flow.log.support.AbstractLogQueryService;
 
 import jakarta.annotation.Resource;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import jakarta.persistence.criteria.Selection;
 import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
 @Service
-public class FlowExecutionLogServiceImpl implements FlowExecutionLogService {
-
-    private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+public class FlowExecutionLogServiceImpl
+        extends AbstractLogQueryService<FlowExecutionLogDO, FlowExecutionLogQueryDTO, FlowExecutionLogListDTO>
+        implements FlowExecutionLogService {
 
     @Resource
     private FlowExecutionLogRepository flowExecutionLogRepository;
-
-    @PersistenceContext
-    private EntityManager entityManager;
 
     @Async("flowAsyncExecutor")
     @Override
@@ -59,22 +47,22 @@ public class FlowExecutionLogServiceImpl implements FlowExecutionLogService {
      */
     @Override
     public Page<FlowExecutionLogListDTO> pageList(FlowExecutionLogQueryDTO query) {
-        int page = query.getPage() == null ? 0 : Math.max(query.getPage(), 0);
-        int size = query.getSize() == null ? 10 : Math.max(query.getSize(), 1);
-        Pageable pageable = PageRequest.of(page, size);
+        return pageQuery(query, query.getPage(), query.getSize());
+    }
 
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+    @Override
+    protected Class<FlowExecutionLogDO> entityClass() {
+        return FlowExecutionLogDO.class;
+    }
 
-        CriteriaQuery<FlowExecutionLogListDTO> dataQuery = cb.createQuery(FlowExecutionLogListDTO.class);
-        Root<FlowExecutionLogDO> root = dataQuery.from(FlowExecutionLogDO.class);
-        List<Predicate> predicates = buildPredicates(query, root, cb);
+    @Override
+    protected Class<FlowExecutionLogListDTO> listDtoClass() {
+        return FlowExecutionLogListDTO.class;
+    }
 
-        Expression<Boolean> hasTrace = cb.<Boolean>selectCase()
-                .when(cb.isNotNull(root.get("traceData")), cb.literal(true))
-                .otherwise(cb.literal(false));
-
-        dataQuery.select(cb.construct(
-                FlowExecutionLogListDTO.class,
+    @Override
+    protected List<Selection<?>> selections(CriteriaBuilder cb, Root<FlowExecutionLogDO> root) {
+        return List.of(
                 root.get("id"),
                 root.get("apiId"),
                 root.get("apiName"),
@@ -83,29 +71,14 @@ public class FlowExecutionLogServiceImpl implements FlowExecutionLogService {
                 root.get("method"),
                 root.get("status"),
                 root.get("costTimeMs"),
-                hasTrace,
-                root.get("createTime")
-        ));
-        dataQuery.where(predicates.toArray(new Predicate[0]));
-        dataQuery.orderBy(cb.desc(root.get("createTime")));
-
-        TypedQuery<FlowExecutionLogListDTO> typedQuery = entityManager.createQuery(dataQuery);
-        typedQuery.setFirstResult((int) pageable.getOffset());
-        typedQuery.setMaxResults(pageable.getPageSize());
-        List<FlowExecutionLogListDTO> content = typedQuery.getResultList();
-
-        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
-        Root<FlowExecutionLogDO> countRoot = countQuery.from(FlowExecutionLogDO.class);
-        countQuery.select(cb.count(countRoot));
-        countQuery.where(buildPredicates(query, countRoot, cb).toArray(new Predicate[0]));
-        Long total = entityManager.createQuery(countQuery).getSingleResult();
-
-        return new PageImpl<>(content, pageable, total == null ? 0 : total);
+                hasTraceExpression(cb, root),
+                root.get("createTime"));
     }
 
-    private List<Predicate> buildPredicates(FlowExecutionLogQueryDTO query,
-                                            Root<FlowExecutionLogDO> root,
-                                            CriteriaBuilder cb) {
+    @Override
+    protected List<Predicate> buildPredicates(FlowExecutionLogQueryDTO query,
+                                              Root<FlowExecutionLogDO> root,
+                                              CriteriaBuilder cb) {
         List<Predicate> predicates = new ArrayList<>();
 
         if (StrUtil.isNotBlank(query.getApiId())) {
@@ -124,22 +97,7 @@ public class FlowExecutionLogServiceImpl implements FlowExecutionLogService {
             predicates.add(cb.like(root.get("url"), "%" + query.getUrl() + "%"));
         }
 
-        if (StrUtil.isNotBlank(query.getStartTime())) {
-            try {
-                LocalDateTime start = LocalDateTime.parse(query.getStartTime().trim(), DATE_TIME_FMT);
-                predicates.add(cb.greaterThanOrEqualTo(root.get("createTime"), start));
-            } catch (DateTimeParseException e) {
-                log.warn("[ExecutionLog] startTime 格式不合法, value={}", query.getStartTime());
-            }
-        }
-        if (StrUtil.isNotBlank(query.getEndTime())) {
-            try {
-                LocalDateTime end = LocalDateTime.parse(query.getEndTime().trim(), DATE_TIME_FMT);
-                predicates.add(cb.lessThanOrEqualTo(root.get("createTime"), end));
-            } catch (DateTimeParseException e) {
-                log.warn("[ExecutionLog] endTime 格式不合法, value={}", query.getEndTime());
-            }
-        }
+        addCreateTimeRange(predicates, root, cb, query.getStartTime(), query.getEndTime(), "[ExecutionLog]");
 
         return predicates;
     }

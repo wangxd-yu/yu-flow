@@ -8,8 +8,8 @@ import {
 import { request } from '@umijs/max';
 import { Tag, Drawer, Typography, Button, Space, message } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import FlowEditor from '@/components/flow/FlowEditor';
-import { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
+import FlowEditor from '@/components/flow/FlowEditorLazy';
+import type { FlowTrace } from '@/components/flow/debugger/FlowDebugger';
 import { LogStatusTag, LogDuration, LogDeepLinkBar } from '../shared';
 import '@/styles/fullHeightTable.css';
 import '../shared/logPageLayout.css';

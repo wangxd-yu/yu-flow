@@ -1,12 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  ActionType,
-  PageContainer,
-  ProColumns,
-  ProTable,
-} from '@ant-design/pro-components';
-import { Button, Divider, message, Popconfirm, Switch, Tag, Tooltip } from 'antd';
-import { history, useLocation } from '@umijs/max';
+import React, { useState } from 'react';
+import { ProColumns } from '@ant-design/pro-components';
+import { Divider, message, Popconfirm, Switch, Tag, Tooltip } from 'antd';
+import { history } from '@umijs/max';
 import {
   queryServiceFlowPage,
   createServiceFlow,
@@ -23,11 +18,10 @@ import {
 import ServiceFlowForm from './components/ServiceFlowForm';
 import ServiceManualRunModal from './components/ServiceManualRunModal';
 import { confirmServiceUnpublish } from './components/confirmServiceUnpublish';
-import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
-import TableEmpty from '@/components/TableEmpty';
-import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
+import AssetDirectoryListShell, {
+  type AssetListShellContext,
+} from '@/components/flow/AssetDirectoryListShell';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
-import '@/styles/fullHeightTable.css';
 
 const handleAdd = async (fields: Partial<FlowServiceFlow>) => {
   const hide = message.loading('正在添加');
@@ -74,88 +68,19 @@ const handleRemove = async (selectedRows: FlowServiceFlow[]) => {
 };
 
 const ServiceFlowManagement: React.FC = () => {
-  const location = useLocation();
-  const actionRef = useRef<ActionType>();
-  const [formVisible, setFormVisible] = useState<boolean>(false);
-  const [currentRow, setCurrentRow] = useState<Partial<FlowServiceFlow>>({});
-  const [isEditMode, setIsEditMode] = useState<boolean>(false);
-  const [selectedRowsState, setSelectedRows] = useState<FlowServiceFlow[]>([]);
   const [manualRunOpen, setManualRunOpen] = useState(false);
   const [manualRunTarget, setManualRunTarget] = useState<FlowServiceFlow | null>(null);
-  const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
-  const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
-  // 空态区分：是否处于筛选（目录 / 搜索条件）
-  const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search || '');
-    const serviceId = params.get('serviceId');
-    const tab = params.get('tab') || undefined;
-    if (!serviceId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const detail: any = await getServiceFlow(serviceId);
-        if (cancelled) return;
-        setCurrentRow(detail?.data || detail || { id: serviceId });
-        setIsEditMode(true);
-        setFormInitialTab(tab || 'runtime');
-        setFormVisible(true);
-      } catch {
-        if (!cancelled) message.error('打开服务详情失败');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [location.search]);
-
-  const handleAddAction = (directoryId?: string) => {
-    setCurrentRow({ directoryId });
-    setIsEditMode(false);
-    setFormInitialTab(undefined);
-    setFormVisible(true);
-  };
-
-  const handleEditAction = async (record: FlowServiceFlow) => {
-    try {
-      const detail: any = await getServiceFlow(record.id);
-      setCurrentRow(detail?.data || detail || record);
-      setIsEditMode(true);
-      setFormInitialTab(undefined);
-      setFormVisible(true);
-    } catch {
-      message.error('加载服务详情失败');
-    }
-  };
-
-  const handleFormSubmit = async (values: Partial<FlowServiceFlow>) => {
-    if (isEditMode && currentRow?.id) {
-      const ok = await handleUpdate(currentRow.id, values);
-      if (ok) {
-        setFormVisible(false);
-        actionRef.current?.reload();
-      }
-    } else {
-      const ok = await handleAdd({
-        ...values,
-        directoryId: values.directoryId || currentRow?.directoryId,
-      });
-      if (ok) {
-        setFormVisible(false);
-        actionRef.current?.reload();
-      }
-    }
-  };
-
-  const columns: ProColumns<FlowServiceFlow>[] = [
+  const buildColumns = (
+    ctx: AssetListShellContext<FlowServiceFlow>,
+  ): ProColumns<FlowServiceFlow>[] => [
     {
       title: '服务名称',
       dataIndex: 'name',
       ellipsis: true,
       width: 200,
       render: (_, record) => (
-        <a onClick={() => handleEditAction(record)} title={record.name}>
+        <a onClick={() => ctx.openEdit(record)} title={record.name}>
           {record.name}
         </a>
       ),
@@ -190,7 +115,7 @@ const ServiceFlowManagement: React.FC = () => {
                 await disableServiceFlow(record.id);
               }
               message.success(checked ? '已启用' : '已停用');
-              actionRef.current?.reload();
+              ctx.reload();
             } catch {
               message.error('操作失败');
             }
@@ -225,7 +150,7 @@ const ServiceFlowManagement: React.FC = () => {
       dataIndex: 'runtimeHealth',
       width: 100,
       hideInSearch: true,
-      render: (_, record) => renderHealthTag(healthMap[record.id]),
+      render: (_, record) => renderHealthTag(ctx.healthMap[record.id]),
     },
     {
       title: '执行日志',
@@ -240,7 +165,7 @@ const ServiceFlowManagement: React.FC = () => {
             try {
               await updateServiceFlowLogEnabled(record.id, checked);
               message.success(checked ? '已开启日志' : '已关闭日志');
-              actionRef.current?.reload();
+              ctx.reload();
             } catch {
               message.error('操作失败');
             }
@@ -260,7 +185,7 @@ const ServiceFlowManagement: React.FC = () => {
       valueType: 'option',
       width: 380,
       render: (_, record) => [
-        <a key="edit" onClick={() => handleEditAction(record)}>
+        <a key="edit" onClick={() => ctx.openEdit(record)}>
           编辑
         </a>,
         <Divider key="d0" type="vertical" />,
@@ -283,7 +208,7 @@ const ServiceFlowManagement: React.FC = () => {
               try {
                 await unpublishServiceFlow(record.id);
                 message.success('已下线');
-                actionRef.current?.reload();
+                ctx.reload();
               } catch (e: any) {
                 message.error(e?.message || '下线失败');
               }
@@ -307,7 +232,7 @@ const ServiceFlowManagement: React.FC = () => {
                 if (!envCode) return;
                 await publishServiceFlow(record.id, envCode);
                 message.success('发布成功');
-                actionRef.current?.reload();
+                ctx.reload();
               } catch (e: any) {
                 message.error(e?.message || '发布失败');
               }
@@ -327,10 +252,7 @@ const ServiceFlowManagement: React.FC = () => {
         <Popconfirm
           key="delete"
           title="确定删除该服务？"
-          onConfirm={async () => {
-            await handleRemove([record]);
-            actionRef.current?.reload();
-          }}
+          onConfirm={() => ctx.removeAndReload([record])}
         >
           <a style={{ color: '#ff4d4f' }}>删除</a>
         </Popconfirm>,
@@ -339,134 +261,59 @@ const ServiceFlowManagement: React.FC = () => {
   ];
 
   return (
-    <PageContainer
-      className="fh-container"
-      header={{ title: '服务管理' }}
-      style={{
-        height: 'calc(100vh - 26px)',
-        overflow: 'hidden',
+    <AssetDirectoryListShell<FlowServiceFlow>
+      bizType="service"
+      pageTitle="服务管理"
+      entityLabel="服务"
+      listTitle="服务列表"
+      emptyHint="沉淀可复用的编排流程，供接口 / 任务作为子流程调用"
+      metricsAssetType="SERVICE"
+      deepLinkParam="serviceId"
+      fetchDetail={getServiceFlow}
+      isFiltered={({ directoryId, name, enabled, publishStatus }) =>
+        !!directoryId || !!name || enabled !== undefined || publishStatus !== undefined
+      }
+      fetchPage={async (params) => {
+        const { current, pageSize, directoryId, name, enabled, publishStatus } = params;
+        const enabledParam =
+          enabled === true || enabled === 'true'
+            ? true
+            : enabled === false || enabled === 'false'
+              ? false
+              : undefined;
+        const publishParam =
+          publishStatus === 0 || publishStatus === '0'
+            ? 0
+            : publishStatus === 1 || publishStatus === '1'
+              ? 1
+              : undefined;
+        const result = await queryServiceFlowPage({
+          directoryId,
+          name,
+          enabled: enabledParam,
+          publishStatus: publishParam,
+          page: (current || 1) - 1,
+          size: pageSize || 20,
+        });
+        const data = (result as any)?.data || result;
+        return { items: data?.items || [], total: data?.total || 0 };
       }}
-    >
-      <DirectoryTreeLayout bizType="service" height="calc(100vh - 90px)">
-        {(selectedDirectoryId, selectedDirectoryName) => (
-          <ProTable<FlowServiceFlow>
-            className="fh-table fh-table-fit"
-            headerTitle={`服务列表 (${selectedDirectoryName || '全部'})`}
-            tableLayout="fixed"
-            scroll={{ x: 1400, y: 100000 }}
-            pagination={{
-              defaultPageSize: 20,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              style: { marginBottom: 0 },
-            }}
-            actionRef={actionRef}
-            rowKey="id"
-            search={{ labelWidth: 80 }}
-            toolBarRender={() => [
-              <Button
-                key="add"
-                type="primary"
-                onClick={() => handleAddAction(selectedDirectoryId)}
-              >
-                新建服务
-              </Button>,
-              selectedRowsState?.length > 0 && (
-                <Popconfirm
-                  key="batchDelete"
-                  title={`确定删除选中的 ${selectedRowsState.length} 个服务？`}
-                  onConfirm={async () => {
-                    await handleRemove(selectedRowsState);
-                    setSelectedRows([]);
-                    actionRef.current?.reload();
-                  }}
-                >
-                  <Button danger>批量删除</Button>
-                </Popconfirm>
-              ),
-            ]}
-            params={{ directoryId: selectedDirectoryId }}
-            request={async (params = {}) => {
-              const { current, pageSize, directoryId, name, enabled, publishStatus } = params as any;
-              setEmptyFiltered(
-                !!directoryId || !!name || enabled !== undefined || publishStatus !== undefined,
-              );
-              const enabledParam =
-                enabled === true || enabled === 'true'
-                  ? true
-                  : enabled === false || enabled === 'false'
-                    ? false
-                    : undefined;
-              const publishParam =
-                publishStatus === 0 || publishStatus === '0'
-                  ? 0
-                  : publishStatus === 1 || publishStatus === '1'
-                    ? 1
-                    : undefined;
-              const result = await queryServiceFlowPage({
-                directoryId,
-                name,
-                enabled: enabledParam,
-                publishStatus: publishParam,
-                page: (current || 1) - 1,
-                size: pageSize || 20,
-              });
-              const data = (result as any)?.data || result;
-              const items: FlowServiceFlow[] = data?.items || [];
-              try {
-                const health = await batchAssetHealth(
-                  items.filter((i) => i.id).map((i) => ({ assetType: 'SERVICE' as const, assetId: i.id })),
-                );
-                const map: Record<string, AssetHealth> = {};
-                (health || []).forEach((h) => {
-                  map[h.assetId] = h;
-                });
-                setHealthMap(map);
-              } catch {
-                setHealthMap({});
-              }
-              return {
-                data: items,
-                success: true,
-                total: data?.total || 0,
-              };
-            }}
-            columns={columns}
-            locale={{
-              emptyText: (
-                <TableEmpty
-                  entityName="服务"
-                  filtered={emptyFiltered}
-                  hint="沉淀可复用的编排流程，供接口 / 任务作为子流程调用"
-                  onCreate={() => handleAddAction(selectedDirectoryId)}
-                />
-              ),
-            }}
-            rowSelection={{
-              onChange: (_, selectedRows) => setSelectedRows(selectedRows),
-            }}
-          />
-        )}
-      </DirectoryTreeLayout>
-
-      {formVisible && (
+      submitCreate={handleAdd}
+      submitUpdate={handleUpdate}
+      removeRows={handleRemove}
+      buildColumns={buildColumns}
+      renderForm={(form) => (
         <ServiceFlowForm
-          visible={formVisible}
-          isEdit={isEditMode}
-          initialValues={currentRow}
-          initialTab={formInitialTab}
-          onCancel={() => {
-            setFormVisible(false);
-            setFormInitialTab(undefined);
-          }}
-          onSubmit={handleFormSubmit}
-          onPublished={(detail) => {
-            setCurrentRow(detail);
-            actionRef.current?.reload();
-          }}
+          visible={form.visible}
+          isEdit={form.isEdit}
+          initialValues={form.currentRow}
+          initialTab={form.initialTab}
+          onCancel={form.close}
+          onSubmit={form.submit}
+          onPublished={form.onPublished}
         />
       )}
-
+    >
       <ServiceManualRunModal
         open={manualRunOpen}
         serviceId={manualRunTarget?.id}
@@ -476,7 +323,7 @@ const ServiceFlowManagement: React.FC = () => {
           setManualRunTarget(null);
         }}
       />
-    </PageContainer>
+    </AssetDirectoryListShell>
   );
 };
 

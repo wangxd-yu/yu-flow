@@ -15,7 +15,7 @@ import {
   ApartmentOutlined, AlignLeftOutlined,
 } from '@ant-design/icons';
 import { format } from 'sql-formatter';
-import FlowEditor from '@/components/flow/FlowEditor';
+import FlowEditor from '@/components/flow/FlowEditorLazy';
 import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
 import { DbDebugger } from '@/components/flow/debugger';
 import { debugRunDbApiConfig } from '@/services/flow/flowController';

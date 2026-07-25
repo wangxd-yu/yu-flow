@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import type { FlowTask } from '@/services/flow/taskService';
-import FlowEditor from '@/components/flow/FlowEditor';
+import FlowEditor from '@/components/flow/FlowEditorLazy';
 import {
   debugRunTask,
   updateTask,

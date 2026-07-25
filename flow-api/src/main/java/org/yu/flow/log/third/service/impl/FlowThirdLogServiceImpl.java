@@ -3,11 +3,9 @@ package org.yu.flow.log.third.service.impl;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.yu.flow.log.support.AbstractLogQueryService;
 import org.yu.flow.log.third.domain.FlowThirdLogDO;
 import org.yu.flow.log.third.dto.FlowThirdLogDTO;
 import org.yu.flow.log.third.dto.FlowThirdLogListDTO;
@@ -16,30 +14,21 @@ import org.yu.flow.log.third.repository.FlowThirdLogRepository;
 import org.yu.flow.log.third.service.FlowThirdLogService;
 
 import jakarta.annotation.Resource;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
-import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import jakarta.persistence.criteria.Selection;
 import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
 @Service
-public class FlowThirdLogServiceImpl implements FlowThirdLogService {
-
-    private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+public class FlowThirdLogServiceImpl
+        extends AbstractLogQueryService<FlowThirdLogDO, FlowThirdLogQueryDTO, FlowThirdLogListDTO>
+        implements FlowThirdLogService {
 
     @Resource
     private FlowThirdLogRepository flowThirdLogRepository;
-
-    @PersistenceContext
-    private EntityManager entityManager;
 
     @Async("flowAsyncExecutor")
     @Override
@@ -57,18 +46,22 @@ public class FlowThirdLogServiceImpl implements FlowThirdLogService {
      */
     @Override
     public Page<FlowThirdLogListDTO> pageList(FlowThirdLogQueryDTO query) {
-        int page = query.getPage() == null ? 0 : Math.max(query.getPage(), 0);
-        int size = query.getSize() == null ? 10 : Math.max(query.getSize(), 1);
-        Pageable pageable = PageRequest.of(page, size);
+        return pageQuery(query, query.getPage(), query.getSize());
+    }
 
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+    @Override
+    protected Class<FlowThirdLogDO> entityClass() {
+        return FlowThirdLogDO.class;
+    }
 
-        CriteriaQuery<FlowThirdLogListDTO> dataQuery = cb.createQuery(FlowThirdLogListDTO.class);
-        Root<FlowThirdLogDO> root = dataQuery.from(FlowThirdLogDO.class);
-        List<Predicate> predicates = buildPredicates(query, root, cb);
+    @Override
+    protected Class<FlowThirdLogListDTO> listDtoClass() {
+        return FlowThirdLogListDTO.class;
+    }
 
-        dataQuery.select(cb.construct(
-                FlowThirdLogListDTO.class,
+    @Override
+    protected List<Selection<?>> selections(CriteriaBuilder cb, Root<FlowThirdLogDO> root) {
+        return List.of(
                 root.get("id"),
                 root.get("apiType"),
                 root.get("source"),
@@ -79,28 +72,13 @@ public class FlowThirdLogServiceImpl implements FlowThirdLogService {
                 root.get("responseStatus"),
                 root.get("elapsedTime"),
                 root.get("isSuccess"),
-                root.get("createTime")
-        ));
-        dataQuery.where(predicates.toArray(new Predicate[0]));
-        dataQuery.orderBy(cb.desc(root.get("createTime")));
-
-        TypedQuery<FlowThirdLogListDTO> typedQuery = entityManager.createQuery(dataQuery);
-        typedQuery.setFirstResult((int) pageable.getOffset());
-        typedQuery.setMaxResults(pageable.getPageSize());
-        List<FlowThirdLogListDTO> content = typedQuery.getResultList();
-
-        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
-        Root<FlowThirdLogDO> countRoot = countQuery.from(FlowThirdLogDO.class);
-        countQuery.select(cb.count(countRoot));
-        countQuery.where(buildPredicates(query, countRoot, cb).toArray(new Predicate[0]));
-        Long total = entityManager.createQuery(countQuery).getSingleResult();
-
-        return new PageImpl<>(content, pageable, total == null ? 0 : total);
+                root.get("createTime"));
     }
 
-    private List<Predicate> buildPredicates(FlowThirdLogQueryDTO query,
-                                            Root<FlowThirdLogDO> root,
-                                            CriteriaBuilder cb) {
+    @Override
+    protected List<Predicate> buildPredicates(FlowThirdLogQueryDTO query,
+                                              Root<FlowThirdLogDO> root,
+                                              CriteriaBuilder cb) {
         List<Predicate> predicates = new ArrayList<>();
 
         if (StrUtil.isNotBlank(query.getSource())) {
@@ -125,22 +103,7 @@ public class FlowThirdLogServiceImpl implements FlowThirdLogService {
             predicates.add(cb.like(root.get("requestUrl"), "%" + query.getRequestUrl() + "%"));
         }
 
-        if (StrUtil.isNotBlank(query.getStartTime())) {
-            try {
-                LocalDateTime start = LocalDateTime.parse(query.getStartTime().trim(), DATE_TIME_FMT);
-                predicates.add(cb.greaterThanOrEqualTo(root.get("createTime"), start));
-            } catch (DateTimeParseException e) {
-                log.warn("[ThirdLog] startTime 格式不合法, value={}", query.getStartTime());
-            }
-        }
-        if (StrUtil.isNotBlank(query.getEndTime())) {
-            try {
-                LocalDateTime end = LocalDateTime.parse(query.getEndTime().trim(), DATE_TIME_FMT);
-                predicates.add(cb.lessThanOrEqualTo(root.get("createTime"), end));
-            } catch (DateTimeParseException e) {
-                log.warn("[ThirdLog] endTime 格式不合法, value={}", query.getEndTime());
-            }
-        }
+        addCreateTimeRange(predicates, root, cb, query.getStartTime(), query.getEndTime(), "[ThirdLog]");
 
         return predicates;
     }
