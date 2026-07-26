@@ -1,6 +1,6 @@
 # Yu-Flow 质量门禁 CI
-# 后端：mvn 编译 + 全量单测（必跑，覆盖 -DskipTests 默认跳过配置）
-# 前端：pnpm 构建（类型检查随构建执行）
+# 后端：mvn clean verify （编译 + 全量单测 + Jacoco 覆盖率门禁检查）
+# 前端：pnpm type-check + pnpm build
 name: CI
 
 on:
@@ -23,10 +23,13 @@ jobs:
           java-version: '17'
           cache: maven
 
-      # pom.xml 中 skipTests 默认 true（本地打包提速），CI 必须显式开启单测
-      - name: Build & Test
+      # pom.xml 中 skipTests 默认 true（本地打包提速）
+      # CI 使用 mvn clean verify 而非 mvn test 理由：
+      # 1. clean 确保字节码重新编译，避免 Jacoco "class does not match" 接口匹配错误
+      # 2. verify 阶段才会触发 jacoco:check 覆盖率门禁（check 绑定在 verify，非 test）
+      - name: Build & Test & Coverage Check
         working-directory: flow-api
-        run: mvn -B test -DskipTests=false -Dmaven.test.skip=false
+        run: mvn -B clean verify -DskipTests=false -Dmaven.test.skip=false
 
       - name: Test Report Summary
         if: always()
@@ -42,13 +45,18 @@ jobs:
         if: always()
         working-directory: flow-api
         run: |
-          if [ -f target/site/jacoco/index.html ]; then
+          JACOCO_INDEX="target/site/jacoco/jacoco/index.html"
+          # 兼容两种输出目录写法
+          [ ! -f "$JACOCO_INDEX" ] && JACOCO_INDEX="target/site/jacoco/index.html"
+          if [ -f "$JACOCO_INDEX" ]; then
             echo "### JaCoCo Coverage" >> "$GITHUB_STEP_SUMMARY"
-            grep -oP 'Total.*?</tfoot>' target/site/jacoco/index.html \
+            grep -oP 'Total.*?</tfoot>' "$JACOCO_INDEX" \
               | grep -oP '\d+%' \
               | head -2 \
               | awk 'NR==1{print "- Instruction coverage: " $0} NR==2{print "- Branch coverage: " $0}' \
               | tee -a "$GITHUB_STEP_SUMMARY" || true
+          else
+            echo "JaCoCo report not found (tests may have been skipped or failed)" >> "$GITHUB_STEP_SUMMARY" || true
           fi
 
       - name: Upload Surefire Reports

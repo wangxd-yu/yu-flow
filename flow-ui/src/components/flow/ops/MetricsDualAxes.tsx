@@ -85,9 +85,6 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
   });
   const chartWrapRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(0);
-  const pointsRef = useRef<MetricsSeriesPoint[]>([]);
-  const visibleRef = useRef(seriesVisible);
-  visibleRef.current = seriesVisible;
 
   const toggleSeries = useCallback((key: keyof SeriesVisible) => {
     setSeriesVisible((prev) => {
@@ -101,7 +98,6 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
     () => prepareChartPoints(points, window, granularity),
     [points, window, granularity],
   );
-  pointsRef.current = chartPoints;
 
   useEffect(() => {
     const el = chartWrapRef.current;
@@ -114,28 +110,26 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
     return () => ro.disconnect();
   }, [chartPoints.length]);
 
-  const config = useMemo(() => {
-    const callData: Array<{ time: string; type: string; value: number }> = [];
-    for (const p of chartPoints) {
-      if (seriesVisible.success) callData.push({ time: p.time, type: '成功', value: p.success });
-      if (seriesVisible.fail) callData.push({ time: p.time, type: '失败', value: p.fail });
-    }
-    const p95Data = seriesVisible.p95
-      ? chartPoints.map((p) => ({ time: p.time, metric: 'P95', value: p.p95Ms ?? 0 }))
-      : [];
-    const barMaxW = chartPoints.length <= 28 ? 22 : chartPoints.length <= 48 ? 14 : 8;
+  const callData: Array<{ time: string; type: string; value: number }> = [];
+  for (const p of chartPoints) {
+    if (seriesVisible.success) callData.push({ time: p.time, type: '成功', value: p.success });
+    if (seriesVisible.fail) callData.push({ time: p.time, type: '失败', value: p.fail });
+  }
+  const p95Data = seriesVisible.p95
+    ? chartPoints.map((p) => ({ time: p.time, metric: 'P95', value: p.p95Ms ?? 0 }))
+    : [];
+  const barMaxW = chartPoints.length <= 28 ? 22 : chartPoints.length <= 48 ? 14 : 8;
 
+  const pointByTime = useMemo(() => new Map(chartPoints.map((p) => [p.time, p])), [chartPoints]);
+
+  const config = useMemo(() => {
     const children: any[] = [];
     if (callData.length) {
       children.push({
         data: callData,
         type: 'interval',
-        yField: 'value',
-        colorField: 'type',
-        stack: true,
-        scale: {
-          color: { domain: ['成功', '失败'], range: ['#34d399', '#f87171'] },
-        },
+        encode: { x: 'time', y: 'value', color: 'type' },
+        transform: [{ type: 'stackY' }],
         style: { maxWidth: barMaxW, radiusTopLeft: 2, radiusTopRight: 2 },
         axis: {
           y: {
@@ -147,17 +141,19 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
             gridStrokeOpacity: 0.3,
           },
         },
-        tooltip: false,
+        tooltip: {
+          title: (d: any) => fmtAxisTime(d?.time, window, displayBucket),
+          items: [
+            (d: any) => ({ name: d?.type || '调用', value: String(d?.value ?? '') }),
+          ],
+        },
       });
     }
     if (p95Data.length) {
       children.push({
         data: p95Data,
         type: 'line',
-        yField: 'value',
-        colorField: 'metric',
-        shapeField: 'smooth',
-        scale: { color: { domain: ['P95'], range: ['#f59e0b'] } },
+        encode: { x: 'time', y: 'value', color: 'metric', shape: 'smooth' },
         style: { lineWidth: 2.2 },
         axis: {
           y: {
@@ -169,11 +165,12 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
             grid: null,
           },
         },
-        tooltip: false,
+        tooltip: {
+          title: (d: any) => fmtAxisTime(d?.time, window, displayBucket),
+          items: [(d: any) => ({ name: 'P95', value: `${d?.value ?? ''} ms` })],
+        },
       });
     }
-
-    const pointByTime = new Map(chartPoints.map((p) => [p.time, p]));
 
     return {
       xField: 'time',
@@ -182,6 +179,12 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
       paddingRight: 48,
       paddingBottom: 28,
       legend: false,
+      scale: {
+        color: {
+          domain: ['成功', '失败', 'P95'],
+          range: ['#34d399', '#f87171', '#f59e0b'],
+        },
+      },
       axis: {
         x: {
           labelAutoRotate: false,
@@ -193,62 +196,12 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
         },
       },
       tooltip: { shared: true },
-      interaction: {
-        tooltip: {
-          shared: true,
-          crosshairs: true,
-          crosshairsY: false,
-          render: (_event: unknown, { title, items }: { title?: string; items?: any[] }) => {
-            const time =
-              items?.find((it) => it?.data?.time)?.data?.time ||
-              items?.[0]?.data?.time ||
-              items?.[0]?.time;
-            const point =
-              (time && pointByTime.get(String(time))) ||
-              (time && pointsRef.current.find((p) => p.time === time)) ||
-              null;
-            const vis = visibleRef.current;
-            const rows: Array<{ name: string; value: string; color: string }> = [];
-            if (point) {
-              if (vis.success) {
-                rows.push({ name: '成功', value: String(point.success ?? 0), color: '#34d399' });
-              }
-              if (vis.fail) {
-                rows.push({ name: '失败', value: String(point.fail ?? 0), color: '#f87171' });
-              }
-              if (vis.p95) {
-                rows.push({
-                  name: 'P95',
-                  value: `${Math.round(point.p95Ms ?? 0)} ms`,
-                  color: '#f59e0b',
-                });
-              }
-            }
-            const head = title || (time ? fmtAxisTime(String(time), window, displayBucket) : '');
-            const body = rows
-              .map(
-                (r) =>
-                  `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin:4px 0;font-size:12px;line-height:1.4">
-                    <span style="display:inline-flex;align-items:center;gap:6px;color:#64748b">
-                      <i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${r.color}"></i>${r.name}
-                    </span>
-                    <span style="font-weight:600;color:#0f172a;font-variant-numeric:tabular-nums">${r.value}</span>
-                  </div>`,
-              )
-              .join('');
-            return `<div style="padding:2px 0;min-width:128px">
-              <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">${head}</div>
-              ${body || '<div style="color:#94a3b8;font-size:12px">无数据</div>'}
-            </div>`;
-          },
-        },
-      },
       children,
     };
-  }, [chartPoints, window, displayBucket, seriesVisible, height, callAxisTitle]);
+  }, [callData, p95Data, chartPoints, window, displayBucket, seriesVisible, height, callAxisTitle, barMaxW, pointByTime]);
 
   const n = chartPoints.length;
-  const hasSeries = config.children.length > 0;
+  const hasData = callData.length > 0 || p95Data.length > 0;
 
   return (
     <div className="yf-metrics-chart">
@@ -285,7 +238,7 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
             description={emptyDescription}
             style={{ padding: '24px 0' }}
           />
-        ) : !hasSeries ? (
+        ) : !hasData ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description="请至少勾选一条图例系列"

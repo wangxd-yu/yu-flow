@@ -23,12 +23,12 @@ const UserHeaderActions: React.FC<Props> = ({ displayName }) => {
   };
 
   const flatItems: MenuProps['items'] = [
-    {
+    /*{
       key: 'help-docs',
       label: '帮助文档',
       icon: <QuestionCircleOutlined />,
     },
-    { type: 'divider' },
+    { type: 'divider' },*/
     {
       key: 'change-password',
       label: '修改密码',

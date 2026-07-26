@@ -1,0 +1,38 @@
+# OWASP Dependency-Check 依赖漏洞扫描
+# 说明：NVD 数据首次下载耗时较长，因此采用独立 workflow 每周定时执行，
+#       避免阻塞日常 push/PR 的 CI 反馈。
+name: Dependency Check
+
+on:
+  schedule:
+    # 每周一 02:00 UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+jobs:
+  dependency-check:
+    name: OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Run OWASP Dependency-Check
+        working-directory: flow-api
+        run: mvn -B dependency-check:check -DnvdApiKey=${{ secrets.NVD_API_KEY }}
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+      - name: Upload Dependency-Check Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: flow-api/target/dependency-check-report.html
+          retention-days: 14

@@ -6,7 +6,7 @@
  */
 import React, { Suspense } from 'react';
 import { Spin } from 'antd';
-import type { ExtendedFlowEditorProps } from './FlowEditor';
+import type { ExtendedFlowEditorProps } from './flow-editor/types-editor';
 
 const FlowEditorAsync = React.lazy(() => import('./FlowEditor'));
 

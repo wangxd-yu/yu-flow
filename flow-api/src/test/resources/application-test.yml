@@ -1,0 +1,47 @@
+# ========================================================
+# Yu Flow 集成测试专用配置
+# 使用 H2 内存数据库，跳过 Redis / 邮件 / 真实密钥校验
+# ========================================================
+spring:
+  datasource:
+    url: jdbc:h2:mem:flow_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=VALUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    database-platform: org.hibernate.dialect.H2Dialect
+  data:
+    redis:
+      # 集成测试中 Redis 不可用时由 Mock 替代，不需要真实连接
+      host: 127.0.0.1
+      port: 6379
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
+
+# yu-flow 测试环境配置
+yu:
+  flow:
+    enabled: true
+    username: admin
+    password: Test@123456
+    demo-mode: false
+    security:
+      # 测试环境使用固定密钥（不是生产安全密钥），禁用启动失败以保持测试可运行
+      aes-secret-key: test-aes-key-16b!
+      jwt-secret-key: test-jwt-secret-key-for-integration-test-only
+      fail-on-insecure-defaults: false
+      block-private-outbound: false
+      allow-ingress-auth-none: true
+      allow-ignore-ssl: true
+      script-allowed-languages: aviator,spel,javascript,groovy
+    engine:
+      expression-engine: simple
+      strict-mode: false
+      enable-trace: true
+    metrics:
+      enabled: false

@@ -61,7 +61,15 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+            <version>42.7.13</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- 覆盖 Spring Boot 托管的 commons-compress 版本，修复 CVE-2024-25710/26308 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.27.1</version>
         </dependency>
 
 
@@ -245,6 +253,35 @@
         </dependency>
     </dependencies>
 
+    <dependencyManagement>
+        <dependencies>
+            <!-- 强制 Netty 版本，修复 CVE-2026-56819（HIGH：HTTP/2 decompressor ByteBuf leak） -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>4.1.136.Final</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- 强制 Apache POI 版本，修复 CVE-2025-31672（MEDIUM：OOXML duplicate zip entry） -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>5.4.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>5.4.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml-lite</artifactId>
+                <version>5.4.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <plugins>
             <!-- 单元测试配置 -->
@@ -279,41 +316,30 @@
             </plugin>
 
             <!-- JaCoCo 代码覆盖率 -->
+            <!-- 注意：请始终使用 mvn clean test 或 mvn clean verify 以避免增量编译导致的
+                 "Execution data for class ... does not match" 字节码映射错误 -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.12</version>
                 <configuration>
+                    <!-- 强制覆盖 jacoco.exec，避免增量构建累积旧数据导致 class 不匹配 -->
+                    <destFile>${project.build.directory}/jacoco.exec</destFile>
+                    <append>false</append>
                     <excludes>
                         <!-- 启动类、配置类、常量/异常/领域对象等通常不直接写单元测 -->
                         <exclude>org/yu/flow/app/*</exclude>
                         <exclude>org/yu/flow/config/*</exclude>
                         <exclude>org/yu/flow/exception/*</exclude>
                         <exclude>org/yu/flow/vo/*</exclude>
+                        <exclude>org/yu/flow/dto/*</exclude>
                         <exclude>org/yu/flow/module/**/domain/**</exclude>
                         <exclude>org/yu/flow/module/**/entity/**</exclude>
                         <exclude>org/yu/flow/module/**/dto/**</exclude>
                         <exclude>org/yu/flow/module/**/vo/**</exclude>
                         <exclude>org/yu/flow/module/**/query/**</exclude>
+                        <exclude>org/yu/flow/module/**/repository/**</exclude>
                     </excludes>
-                    <rules>
-                        <rule>
-                            <element>BUNDLE</element>
-                            <limits>
-                                <!-- 初始阈值设低，避免 CI 立即失败；后续逐步提高 -->
-                                <limit>
-                                    <counter>INSTRUCTION</counter>
-                                    <value>COVEREDRATIO</value>
-                                    <minimum>0.00</minimum>
-                                </limit>
-                                <limit>
-                                    <counter>BRANCH</counter>
-                                    <value>COVEREDRATIO</value>
-                                    <minimum>0.00</minimum>
-                                </limit>
-                            </limits>
-                        </rule>
-                    </rules>
                 </configuration>
                 <executions>
                     <execution>
@@ -328,13 +354,42 @@
                         <goals>
                             <goal>report</goal>
                         </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco.exec</dataFile>
+                            <outputDirectory>${project.reporting.outputDirectory}/jacoco</outputDirectory>
+                        </configuration>
                     </execution>
+                    <!-- check 绑定到 verify 阶段（非 test），使得 mvn test 不会因覆盖率失败阻断；
+                         CI 使用 mvn clean verify -DskipTests=false 统一跑完整质量门禁 -->
                     <execution>
                         <id>check</id>
-                        <phase>test</phase>
+                        <phase>verify</phase>
                         <goals>
                             <goal>check</goal>
                         </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco.exec</dataFile>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <!-- 当前覆盖率基线（clean test）约 17% / 16%。
+                                             阶段目标：Phase1=20%/18%，Phase2=25%/20%，最终=40%/35%
+                                             升级路线图跟踪：Plan/2026-07-26-yu-flow 全量后续升级改进计划.md -->
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.17</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.15</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -345,6 +400,26 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <classifier>exec</classifier>
+                </configuration>
+            </plugin>
+
+            <!-- OWASP 依赖漏洞扫描（默认不阻塞构建，仅生成报告） -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.2.2</version>
+                <configuration>
+                    <skip>false</skip>
+                    <failBuildOnCVSS>9</failBuildOnCVSS>
+                    <suppressionFiles>
+                        <suppressionFile>${project.basedir}/owasp-suppressions.xml</suppressionFile>
+                    </suppressionFiles>
+                    <formats>HTML,JSON</formats>
+                    <analyzers>
+                        <!-- 国内网络下载 RetireJS 数据经常超时/重置；禁用后仍保留 NVD 扫描 -->
+                        <retirejsEnabled>false</retirejsEnabled>
+                    </analyzers>
+                    <hostedSuppressionsUrl></hostedSuppressionsUrl>
                 </configuration>
             </plugin>
         </plugins>

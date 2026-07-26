@@ -28,9 +28,12 @@ import {
 } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
 import { AssetTypeBadge, openAssetDeepLink } from '@/components/flow/ops';
-import { Pie } from '@ant-design/plots';
-
 import styles from './index.less';
+
+// 懒加载 Pie 图表，避免首屏加载 echarts + @ant-design/plots (~1.2 MB)
+const Pie = React.lazy(() =>
+  import('@ant-design/plots').then((mod) => ({ default: mod.Pie })),
+);
 
 const { Text, Title } = Typography;
 
@@ -427,7 +430,9 @@ const HomePage: React.FC = () => {
               ) : (
                 <div className={styles.composition}>
                   <div className={styles.donutWrap}>
-                    <Pie {...pieConfig} />
+                    <React.Suspense fallback={<Spin />}>
+                      <Pie {...pieConfig} />
+                    </React.Suspense>
                     <div className={styles.donutCenter}>
                       <span className={styles.donutTotal}>{totalAssets}</span>
                       <span className={styles.donutLabel}>资产总数</span>

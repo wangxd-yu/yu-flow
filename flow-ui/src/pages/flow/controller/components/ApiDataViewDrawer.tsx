@@ -6,32 +6,18 @@ import type { FormInstance } from 'antd/es/form';
 import {
   Alert,
   Button,
-  Descriptions,
   Drawer,
   Form,
-  Input,
-  InputNumber,
-  Popconfirm,
-  Radio,
   Space,
   Switch,
-  Table,
   Tabs,
   Tag,
   Tooltip,
   Typography,
-  Upload,
   message,
 } from 'antd';
 import {
-  DeleteOutlined,
-  DownloadOutlined,
-  CloudUploadOutlined,
-  CopyOutlined,
   ExportOutlined,
-  LinkOutlined,
-  ReloadOutlined,
-  SaveOutlined,
 } from '@ant-design/icons';
 import {
   createApiExcelExportLink,
@@ -55,6 +41,18 @@ import {
 import { confirmPublishWithGate } from '@/components/flow/release/confirmPublishWithGate';
 import { copyText } from '@/utils/apiDocsActions';
 import { request } from '@umijs/max';
+import {
+  FALLBACK_LABEL,
+  formatBytes,
+  parseContractParams,
+  syncColumnsFromContract,
+  buildParamsFromForm,
+  type ParamField,
+} from './apiDataViewUtils';
+import ApiDataViewDataTab from './ApiDataViewDataTab';
+import ApiDataViewColumnsTab from './ApiDataViewColumnsTab';
+import ApiDataViewTemplateTab from './ApiDataViewTemplateTab';
+import ApiDataViewOpenExportTab from './ApiDataViewOpenExportTab';
 
 type Props = {
   open: boolean;
@@ -64,100 +62,6 @@ type Props = {
   /** 抽屉内完成发布后回调（用于刷新列表/编辑页发布状态） */
   onPublished?: () => void;
 };
-
-type ParamField = { name: string; title?: string; section: 'query' | 'body' | 'path' };
-
-const FALLBACK_LABEL: Record<string, string> = {
-  TEMPLATE_MISSING: '未找到模板',
-  TEMPLATE_NO_LIST_PLACEHOLDER: '模板缺少 {.字段} 占位符',
-  TEMPLATE_FILL_FAILED: '模板填充失败',
-};
-
-function formatBytes(n?: number) {
-  if (n == null || Number.isNaN(n)) return '-';
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function parseContractParams(contractJson?: string): ParamField[] {
-  if (!contractJson) return [];
-  try {
-    const c = typeof contractJson === 'string' ? JSON.parse(contractJson) : contractJson;
-    const out: ParamField[] = [];
-    const collect = (nodes: any[] | undefined, section: ParamField['section']) => {
-      (nodes || []).forEach((n) => {
-        if (n?.name) {
-          out.push({ name: n.name, title: n.title || n.description, section });
-        }
-      });
-    };
-    collect(c?.request?.query, 'query');
-    collect(c?.request?.pathParams, 'path');
-    collect(c?.request?.body, 'body');
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-function syncColumnsFromContract(
-  contractJson?: string,
-  prev?: ViewExportColumn[],
-): ViewExportColumn[] {
-  if (!contractJson) return prev?.length ? prev : [];
-  try {
-    const c = typeof contractJson === 'string' ? JSON.parse(contractJson) : contractJson;
-    const body =
-      c?.responses?.['200']?.body ||
-      c?.responses?.[Object.keys(c?.responses || {})[0]]?.body ||
-      [];
-    const prevMap = new Map((prev || []).map((x) => [x.field, x]));
-    const cols: ViewExportColumn[] = [];
-    const walk = (nodes: any[]) => {
-      (nodes || []).forEach((n) => {
-        if (n?.type === 'array' && n.children?.length) {
-          walk(n.children);
-          return;
-        }
-        if (n?.type === 'object' && n.children?.length) {
-          walk(n.children);
-          return;
-        }
-        if (n?.name) {
-          const old = prevMap.get(n.name);
-          cols.push({
-            field: n.name,
-            header: old?.header || n.title || n.description || n.name,
-            exportable: old?.exportable !== false,
-            visible: old?.visible !== false,
-            templateKey: old?.templateKey || n.name,
-            width: old?.width,
-          });
-        }
-      });
-    };
-    walk(Array.isArray(body) ? body : []);
-    return cols;
-  } catch {
-    return prev?.length ? prev : [];
-  }
-}
-
-function buildParamsFromForm(paramForm: FormInstance, paramFields: ParamField[]) {
-  const values = paramForm.getFieldsValue();
-  const queryParams: Record<string, string> = {};
-  const pathParams: Record<string, string> = {};
-  const bodyParams: Record<string, any> = {};
-  paramFields.forEach((f) => {
-    const v = values[`${f.section}__${f.name}`];
-    if (v === undefined || v === null || v === '') return;
-    if (f.section === 'query') queryParams[f.name] = String(v);
-    else if (f.section === 'path') pathParams[f.name] = String(v);
-    else bodyParams[f.name] = v;
-  });
-  return { queryParams, pathParams, bodyParams };
-}
 
 const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onPublished }) => {
   const [detail, setDetail] = useState<FlowController | null>(null);
@@ -674,160 +578,35 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onP
             key: 'data',
             label: '数据',
             children: (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
-                <div style={{ flexShrink: 0, marginBottom: 12 }}>
-                {paramFields.length > 0 ? (
-                  <Form form={paramForm} layout="inline" style={{ rowGap: 8 }}>
-                    {paramFields.map((f) => (
-                      <Form.Item
-                        key={`${f.section}__${f.name}`}
-                        name={`${f.section}__${f.name}`}
-                        label={`${f.title || f.name}(${f.section})`}
-                      >
-                        <Input allowClear style={{ width: 160 }} />
-                      </Form.Item>
-                    ))}
-                  </Form>
-                ) : (
-                  <Alert type="info" showIcon message="未配置请求契约参数，将按空参查询" />
-                )}
-                </div>
-
-                {isObject ? (
-                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                  <Descriptions bordered size="small" column={1}>
-                    {Object.entries(result?.object || result?.rows?.[0] || {}).map(([k, v]) => {
-                      const col = (result?.columns || columns).find((c) => c.field === k);
-                      return (
-                        <Descriptions.Item key={k} label={col?.header || k}>
-                          {v === null || v === undefined ? '-' : String(v)}
-                        </Descriptions.Item>
-                      );
-                    })}
-                  </Descriptions>
-                  </div>
-                ) : (
-                  <Table
-                    size="small"
-                    rowKey={(_, i) => String(i)}
-                    loading={loading}
-                    columns={tableColumns}
-                    dataSource={result?.rows || []}
-                    scroll={{ x: true, y: 'calc(100vh - 280px)' }}
-                    pagination={{
-                      current: (result?.page ?? page) + 1,
-                      pageSize: result?.size ?? pageSize,
-                      total: result?.total ?? 0,
-                      showSizeChanger: true,
-                      onChange: (p, ps) => {
-                        const nextPage = p - 1;
-                        const nextSize = ps || 20;
-                        setPage(nextPage);
-                        setPageSize(nextSize);
-                        runPreview(nextPage, nextSize);
-                      },
-                    }}
-                  />
-                )}
-              </div>
+              <ApiDataViewDataTab
+                paramFields={paramFields}
+                paramForm={paramForm}
+                result={result}
+                loading={loading}
+                page={page}
+                pageSize={pageSize}
+                setPage={setPage}
+                setPageSize={setPageSize}
+                runPreview={runPreview}
+                isObject={isObject}
+                columns={columns}
+                tableColumns={tableColumns}
+              />
             ),
           },
           {
             key: 'columns',
             label: '列配置',
             children: (
-              <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                <Form
-                  form={cfgForm}
-                  layout="inline"
-                  onValuesChange={() => markDirty()}
-                >
-                  <Form.Item name="enabled" label="启用导出" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item name="sheetName" label="Sheet 名">
-                    <Input style={{ width: 120 }} />
-                  </Form.Item>
-                  <Form.Item name="maxExportRows" label="最大导出行数">
-                    <InputNumber min={1} max={50000} style={{ width: 120 }} />
-                  </Form.Item>
-                </Form>
-                <Space>
-                  <Button
-                    icon={<ReloadOutlined />}
-                    onClick={() => {
-                      setColumns(syncColumnsFromContract(detail?.contract, columns));
-                      markDirty();
-                    }}
-                  >
-                    从响应契约同步列
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    loading={saving}
-                    onClick={() => saveColumnConfig()}
-                  >
-                    保存列配置到草稿
-                  </Button>
-                </Space>
-                <Table
-                  size="small"
-                  rowKey="field"
-                  pagination={false}
-                  dataSource={columns}
-                  columns={[
-                    { title: '字段', dataIndex: 'field', width: 160 },
-                    {
-                      title: '中文表头',
-                      dataIndex: 'header',
-                      render: (v, row, idx) => (
-                        <Input
-                          value={v}
-                          onChange={(e) => {
-                            const next = [...columns];
-                            next[idx] = { ...row, header: e.target.value };
-                            setColumns(next);
-                            markDirty();
-                          }}
-                        />
-                      ),
-                    },
-                    {
-                      title: '显示',
-                      dataIndex: 'visible',
-                      width: 70,
-                      render: (v, row, idx) => (
-                        <Switch
-                          checked={v !== false}
-                          onChange={(checked) => {
-                            const next = [...columns];
-                            next[idx] = { ...row, visible: checked };
-                            setColumns(next);
-                            markDirty();
-                          }}
-                        />
-                      ),
-                    },
-                    {
-                      title: '导出',
-                      dataIndex: 'exportable',
-                      width: 70,
-                      render: (v, row, idx) => (
-                        <Switch
-                          checked={v !== false}
-                          onChange={(checked) => {
-                            const next = [...columns];
-                            next[idx] = { ...row, exportable: checked };
-                            setColumns(next);
-                            markDirty();
-                          }}
-                        />
-                      ),
-                    },
-                  ]}
-                />
-              </Space>
+              <ApiDataViewColumnsTab
+                cfgForm={cfgForm}
+                columns={columns}
+                setColumns={setColumns}
+                markDirty={markDirty}
+                saving={saving}
+                saveColumnConfig={saveColumnConfig}
+                detail={detail}
+              />
             ),
           },
           {
@@ -845,173 +624,20 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onP
               </span>
             ),
             children: (
-              <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                <Alert
-                  type="info"
-                  showIcon
-                  message="公司标准表头模板（上传桌面 Excel 做好的 .xlsx）"
-                  description={
-                    <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                      <li>下载示例模板，按公司样式改表头 / 合并单元格</li>
-                      <li>
-                        列表占位符写成 <Typography.Text code>{'{.fieldName}'}</Typography.Text>
-                        ，单值可用 <Typography.Text code>{'{exportTime}'}</Typography.Text> /{' '}
-                        <Typography.Text code>{'{apiName}'}</Typography.Text>
-                      </li>
-                      <li>上传后保存配置并发布；缺失或占位符不对时自动回退动态表头</li>
-                    </ol>
-                  }
-                />
-                <Form form={cfgForm} layout="inline" onValuesChange={() => markDirty()}>
-                  <Form.Item name="exportMode" label="导出模式">
-                    <Radio.Group>
-                      <Radio.Button value="DYNAMIC">动态表头</Radio.Button>
-                      <Radio.Button value="TEMPLATE" disabled={!templateMeta?.present}>
-                        模板填充
-                      </Radio.Button>
-                    </Radio.Group>
-                  </Form.Item>
-                  <Form.Item
-                    name="templateSheetNo"
-                    label="模板 Sheet 下标"
-                    tooltip="多 Sheet 时填写从 0 开始的序号；P0 仅填充一个列表区"
-                  >
-                    <InputNumber min={0} max={20} style={{ width: 80 }} />
-                  </Form.Item>
-                </Form>
-
-                <Upload.Dragger
-                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  showUploadList={false}
-                  disabled={uploading}
-                  beforeUpload={(file) => {
-                    handleUploadTemplate(file as File);
-                    return false;
-                  }}
-                  style={{ padding: '8px 0' }}
-                >
-                  <p className="ant-upload-drag-icon" style={{ marginBottom: 8 }}>
-                    <CloudUploadOutlined />
-                  </p>
-                  <p className="ant-upload-text">点击或拖拽上传公司 .xlsx 模板</p>
-                  <p className="ant-upload-hint">仅 xlsx，禁止 xlsm；最大 2MB；上传即覆盖</p>
-                </Upload.Dragger>
-
-                <Space wrap>
-                  <Button
-                    icon={<DownloadOutlined />}
-                    onClick={() =>
-                      downloadApiExcelTemplateSample(apiId).catch((e) => message.error(e.message))
-                    }
-                  >
-                    下载示例模板
-                  </Button>
-                  <Button
-                    icon={<DownloadOutlined />}
-                    disabled={!templateMeta?.present}
-                    onClick={() =>
-                      downloadApiExcelTemplateFile(apiId).catch((e) => message.error(e.message))
-                    }
-                  >
-                    下载已上传模板
-                  </Button>
-                  <Popconfirm
-                    title="删除导出模板？"
-                    description="删除后导出将回退为动态表头"
-                    okText="删除"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={handleDeleteTemplate}
-                  >
-                    <Button danger icon={<DeleteOutlined />} disabled={!templateMeta?.present}>
-                      删除模板
-                    </Button>
-                  </Popconfirm>
-                  <Button
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    loading={saving}
-                    onClick={() => saveColumnConfig()}
-                  >
-                    保存导出配置到草稿
-                  </Button>
-                </Space>
-
-                {templateMeta?.present ? (
-                  <>
-                    <Descriptions size="small" bordered column={2}>
-                      <Descriptions.Item label="文件名" span={2}>
-                        <Typography.Text ellipsis={{ tooltip: templateMeta.fileName }}>
-                          {templateMeta.fileName}
-                        </Typography.Text>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="大小">
-                        {formatBytes(templateMeta.fileSize)}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="更新时间">
-                        {templateMeta.updateTime || '-'}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="列表占位符">
-                        {templateMeta.hasListPlaceholder === false ? (
-                          <Tag color="warning">未检测到</Tag>
-                        ) : (
-                          <Tag color="success">已检测</Tag>
-                        )}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="状态">
-                        <Tag color="processing">已绑定本接口</Tag>
-                      </Descriptions.Item>
-                    </Descriptions>
-                    {templateMeta.warning && (
-                      <Alert type="warning" showIcon message={templateMeta.warning} />
-                    )}
-                  </>
-                ) : (
-                  <Alert type="warning" showIcon message="尚未上传模板，导出将使用动态表头" />
-                )}
-
-                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Typography.Text type="secondary">
-                    字段 → 模板占位符 key（对应 {'{.'}key{'}'}，建议字母数字下划线）
-                  </Typography.Text>
-                  <Button size="small" onClick={resetTemplateKeys}>
-                    重置 key 为字段名
-                  </Button>
-                </Space>
-                <Table
-                  size="small"
-                  rowKey="field"
-                  pagination={false}
-                  dataSource={columns.filter((c) => c.exportable !== false)}
-                  columns={[
-                    { title: '数据字段', dataIndex: 'field', width: 160 },
-                    { title: '中文表头', dataIndex: 'header', width: 140, ellipsis: true },
-                    {
-                      title: '模板 key',
-                      dataIndex: 'templateKey',
-                      render: (v, row) => {
-                        const fullIdx = columns.findIndex((c) => c.field === row.field);
-                        const key = (v || row.field || '').trim();
-                        const invalid = key && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
-                        return (
-                          <Input
-                            status={invalid ? 'warning' : undefined}
-                            value={v || row.field}
-                            addonBefore="{."
-                            addonAfter="}"
-                            onChange={(e) => {
-                              if (fullIdx < 0) return;
-                              const next = [...columns];
-                              next[fullIdx] = { ...row, templateKey: e.target.value };
-                              setColumns(next);
-                              markDirty();
-                            }}
-                          />
-                        );
-                      },
-                    },
-                  ]}
-                />
-              </Space>
+              <ApiDataViewTemplateTab
+                apiId={apiId}
+                cfgForm={cfgForm}
+                templateMeta={templateMeta}
+                columns={columns}
+                setColumns={setColumns}
+                markDirty={markDirty}
+                uploading={uploading}
+                saving={saving}
+                handleUploadTemplate={handleUploadTemplate}
+                handleDeleteTemplate={handleDeleteTemplate}
+                resetTemplateKeys={resetTemplateKeys}
+                saveColumnConfig={saveColumnConfig}
+              />
             ),
           },
           {
@@ -1029,117 +655,25 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onP
               </span>
             ),
             children: (
-              <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                <Alert
-                  type="info"
-                  showIcon
-                  message="对外地址为业务 path + /export，不改动原 JSON 契约"
-                  description="开启后点「保存并发布」即可对外；需要浏览器直链时再点签发（未就绪会自动保存并发布）。"
-                />
-                <Form form={cfgForm} layout="vertical" onValuesChange={() => markDirty()}>
-                  <Form.Item
-                    name="openExportEnabled"
-                    label="启用对外 Excel 下载"
-                    valuePropName="checked"
-                    extra="仅 DB + PAGE/LIST/OBJECT；默认关闭"
-                  >
-                    <Switch disabled={!dbOk} />
-                  </Form.Item>
-                  <Form.Item
-                    name="signedLinkEnabled"
-                    label="允许签发短期下载链"
-                    valuePropName="checked"
-                    extra="浏览器直链，无需 AppKey"
-                  >
-                    <Switch disabled={!openExportEnabled} />
-                  </Form.Item>
-                  <Form.Item
-                    name="signedLinkTtlSeconds"
-                    label="短期链有效期（秒）"
-                    extra="默认 300，范围 30–3600"
-                  >
-                    <InputNumber min={30} max={3600} style={{ width: 160 }} disabled={!openExportEnabled} />
-                  </Form.Item>
-                </Form>
-
-                <Descriptions size="small" bordered column={1} title="导出 URL 预览">
-                  <Descriptions.Item label={`${(detail?.method || 'GET').toUpperCase()} 直连`}>
-                    <Space wrap>
-                      <Typography.Text code copyable={false} style={{ wordBreak: 'break-all' }}>
-                        {exportDirectUrl || '-'}
-                      </Typography.Text>
-                      <Button
-                        size="small"
-                        icon={<CopyOutlined />}
-                        disabled={!exportDirectUrl}
-                        onClick={() => handleCopyUrl(exportDirectUrl)}
-                      >
-                        复制
-                      </Button>
-                    </Space>
-                  </Descriptions.Item>
-                  <Descriptions.Item label={`${(detail?.method || 'GET').toUpperCase()} 开放入口`}>
-                    <Space wrap>
-                      <Typography.Text code copyable={false} style={{ wordBreak: 'break-all' }}>
-                        {exportOpenUrl || '-'}
-                      </Typography.Text>
-                      <Button
-                        size="small"
-                        icon={<CopyOutlined />}
-                        disabled={!exportOpenUrl}
-                        onClick={() => handleCopyUrl(exportOpenUrl)}
-                      >
-                        复制
-                      </Button>
-                    </Space>
-                  </Descriptions.Item>
-                </Descriptions>
-
-                <Space wrap>
-                  <Button
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    loading={saving || publishing}
-                    disabled={!openExportEnabled || !dbOk}
-                    onClick={() => saveAndPublishExport()}
-                  >
-                    保存并发布
-                  </Button>
-                  <Button
-                    icon={<LinkOutlined />}
-                    loading={signingLink || publishing}
-                    disabled={!openExportEnabled || !signedLinkEnabled || !dbOk}
-                    onClick={handleIssueSignedLink}
-                  >
-                    {!isPublished || dirty ? '保存发布并签发' : '签发下载链接'}
-                  </Button>
-                  <Button loading={saving} disabled={!dbOk} onClick={() => saveColumnConfig()}>
-                    仅保存草稿
-                  </Button>
-                </Space>
-
-                {signedLinkPreview && (
-                  <Alert
-                    type="success"
-                    showIcon
-                    message="最近签发的短期链"
-                    description={
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        <Typography.Text code style={{ wordBreak: 'break-all' }}>
-                          {signedLinkPreview}
-                        </Typography.Text>
-                        <Button
-                          size="small"
-                          icon={<CopyOutlined />}
-                          onClick={() => handleCopyUrl(signedLinkPreview)}
-                        >
-                          再次复制
-                        </Button>
-                      </Space>
-                    }
-                  />
-                )}
-              </Space>
+              <ApiDataViewOpenExportTab
+                cfgForm={cfgForm}
+                detail={detail}
+                openExportEnabled={openExportEnabled}
+                signedLinkEnabled={signedLinkEnabled}
+                signedLinkPreview={signedLinkPreview}
+                exportDirectUrl={exportDirectUrl}
+                exportOpenUrl={exportOpenUrl}
+                isPublished={isPublished}
+                dirty={dirty}
+                dbOk={dbOk}
+                saving={saving}
+                publishing={publishing}
+                signingLink={signingLink}
+                saveAndPublishExport={saveAndPublishExport}
+                handleIssueSignedLink={handleIssueSignedLink}
+                saveColumnConfig={saveColumnConfig}
+                handleCopyUrl={handleCopyUrl}
+              />
             ),
           },
         ]}

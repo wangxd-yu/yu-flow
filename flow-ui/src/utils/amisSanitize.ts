@@ -58,6 +58,9 @@ function sanitizeNode(node: any): any {
       out.msg = '已拦截自定义脚本动作';
       continue;
     }
+    if (key === 'customScript' && typeof value === 'string') {
+      continue;
+    }
     if ((key === 'html' || key === 'richText') && typeof value === 'string') {
       out[key] = stripDangerousHtml(value);
       continue;
