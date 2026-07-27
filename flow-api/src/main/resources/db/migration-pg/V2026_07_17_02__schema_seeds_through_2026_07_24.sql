@@ -598,7 +598,7 @@ CREATE TABLE IF NOT EXISTS flow_alert_rule (
     name                varchar(100) NOT NULL,
     enabled             smallint     NOT NULL DEFAULT 1,
     scope_asset_types   varchar(200),
-    window              varchar(20)  NOT NULL DEFAULT '24h',
+    "window"              varchar(20)  NOT NULL DEFAULT '24h',
     min_health          varchar(20)  NOT NULL DEFAULT 'error',
     top_n               integer      NOT NULL DEFAULT 10,
     channel_ids         varchar(500),
@@ -622,7 +622,7 @@ CREATE TABLE IF NOT EXISTS flow_alert_event (
     health        varchar(20),
     error_rate    double precision,
     fail_count    bigint,
-    window        varchar(20),
+    "window"        varchar(20),
     channel_type  varchar(20),
     channel_id    varchar(64),
     status        varchar(20)  NOT NULL,
@@ -899,7 +899,7 @@ COMMENT ON COLUMN flow_alert_rule.id IS '主键';
 COMMENT ON COLUMN flow_alert_rule.min_health IS 'error|warn';
 COMMENT ON COLUMN flow_alert_rule.name IS '规则名称';
 COMMENT ON COLUMN flow_alert_rule.scope_asset_types IS '资产类型 CSV：API,TASK,SERVICE,PLATFORM；空=全部';
-COMMENT ON COLUMN flow_alert_rule.window IS '1h/24h/7d';
+COMMENT ON COLUMN flow_alert_rule."window" IS '1h/24h/7d';
 
 -- flow_api_excel_template
 COMMENT ON COLUMN flow_api_excel_template.api_id IS '接口 ID';
