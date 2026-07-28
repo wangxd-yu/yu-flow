@@ -25,6 +25,9 @@ public class FlowApiQueryDTO {
     /** 发布状态：0-未发布，1-已发布（精确匹配） */
     private Integer publishStatus;
 
+    /** 实现方式：FLOW/DB/JSON/STRING/HOST（精确匹配） */
+    private String serviceType;
+
     /** 页码（从 0 开始，默认 0） */
     private int page = 0;
 

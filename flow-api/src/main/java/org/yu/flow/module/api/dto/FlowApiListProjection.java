@@ -47,4 +47,8 @@ public interface FlowApiListProjection {
     LocalDateTime getCreateTime();
 
     LocalDateTime getUpdateTime();
+
+    String getCacheConfig();
+
+    String getSecurityConfig();
 }

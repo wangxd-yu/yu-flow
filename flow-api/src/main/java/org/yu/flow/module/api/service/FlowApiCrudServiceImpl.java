@@ -32,12 +32,10 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
-import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -434,44 +432,53 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         dto.setDeleted(p.getDeleted());
         dto.setCreateTime(p.getCreateTime());
         dto.setUpdateTime(p.getUpdateTime());
+        dto.setCacheConfig(p.getCacheConfig());
+        dto.setSecurityConfig(p.getSecurityConfig());
+        dto.setHasUnpublishedChanges(hasUnpublishedChanges(p));
         return dto;
+    }
+
+    /** 列表场景下用更新时间 vs 发布时间粗略判断是否存在未发布的草稿变更。 */
+    private boolean hasUnpublishedChanges(FlowApiListProjection p) {
+        return p.getPublishStatus() != null && p.getPublishStatus() == 1
+                && p.getUpdateTime() != null && p.getPublishTime() != null
+                && p.getUpdateTime().isAfter(p.getPublishTime());
     }
 
     @Override
     public PageBean<FlowApiDTO> findPage(FlowApiQueryDTO queryDTO) {
         Pageable pageable = PageRequest.of(queryDTO.getPage(), queryDTO.getSize(), Sort.by(Sort.Direction.DESC, "createTime"));
 
-        Specification<FlowApiDO> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
+        List<String> directoryIds = Collections.singletonList("");
+        boolean directoryIdsEmpty = true;
+        if (StrUtil.isNotBlank(queryDTO.getDirectoryId())) {
+            List<String> dirIds = flowDirectoryService.getAllChildIds(queryDTO.getDirectoryId());
+            if (!dirIds.isEmpty()) {
+                directoryIds = dirIds;
+                directoryIdsEmpty = false;
+            } else {
+                directoryIds = Collections.singletonList("-1");
+                directoryIdsEmpty = false;
+            }
+        }
 
-            if (StrUtil.isNotBlank(queryDTO.getDirectoryId())) {
-                List<String> dirIds = flowDirectoryService.getAllChildIds(queryDTO.getDirectoryId());
-                if (!dirIds.isEmpty()) {
-                    predicates.add(root.get("directoryId").in(dirIds));
-                } else {
-                    predicates.add(cb.equal(root.get("directoryId"), "-1"));
-                }
-            }
-            if (StrUtil.isNotBlank(queryDTO.getName())) {
-                predicates.add(cb.like(root.get("name"), "%" + queryDTO.getName() + "%"));
-            }
-            if (StrUtil.isNotBlank(queryDTO.getMethod())) {
-                predicates.add(cb.equal(root.get("method"), queryDTO.getMethod()));
-            }
-            if (StrUtil.isNotBlank(queryDTO.getUrl())) {
-                predicates.add(cb.like(root.get("url"), "%" + queryDTO.getUrl() + "%"));
-            }
-            if (queryDTO.getPublishStatus() != null) {
-                predicates.add(cb.equal(root.get("publishStatus"), queryDTO.getPublishStatus()));
-            }
+        String name = StrUtil.isBlank(queryDTO.getName()) ? null : queryDTO.getName();
+        String method = StrUtil.isBlank(queryDTO.getMethod()) ? null : queryDTO.getMethod();
+        String url = StrUtil.isBlank(queryDTO.getUrl()) ? null : queryDTO.getUrl();
+        String serviceType = StrUtil.isBlank(queryDTO.getServiceType()) ? null : queryDTO.getServiceType();
 
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-
-        Page<FlowApiDO> result = flowApiRepository.findAll(spec, pageable);
+        Page<FlowApiListProjection> result = flowApiRepository.findPageWithoutLargeFields(
+                directoryIds,
+                directoryIdsEmpty,
+                name,
+                method,
+                url,
+                queryDTO.getPublishStatus(),
+                serviceType,
+                pageable);
 
         List<FlowApiDTO> content = result.getContent().stream()
-                .map(FlowApiDTO::fromDO)
+                .map(this::toListDTO)
                 .collect(Collectors.toList());
 
         // 批量获取 directoryName

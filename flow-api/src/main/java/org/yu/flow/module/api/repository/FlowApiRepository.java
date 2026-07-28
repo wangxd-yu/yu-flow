@@ -58,7 +58,42 @@ public interface FlowApiRepository extends JpaRepository<FlowApiDO, String>, Jpa
             + "f.method AS method, f.serviceType AS serviceType, f.interceptMode AS interceptMode, "
             + "f.publishStatus AS publishStatus, f.logEnabled AS logEnabled, f.level AS level, "
             + "f.tags AS tags, f.templateId AS templateId, f.publishTime AS publishTime, "
-            + "f.deleted AS deleted, f.createTime AS createTime, f.updateTime AS updateTime "
+            + "f.deleted AS deleted, f.createTime AS createTime, f.updateTime AS updateTime, "
+            + "f.cacheConfig AS cacheConfig, f.securityConfig AS securityConfig "
             + "FROM FlowApiDO f")
     Page<FlowApiListProjection> findPageWithoutLargeFields(Pageable pageable);
+
+    /**
+     * 列表页条件投影查询：带过滤条件的轻量列表查询，不加载大字段。
+     */
+    @Query(value = "SELECT f.id AS id, f.name AS name, f.info AS info, f.url AS url, f.datasource AS datasource, "
+            + "f.directoryId AS directoryId, f.responseType AS responseType, f.version AS version, "
+            + "f.method AS method, f.serviceType AS serviceType, f.interceptMode AS interceptMode, "
+            + "f.publishStatus AS publishStatus, f.logEnabled AS logEnabled, f.level AS level, "
+            + "f.tags AS tags, f.templateId AS templateId, f.publishTime AS publishTime, "
+            + "f.deleted AS deleted, f.createTime AS createTime, f.updateTime AS updateTime, "
+            + "f.cacheConfig AS cacheConfig, f.securityConfig AS securityConfig "
+            + "FROM FlowApiDO f "
+            + "WHERE (:directoryIdsEmpty = true OR f.directoryId IN :directoryIds) "
+            + "AND (:name IS NULL OR f.name LIKE CONCAT('%', :name, '%')) "
+            + "AND (:method IS NULL OR f.method = :method) "
+            + "AND (:url IS NULL OR f.url LIKE CONCAT('%', :url, '%')) "
+            + "AND (:publishStatus IS NULL OR f.publishStatus = :publishStatus) "
+            + "AND (:serviceType IS NULL OR f.serviceType = :serviceType)",
+            countQuery = "SELECT COUNT(f) FROM FlowApiDO f "
+                    + "WHERE (:directoryIdsEmpty = true OR f.directoryId IN :directoryIds) "
+                    + "AND (:name IS NULL OR f.name LIKE CONCAT('%', :name, '%')) "
+                    + "AND (:method IS NULL OR f.method = :method) "
+                    + "AND (:url IS NULL OR f.url LIKE CONCAT('%', :url, '%')) "
+                    + "AND (:publishStatus IS NULL OR f.publishStatus = :publishStatus) "
+                    + "AND (:serviceType IS NULL OR f.serviceType = :serviceType)")
+    Page<FlowApiListProjection> findPageWithoutLargeFields(
+            @Param("directoryIds") List<String> directoryIds,
+            @Param("directoryIdsEmpty") boolean directoryIdsEmpty,
+            @Param("name") String name,
+            @Param("method") String method,
+            @Param("url") String url,
+            @Param("publishStatus") Integer publishStatus,
+            @Param("serviceType") String serviceType,
+            Pageable pageable);
 }
