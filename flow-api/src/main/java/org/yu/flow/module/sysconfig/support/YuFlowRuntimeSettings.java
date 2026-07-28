@@ -8,7 +8,10 @@ import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 import org.yu.flow.module.sysconfig.domain.SysConfigDO;
 
 import jakarta.annotation.Resource;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 开放平台 / 入站防护运行时配置桥接。
@@ -43,6 +46,8 @@ public class YuFlowRuntimeSettings {
         public static final String INGRESS_DEFAULT_IP_ALLOWLIST = "INGRESS_DEFAULT_IP_ALLOWLIST";
         public static final String INGRESS_RATE_LIMIT_FAIL_OPEN = "INGRESS_RATE_LIMIT_FAIL_OPEN";
         public static final String INGRESS_DEFAULT_TIMEOUT_MS = "INGRESS_DEFAULT_TIMEOUT_MS";
+
+        public static final String SCRIPT_ALLOWED_LANGUAGES = "SCRIPT_ALLOWED_LANGUAGES";
     }
 
     @Resource
@@ -155,6 +160,19 @@ public class YuFlowRuntimeSettings {
         return resolveInt(Keys.INGRESS_DEFAULT_TIMEOUT_MS, ingressYml().getDefaultTimeoutMs());
     }
 
+    // ── Security ──
+
+    /**
+     * Evaluate / Switch 等节点允许的脚本语言白名单（逗号分隔）。
+     * <p>sysconfig 优先级高于 yml；空串或不填则回退 yml 默认值。</p>
+     */
+    public List<String> getScriptAllowedLanguages() {
+        return resolveStringList(Keys.SCRIPT_ALLOWED_LANGUAGES,
+                yuFlowProperties != null && yuFlowProperties.getSecurity() != null
+                        ? yuFlowProperties.getSecurity().getScriptAllowedLanguages()
+                        : null);
+    }
+
     // ── resolve helpers ──
 
     private boolean resolveBool(String key, boolean ymlDefault) {
@@ -182,6 +200,21 @@ public class YuFlowRuntimeSettings {
         // 允许空串（如 IP 白名单明确不限制）
         String v = cfg.get().getConfigValue();
         return v != null ? v : ymlDefault;
+    }
+
+    private List<String> resolveStringList(String key, List<String> ymlDefault) {
+        Optional<SysConfigDO> cfg = lookup(key);
+        if (cfg.isEmpty()) {
+            return ymlDefault;
+        }
+        String v = cfg.get().getConfigValue();
+        if (v == null) {
+            return ymlDefault;
+        }
+        return Arrays.stream(v.split(","))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toList());
     }
 
     private Optional<SysConfigDO> lookup(String key) {

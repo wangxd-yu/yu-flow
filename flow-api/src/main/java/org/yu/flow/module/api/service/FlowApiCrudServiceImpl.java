@@ -10,6 +10,7 @@ import org.yu.flow.config.FlowApiCacheManager;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
+import org.yu.flow.module.api.dto.FlowApiListProjection;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.api.support.ApiExportPathSupport;
@@ -395,15 +396,45 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     public Page<FlowApiDTO> findAll(Pageable pageableIn) {
         Pageable pageable = PageRequest.of(Math.max(pageableIn.getPageNumber() - 1, 0), pageableIn.getPageSize(), Sort.by(Sort.Direction.DESC, "createTime"));
-        Page<FlowApiDO> page = flowApiRepository.findAll(pageable);
+        Page<FlowApiListProjection> page = flowApiRepository.findPageWithoutLargeFields(pageable);
         List<FlowApiDTO> dtoList = page.getContent().stream()
-                .map(FlowApiDTO::fromDO)
+                .map(this::toListDTO)
                 .collect(Collectors.toList());
 
         // 批量获取 directoryName（内存拼装，避免 N+1）
         enrichDirectoryNames(dtoList);
 
         return new PageImpl<>(dtoList, pageable, page.getTotalElements());
+    }
+
+    /**
+     * 列表投影转换为 DTO：不携带大字段（dslContent/sqlContent/jsonContent/textContent/contract/
+     * publishedSnapshot/custom*Wrapper/securityConfig 等），减少网络传输与内存占用。
+     */
+    private FlowApiDTO toListDTO(FlowApiListProjection p) {
+        FlowApiDTO dto = new FlowApiDTO();
+        dto.setId(p.getId());
+        dto.setName(p.getName());
+        dto.setInfo(p.getInfo());
+        dto.setUrl(p.getUrl());
+        dto.setDatasource(p.getDatasource());
+        dto.setDirectoryId(p.getDirectoryId());
+        dto.setResponseType(p.getResponseType());
+        dto.setVersion(p.getVersion());
+        dto.setMethod(p.getMethod());
+        dto.setServiceType(p.getServiceType());
+        dto.setInterceptMode(p.getInterceptMode() == null || p.getInterceptMode().isBlank()
+                ? "REPLACE" : p.getInterceptMode());
+        dto.setPublishStatus(p.getPublishStatus());
+        dto.setLogEnabled(p.getLogEnabled() == null || p.getLogEnabled());
+        dto.setLevel(p.getLevel());
+        dto.setTags(p.getTags());
+        dto.setTemplateId(p.getTemplateId());
+        dto.setPublishTime(p.getPublishTime());
+        dto.setDeleted(p.getDeleted());
+        dto.setCreateTime(p.getCreateTime());
+        dto.setUpdateTime(p.getUpdateTime());
+        return dto;
     }
 
     @Override

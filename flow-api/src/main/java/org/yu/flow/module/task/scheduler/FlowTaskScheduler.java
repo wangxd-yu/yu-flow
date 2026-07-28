@@ -246,23 +246,35 @@ public class FlowTaskScheduler {
             }
         }
 
+        boolean success = false;
         try {
-            executeTaskWithTriggerType(latestTask, triggerType);
+            success = executeTaskWithTriggerType(latestTask, triggerType);
         } finally {
             if (renewFuture != null) {
                 renewFuture.cancel(false);
             }
             if (lockKey != null && lockValue != null) {
-                boolean unlocked = FlowRedisUtil.unlock(lockKey, lockValue);
-                if (!unlocked) {
-                    log.warn("[FlowTaskScheduler] 释放执行锁失败或锁已过期: taskId={}, lockKey={}",
-                            latestTask.getId(), lockKey);
+                if (success) {
+                    boolean unlocked = FlowRedisUtil.unlock(lockKey, lockValue);
+                    if (!unlocked) {
+                        log.warn("[FlowTaskScheduler] 释放执行锁失败或锁已过期: taskId={}, lockKey={}",
+                                latestTask.getId(), lockKey);
+                    }
+                } else {
+                    // 失败后续约一个较短的 TTL，避免其他节点/重复调度立即重跑，又不影响下一次 cron
+                    try {
+                        FlowRedisUtil.renewLock(lockKey, lockValue, 1, TimeUnit.MINUTES);
+                        log.info("[FlowTaskScheduler] 任务执行失败，锁已续约 1 分钟，防止立即重跑: taskId={}",
+                                latestTask.getId());
+                    } catch (Exception e) {
+                        log.error("[FlowTaskScheduler] 失败后续约锁异常: taskId={}", latestTask.getId(), e);
+                    }
                 }
             }
         }
     }
 
-    private void executeTaskWithTriggerType(FlowTaskDO latestTask, String triggerType) {
+    private boolean executeTaskWithTriggerType(FlowTaskDO latestTask, String triggerType) {
         long startTime = System.currentTimeMillis();
         String status = "RUNNING";
         String errorMsg = null;
@@ -344,6 +356,7 @@ public class FlowTaskScheduler {
 
         log.info("[FlowTaskScheduler] 任务执行完成: taskId={}, status={}, costTimeMs={}",
                 latestTask.getId(), status, costTimeMs);
+        return "SUCCESS".equals(status);
     }
 
     private void saveSkippedLog(FlowTaskDO task, String triggerType, String reason) {

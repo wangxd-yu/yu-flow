@@ -58,7 +58,7 @@ yu:
       jwt-expire-seconds: ${YU_FLOW_JWT_EXPIRE_SECONDS:7200}
       script-allowed-beans: []
       # 脚本语言白名单；groovy / python 逃逸面较大，需显式加入（逗号分隔）
-      script-allowed-languages: ${YU_FLOW_SCRIPT_ALLOWED_LANGUAGES:aviator,spel,javascript}
+      script-allowed-languages: ${YU_FLOW_SCRIPT_ALLOWED_LANGUAGES:aviator,spel,javascript,groovy}
       fail-on-insecure-defaults: ${YU_FLOW_FAIL_ON_INSECURE_DEFAULTS:true}
       block-private-outbound: ${YU_FLOW_BLOCK_PRIVATE_OUTBOUND:true}
       allow-yml-admin-fallback: ${YU_FLOW_ALLOW_YML_ADMIN_FALLBACK:false}

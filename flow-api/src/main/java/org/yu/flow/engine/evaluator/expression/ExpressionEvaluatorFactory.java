@@ -1,8 +1,8 @@
 package org.yu.flow.engine.evaluator.expression;
 
 import cn.hutool.extra.spring.SpringUtil;
-import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.exception.FlowException;
+import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 
 import java.util.List;
 import java.util.Locale;
@@ -69,11 +69,11 @@ public class ExpressionEvaluatorFactory {
     static void assertLanguageAllowed(ExpressionLanguage language) {
         List<String> allowed;
         try {
-            YuFlowProperties properties = SpringUtil.getBean(YuFlowProperties.class);
-            if (properties == null || properties.getSecurity() == null) {
+            YuFlowRuntimeSettings runtimeSettings = SpringUtil.getBean(YuFlowRuntimeSettings.class);
+            if (runtimeSettings == null) {
                 return;
             }
-            allowed = properties.getSecurity().getScriptAllowedLanguages();
+            allowed = runtimeSettings.getScriptAllowedLanguages();
         } catch (Exception e) {
             // 非 Spring 场景不做限制。
             return;

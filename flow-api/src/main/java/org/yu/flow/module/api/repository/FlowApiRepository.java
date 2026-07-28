@@ -1,6 +1,9 @@
 package org.yu.flow.module.api.repository;
 
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.dto.FlowApiListProjection;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -46,4 +49,16 @@ public interface FlowApiRepository extends JpaRepository<FlowApiDO, String>, Jpa
             + "(a.dslContent IS NOT NULL AND a.dslContent LIKE CONCAT('%', :needle, '%')) "
             + "OR (a.publishedSnapshot IS NOT NULL AND a.publishedSnapshot LIKE CONCAT('%', :needle, '%'))")
     List<FlowApiDO> findPossibleServiceFlowRefs(@Param("needle") String needle);
+
+    /**
+     * 列表页投影查询：仅返回列表展示所需的轻量字段，避免 select 大字段造成接口卡顿。
+     */
+    @Query("SELECT f.id AS id, f.name AS name, f.info AS info, f.url AS url, f.datasource AS datasource, "
+            + "f.directoryId AS directoryId, f.responseType AS responseType, f.version AS version, "
+            + "f.method AS method, f.serviceType AS serviceType, f.interceptMode AS interceptMode, "
+            + "f.publishStatus AS publishStatus, f.logEnabled AS logEnabled, f.level AS level, "
+            + "f.tags AS tags, f.templateId AS templateId, f.publishTime AS publishTime, "
+            + "f.deleted AS deleted, f.createTime AS createTime, f.updateTime AS updateTime "
+            + "FROM FlowApiDO f")
+    Page<FlowApiListProjection> findPageWithoutLargeFields(Pageable pageable);
 }

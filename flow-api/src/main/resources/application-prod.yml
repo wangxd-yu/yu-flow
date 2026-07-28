@@ -1,0 +1,22 @@
+# 复制为 application-local.yml（已在 .gitignore 时可本地覆盖；勿提交真实口令）
+# 或改用环境变量：SPRING_DATASOURCE_PASSWORD / YU_FLOW_JWT_SECRET / YU_FLOW_AES_SECRET / YU_FLOW_ADMIN_PASSWORD
+#
+# 本地快速启动（仍不推荐把真实生产口令写进文件）：
+spring:
+  datasource:
+    url: jdbc:highgo://10.211.142.149:5866/flood_assist_decision?useSSL=false&useUnicode=true&characterEncoding=utf-8&serverTimezone=CTT&useOldAliasMetadataBehavior=true&defaultRowFetchSize=1000&useCursorFetch=true
+    username: sysdba
+    password: 4Y#8GE8#xe
+    driver-class-name: com.highgo.jdbc.Driver
+
+yu:
+  flow:
+    password: vT3#mX8z
+    security:
+      fail-on-insecure-defaults: false
+      jwt-secret-key: F8kpwWGeoZdHurYLE31c4qjmgJlPxizMNTVSBvUb7tAIRQn2
+      # 必须正好 16/24/32 字节（按 UTF-8）；下面是 16 字符示例
+      aes-secret-key: flow-secure-keys
+      allow-yml-admin-fallback: true
+      # 仅应急：允许接口 authMode=NONE
+      allow-ingress-auth-none: true
