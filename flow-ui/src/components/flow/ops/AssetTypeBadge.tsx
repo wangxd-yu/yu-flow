@@ -6,6 +6,7 @@ const LABEL: Record<MetricsAssetType, string> = {
   API: '接口',
   TASK: '任务',
   SERVICE: '服务',
+  MQ_TASK: 'MQ 任务',
   PLATFORM: '开放平台',
 };
 
@@ -20,7 +21,9 @@ const AssetTypeBadge: React.FC<AssetTypeBadgeProps> = ({ type, label }) => {
   const text = label || LABEL[key] || type;
   const cls = ['API', 'TASK', 'SERVICE', 'PLATFORM'].includes(key)
     ? `yf-type yf-type-${key.toLowerCase()}`
-    : 'yf-type';
+    : key === 'MQ_TASK'
+      ? 'yf-type yf-type-task'
+      : 'yf-type';
   return <span className={cls}>{text}</span>;
 };
 

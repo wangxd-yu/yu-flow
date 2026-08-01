@@ -109,3 +109,11 @@ yu:
       from: ${YU_FLOW_MAIL_FROM:}
       ssl: ${YU_FLOW_MAIL_SSL:true}
       starttls: ${YU_FLOW_MAIL_STARTTLS:false}
+    mq:
+      # MQ 消费总开关；多实例部署时仅一个实例开启即可避免重复消费竞争
+      consumer-enabled: ${YU_FLOW_MQ_CONSUMER_ENABLED:true}
+      # 消费幂等锁 TTL（秒），按 messageId 去重
+      dedup-ttl-seconds: ${YU_FLOW_MQ_DEDUP_TTL_SECONDS:300}
+      send-timeout-ms: ${YU_FLOW_MQ_SEND_TIMEOUT_MS:10000}
+      # 消息体大小上限（字节），<=0 不限制
+      max-message-bytes: ${YU_FLOW_MQ_MAX_MESSAGE_BYTES:1048576}

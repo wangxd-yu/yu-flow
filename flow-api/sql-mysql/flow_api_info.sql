@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS `flow_api_info` (
   `published_snapshot` mediumtext COMMENT '发布时的完整内容快照 (JSON)，运行时引擎从此字段读取',
   `publish_time` datetime COMMENT '最近一次发布时间',
   `log_enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否记录执行日志：1-开启，0-关闭',
+  `log_retention_days` int COMMENT '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数',
   `cache_config` text COMMENT '响应缓存配置 JSON：enabled/ttlSeconds/keyParams/includePageable',
   `security_config` text COMMENT '入站防护 JSON：authMode/antiReplay/rateLimit/ipAllowlist',
   `view_export_config` text COMMENT '数据查看与导出 JSON：columns/sheetName/maxExportRows',

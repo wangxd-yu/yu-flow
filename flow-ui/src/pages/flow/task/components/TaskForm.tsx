@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Drawer, message, Button, Form, Input, Switch, Space, Tooltip, Tag,
+  Drawer, message, Button, Form, Input, InputNumber, Switch, Space, Tooltip, Tag,
 } from 'antd';
 import {
   SaveOutlined, CloseOutlined, PlayCircleOutlined,
@@ -87,6 +87,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
   const [logEnabled, setLogEnabled] = useState<boolean>(!!initialValues.logEnabled);
+  const [logRetentionDays, setLogRetentionDays] = useState<number | undefined>(
+    initialValues.logRetentionDays ?? undefined,
+  );
   const [info, setInfo] = useState<string>(initialValues.info || '');
   const [dslContent, setDslContent] = useState<string>(initialValues.dslContent || '');
   const [publishStatus, setPublishStatus] = useState<0 | 1>(
@@ -108,6 +111,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
       setDirectoryId(initialValues.directoryId);
       setEnabled(initialValues.enabled !== false);
       setLogEnabled(!!initialValues.logEnabled);
+      setLogRetentionDays(initialValues.logRetentionDays ?? undefined);
       setInfo(initialValues.info || '');
       setDslContent(initialValues.dslContent || '');
       setPublishStatus(initialValues.publishStatus === 1 ? 1 : 0);
@@ -136,11 +140,13 @@ const TaskForm: React.FC<TaskFormProps> = ({
       cron: cron.trim(),
       enabled,
       logEnabled,
+      // 留空提交 -1：后端语义为清除任务级配置（回退系统保留天数）
+      logRetentionDays: logRetentionDays ?? -1,
       info: info || undefined,
       dslContent: dslContent?.trim() || DEFAULT_SCHEDULE_DSL,
       directoryId: directoryId || '',
     };
-  }, [name, cron, enabled, logEnabled, info, dslContent, directoryId]);
+  }, [name, cron, enabled, logEnabled, logRetentionDays, info, dslContent, directoryId]);
 
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
@@ -157,6 +163,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
     if (detail.directoryId !== undefined) setDirectoryId(detail.directoryId || undefined);
     if (detail.enabled != null) setEnabled(!!detail.enabled);
     if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
+    if (detail.logRetentionDays !== undefined) setLogRetentionDays(detail.logRetentionDays ?? undefined);
     if (detail.info != null) setInfo(detail.info);
     onPublished?.(detail);
   }, [onPublished]);
@@ -384,6 +391,20 @@ const TaskForm: React.FC<TaskFormProps> = ({
           />
           <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
             开启后，每次执行的 FlowTrace 快照将被记录到任务日志中
+          </div>
+        </Form.Item>
+
+        <Form.Item label="日志保留天数">
+          <InputNumber
+            value={logRetentionDays}
+            onChange={(v) => setLogRetentionDays(v ?? undefined)}
+            min={0}
+            precision={0}
+            style={{ width: 200 }}
+            placeholder="留空跟随系统配置"
+          />
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+            留空=跟随系统配置（LOG_TASK_RETENTION_DAYS），0=永久保留，&gt;0=按天数自动清理
           </div>
         </Form.Item>
 

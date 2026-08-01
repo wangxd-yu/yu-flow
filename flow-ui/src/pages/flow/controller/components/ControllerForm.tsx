@@ -651,6 +651,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 version: detail.version,
                 level: detail.level,
                 logEnabled: detail.logEnabled,
+                logRetentionDays: detail.logRetentionDays,
                 templateId: detail.templateId,
                 customSuccessWrapper: detail.customSuccessWrapper,
                 customPageWrapper: detail.customPageWrapper,

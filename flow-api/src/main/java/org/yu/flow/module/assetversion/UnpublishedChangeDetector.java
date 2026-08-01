@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 
@@ -60,6 +61,26 @@ public final class UnpublishedChangeDetector {
             JsonNode snap = MAPPER.readTree(task.getPublishedSnapshot());
             return differs(task.getName(), snap, "name")
                     || differs(task.getCron(), snap, "cron")
+                    || differs(task.getDslContent(), snap, "dslContent")
+                    || differs(task.getInfo(), snap, "info")
+                    || differs(task.getTags(), snap, "tags");
+            // enabled / logEnabled 不计入
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    public static boolean mqTaskHasUnpublishedChanges(FlowMqTaskDO task) {
+        if (!isPublished(task.getPublishStatus(), task.getPublishedSnapshot())) {
+            return false;
+        }
+        try {
+            JsonNode snap = MAPPER.readTree(task.getPublishedSnapshot());
+            return differs(task.getName(), snap, "name")
+                    || differs(task.getConnectionCode(), snap, "connectionCode")
+                    || differs(task.getTopic(), snap, "topic")
+                    || differs(task.getConsumerGroup(), snap, "consumerGroup")
+                    || differsInt(task.getConcurrency(), snap, "concurrency")
                     || differs(task.getDslContent(), snap, "dslContent")
                     || differs(task.getInfo(), snap, "info")
                     || differs(task.getTags(), snap, "tags");

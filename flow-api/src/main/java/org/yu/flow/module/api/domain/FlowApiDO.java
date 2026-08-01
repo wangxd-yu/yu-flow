@@ -87,6 +87,9 @@ public class FlowApiDO implements Serializable {
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean logEnabled;
 
+    /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
+    private Integer logRetentionDays;
+
     /**
      * 查询响应 Redis 缓存配置（JSON）。
      * <p>结构示例：{"enabled":true,"ttlSeconds":300,"keyParams":[{"source":"query","name":"userId"}],"includePageable":true}</p>

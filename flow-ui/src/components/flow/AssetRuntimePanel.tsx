@@ -11,6 +11,7 @@ import {
   type MetricsWindow,
 } from '@/services/flow/assetMetrics';
 import { queryTaskLogPage } from '@/services/flow/taskService';
+import { queryMqTaskLogPage } from '@/services/flow/mqTask';
 import { queryServiceLogPage } from '@/services/flow/serviceFlowService';
 import { pageOpenCallLogs } from '@/services/flow/openPlatformService';
 import { SoftSegmented, MetricsDualAxes } from '@/components/flow/ops';
@@ -110,6 +111,9 @@ function logHref(assetType: MetricsAssetType, assetId: string, logPath?: string,
   if (assetType === 'PLATFORM') {
     return `/flow/open-platform?platformId=${encodeURIComponent(assetId)}&tab=callLogs`;
   }
+  if (assetType === 'MQ_TASK') {
+    return `/flow/mq-task?mqTaskId=${encodeURIComponent(assetId)}&tab=logs`;
+  }
   const path =
     assetType === 'API' ? '/log/execution' : assetType === 'TASK' ? '/log/task' : '/log/service';
   const key = logQueryKey || (assetType === 'API' ? 'apiId' : assetType === 'TASK' ? 'taskId' : 'serviceId');
@@ -133,6 +137,19 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
   }
   if (assetType === 'TASK') {
     const result = await queryTaskLogPage({ taskId: assetId, page: 0, size: RECENT_LOG_LIMIT });
+    const data = (result as any)?.data || result;
+    return (data?.items || []).map((r: any) => ({
+      id: r.id,
+      ok: r.status === 'SUCCESS',
+      statusText:
+        r.status === 'SUCCESS' ? '成功' : r.status === 'SKIPPED' ? '跳过' : r.status === 'RUNNING' ? '运行中' : '失败',
+      costMs: r.costTimeMs,
+      createTime: r.createTime,
+      subtitle: r.triggerType,
+    }));
+  }
+  if (assetType === 'MQ_TASK') {
+    const result = await queryMqTaskLogPage({ taskId: assetId, page: 0, size: RECENT_LOG_LIMIT });
     const data = (result as any)?.data || result;
     return (data?.items || []).map((r: any) => ({
       id: r.id,

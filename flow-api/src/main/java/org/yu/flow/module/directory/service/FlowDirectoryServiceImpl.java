@@ -6,6 +6,7 @@ import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.dto.FlowDirectoryDTO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.model.repository.FlowModelInfoRepository;
+import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
 import org.yu.flow.module.page.repository.PageInfoRepository;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
@@ -48,6 +49,9 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
 
     @Resource
     private FlowServiceFlowRepository flowServiceFlowRepository;
+
+    @Resource
+    private FlowMqTaskRepository flowMqTaskRepository;
 
     @Resource
     private DemoModeGuard demoModeGuard;
@@ -200,6 +204,10 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
         // 校验6：是否有关联内部服务
         if (flowServiceFlowRepository.existsByDirectoryId(id)) {
             throw new RuntimeException("该目录下还有内部服务，请先移除或删除相关服务");
+        }
+        // 校验7：是否有关联 MQ 任务
+        if (flowMqTaskRepository.existsByDirectoryId(id)) {
+            throw new RuntimeException("该目录下还有 MQ 任务，请先移除或删除相关任务");
         }
         directoryRepository.deleteById(id);
     }

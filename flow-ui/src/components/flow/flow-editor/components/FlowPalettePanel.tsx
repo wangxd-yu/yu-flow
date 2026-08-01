@@ -11,7 +11,7 @@ export interface FlowPalettePanelProps {
   graphRef: React.MutableRefObject<any>;
   onAddNode: (type: DslNodeType, position?: { x: number; y: number }) => void;
   canCreate: (type: DslNodeType) => { ok: boolean; reason?: string };
-  editorContext: 'api' | 'task' | 'service';
+  editorContext: 'api' | 'task' | 'service' | 'mq';
 }
 
 const FlowPalettePanel: React.FC<FlowPalettePanelProps> = ({

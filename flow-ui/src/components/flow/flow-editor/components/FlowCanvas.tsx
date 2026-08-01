@@ -24,7 +24,7 @@ export interface FlowCanvasProps {
   onCloseQuickAddMenu: () => void;
   onQuickAddNodeCreated: (nodeId: string) => void;
   isReadonlySnapshot: boolean;
-  editorContext: 'api' | 'task' | 'service';
+  editorContext: 'api' | 'task' | 'service' | 'mq';
   canCreate: (type: DslNodeType) => { ok: boolean; reason?: string };
 }
 

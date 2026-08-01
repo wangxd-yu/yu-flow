@@ -6,6 +6,8 @@ package org.yu.flow.module.metrics;
 public enum MetricsAssetType {
     API,
     TASK,
+    /** MQ 任务（消息触发流程） */
+    MQ_TASK,
     SERVICE,
     /** 开放平台（第三方调用方） */
     PLATFORM;

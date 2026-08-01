@@ -55,6 +55,8 @@ import { forEachNodeRegistration } from './nodes/for-each';
 import { parallelNodeRegistration } from './nodes/parallel';
 import { delayNodeRegistration } from './nodes/delay';
 import { sendMailNodeRegistration } from './nodes/send-mail';
+import { mqSendNodeRegistration } from './nodes/mq-send';    // 发送 MQ 消息
+import { mqTriggerNodeRegistration } from './nodes/mq-trigger'; // MQ 消息触发入口
 import { errorHandlerNodeRegistration } from './nodes/error-handler';
 import { recordNodeRegistration } from './nodes/record';
 import { responseNodeRegistration } from './nodes/response';
@@ -81,11 +83,13 @@ const BUILTIN_NODES = [
     parallelNodeRegistration,      // 并行网关（图扇出）
     delayNodeRegistration,
     sendMailNodeRegistration,
+    mqSendNodeRegistration,        // 发送 MQ 消息
     errorHandlerNodeRegistration,
     recordNodeRegistration,
     responseNodeRegistration,
     requestNodeRegistration,
     scheduleNodeRegistration,      // 定时调度入口节点（任务管理专用）
+    mqTriggerNodeRegistration,     // MQ 消息触发入口节点（MQ 任务专用）
     serviceNodeRegistration,       // 内部服务编排入口节点（服务编排专用）
     templateNodeRegistration,
     collectNodeReactRegistration,  // Scatter-Gather: 汇聚屏障

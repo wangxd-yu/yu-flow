@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS flow_task_info (
   cron varchar(64) NOT NULL,
   enabled smallint NOT NULL DEFAULT 1,
   log_enabled smallint NOT NULL DEFAULT 1,
+  log_retention_days integer,
   dsl_content text,
   publish_status smallint NOT NULL DEFAULT 0,
   published_snapshot text,
@@ -25,6 +26,7 @@ COMMENT ON COLUMN flow_task_info.directory_id IS '关联目录ID（复用全局�
 COMMENT ON COLUMN flow_task_info.cron IS 'Cron 表达式，如 0/5 * * * * ?';
 COMMENT ON COLUMN flow_task_info.enabled IS '启用状态：0=停用, 1=启用';
 COMMENT ON COLUMN flow_task_info.log_enabled IS '是否记录执行日志';
+COMMENT ON COLUMN flow_task_info.log_retention_days IS '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数';
 COMMENT ON COLUMN flow_task_info.dsl_content IS '流程定义 DSL JSON（草稿）';
 COMMENT ON COLUMN flow_task_info.publish_status IS '发布状态：0=未发布，1=已发布';
 COMMENT ON COLUMN flow_task_info.published_snapshot IS '发布快照 JSON：dslContent';

@@ -94,6 +94,8 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         flowDirectoryService.assertDirectoryBizType(taskDO.getDirectoryId(), "task");
         if (taskDO.getEnabled() == null) taskDO.setEnabled(true);
         if (taskDO.getLogEnabled() == null) taskDO.setLogEnabled(false);
+        // 保留天数 <0 视为未配置（跟随系统）
+        if (taskDO.getLogRetentionDays() != null && taskDO.getLogRetentionDays() < 0) taskDO.setLogRetentionDays(null);
         if (taskDO.getPublishStatus() == null) taskDO.setPublishStatus(0);
         if (taskDO.getDeleted() == null) taskDO.setDeleted(0);
         LocalDateTime now = LocalDateTime.now();
@@ -124,6 +126,10 @@ public class FlowTaskServiceImpl implements FlowTaskService {
         }
         if (taskDO.getEnabled() != null) existing.setEnabled(taskDO.getEnabled());
         if (taskDO.getLogEnabled() != null) existing.setLogEnabled(taskDO.getLogEnabled());
+        // 保留天数：-1=清除任务级配置（回退系统），0=永久保留，>0=自定义天数
+        if (taskDO.getLogRetentionDays() != null) {
+            existing.setLogRetentionDays(taskDO.getLogRetentionDays() < 0 ? null : taskDO.getLogRetentionDays());
+        }
         if (taskDO.getDslContent() != null) existing.setDslContent(taskDO.getDslContent());
         if (taskDO.getInfo() != null) existing.setInfo(taskDO.getInfo());
         if (taskDO.getTags() != null) existing.setTags(taskDO.getTags());

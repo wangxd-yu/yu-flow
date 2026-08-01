@@ -2,13 +2,16 @@ package org.yu.flow.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Collection;
 import java.util.List;
@@ -255,6 +258,33 @@ public class FlowRedisUtil {
      */
     public static Map<Object, Object> hgetAll(String key) {
         return redisUtil.redisTemplate.opsForHash().entries(key);
+    }
+
+    /**
+     * Hash 批量获取多个 key 的所有字段（pipeline 单次往返），
+     * 返回顺序与入参 keys 一一对应，不存在的 key 对应空 Map。
+     */
+    @SuppressWarnings("unchecked")
+    public static List<Map<Object, Object>> hgetAllPipelined(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Object> raw = redisUtil.redisTemplate.executePipelined(new SessionCallback<Object>() {
+            @Override
+            public <K, V> Object execute(RedisOperations<K, V> operations) {
+                RedisOperations<String, Object> ops = (RedisOperations<String, Object>) operations;
+                for (String key : keys) {
+                    ops.opsForHash().entries(key);
+                }
+                return null;
+            }
+        });
+        List<Map<Object, Object>> out = new ArrayList<>(keys.size());
+        for (int i = 0; i < keys.size(); i++) {
+            Object o = raw != null && i < raw.size() ? raw.get(i) : null;
+            out.add(o instanceof Map ? (Map<Object, Object>) o : Collections.emptyMap());
+        }
+        return out;
     }
 
     /**

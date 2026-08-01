@@ -32,6 +32,7 @@ import java.util.Map;
         @JsonSubTypes.Type(value = RequestStep.class, name = "request"),
         @JsonSubTypes.Type(value = ScheduleStep.class, name = "schedule"),
         @JsonSubTypes.Type(value = ServiceStep.class, name = "service"),
+        @JsonSubTypes.Type(value = MqTriggerStep.class, name = "mqTrigger"),
         @JsonSubTypes.Type(value = HttpRequestStep.class, name = "httpRequest"),
         @JsonSubTypes.Type(value = ForStep.class, name = "for"),
         @JsonSubTypes.Type(value = ForEachStep.class, name = "forEach"),
@@ -44,6 +45,7 @@ import java.util.Map;
         @JsonSubTypes.Type(value = SystemMethodStep.class, name = "systemMethod"),
         @JsonSubTypes.Type(value = DelayStep.class, name = "delay"),
         @JsonSubTypes.Type(value = SendMailStep.class, name = "sendMail"),
+        @JsonSubTypes.Type(value = MqSendStep.class, name = "mqSend"),
         @JsonSubTypes.Type(value = ErrorHandlerStep.class, name = "errorHandler")
 })
 @JsonIgnoreProperties(ignoreUnknown = true)

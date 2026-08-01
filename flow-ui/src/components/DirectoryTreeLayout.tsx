@@ -23,7 +23,7 @@ import { request } from '@umijs/max';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 
 /** 目录业务域 */
-export type DirectoryBizType = 'api' | 'task' | 'service' | 'model' | 'page';
+export type DirectoryBizType = 'api' | 'task' | 'service' | 'model' | 'page' | 'mqtask';
 
 // ================================================================
 // 全局目录 API — 统一接口

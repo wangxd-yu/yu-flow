@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.yu.flow.module.metrics.domain.FlowMetricsMinuteDO;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +18,10 @@ public interface FlowMetricsMinuteRepository extends JpaRepository<FlowMetricsMi
 
     List<FlowMetricsMinuteDO> findByAssetTypeAndAssetIdAndBucketStartGreaterThanEqualAndBucketStartLessThan(
             String assetType, String assetId, LocalDateTime fromInclusive, LocalDateTime toExclusive);
+
+    /** 批量健康查询：一次加载多个资产的分钟桶，避免逐资产 N 次查询 */
+    List<FlowMetricsMinuteDO> findByAssetTypeAndAssetIdInAndBucketStartGreaterThanEqualAndBucketStartLessThan(
+            String assetType, Collection<String> assetIds, LocalDateTime fromInclusive, LocalDateTime toExclusive);
 
     List<FlowMetricsMinuteDO> findByAssetTypeAndBucketStartGreaterThanEqualAndBucketStartLessThan(
             String assetType, LocalDateTime fromInclusive, LocalDateTime toExclusive);

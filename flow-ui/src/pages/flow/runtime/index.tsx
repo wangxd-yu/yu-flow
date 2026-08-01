@@ -376,13 +376,17 @@ const RuntimeCenterPage: React.FC = () => {
         render: (_, r) => <span className={`runtime-num ${p95Tone(r.p95Ms)}`}>{fmtMs(r.p95Ms)}</span>,
       },
       {
-        title: '连续失败',
-        dataIndex: 'consecutiveFail',
+        title: (
+          <Tooltip title="时间窗内最大连续失败次数（按分钟推导，出现成功即打断）">
+            <span>最大连败</span>
+          </Tooltip>
+        ),
+        dataIndex: 'maxConsecutiveFail',
         width: 96,
         align: 'right',
         render: (_, r) => (
-          <span className={`runtime-num ${(r.consecutiveFail || 0) > 0 ? 'danger' : 'muted'}`}>
-            {r.consecutiveFail ?? 0}
+          <span className={`runtime-num ${(r.maxConsecutiveFail || 0) > 0 ? 'danger' : 'muted'}`}>
+            {r.maxConsecutiveFail ?? 0}
           </span>
         ),
       },

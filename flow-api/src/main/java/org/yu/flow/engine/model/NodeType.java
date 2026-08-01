@@ -17,6 +17,8 @@ public final class NodeType {
     public static final String SCHEDULE = "schedule";
     /** 内部服务编排入口节点（服务编排专用） */
     public static final String SERVICE = "service";
+    /** MQ 消息触发入口节点（MQ 任务专用） */
+    public static final String MQ_TRIGGER = "mqTrigger";
 
     // ========== 基础逻辑 ==========
     public static final String EVALUATE = "evaluate";
@@ -55,6 +57,8 @@ public final class NodeType {
     public static final String DELAY = "delay";
     /** 发送邮件（SMTP，复用 FlowMailService） */
     public static final String SEND_MAIL = "sendMail";
+    /** 发送 MQ 消息（RabbitMQ / Kafka，走 MqProvider SPI） */
+    public static final String MQ_SEND = "mqSend";
     /** 统一错误处理入口（引擎异常时跳转，单例） */
     public static final String ERROR_HANDLER = "errorHandler";
 }

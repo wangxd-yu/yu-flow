@@ -22,6 +22,10 @@ public interface FlowTaskRepository extends JpaRepository<FlowTaskDO, String>, J
     /** 判断某个目录下是否有任务（删除目录时校验） */
     boolean existsByDirectoryId(String directoryId);
 
+    /** 查询配置了任务级日志保留天数的任务（[id, 天数]），供日志清理按任务覆盖 */
+    @Query("SELECT t.id, t.logRetentionDays FROM FlowTaskDO t WHERE t.logRetentionDays IS NOT NULL")
+    List<Object[]> findLogRetentionOverrides();
+
     @Modifying
     @Query("UPDATE FlowTaskDO t SET t.directoryId = :directoryId WHERE t.id IN :ids")
     int updateDirectoryIdByIds(@Param("directoryId") String directoryId, @Param("ids") List<String> ids);

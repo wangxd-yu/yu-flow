@@ -23,6 +23,8 @@ public class FlowTaskDTO {
     private String cron;
     private Boolean enabled;
     private Boolean logEnabled;
+    /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
+    private Integer logRetentionDays;
     private String dslContent;
     private Integer publishStatus;
     private String publishedSnapshot;
@@ -48,6 +50,7 @@ public class FlowTaskDTO {
         dto.setCron(entity.getCron());
         dto.setEnabled(entity.getEnabled() != null ? entity.getEnabled() : true);
         dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : false);
+        dto.setLogRetentionDays(entity.getLogRetentionDays());
         dto.setDslContent(entity.getDslContent());
         dto.setPublishStatus(entity.getPublishStatus() != null ? entity.getPublishStatus() : 0);
         dto.setPublishedSnapshot(entity.getPublishedSnapshot());

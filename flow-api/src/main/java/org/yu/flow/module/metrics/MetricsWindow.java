@@ -28,10 +28,17 @@ public enum MetricsWindow {
 
     /**
      * series 粒度：15m/1h 按分钟（点数少、便于看瞬时）；
-     * 24h/7d/30d 按小时，避免 24h 上千分钟柱挤成色块。
+     * 24h 按小时，避免上千分钟柱挤成色块。
      */
     public boolean hourlySeries() {
-        return this == H24 || this == D7 || this == D30;
+        return this == H24;
+    }
+
+    /**
+     * series 粒度：7d/30d 按天，一天一根柱，避免小时柱过密且减小传输量。
+     */
+    public boolean dailySeries() {
+        return this == D7 || this == D30;
     }
 
     public static MetricsWindow fromParam(String raw) {

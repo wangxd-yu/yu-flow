@@ -50,6 +50,10 @@ public interface FlowApiRepository extends JpaRepository<FlowApiDO, String>, Jpa
             + "OR (a.publishedSnapshot IS NOT NULL AND a.publishedSnapshot LIKE CONCAT('%', :needle, '%'))")
     List<FlowApiDO> findPossibleServiceFlowRefs(@Param("needle") String needle);
 
+    /** 查询所有配置了 API 级日志保留天数的 API（id + logRetentionDays），供日志清理任务使用 */
+    @Query("SELECT f.id, f.logRetentionDays FROM FlowApiDO f WHERE f.logRetentionDays IS NOT NULL")
+    List<Object[]> findLogRetentionOverrides();
+
     /**
      * 列表页投影查询：仅返回列表展示所需的轻量字段，避免 select 大字段造成接口卡顿。
      */
@@ -75,25 +79,26 @@ public interface FlowApiRepository extends JpaRepository<FlowApiDO, String>, Jpa
             + "f.cacheConfig AS cacheConfig, f.securityConfig AS securityConfig "
             + "FROM FlowApiDO f "
             + "WHERE (:directoryIdsEmpty = true OR f.directoryId IN :directoryIds) "
-            + "AND (:name IS NULL OR f.name LIKE CONCAT('%', :name, '%')) "
-            + "AND (:method IS NULL OR f.method = :method) "
-            + "AND (:url IS NULL OR f.url LIKE CONCAT('%', :url, '%')) "
-            + "AND (:publishStatus IS NULL OR f.publishStatus = :publishStatus) "
-            + "AND (:serviceType IS NULL OR f.serviceType = :serviceType)",
+            + "AND (CAST(:name AS string) IS NULL OR f.name LIKE CONCAT('%', CAST(:name AS string), '%')) "
+            + "AND (CAST(:method AS string) IS NULL OR f.method = CAST(:method AS string)) "
+            + "AND (CAST(:url AS string) IS NULL OR f.url LIKE CONCAT('%', CAST(:url AS string), '%')) "
+            + "AND (:publishStatusEmpty = true OR f.publishStatus = :publishStatus) "
+            + "AND (CAST(:serviceType AS string) IS NULL OR f.serviceType = CAST(:serviceType AS string))",
             countQuery = "SELECT COUNT(f) FROM FlowApiDO f "
                     + "WHERE (:directoryIdsEmpty = true OR f.directoryId IN :directoryIds) "
-                    + "AND (:name IS NULL OR f.name LIKE CONCAT('%', :name, '%')) "
-                    + "AND (:method IS NULL OR f.method = :method) "
-                    + "AND (:url IS NULL OR f.url LIKE CONCAT('%', :url, '%')) "
-                    + "AND (:publishStatus IS NULL OR f.publishStatus = :publishStatus) "
-                    + "AND (:serviceType IS NULL OR f.serviceType = :serviceType)")
+                    + "AND (CAST(:name AS string) IS NULL OR f.name LIKE CONCAT('%', CAST(:name AS string), '%')) "
+                    + "AND (CAST(:method AS string) IS NULL OR f.method = CAST(:method AS string)) "
+                    + "AND (CAST(:url AS string) IS NULL OR f.url LIKE CONCAT('%', CAST(:url AS string), '%')) "
+                    + "AND (:publishStatusEmpty = true OR f.publishStatus = :publishStatus) "
+                    + "AND (CAST(:serviceType AS string) IS NULL OR f.serviceType = CAST(:serviceType AS string))")
     Page<FlowApiListProjection> findPageWithoutLargeFields(
             @Param("directoryIds") List<String> directoryIds,
             @Param("directoryIdsEmpty") boolean directoryIdsEmpty,
             @Param("name") String name,
             @Param("method") String method,
             @Param("url") String url,
-            @Param("publishStatus") Integer publishStatus,
+            @Param("publishStatusEmpty") boolean publishStatusEmpty,
+            @Param("publishStatus") int publishStatus,
             @Param("serviceType") String serviceType,
             Pageable pageable);
 }

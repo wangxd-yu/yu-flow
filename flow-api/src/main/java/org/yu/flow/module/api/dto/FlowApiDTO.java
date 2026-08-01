@@ -34,6 +34,8 @@ public class FlowApiDTO {
     private String hostBinding;
     private Integer publishStatus;
     private Boolean logEnabled;
+    /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
+    private Integer logRetentionDays;
     /** 查询响应 Redis 缓存配置 JSON */
     private String cacheConfig;
     /** 入站防护配置 JSON（草稿；线上以发布快照为准） */
@@ -85,6 +87,7 @@ public class FlowApiDTO {
         dto.setHostBinding(configDO.getHostBinding());
         dto.setPublishStatus(configDO.getPublishStatus());
         dto.setLogEnabled(configDO.getLogEnabled() == null || configDO.getLogEnabled());
+        dto.setLogRetentionDays(configDO.getLogRetentionDays());
         dto.setCacheConfig(configDO.getCacheConfig());
         dto.setSecurityConfig(configDO.getSecurityConfig());
         dto.setViewExportConfig(configDO.getViewExportConfig());
@@ -123,6 +126,7 @@ public class FlowApiDTO {
         configDO.setHostBinding(this.getHostBinding());
         configDO.setPublishStatus(this.getPublishStatus());
         configDO.setLogEnabled(this.getLogEnabled());
+        configDO.setLogRetentionDays(this.getLogRetentionDays());
         configDO.setCacheConfig(this.getCacheConfig());
         configDO.setSecurityConfig(this.getSecurityConfig());
         configDO.setViewExportConfig(this.getViewExportConfig());

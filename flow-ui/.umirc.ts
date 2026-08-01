@@ -229,6 +229,30 @@ export default defineConfig({
       ],
     },
 
+    // ── 消息队列：MQ 任务 / 连接配置 ──
+    {
+      name: '消息队列',
+      icon: 'MessageOutlined',
+      key: 'menu-mq',
+      access: 'canMqGroup',
+      routes: [
+        {
+          name: 'MQ 任务',
+          icon: 'ThunderboltOutlined',
+          path: '/flow/mq-task',
+          component: './flow/mqTask',
+          access: 'canMq',
+        },
+        {
+          name: '连接配置',
+          icon: 'ApiOutlined',
+          path: '/flow/mq-connection',
+          component: './flow/mqConnection',
+          access: 'canMq',
+        },
+      ],
+    },
+
     // ── 平台设置：模板 / 参数 / 配置 / 用户 / 文档 ──
     {
       name: '平台设置',

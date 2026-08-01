@@ -225,11 +225,9 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
             // 未匹配到动态路由（可能是宿主系统接口），放行
             if (flowApiDO == null) {
-                // 带 /export 但未命中业务 API → 统一 404
-                if (excelExport) {
-                    io.writeJsonResponse(response, HttpStatus.NOT_FOUND.value(), R.fail(404, "接口不存在"));
-                    return;
-                }
+                // 带 /export 但未命中业务 API → 放行给宿主/Spring MVC
+                // （如管理端 /flow-api/api/{id}/data/export、宿主自有 export 接口）；
+                // 路径确实不存在时由宿主自行 404
                 filterChain.doFilter(request, response);
                 return;
             }

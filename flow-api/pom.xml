@@ -176,6 +176,16 @@
             <version>3.45.1</version>
         </dependency>
 
+        <!-- mq: RabbitMQ / Kafka 客户端（按 MQ 连接配置动态构建，全局自动装配已在启动类排除） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>

@@ -13,6 +13,8 @@ export interface FlowTask {
   cron: string;
   enabled?: boolean;
   logEnabled?: boolean;
+  /** 日志保留天数：null/undefined=跟随系统配置，0=永久保留，>0=自定义天数；提交 -1 表示清除任务级配置 */
+  logRetentionDays?: number | null;
   dslContent?: string;
   /** 0=未发布 1=已发布 */
   publishStatus?: number;

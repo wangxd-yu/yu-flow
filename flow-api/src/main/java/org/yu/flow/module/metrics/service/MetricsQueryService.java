@@ -42,6 +42,8 @@ public class MetricsQueryService {
     @Resource
     private FlowTaskRepository flowTaskRepository;
     @Resource
+    private org.yu.flow.module.mqtask.repository.FlowMqTaskRepository flowMqTaskRepository;
+    @Resource
     private FlowServiceFlowRepository flowServiceFlowRepository;
     @Resource
     private FlowOpenPlatformRepository flowOpenPlatformRepository;
@@ -77,19 +79,22 @@ public class MetricsQueryService {
         LocalDateTime from = window.from(now);
         NavigableMap<LocalDateTime, MetricsBucketAgg> byMinute = loadMinuteMap(type, assetId, from, now.plusMinutes(1));
 
-        boolean hourly = window.hourlySeries();
+        String granularity = window.dailySeries() ? "day" : window.hourlySeries() ? "hour" : "minute";
         List<AssetMetricsSeriesDTO.Point> points = new ArrayList<>();
-        if (hourly) {
-            NavigableMap<LocalDateTime, MetricsBucketAgg> byHour = new TreeMap<>();
+        if ("minute".equals(granularity)) {
             for (Map.Entry<LocalDateTime, MetricsBucketAgg> e : byMinute.entrySet()) {
-                LocalDateTime hour = e.getKey().withMinute(0);
-                byHour.computeIfAbsent(hour, k -> new MetricsBucketAgg()).add(e.getValue());
-            }
-            for (Map.Entry<LocalDateTime, MetricsBucketAgg> e : byHour.entrySet()) {
                 points.add(toPoint(e.getKey(), e.getValue()));
             }
         } else {
+            // 按小时/天归并分钟桶（直方图合并后再算 P95，保证聚合精度）
+            NavigableMap<LocalDateTime, MetricsBucketAgg> byBucket = new TreeMap<>();
             for (Map.Entry<LocalDateTime, MetricsBucketAgg> e : byMinute.entrySet()) {
+                LocalDateTime bucket = "day".equals(granularity)
+                        ? e.getKey().toLocalDate().atStartOfDay()
+                        : e.getKey().withMinute(0);
+                byBucket.computeIfAbsent(bucket, k -> new MetricsBucketAgg()).add(e.getValue());
+            }
+            for (Map.Entry<LocalDateTime, MetricsBucketAgg> e : byBucket.entrySet()) {
                 points.add(toPoint(e.getKey(), e.getValue()));
             }
         }
@@ -97,7 +102,7 @@ public class MetricsQueryService {
                 .assetType(type.name())
                 .assetId(assetId)
                 .window(window.label())
-                .granularity(hourly ? "hour" : "minute")
+                .granularity(granularity)
                 .points(points)
                 .build();
     }
@@ -105,30 +110,211 @@ public class MetricsQueryService {
     public List<AssetHealthDTO> health(List<MetricsHealthRequest.Item> items) {
         MetricsWindow window = MetricsWindow.H24;
         List<AssetHealthDTO> out = new ArrayList<>();
-        if (items == null) {
+        if (items == null || items.isEmpty()) {
             return out;
         }
+        LocalDateTime now = MetricsKeys.nowMinute();
+        LocalDateTime from = window.from(now);
+        LocalDateTime toExclusive = now.plusMinutes(1);
+
+        // 按资产类型分组（保持入参顺序，忽略非法项）
+        Map<MetricsAssetType, LinkedHashSet<String>> byType = new LinkedHashMap<>();
         for (MetricsHealthRequest.Item item : items) {
             if (item == null || StrUtil.isBlank(item.getAssetType()) || StrUtil.isBlank(item.getAssetId())) {
                 continue;
             }
             try {
                 MetricsAssetType type = MetricsAssetType.fromPath(item.getAssetType());
-                AssetMetricsSummaryDTO s = summary(type, item.getAssetId(), window);
-                out.add(AssetHealthDTO.builder()
-                        .assetType(type.name())
-                        .assetId(item.getAssetId())
-                        .health(resolveHealth(s))
-                        .successRate(s.getSuccessRate())
-                        .consecutiveFail(s.getConsecutiveFail())
-                        .totalCalls(s.getTotalCalls())
-                        .window(window.label())
-                        .build());
+                byType.computeIfAbsent(type, k -> new LinkedHashSet<>()).add(item.getAssetId());
             } catch (Exception e) {
                 log.debug("[MetricsQuery] health skip: {}", e.getMessage());
             }
         }
+
+        // ACTIVE_SET 整个请求只取一次
+        Set<Object> active = FlowRedisUtil.smembers(MetricsKeys.ACTIVE_SET);
+
+        for (Map.Entry<MetricsAssetType, LinkedHashSet<String>> entry : byType.entrySet()) {
+            MetricsAssetType type = entry.getKey();
+            LinkedHashSet<String> assetIds = entry.getValue();
+
+            // 每类型一次批量查分钟桶，内存按 assetId+分钟聚合（避免逐资产 N 次查询）
+            Map<String, NavigableMap<LocalDateTime, MetricsBucketAgg>> minuteByAsset = new HashMap<>();
+            List<FlowMetricsMinuteDO> rows = metricsMinuteRepository
+                    .findByAssetTypeAndAssetIdInAndBucketStartGreaterThanEqualAndBucketStartLessThan(
+                            type.name(), assetIds, from, toExclusive);
+            for (FlowMetricsMinuteDO row : rows) {
+                minuteByAsset.computeIfAbsent(row.getAssetId(), k -> new TreeMap<>())
+                        .computeIfAbsent(row.getBucketStart(), k -> new MetricsBucketAgg())
+                        .addCounts(
+                                nz(row.getSuccessCnt()), nz(row.getFailCnt()), nz(row.getSkippedCnt()),
+                                nz(row.getAuthFailCnt()),
+                                nz(row.getSumCostMs()), nz(row.getLatencyCount()),
+                                LatencyHistogram.fromJson(row.getHistJson(), flowObjectMapper));
+            }
+            // 合并 Redis 未刷桶（先收集命中的 key，再 pipeline 单次往返批量读）
+            if (active != null) {
+                List<MetricsKeys.BucketKeyParts> matched = new ArrayList<>();
+                for (Object m : active) {
+                    MetricsKeys.BucketKeyParts parts = MetricsKeys.parseBucketKey(String.valueOf(m));
+                    if (parts == null || parts.assetType() != type || !assetIds.contains(parts.assetId())) {
+                        continue;
+                    }
+                    if (parts.bucketStart().isBefore(from) || !parts.bucketStart().isBefore(toExclusive)) {
+                        continue;
+                    }
+                    matched.add(parts);
+                }
+                if (!matched.isEmpty()) {
+                    List<String> bucketKeys = new ArrayList<>(matched.size());
+                    for (MetricsKeys.BucketKeyParts parts : matched) {
+                        bucketKeys.add(parts.redisKey());
+                    }
+                    List<Map<Object, Object>> hashes = FlowRedisUtil.hgetAllPipelined(bucketKeys);
+                    for (int i = 0; i < matched.size(); i++) {
+                        MetricsKeys.BucketKeyParts parts = matched.get(i);
+                        MetricsBucketAgg redisAgg = toBucketAgg(hashes.get(i));
+                        NavigableMap<LocalDateTime, MetricsBucketAgg> map =
+                                minuteByAsset.computeIfAbsent(parts.assetId(), k -> new TreeMap<>());
+                        map.put(parts.bucketStart(), mergePreferRedis(map.get(parts.bucketStart()), redisAgg));
+                    }
+                }
+            }
+
+            Map<String, Meta> metaByAsset = batchReadMeta(type, assetIds, minuteByAsset);
+
+            for (String assetId : assetIds) {
+                MetricsBucketAgg agg = new MetricsBucketAgg();
+                NavigableMap<LocalDateTime, MetricsBucketAgg> map = minuteByAsset.get(assetId);
+                if (map != null) {
+                    for (MetricsBucketAgg a : map.values()) {
+                        agg.add(a);
+                    }
+                }
+                Meta meta = metaByAsset.getOrDefault(assetId, new Meta());
+                Double successRate = agg.successRate();
+                AssetMetricsSummaryDTO s = AssetMetricsSummaryDTO.builder()
+                        .totalCalls(agg.totalCalls())
+                        .failCount(agg.getFail())
+                        .successRate(successRate)
+                        .consecutiveFail(meta.consecFail)
+                        .build();
+                out.add(AssetHealthDTO.builder()
+                        .assetType(type.name())
+                        .assetId(assetId)
+                        .health(resolveHealth(s))
+                        .successRate(successRate)
+                        .consecutiveFail(meta.consecFail)
+                        .totalCalls(agg.totalCalls())
+                        .window(window.label())
+                        .build());
+            }
+        }
         return out;
+    }
+
+    /**
+     * 批量读 meta：Redis pipeline 单次往返读全部 meta key，
+     * miss 的批量查 meta 表，仍缺的用已加载分钟桶内存推导，不再回表扫 24h。
+     */
+    private Map<String, Meta> batchReadMeta(MetricsAssetType type, Set<String> assetIds,
+                                            Map<String, NavigableMap<LocalDateTime, MetricsBucketAgg>> minuteByAsset) {
+        Map<String, Meta> out = new HashMap<>();
+        List<String> misses = new ArrayList<>();
+        List<String> orderedIds = new ArrayList<>(assetIds);
+        try {
+            List<String> metaKeys = new ArrayList<>(orderedIds.size());
+            for (String assetId : orderedIds) {
+                metaKeys.add(MetricsKeys.metaKey(type, assetId));
+            }
+            List<Map<Object, Object>> hashes = FlowRedisUtil.hgetAllPipelined(metaKeys);
+            for (int i = 0; i < orderedIds.size(); i++) {
+                String assetId = orderedIds.get(i);
+                Map<Object, Object> hash = hashes.get(i);
+                if (hash == null || hash.isEmpty()) {
+                    misses.add(assetId);
+                    continue;
+                }
+                Meta meta = new Meta();
+                meta.lastSuccessAt = parseLongObj(hashGet(hash, MetricsKeys.META_LAST_SUCCESS));
+                meta.lastFailAt = parseLongObj(hashGet(hash, MetricsKeys.META_LAST_FAIL));
+                Long cf = parseLongObj(hashGet(hash, MetricsKeys.META_CONSEC_FAIL));
+                meta.consecFail = cf == null ? 0L : cf;
+                out.put(assetId, meta);
+            }
+        } catch (Exception e) {
+            // Redis 不可用 → 全部走 DB 回退
+            misses.clear();
+            misses.addAll(orderedIds);
+        }
+        if (misses.isEmpty()) {
+            return out;
+        }
+        // Redis 过期 → 批量查正式 meta 表
+        try {
+            for (FlowMetricsMetaDO row : metricsMetaRepository.findByAssetTypeAndAssetIdIn(type.name(), misses)) {
+                Meta meta = new Meta();
+                meta.lastSuccessAt = row.getLastSuccessAt();
+                meta.lastFailAt = row.getLastFailAt();
+                meta.consecFail = row.getConsecFail() == null ? 0L : row.getConsecFail();
+                if (meta.lastSuccessAt != null || meta.lastFailAt != null || meta.consecFail > 0) {
+                    out.put(row.getAssetId(), meta);
+                }
+            }
+        } catch (Exception ignored) {
+            // fail-open
+        }
+        // 仍无 → 用已加载的分钟桶近似推导（零额外查询）
+        for (String assetId : misses) {
+            if (out.containsKey(assetId)) {
+                continue;
+            }
+            Meta meta = new Meta();
+            deriveMetaFromLoaded(minuteByAsset.get(assetId), meta);
+            out.put(assetId, meta);
+        }
+        return out;
+    }
+
+    /** 语义同 deriveMetaFromDb，但基于已加载的分钟桶推导，不再回表 */
+    private void deriveMetaFromLoaded(NavigableMap<LocalDateTime, MetricsBucketAgg> map, Meta meta) {
+        if (map == null || map.isEmpty()) {
+            return;
+        }
+        long consec = 0;
+        boolean streak = true;
+        for (Map.Entry<LocalDateTime, MetricsBucketAgg> e : map.descendingMap().entrySet()) {
+            long s = e.getValue().getSuccess();
+            long f = e.getValue().getFail();
+            if (meta.lastFailAt == null && f > 0) {
+                meta.lastFailAt = e.getKey().atZone(MetricsKeys.ZONE).toInstant().toEpochMilli();
+            }
+            if (meta.lastSuccessAt == null && s > 0) {
+                meta.lastSuccessAt = e.getKey().atZone(MetricsKeys.ZONE).toInstant().toEpochMilli();
+            }
+            if (!streak) {
+                continue;
+            }
+            if (s > 0) {
+                streak = false;
+                consec = 0;
+            } else if (f > 0) {
+                consec += f;
+            }
+        }
+        meta.consecFail = consec;
+    }
+
+    private static Object hashGet(Map<Object, Object> hash, String field) {
+        Object v = hash.get(field);
+        if (v == null) {
+            for (Map.Entry<Object, Object> e : hash.entrySet()) {
+                if (e.getKey() != null && field.equals(String.valueOf(e.getKey()).replace("\"", ""))) {
+                    return e.getValue();
+                }
+            }
+        }
+        return v;
     }
 
     public List<AssetMetricsRankItemDTO> rank(MetricsAssetType type, MetricsWindow window, String orderBy, int limit) {
@@ -139,6 +325,8 @@ public class MetricsQueryService {
                         type.name(), from, now.plusMinutes(1));
 
         Map<String, MetricsBucketAgg> byAsset = new HashMap<>();
+        // assetId -> (分钟 -> [success, fail])，用于推导窗口内最大连续失败
+        Map<String, NavigableMap<LocalDateTime, long[]>> sfByAsset = new HashMap<>();
         for (FlowMetricsMinuteDO row : rows) {
             byAsset.computeIfAbsent(row.getAssetId(), k -> new MetricsBucketAgg())
                     .addCounts(
@@ -146,9 +334,13 @@ public class MetricsQueryService {
                             nz(row.getAuthFailCnt()),
                             nz(row.getSumCostMs()), nz(row.getLatencyCount()),
                             LatencyHistogram.fromJson(row.getHistJson(), flowObjectMapper));
+            long[] sf = sfByAsset.computeIfAbsent(row.getAssetId(), k -> new TreeMap<>())
+                    .computeIfAbsent(row.getBucketStart(), k -> new long[2]);
+            sf[0] += nz(row.getSuccessCnt());
+            sf[1] += nz(row.getFailCnt());
         }
         // 合并 Redis 未刷桶
-        mergeRedisForType(type, from, now.plusMinutes(1), byAsset);
+        mergeRedisForType(type, from, now.plusMinutes(1), byAsset, sfByAsset);
 
         String order = orderBy == null ? "errorRate" : orderBy.trim();
         List<AssetMetricsRankItemDTO> list = new ArrayList<>();
@@ -176,6 +368,7 @@ public class MetricsQueryService {
                     .errorRate(sr == null ? null : 1.0 - sr)
                     .p95Ms(LatencyHistogram.percentile(agg.getHist(), 0.95))
                     .consecutiveFail(meta.consecFail)
+                    .maxConsecutiveFail(maxConsecFail(sfByAsset.get(e.getKey())))
                     .health(resolveHealth(tmp))
                     .build());
         }
@@ -253,7 +446,8 @@ public class MetricsQueryService {
     }
 
     private void mergeRedisForType(MetricsAssetType type, LocalDateTime from, LocalDateTime toExclusive,
-                                   Map<String, MetricsBucketAgg> byAsset) {
+                                   Map<String, MetricsBucketAgg> byAsset,
+                                   Map<String, NavigableMap<LocalDateTime, long[]>> sfByAsset) {
         Set<Object> active = FlowRedisUtil.smembers(MetricsKeys.ACTIVE_SET);
         if (active == null) {
             return;
@@ -268,7 +462,32 @@ public class MetricsQueryService {
             }
             MetricsBucketAgg redisAgg = readRedisBucket(parts.redisKey());
             byAsset.computeIfAbsent(parts.assetId(), k -> new MetricsBucketAgg()).add(redisAgg);
+            long[] sf = sfByAsset.computeIfAbsent(parts.assetId(), k -> new TreeMap<>())
+                    .computeIfAbsent(parts.bucketStart(), k -> new long[2]);
+            sf[0] += redisAgg.getSuccess();
+            sf[1] += redisAgg.getFail();
         }
+    }
+
+    /**
+     * 窗口内最大连续失败：分钟从旧到新扫描，有成功的分钟视为打断
+     * （分钟内成功失败交错无法精确恢复顺序，取保守近似；口径同 deriveMetaFromLoaded）。
+     */
+    private static long maxConsecFail(NavigableMap<LocalDateTime, long[]> byMinute) {
+        if (byMinute == null || byMinute.isEmpty()) {
+            return 0L;
+        }
+        long max = 0L;
+        long cur = 0L;
+        for (long[] sf : byMinute.values()) {
+            if (sf[0] > 0) {
+                cur = 0L;
+            } else if (sf[1] > 0) {
+                cur += sf[1];
+                max = Math.max(max, cur);
+            }
+        }
+        return max;
     }
 
     /** Redis 未刷桶与 DB 同分钟并存时，以 Redis 覆盖该分钟（避免双计）；跨触发维度则相加 */
@@ -290,8 +509,12 @@ public class MetricsQueryService {
     }
 
     private MetricsBucketAgg readRedisBucket(String key) {
+        return toBucketAgg(FlowRedisUtil.hgetAll(key));
+    }
+
+    /** 将 Redis 桶 hash 解析为内存聚合对象 */
+    private MetricsBucketAgg toBucketAgg(Map<Object, Object> hash) {
         MetricsBucketAgg agg = new MetricsBucketAgg();
-        Map<Object, Object> hash = FlowRedisUtil.hgetAll(key);
         if (hash == null || hash.isEmpty()) {
             return agg;
         }
@@ -462,6 +685,8 @@ public class MetricsQueryService {
             return switch (type) {
                 case API -> flowApiRepository.findById(id).map(FlowApiDO::getName).orElse(id);
                 case TASK -> flowTaskRepository.findById(id).map(FlowTaskDO::getName).orElse(id);
+                case MQ_TASK -> flowMqTaskRepository.findById(id)
+                        .map(org.yu.flow.module.mqtask.domain.FlowMqTaskDO::getName).orElse(id);
                 case SERVICE -> flowServiceFlowRepository.findById(id).map(FlowServiceFlowDO::getName).orElse(id);
                 case PLATFORM -> flowOpenPlatformRepository.findById(id).map(FlowOpenPlatformDO::getName).orElse(id);
             };

@@ -159,6 +159,8 @@ export function useControllerFormSubmit(options: UseControllerFormSubmitOptions)
         customPageWrapper: formValues.isCustomPage ? formValues.customPageWrapper : undefined,
         customFailWrapper: formValues.isCustomFail ? formValues.customFailWrapper : undefined,
         tags: formValues.tags && Array.isArray(formValues.tags) ? formValues.tags.join(',') : formValues.tags,
+        // 日志保留天数：留空提交 -1，后端语义为清除 API 级配置（回退系统保留天数）
+        logRetentionDays: formValues.logRetentionDays ?? -1,
         // 将契约数据序列化为 JSON 字符串存入 contract 字段，后端用于入参校验
         contract: JSON.stringify(contractSnapshot),
         // 查询响应缓存配置（WRAP 透传宿主，强制关闭）

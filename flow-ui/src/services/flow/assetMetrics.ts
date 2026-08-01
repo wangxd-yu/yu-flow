@@ -1,6 +1,6 @@
 import { request } from '@umijs/max';
 
-export type MetricsAssetType = 'API' | 'TASK' | 'SERVICE' | 'PLATFORM';
+export type MetricsAssetType = 'API' | 'TASK' | 'SERVICE' | 'MQ_TASK' | 'PLATFORM';
 export type MetricsWindow = '15m' | '1h' | '24h' | '7d' | '30d';
 
 export interface AssetMetricsSummary {
@@ -57,7 +57,10 @@ export interface AssetMetricsRankItem {
   successRate?: number | null;
   errorRate?: number | null;
   p95Ms?: number | null;
+  /** 当前连续失败（现值，任何一次成功即清零） */
   consecutiveFail: number;
+  /** 窗口内最大连续失败（分钟桶推导近似） */
+  maxConsecutiveFail?: number;
   health: string;
 }
 

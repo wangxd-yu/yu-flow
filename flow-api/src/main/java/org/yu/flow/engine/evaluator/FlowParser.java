@@ -24,6 +24,18 @@ public class FlowParser {
     /** DSL 解析专用：保持默认 Jackson 行为，避免与 API 层日期/PG 序列化配置互相干扰 */
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** 入口节点类型（互斥四选一） */
+    private static final String[] ENTRY_TYPES = {"request", "schedule", "service", "mqTrigger"};
+
+    private static boolean isEntryType(String type) {
+        for (String entryType : ENTRY_TYPES) {
+            if (entryType.equals(type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public FlowDefinition parse(String json) throws JsonProcessingException {
         JsonNode root = objectMapper.readTree(json);
 
@@ -68,135 +80,27 @@ public class FlowParser {
             }
         }
 
-        // 设置 startStepId（request / schedule / service 作为入口）
+        // 设置 startStepId（request / schedule / service / mqTrigger 作为入口）
         for (ObjectNode node : nodeMap.values()) {
             String type = node.get("type").asText();
-            if ("request".equals(type) || "schedule".equals(type) || "service".equals(type)) {
+            if (isEntryType(type)) {
                 result.put("startStepId", node.get("id").asText());
                 break;
             }
         }
 
-        // --- 对 Request 节点进行规则校验 ---
-        int requestCount = 0;
-        String requestNodeId = null;
-        for (ObjectNode node : nodeMap.values()) {
-            if ("request".equals(node.get("type").asText())) {
-                requestCount++;
-                requestNodeId = node.get("id").asText();
-            }
-        }
-
-        if (requestCount > 1) {
-            throw new FlowException("REQUEST_VALIDATION_ERROR", "单个流程中只能有一个 request 节点");
-        }
-
-        if (requestNodeId != null) {
-            // 校验没有别的节点连向 request (它必须是第一个节点)
-            for (ObjectNode node : nodeMap.values()) {
-                if (!node.get("id").asText().equals(requestNodeId)) {
-                    JsonNode nextNode = node.get("next");
-                    if (nextNode != null && nextNode.isObject()) {
-                        Iterator<JsonNode> nextTargets = nextNode.elements();
-                        while (nextTargets.hasNext()) {
-                            JsonNode target = nextTargets.next();
-                            if (target.isArray()) {
-                                for (JsonNode t : target) {
-                                    if (requestNodeId.equals(t.asText())) {
-                                        throw new FlowException("REQUEST_VALIDATION_ERROR", "request 节点必须为流程中的第一个节点，不能有其他节点指向它");
-                                    }
-                                }
-                            } else if (requestNodeId.equals(target.asText())) {
-                                throw new FlowException("REQUEST_VALIDATION_ERROR", "request 节点必须为流程中的第一个节点，不能有其他节点指向它");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- 对 Schedule 节点进行规则校验 ---
-        int scheduleCount = 0;
-        String scheduleNodeId = null;
-        for (ObjectNode node : nodeMap.values()) {
-            if ("schedule".equals(node.get("type").asText())) {
-                scheduleCount++;
-                scheduleNodeId = node.get("id").asText();
-            }
-        }
-
-        if (scheduleCount > 1) {
-            throw new FlowException("SCHEDULE_VALIDATION_ERROR", "单个流程中只能有一个 schedule 节点");
-        }
-
-        if (scheduleNodeId != null) {
-            for (ObjectNode node : nodeMap.values()) {
-                if (!node.get("id").asText().equals(scheduleNodeId)) {
-                    JsonNode nextNode = node.get("next");
-                    if (nextNode != null && nextNode.isObject()) {
-                        Iterator<JsonNode> nextTargets = nextNode.elements();
-                        while (nextTargets.hasNext()) {
-                            JsonNode target = nextTargets.next();
-                            if (target.isArray()) {
-                                for (JsonNode t : target) {
-                                    if (scheduleNodeId.equals(t.asText())) {
-                                        throw new FlowException("SCHEDULE_VALIDATION_ERROR", "schedule 节点必须为流程中的第一个节点，不能有其他节点指向它");
-                                    }
-                                }
-                            } else if (scheduleNodeId.equals(target.asText())) {
-                                throw new FlowException("SCHEDULE_VALIDATION_ERROR", "schedule 节点必须为流程中的第一个节点，不能有其他节点指向它");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- 对 Service 节点进行规则校验 ---
-        int serviceCount = 0;
-        String serviceNodeId = null;
-        for (ObjectNode node : nodeMap.values()) {
-            if ("service".equals(node.get("type").asText())) {
-                serviceCount++;
-                serviceNodeId = node.get("id").asText();
-            }
-        }
-
-        if (serviceCount > 1) {
-            throw new FlowException("SERVICE_VALIDATION_ERROR", "单个流程中只能有一个 service 节点");
-        }
-
-        if (serviceNodeId != null) {
-            for (ObjectNode node : nodeMap.values()) {
-                if (!node.get("id").asText().equals(serviceNodeId)) {
-                    JsonNode nextNode = node.get("next");
-                    if (nextNode != null && nextNode.isObject()) {
-                        Iterator<JsonNode> nextTargets = nextNode.elements();
-                        while (nextTargets.hasNext()) {
-                            JsonNode target = nextTargets.next();
-                            if (target.isArray()) {
-                                for (JsonNode t : target) {
-                                    if (serviceNodeId.equals(t.asText())) {
-                                        throw new FlowException("SERVICE_VALIDATION_ERROR", "service 节点必须为流程中的第一个节点，不能有其他节点指向它");
-                                    }
-                                }
-                            } else if (serviceNodeId.equals(target.asText())) {
-                                throw new FlowException("SERVICE_VALIDATION_ERROR", "service 节点必须为流程中的第一个节点，不能有其他节点指向它");
-                            }
-                        }
-                    }
-                }
+        // --- 入口节点规则校验：每种入口单例 + 不能被其他节点指向 ---
+        int entryKinds = 0;
+        for (String entryType : ENTRY_TYPES) {
+            if (validateEntryNode(nodeMap, entryType)) {
+                entryKinds++;
             }
         }
 
         // 同一 DSL 仅允许一种入口类型
-        int entryKinds = 0;
-        if (requestCount > 0) entryKinds++;
-        if (scheduleCount > 0) entryKinds++;
-        if (serviceCount > 0) entryKinds++;
         if (entryKinds > 1) {
             throw new FlowException("ENTRY_VALIDATION_ERROR",
-                    "单个流程只能有一种入口（request / schedule / service），不能混用");
+                    "单个流程只能有一种入口（request / schedule / service / mqTrigger），不能混用");
         }
         // ---------------------------------
 
@@ -208,6 +112,55 @@ public class FlowParser {
         result.set("steps", steps);
 
         return result;
+    }
+
+    /**
+     * 校验单一入口类型的规则：流程内单例 + 不能被其他节点的 next 指向（必须是第一个节点）。
+     * 错误码格式与历史保持一致：{TYPE}_VALIDATION_ERROR（如 REQUEST_VALIDATION_ERROR）。
+     *
+     * @return 该入口类型是否存在于流程中
+     */
+    private boolean validateEntryNode(Map<String, ObjectNode> nodeMap, String entryType) {
+        int count = 0;
+        String entryNodeId = null;
+        for (ObjectNode node : nodeMap.values()) {
+            if (entryType.equals(node.get("type").asText())) {
+                count++;
+                entryNodeId = node.get("id").asText();
+            }
+        }
+
+        String errorCode = entryType.toUpperCase() + "_VALIDATION_ERROR";
+        if (count > 1) {
+            throw new FlowException(errorCode, "单个流程中只能有一个 " + entryType + " 节点");
+        }
+
+        if (entryNodeId != null) {
+            // 校验没有别的节点连向入口节点 (它必须是第一个节点)
+            for (ObjectNode node : nodeMap.values()) {
+                if (!node.get("id").asText().equals(entryNodeId)) {
+                    JsonNode nextNode = node.get("next");
+                    if (nextNode != null && nextNode.isObject()) {
+                        Iterator<JsonNode> nextTargets = nextNode.elements();
+                        while (nextTargets.hasNext()) {
+                            JsonNode target = nextTargets.next();
+                            if (target.isArray()) {
+                                for (JsonNode t : target) {
+                                    if (entryNodeId.equals(t.asText())) {
+                                        throw new FlowException(errorCode,
+                                                entryType + " 节点必须为流程中的第一个节点，不能有其他节点指向它");
+                                    }
+                                }
+                            } else if (entryNodeId.equals(target.asText())) {
+                                throw new FlowException(errorCode,
+                                        entryType + " 节点必须为流程中的第一个节点，不能有其他节点指向它");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return count > 0;
     }
 
     /**

@@ -15,8 +15,10 @@ import '@/styles/fullHeightTable.css';
 /** 列构建上下文：列定义留在页面，通过它访问壳内状态 */
 export interface AssetListShellContext<T> {
   healthMap: Record<string, AssetHealth>;
-  /** 打开编辑抽屉（先拉详情，失败提示「加载{名词}详情失败」） */
-  openEdit: (record: T) => void;
+  /** fetchRowExtra 的返回值，未配置时为空对象 */
+  extraMap: Record<string, any>;
+  /** 打开编辑抽屉（先拉详情，失败提示「加载{名词}详情失败」）；可指定初始 Tab（如 'logs'） */
+  openEdit: (record: T, tab?: string) => void;
   /** 刷新表格 */
   reload: () => void;
   /** 页面自定义删除逻辑后调用（等价原 handleRemove + reload） */
@@ -46,7 +48,7 @@ export interface AssetDirectoryListShellProps<T extends { id: string; directoryI
   /** 空态提示语 */
   emptyHint: string;
   /** 运行健康批查的资产类型 */
-  metricsAssetType: 'TASK' | 'SERVICE';
+  metricsAssetType: 'TASK' | 'SERVICE' | 'MQ_TASK';
   /** URL 深链参数名（taskId / serviceId），命中则直接打开详情 */
   deepLinkParam: string;
   /** 拉取单条详情（深链与编辑共用） */
@@ -63,6 +65,13 @@ export interface AssetDirectoryListShellProps<T extends { id: string; directoryI
   removeRows: (rows: T[]) => Promise<boolean>;
   /** 列定义（含操作列），每次渲染基于最新上下文构建 */
   buildColumns: (ctx: AssetListShellContext<T>) => ProColumns<T>[];
+  /**
+   * 行附加数据（如 MQ 任务的消费订阅存活状态），与健康批查一同在分页后拉取。
+   * <p>失败不影响列表渲染（降级为空对象）；返回值经 ctx.extraMap 给列使用。</p>
+   */
+  fetchRowExtra?: (items: T[]) => Promise<Record<string, any>>;
+  /** 表格横向滚动宽度，列较多的页面可调大（默认 1400） */
+  scrollX?: number;
   /** 表单弹层：仅在 visible 时渲染 */
   renderForm: (ctx: AssetFormContext<T>) => React.ReactNode;
   /** 页面级附加弹层（如手动调用 Modal），始终渲染 */
@@ -92,6 +101,8 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
     removeRows,
     buildColumns,
     renderForm,
+    fetchRowExtra,
+    scrollX = 1400,
     children,
   } = props;
 
@@ -102,6 +113,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [selectedRowsState, setSelectedRows] = useState<T[]>([]);
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
+  const [extraMap, setExtraMap] = useState<Record<string, any>>({});
   const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
   // 空态区分：是否处于筛选（目录 / 搜索条件）
   const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
@@ -139,12 +151,12 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
     setFormVisible(true);
   };
 
-  const handleEditAction = async (record: T) => {
+  const handleEditAction = async (record: T, tab?: string) => {
     try {
       const detail: any = await fetchDetail(record.id);
       setCurrentRow(detail?.data || detail || record);
       setIsEditMode(true);
-      setFormInitialTab(undefined);
+      setFormInitialTab(tab);
       setFormVisible(true);
     } catch {
       message.error(`加载${entityLabel}详情失败`);
@@ -177,6 +189,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
 
   const columnCtx: AssetListShellContext<T> = {
     healthMap,
+    extraMap,
     openEdit: handleEditAction,
     reload,
     removeAndReload,
@@ -197,7 +210,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
             className="fh-table fh-table-fit"
             headerTitle={`${listTitle} (${selectedDirectoryName || '全部'})`}
             tableLayout="fixed"
-            scroll={{ x: 1400, y: 100000 }}
+            scroll={{ x: scrollX, y: 100000 }}
             pagination={{
               defaultPageSize: 20,
               showSizeChanger: true,
@@ -246,6 +259,13 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
                 setHealthMap(map);
               } catch {
                 setHealthMap({});
+              }
+              if (fetchRowExtra) {
+                try {
+                  setExtraMap(await fetchRowExtra(items));
+                } catch {
+                  setExtraMap({});
+                }
               }
               return {
                 data: items,

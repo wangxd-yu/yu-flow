@@ -6,6 +6,7 @@ export type { OpenAssetDeepLinkOptions } from './openAssetDeepLink';
 export {
   default as MetricsDualAxes,
   aggregateByHour,
+  aggregateByDay,
   prepareChartPoints,
 } from './MetricsDualAxes';
 export type { MetricsSeriesPoint, MetricsDualAxesProps, SeriesVisible } from './MetricsDualAxes';

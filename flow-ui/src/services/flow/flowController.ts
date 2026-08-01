@@ -23,6 +23,8 @@ export interface FlowController {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   publishStatus?: 0 | 1;
   logEnabled?: boolean;
+  /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数；提交 -1 表示清除 API 级配置 */
+  logRetentionDays?: number | null;
   /**
    * 查询响应 Redis 缓存配置 JSON 字符串
    * { enabled, ttlSeconds, keyParams:[{source,name}], includePageable }

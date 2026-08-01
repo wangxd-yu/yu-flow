@@ -33,7 +33,7 @@ export type ExtendedFlowEditorProps = FlowEditorProps & {
   apiName?: string;
   readonlyTrace?: any;
   defaultEntryNode?: DslNodeType;
-  editorContext?: 'api' | 'task' | 'service';
+  editorContext?: 'api' | 'task' | 'service' | 'mq';
   triggerMode?: 'http' | 'service';
   defaultTriggerBody?: string;
   defaultTriggerHeaders?: Record<string, string>;

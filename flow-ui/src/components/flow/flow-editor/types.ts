@@ -44,6 +44,8 @@ export type DslNodeType =
   | 'response'
   | 'request'
   | 'schedule'
+  | 'mqTrigger'    // MQ 消息触发入口（MQ 任务专用）
+  | 'mqSend'       // 发送 MQ 消息
   | 'service'
   | 'template'
   | 'collect'      // Scatter-Gather: 汇聚屏障（线程接力并发 Barrier）
@@ -476,6 +478,26 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     color: '#722ed1',
     defaultPorts: [
       { id: 'out', group: 'right' },
+    ],
+  },
+  mqTrigger: {
+    type: 'mqTrigger',
+    label: '消息触发 (MQ Trigger)',
+    category: '基础节点',
+    color: '#0958d9',
+    defaultPorts: [
+      { id: 'out', group: 'right' },
+    ],
+    singleton: true,
+  },
+  mqSend: {
+    type: 'mqSend',
+    label: '发送消息 (MQ Send)',
+    category: '调用节点',
+    color: '#13c2c2',
+    defaultPorts: [
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'out', group: 'absolute-out-solid' },
     ],
   },
   service: {

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS flow_api_info (
   published_snapshot text,
   publish_time timestamp,
   log_enabled smallint NOT NULL DEFAULT 1,
+  log_retention_days integer,
   cache_config text,
   security_config text,
   view_export_config text,
@@ -69,6 +70,7 @@ COMMENT ON COLUMN flow_api_info.text_content IS '静态文本 (STRING) — 纯�
 COMMENT ON COLUMN flow_api_info.published_snapshot IS '发布时的完整内容快照 (JSON)，运行时引擎从此字段读取';
 COMMENT ON COLUMN flow_api_info.publish_time IS '最近一次发布时间';
 COMMENT ON COLUMN flow_api_info.log_enabled IS '是否记录执行日志：1-开启，0-关闭';
+COMMENT ON COLUMN flow_api_info.log_retention_days IS '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数';
 COMMENT ON COLUMN flow_api_info.cache_config IS '响应缓存配置 JSON：enabled/ttlSeconds/keyParams/includePageable';
 COMMENT ON COLUMN flow_api_info.security_config IS '入站防护 JSON：authMode/antiReplay/rateLimit/ipAllowlist';
 COMMENT ON COLUMN flow_api_info.view_export_config IS '数据查看与导出 JSON：columns/sheetName/maxExportRows';

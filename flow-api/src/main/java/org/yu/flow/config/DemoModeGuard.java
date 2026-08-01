@@ -63,6 +63,8 @@ public class DemoModeGuard {
         loadProtectedIds("flow_task_info", "定时任务");
         loadProtectedIds("flow_service_info", "服务编排");
         loadProtectedIds("flow_open_platform", "开放平台");
+        loadProtectedIds("flow_mq_connection", "MQ 连接");
+        loadProtectedIds("flow_mq_task_info", "MQ 任务");
         log.warn("[DemoModeGuard] 演示模式资产锁定完成，共保护 {} 个资产 ID。", protectedIds.size());
     }
 
@@ -176,6 +178,22 @@ public class DemoModeGuard {
                     "DEMO_RESTRICTED",
                     "演示模式限制：Delay 节点 [" + delayStepId + "] 的等待时间（"
                             + delayMs + "ms）超出上限（" + limit + "ms），已被安全机制拦截。"
+            );
+        }
+    }
+
+    /**
+     * 校验 MQ 消息发送，演示模式下禁止向外部消息队列投递。
+     *
+     * @param topic 目标 topic（用于日志）
+     * @throws FlowException 若当前为演示模式
+     */
+    public void checkMqSend(String topic) {
+        if (yuFlowProperties.isDemoMode()) {
+            log.warn("[DemoModeGuard] 拒绝 MQ 消息发送，topic={}，当前为演示模式。", topic);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：禁止向外部消息队列发送消息。如需体验 MQ 节点，请联系管理员获取完整版！"
             );
         }
     }

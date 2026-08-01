@@ -1,0 +1,29 @@
+-- Table: flow_mq_task_info
+-- MQ 任务定义（mqTrigger 入口流程资产）
+CREATE TABLE IF NOT EXISTS `flow_mq_task_info` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `name` varchar(128) NOT NULL COMMENT '任务名称',
+  `directory_id` varchar(32) COMMENT '关联目录ID（复用全局目录树）',
+  `connection_code` varchar(64) NOT NULL COMMENT '绑定 MQ 连接编码（flow_mq_connection.code）',
+  `topic` varchar(255) NOT NULL COMMENT '订阅 topic / 队列名',
+  `consumer_group` varchar(128) COMMENT '消费组（Kafka group.id；Rabbit 忽略）',
+  `concurrency` int NOT NULL DEFAULT 1 COMMENT '消费并发数',
+  `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '启用状态：0=停用, 1=启用',
+  `log_enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否记录执行日志',
+  `log_retention_days` int COMMENT '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数',
+  `dsl_content` mediumtext COMMENT '流程定义 DSL JSON（草稿）',
+  `publish_status` tinyint NOT NULL DEFAULT 0 COMMENT '发布状态：0=未发布，1=已发布',
+  `published_snapshot` mediumtext COMMENT '发布快照 JSON：dslContent',
+  `publish_time` datetime COMMENT '最近发布时间',
+  `info` varchar(512) COMMENT '任务描述',
+  `tags` varchar(255) COMMENT '标签，英文逗号分隔',
+  `deleted` int NOT NULL DEFAULT 0 COMMENT '软删除：0=正常, 1=已删除',
+  `create_time` datetime COMMENT '创建时间',
+  `update_time` datetime COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_mq_task_info_create_time` (`create_time`),
+  KEY `idx_flow_mq_task_info_directory_id` (`directory_id`),
+  KEY `idx_flow_mq_task_info_enabled` (`enabled`),
+  KEY `idx_flow_mq_task_info_publish_status` (`publish_status`),
+  KEY `idx_flow_mq_task_info_connection_code` (`connection_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务定义';

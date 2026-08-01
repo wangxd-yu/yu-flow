@@ -42,16 +42,42 @@ export function aggregateByHour(points: MetricsSeriesPoint[]): MetricsSeriesPoin
   return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
 }
 
+export function aggregateByDay(points: MetricsSeriesPoint[]): MetricsSeriesPoint[] {
+  const map = new Map<string, MetricsSeriesPoint>();
+  for (const p of points) {
+    const d = dayjs(p.time.includes('T') ? p.time : p.time.replace(' ', 'T'));
+    if (!d.isValid()) continue;
+    const key = d.startOf('day').format('YYYY-MM-DD HH:mm:ss');
+    const cur = map.get(key) || { time: key, success: 0, fail: 0, p95Ms: 0 };
+    cur.success += p.success;
+    cur.fail += p.fail;
+    cur.p95Ms = Math.max(cur.p95Ms ?? 0, p.p95Ms ?? 0);
+    map.set(key, cur);
+  }
+  return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
+}
+
 export function prepareChartPoints(
   points: MetricsSeriesPoint[],
   window: MetricsWindow,
   granularity?: string,
 ): { chartPoints: MetricsSeriesPoint[]; displayBucket: string } {
-  const longWin = window === '24h' || window === '7d' || window === '30d';
   const gran = granularity || '';
-  if (longWin && (gran !== 'hour' || points.length > 36)) {
-    return { chartPoints: aggregateByHour(points), displayBucket: 'hour' };
+  // 7d / 30d → 按天，一天一根柱子；后端已按天聚合则直接用，否则本地兜底
+  if (window === '7d' || window === '30d') {
+    if (gran === 'day') {
+      return { chartPoints: points, displayBucket: 'day' };
+    }
+    return { chartPoints: aggregateByDay(points), displayBucket: 'day' };
   }
+  // 24h → 按小时聚合
+  if (window === '24h') {
+    if (gran !== 'hour' || points.length > 36) {
+      return { chartPoints: aggregateByHour(points), displayBucket: 'hour' };
+    }
+    return { chartPoints: points, displayBucket: 'hour' };
+  }
+  // 15m / 1h → 保持分钟粒度
   return {
     chartPoints: points,
     displayBucket: gran === 'hour' ? 'hour' : 'minute',
@@ -208,7 +234,8 @@ const MetricsDualAxes: React.FC<MetricsDualAxesProps> = ({
       {showLegend && (
         <div className="yf-metrics-chart-head">
           <div className="yf-metrics-chart-meta">
-            {n} 点 · 每点 {displayBucket === 'hour' ? '1 小时' : '1 分钟'}
+            {n} 点 · 每点{' '}
+            {displayBucket === 'day' ? '1 天' : displayBucket === 'hour' ? '1 小时' : '1 分钟'}
           </div>
           <div className="yf-metrics-legend" role="group" aria-label="图例开关">
             {(

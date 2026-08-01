@@ -52,6 +52,9 @@ public class FlowTaskDO implements Serializable {
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean logEnabled;
 
+    /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
+    private Integer logRetentionDays;
+
     /** 流程定义 DSL JSON（草稿） */
     @Column(columnDefinition = "MEDIUMTEXT")
     private String dslContent;

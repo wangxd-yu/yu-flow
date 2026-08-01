@@ -76,12 +76,20 @@ public class AssetMetricsRecorder {
         long now = System.currentTimeMillis();
         if (outcome == MetricsOutcome.SUCCESS) {
             FlowRedisUtil.hset(meta, MetricsKeys.META_LAST_SUCCESS, String.valueOf(now));
-            FlowRedisUtil.hset(meta, MetricsKeys.META_CONSEC_FAIL, "0");
+            // 删除字段即视为 0，同时保证下次 HINCRBY 从原生整数起步
+            FlowRedisUtil.hdel(meta, MetricsKeys.META_CONSEC_FAIL);
         } else if (outcome == MetricsOutcome.FAIL) {
             // 仅业务失败拉高连续失败；AUTH_FAIL 不污染健康度
             FlowRedisUtil.hset(meta, MetricsKeys.META_LAST_FAIL, String.valueOf(now));
-            long prev = parseLong(FlowRedisUtil.hget(meta, MetricsKeys.META_CONSEC_FAIL));
-            FlowRedisUtil.hset(meta, MetricsKeys.META_CONSEC_FAIL, String.valueOf(prev + 1));
+            try {
+                // 原子累加，避免并发失败时 hget/hset 互相覆盖少计
+                FlowRedisUtil.hincrBy(meta, MetricsKeys.META_CONSEC_FAIL, 1);
+            } catch (Exception e) {
+                // 旧版本以 JSON 字符串（带引号）写入，HINCRBY 会失败；迁移为原生整数后重放
+                long prev = parseLong(FlowRedisUtil.hget(meta, MetricsKeys.META_CONSEC_FAIL));
+                FlowRedisUtil.hdel(meta, MetricsKeys.META_CONSEC_FAIL);
+                FlowRedisUtil.hincrBy(meta, MetricsKeys.META_CONSEC_FAIL, prev + 1);
+            }
         } else {
             return;
         }
@@ -95,7 +103,7 @@ public class AssetMetricsRecorder {
             return 0L;
         }
         try {
-            return Long.parseLong(String.valueOf(v));
+            return Long.parseLong(String.valueOf(v).replace("\"", ""));
         } catch (Exception e) {
             return 0L;
         }

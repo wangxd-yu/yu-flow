@@ -19,6 +19,8 @@ import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -35,6 +37,12 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code LOG_EXECUTION_RETENTION_DAYS} — API 执行日志，默认 30</li>
  *   <li>{@code LOG_LOGIN_RETENTION_DAYS} — 登录审计，默认 90</li>
  *   <li>{@code LOG_TASK_RETENTION_DAYS} — 定时任务日志，默认 30</li>
+ *   <li>{@code LOG_MQ_TASK_RETENTION_DAYS} — MQ 任务日志，默认 30</li>
+ * </ul>
+ *
+ * <p>定时任务日志 / MQ 任务日志 / API 执行日志支持资产级覆盖（{@code logRetentionDays}）：
+ * null=跟随系统配置，0=永久保留（豁免清理），&gt;0=按资产自定义天数清理。</p>
+ * <ul>
  *   <li>{@code LOG_SERVICE_RETENTION_DAYS} — 服务编排日志，默认 30</li>
  *   <li>{@code LOG_THIRD_RETENTION_DAYS} — 第三方调用日志，默认 30</li>
  *   <li>{@code LOG_OPEN_CALL_RETENTION_DAYS} — 开放平台调用日志，默认 30</li>
@@ -54,6 +62,7 @@ public class LogCleanupTask {
     public static final String CONFIG_KEY_EXECUTION_RETENTION = "LOG_EXECUTION_RETENTION_DAYS";
     public static final String CONFIG_KEY_LOGIN_RETENTION = "LOG_LOGIN_RETENTION_DAYS";
     public static final String CONFIG_KEY_TASK_RETENTION = "LOG_TASK_RETENTION_DAYS";
+    public static final String CONFIG_KEY_MQ_TASK_RETENTION = "LOG_MQ_TASK_RETENTION_DAYS";
     public static final String CONFIG_KEY_SERVICE_RETENTION = "LOG_SERVICE_RETENTION_DAYS";
     public static final String CONFIG_KEY_THIRD_RETENTION = "LOG_THIRD_RETENTION_DAYS";
     public static final String CONFIG_KEY_OPEN_CALL_RETENTION = "LOG_OPEN_CALL_RETENTION_DAYS";
@@ -65,6 +74,7 @@ public class LogCleanupTask {
     private static final int DEFAULT_EXECUTION_RETENTION_DAYS = 30;
     private static final int DEFAULT_LOGIN_RETENTION_DAYS = 90;
     private static final int DEFAULT_TASK_RETENTION_DAYS = 30;
+    private static final int DEFAULT_MQ_TASK_RETENTION_DAYS = 30;
     private static final int DEFAULT_SERVICE_RETENTION_DAYS = 30;
     private static final int DEFAULT_THIRD_RETENTION_DAYS = 30;
     private static final int DEFAULT_OPEN_CALL_RETENTION_DAYS = 30;
@@ -74,9 +84,17 @@ public class LogCleanupTask {
     @Resource
     private FlowExecutionLogRepository flowExecutionLogRepository;
     @Resource
+    private org.yu.flow.module.api.repository.FlowApiRepository flowApiRepository;
+    @Resource
     private LoginLogRepository loginLogRepository;
     @Resource
     private FlowTaskLogRepository flowTaskLogRepository;
+    @Resource
+    private org.yu.flow.module.task.repository.FlowTaskRepository flowTaskRepository;
+    @Resource
+    private org.yu.flow.module.mqtask.repository.FlowMqTaskLogRepository flowMqTaskLogRepository;
+    @Resource
+    private org.yu.flow.module.mqtask.repository.FlowMqTaskRepository flowMqTaskRepository;
     @Resource
     private FlowServiceLogRepository flowServiceLogRepository;
     @Resource
@@ -133,6 +151,7 @@ public class LogCleanupTask {
             runOne("执行日志", this::cleanupExecutionLogs);
             runOne("登录日志", this::cleanupLoginLogs);
             runOne("任务日志", this::cleanupTaskLogs);
+            runOne("MQ任务日志", this::cleanupMqTaskLogs);
             runOne("服务日志", this::cleanupServiceLogs);
             runOne("第三方日志", this::cleanupThirdLogs);
             runOne("开放调用日志", this::cleanupOpenCallLogs);
@@ -152,11 +171,14 @@ public class LogCleanupTask {
     }
 
     private void cleanupExecutionLogs() {
-        cleanupByLocalDateTimeDays(
+        cleanupWithTaskOverrides(
                 CONFIG_KEY_EXECUTION_RETENTION,
                 DEFAULT_EXECUTION_RETENTION_DAYS,
                 "执行日志",
-                threshold -> flowExecutionLogRepository.deleteByCreateTimeBefore(threshold));
+                flowApiRepository.findLogRetentionOverrides(),
+                (apiId, threshold) -> flowExecutionLogRepository.deleteByApiIdAndCreateTimeBefore(apiId, threshold),
+                threshold -> flowExecutionLogRepository.deleteByCreateTimeBefore(threshold),
+                (threshold, excludeIds) -> flowExecutionLogRepository.deleteByCreateTimeBeforeAndApiIdNotIn(threshold, excludeIds));
     }
 
     private void cleanupLoginLogs() {
@@ -168,11 +190,25 @@ public class LogCleanupTask {
     }
 
     private void cleanupTaskLogs() {
-        cleanupByLocalDateTimeDays(
+        cleanupWithTaskOverrides(
                 CONFIG_KEY_TASK_RETENTION,
                 DEFAULT_TASK_RETENTION_DAYS,
                 "任务日志",
-                threshold -> flowTaskLogRepository.deleteByCreateTimeBefore(threshold));
+                flowTaskRepository.findLogRetentionOverrides(),
+                (taskId, threshold) -> flowTaskLogRepository.deleteByTaskIdAndCreateTimeBefore(taskId, threshold),
+                threshold -> flowTaskLogRepository.deleteByCreateTimeBefore(threshold),
+                (threshold, excludeIds) -> flowTaskLogRepository.deleteByCreateTimeBeforeAndTaskIdNotIn(threshold, excludeIds));
+    }
+
+    private void cleanupMqTaskLogs() {
+        cleanupWithTaskOverrides(
+                CONFIG_KEY_MQ_TASK_RETENTION,
+                DEFAULT_MQ_TASK_RETENTION_DAYS,
+                "MQ任务日志",
+                flowMqTaskRepository.findLogRetentionOverrides(),
+                (taskId, threshold) -> flowMqTaskLogRepository.deleteByTaskIdAndCreateTimeBefore(taskId, threshold),
+                threshold -> flowMqTaskLogRepository.deleteByCreateTimeBefore(threshold),
+                (threshold, excludeIds) -> flowMqTaskLogRepository.deleteByCreateTimeBeforeAndTaskIdNotIn(threshold, excludeIds));
     }
 
     private void cleanupServiceLogs() {
@@ -227,6 +263,49 @@ public class LogCleanupTask {
         }
         LocalDateTime threshold = LocalDateTime.now(ZoneId.of("Asia/Shanghai")).minusDays(retentionDays);
         Integer deleted = transactionTemplate.execute(status -> deleter.apply(threshold));
+        logDeleted(label, retentionDays, deleted, threshold);
+    }
+
+    /**
+     * 带资产级覆盖的日志清理（两段式）：
+     * <ol>
+     *   <li>资产级：{@code logRetentionDays > 0} 的资产（任务 / API）按各自天数清理；{@code = 0} 永久保留，跳过删除</li>
+     *   <li>系统级：其余资产按系统配置的保留天数清理（配置 ≤0 表示禁用系统级清理）；
+     *       有资产级配置的资产一律从系统级删除中排除</li>
+     * </ol>
+     */
+    private void cleanupWithTaskOverrides(
+            String configKey,
+            int defaultDays,
+            String label,
+            List<Object[]> overrides,
+            java.util.function.BiFunction<String, LocalDateTime, Integer> perTaskDeleter,
+            java.util.function.Function<LocalDateTime, Integer> globalDeleter,
+            java.util.function.BiFunction<LocalDateTime, List<String>, Integer> globalExcludeDeleter) {
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        List<String> excludeIds = new ArrayList<>();
+        for (Object[] row : overrides) {
+            String taskId = (String) row[0];
+            Integer days = row[1] != null ? ((Number) row[1]).intValue() : null;
+            if (taskId == null || days == null) continue;
+            excludeIds.add(taskId);
+            if (days <= 0) {
+                log.debug("[LogCleanupTask] {}：资产 {} 配置永久保留，跳过清理", label, taskId);
+                continue;
+            }
+            LocalDateTime taskThreshold = now.minusDays(days);
+            Integer deleted = transactionTemplate.execute(status -> perTaskDeleter.apply(taskId, taskThreshold));
+            logDeleted(label + "(资产 " + taskId + ")", days, deleted, taskThreshold);
+        }
+        int retentionDays = sysConfigCacheManager.getIntConfig(configKey, defaultDays);
+        if (retentionDays <= 0) {
+            log.debug("[LogCleanupTask] {}系统级清理已禁用（保留天数={}）", label, retentionDays);
+            return;
+        }
+        LocalDateTime threshold = now.minusDays(retentionDays);
+        Integer deleted = transactionTemplate.execute(status -> excludeIds.isEmpty()
+                ? globalDeleter.apply(threshold)
+                : globalExcludeDeleter.apply(threshold, excludeIds));
         logDeleted(label, retentionDays, deleted, threshold);
     }
 

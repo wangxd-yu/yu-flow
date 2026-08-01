@@ -262,6 +262,17 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                 />
               </Col>
 
+              <Col span={12}>
+                <ProFormDigit
+                  name="logRetentionDays"
+                  label="日志保留天数"
+                  placeholder="留空跟随系统配置"
+                  min={0}
+                  tooltip="留空=跟随系统配置（LOG_EXECUTION_RETENTION_DAYS），0=永久保留，>0=按天数自动清理执行日志"
+                  fieldProps={{ precision: 0, style: { width: '100%' } }}
+                />
+              </Col>
+
               <Col span={24}>
                 <ProFormSelect
                   name="tags"

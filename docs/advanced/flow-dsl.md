@@ -48,7 +48,7 @@ outline: deep
 | 省略 `source.port` | 默认为 `out` |
 | 省略 `target.port` | 默认为 `in` |
 | 同一源端口多条边 | 并行扇出（`next[port]` 变为目标 id 数组） |
-| 入口节点 | `request` / `schedule` / `service` **不能**作为任何边的 `target` |
+| 入口节点 | `request` / `schedule` / `service` / `mqTrigger` **不能**作为任何边的 `target` |
 
 ### 2.1 常用端口
 
@@ -104,10 +104,11 @@ outline: deep
 | `data.inputs` | 变量装载（§4） |
 | `data.language` | 表达式语言（If / Switch / Evaluate） |
 
-**启动节点**：引擎取第一个 `request` | `schedule` | `service`。  
-三种入口**互斥**（同一流程只能有一种）。  
+**启动节点**：引擎取第一个 `request` | `schedule` | `service` | `mqTrigger`。  
+四种入口**互斥**（同一流程只能有一种）。  
 **API 流程推荐**：`request` → … → `response`。  
-**内部服务编排**：`service` → …（无网关/定时；由其他流程的 `api` 节点以 `targetType=service` 调用）。
+**内部服务编排**：`service` → …（无网关/定时；由其他流程的 `api` 节点以 `targetType=service` 调用）。  
+**消息驱动流程**：`mqTrigger` → …（由 MQ 任务订阅 Topic 触发；消息元信息写入 `$.mq.*`）。
 
 ---
 
@@ -142,6 +143,7 @@ outline: deep
 | `$.error` | ErrorHandler 场景下的异常信息 |
 | `$.schedule.*` | Schedule：`taskName`/`cron`/`triggerTime` |
 | `$.service.*` | Service 入口：`serviceName`/`serviceId`/`input`/`triggerTime` |
+| `$.mq.*` | MqTrigger 入口：`topic`/`message`（JSON 自动解析，失败保留原始字符串）/`headers`/`messageId`/`triggerTime` |
 
 遗留路径 `$.nodeId.result`：仅部分旧节点双写；**新生成请一律用 `.out`**。
 
@@ -231,6 +233,24 @@ outline: deep
 画布仅一个出口 `out`，返回值可为对象（不必为字段拆端口）。  
 调用方入参经校验后注入为 `$.service.input`。  
 **CALL 执行走已发布快照**；调试/手动可跑草稿。
+
+---
+
+### 5.2.2 `mqTrigger` — 消息队列触发入口
+
+| | |
+| --- | --- |
+| 入端口 | 无 |
+| 出端口 | `out` |
+| 约束 | 流程内唯一；不可作为边的 target；不可与 `request`/`schedule`/`service` 并存 |
+| 运行时 | 写入 `$.mq.topic` / `message` / `headers` / `messageId` / `triggerTime` |
+
+```json
+{ "id": "mq_trigger_1", "type": "mqTrigger", "data": {} }
+```
+
+订阅的连接/Topic/消费组配在 **MQ 任务**资产上（非节点 data）；消费订阅仅跑**已发布快照**，草稿用调试运行/模拟触发验证。  
+消息体为合法 JSON 时自动解析为对象（`$.mq.message.orderId` 可直接取字段），否则保留原始字符串。
 
 ---
 
@@ -648,6 +668,28 @@ SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数
 
 ---
 
+### 5.17.1 `mqSend` — 发送 MQ 消息
+
+依赖 **MQ 连接配置**（菜单：消息队列 → 连接配置），通过 `connectionCode` 引用。字段支持 `${var}`（来自 `inputs`）；也可用 `inputs.connectionCode` / `topic` / `messageKey` / `message` 覆盖；`inputs.message` 为对象时自动 JSON 序列化。
+
+```json
+{
+  "id": "mq_send_1",
+  "type": "mqSend",
+  "data": {
+    "connectionCode": "order_rabbit",
+    "topic": "order.created",
+    "messageKey": "${orderId}",
+    "message": "{\"orderId\": \"${orderId}\"}",
+    "inputs": { "orderId": "$.req.params.orderId" }
+  }
+}
+```
+
+入 `in:payload`，出 `out`（`{ success, messageId, topic, timeMs }`）。`connectionCode` / `topic` / `message` 缺失时报错中断。
+
+---
+
 ### 5.18 `errorHandler` — 异常汇聚（单例）
 
 | | |
@@ -801,7 +843,7 @@ SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数
 ## 7. 给大模型的生成检查清单
 
 1. **根对象**只有 `nodes` + `edges`（可加 `id`/`version`）。
-2. **恰好一个入口**：`request` / `schedule` / `service` 三选一；API 场景再配 **至少一个** `response`；服务编排用 `service`，无 `response` 要求。
+2. **恰好一个入口**：`request` / `schedule` / `service` / `mqTrigger` 四选一；API 场景再配 **至少一个** `response`；服务编排用 `service`、消息驱动用 `mqTrigger`，均无 `response` 要求。
 3. 每个节点：`id` 唯一、`type` 合法、业务字段在 `data`。
 4. 每条控制流边的 `source.port` 必须是该类型**真实出口**（If 用 `true`/`false`，Switch 用 `case_<id>`/`default`，HttpRequest 用 `success`/`fail`）。
 5. 数据引用统一 `$.节点id.out`（Request 用 `.headers/.params/.body`；服务编排用 `$.service.input`）。
