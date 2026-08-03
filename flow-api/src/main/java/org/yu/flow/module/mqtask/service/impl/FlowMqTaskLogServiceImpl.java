@@ -60,7 +60,7 @@ public class FlowMqTaskLogServiceImpl
 
     /**
      * 列表分页：只投影摘要字段。
-     * <p>用 {@code CASE WHEN traceData IS NOT NULL} 判断 hasTrace，不 SELECT 大字段内容。
+     * <p>用 {@code CASE WHEN … IS NOT NULL} 判断 hasTrace / hasMessageBody，不 SELECT 大字段内容。
      */
     @Override
     public Page<FlowMqTaskLogListDTO> pageList(FlowMqTaskLogQueryDTO query) {
@@ -88,7 +88,9 @@ public class FlowMqTaskLogServiceImpl
                 root.get("triggerType"),
                 root.get("status"),
                 root.get("costTimeMs"),
+                root.get("errorMsg"),
                 hasTraceExpression(cb, root),
+                notNullFlagExpression(cb, root, "messageBody"),
                 root.get("createTime"));
     }
 
@@ -103,6 +105,12 @@ public class FlowMqTaskLogServiceImpl
         }
         if (StrUtil.isNotBlank(query.getTaskName())) {
             predicates.add(cb.like(root.get("taskName"), "%" + query.getTaskName() + "%"));
+        }
+        if (StrUtil.isNotBlank(query.getTopic())) {
+            predicates.add(cb.equal(root.get("topic"), query.getTopic()));
+        }
+        if (StrUtil.isNotBlank(query.getMessageId())) {
+            predicates.add(cb.equal(root.get("messageId"), query.getMessageId()));
         }
         if (StrUtil.isNotBlank(query.getStatus())) {
             predicates.add(cb.equal(root.get("status"), query.getStatus()));

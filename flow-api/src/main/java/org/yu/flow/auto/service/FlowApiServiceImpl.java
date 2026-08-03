@@ -34,6 +34,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import org.yu.flow.engine.log.LogMode;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.TracePersistUtil;
@@ -43,6 +44,7 @@ import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.SchemaValidatorService;
 import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.log.execution.service.FlowExecutionLogService;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
@@ -84,6 +86,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
 
     @Resource
     private YuFlowProperties yuFlowProperties;
+    @Resource
+    private YuFlowRuntimeSettings yuFlowRuntimeSettings;
 
     @Resource
     private AssetMetricsRecorder assetMetricsRecorder;
@@ -158,7 +162,8 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             flowArgs.put("pageable", allInputs.get("pageable") != null
                     ? allInputs.get("pageable") : pageable);
 
-            return flowEngine.execute(content, flowArgs, isLogEnabled(apiDO), "API",
+            boolean traceEnabled = "ALL".equals(resolveLogMode(apiDO));
+            return flowEngine.execute(content, flowArgs, traceEnabled, "API",
                     apiDO.getId(), apiDO.getName());
         });
 
@@ -220,29 +225,25 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public Object executeApi(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams,
                              Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response) throws Exception {
         long start = System.currentTimeMillis();
-        boolean logEnabled = isLogEnabled(flowApiDO);
-        FlowExecutionLogDO logDO = logEnabled ? buildBaseLogDO(flowApiDO) : null;
-        RuntimeLogContext runtimeLogContext = logEnabled ? new RuntimeLogContext() : null;
+        String resolvedMode = resolveLogMode(flowApiDO);
+        FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
+        RuntimeLogContext runtimeLogContext = new RuntimeLogContext();
         MetricsOutcome metricsOutcome = MetricsOutcome.SUCCESS;
-        if (logEnabled) {
-            try {
-                Map<String, Object> requestMap = new HashMap<>();
-                if (queryParams != null) requestMap.put("queryParams", queryParams);
-                if (bodyParams != null) requestMap.put("bodyParams", bodyParams);
-                logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(requestMap));
-            } catch (Exception e) {
-                logDO.setRequestParams("JSON parse error");
-            }
+        try {
+            Map<String, Object> requestMap = new HashMap<>();
+            if (queryParams != null) requestMap.put("queryParams", queryParams);
+            if (bodyParams != null) requestMap.put("bodyParams", bodyParams);
+            logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(requestMap));
+        } catch (Exception e) {
+            logDO.setRequestParams("JSON parse error");
         }
         try {
             Object result = doExecute(queryParams, bodyParams, mergeParamsMap, pageable, response, flowApiDO, runtimeLogContext);
-            if (logEnabled) {
-                logDO.setStatus("SUCCESS");
-            }
+            logDO.setStatus("SUCCESS");
             Object resolved = resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
             if (resolved instanceof R && Boolean.FALSE.equals(((R<?>) resolved).getOk())) {
                 metricsOutcome = MetricsOutcome.FAIL;
-                if (logEnabled && logDO != null && "SUCCESS".equals(logDO.getStatus())) {
+                if ("SUCCESS".equals(logDO.getStatus())) {
                     logDO.setStatus("ERROR");
                     truncateAndSetErrorMsg(logDO, ((R<?>) resolved).getMsg());
                 }
@@ -250,11 +251,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             return resolved;
         } catch (Exception e) {
             metricsOutcome = MetricsOutcome.FAIL;
-            if (!logEnabled) {
-                // 日志关闭时仅透传异常，不构建执行日志。
-            } else if ("SUCCESS".equals(logDO.getStatus())) {
-                // resolveFlowResult 内部抛出（FlowTrace error 状态），status 已被设置
-            } else {
+            if (!"SUCCESS".equals(logDO.getStatus())) {
                 logDO.setStatus("ERROR");
                 truncateAndSetErrorMsg(logDO, e.getMessage());
                 if (!"FLOW".equals(flowApiDO.getServiceType())) {
@@ -267,7 +264,11 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             if (flowApiDO != null && flowApiDO.getId() != null) {
                 assetMetricsRecorder.record(MetricsAssetType.API, flowApiDO.getId(), metricsOutcome, cost);
             }
-            if (logEnabled) {
+            boolean isSuccess = (metricsOutcome == MetricsOutcome.SUCCESS) && "SUCCESS".equals(logDO.getStatus());
+            if (LogMode.shouldRecord(resolvedMode, isSuccess)) {
+                if (!LogMode.shouldRecordTrace(resolvedMode, isSuccess)) {
+                    logDO.setTraceData(null);
+                }
                 logDO.setCostTimeMs(cost);
                 flowExecutionLogService.saveLogAsync(logDO);
             }
@@ -278,27 +279,22 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     public Object executeApi(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response) throws Exception {
         long start = System.currentTimeMillis();
-        boolean logEnabled = isLogEnabled(flowApiDO);
-        FlowExecutionLogDO logDO = logEnabled ? buildBaseLogDO(flowApiDO) : null;
-        RuntimeLogContext runtimeLogContext = logEnabled ? new RuntimeLogContext() : null;
+        String resolvedMode = resolveLogMode(flowApiDO);
+        FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
+        RuntimeLogContext runtimeLogContext = new RuntimeLogContext();
         MetricsOutcome metricsOutcome = MetricsOutcome.SUCCESS;
-        if (logEnabled) {
-            try {
-                if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
-            } catch (Exception e) {
-                logDO.setRequestParams("JSON parse error");
-            }
+        try {
+            if (params != null) logDO.setRequestParams(OBJECT_MAPPER.writeValueAsString(params));
+        } catch (Exception e) {
+            logDO.setRequestParams("JSON parse error");
         }
         try {
             Object result = doExecute(params, pageable, response, flowApiDO, runtimeLogContext);
-            if (logEnabled) {
-                logDO.setStatus("SUCCESS");
-            }
+            logDO.setStatus("SUCCESS");
             Object resolved = resolveFlowResult(result, logDO, flowApiDO, runtimeLogContext);
-            // 软失败（如 FLOW ExecutionResult 返回 R.fail）仍计入 FAIL，避免成功率虚高
             if (resolved instanceof R && Boolean.FALSE.equals(((R<?>) resolved).getOk())) {
                 metricsOutcome = MetricsOutcome.FAIL;
-                if (logEnabled && logDO != null && "SUCCESS".equals(logDO.getStatus())) {
+                if ("SUCCESS".equals(logDO.getStatus())) {
                     logDO.setStatus("ERROR");
                     truncateAndSetErrorMsg(logDO, ((R<?>) resolved).getMsg());
                 }
@@ -306,11 +302,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             return resolved;
         } catch (Exception e) {
             metricsOutcome = MetricsOutcome.FAIL;
-            if (!logEnabled) {
-                // 日志关闭时仅透传异常，不构建执行日志。
-            } else if ("SUCCESS".equals(logDO.getStatus())) {
-                // resolveFlowResult 内部抛出（FlowTrace error 状态），status 已被设置
-            } else {
+            if (!"SUCCESS".equals(logDO.getStatus())) {
                 logDO.setStatus("ERROR");
                 truncateAndSetErrorMsg(logDO, e.getMessage());
                 if (!"FLOW".equals(flowApiDO.getServiceType())) {
@@ -323,15 +315,24 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             if (flowApiDO != null && flowApiDO.getId() != null) {
                 assetMetricsRecorder.record(MetricsAssetType.API, flowApiDO.getId(), metricsOutcome, cost);
             }
-            if (logEnabled) {
+            boolean isSuccess = (metricsOutcome == MetricsOutcome.SUCCESS) && "SUCCESS".equals(logDO.getStatus());
+            if (LogMode.shouldRecord(resolvedMode, isSuccess)) {
+                if (!LogMode.shouldRecordTrace(resolvedMode, isSuccess)) {
+                    logDO.setTraceData(null);
+                }
                 logDO.setCostTimeMs(cost);
                 flowExecutionLogService.saveLogAsync(logDO);
             }
         }
     }
 
-    private boolean isLogEnabled(FlowApiDO flowApiDO) {
-        return flowApiDO.getLogEnabled() == null || flowApiDO.getLogEnabled();
+    private String resolveLogMode(FlowApiDO flowApiDO) {
+        String rawMode = flowApiDO != null ? flowApiDO.getLogMode() : null;
+        String globalDefault = yuFlowRuntimeSettings != null
+                ? yuFlowRuntimeSettings.getEngineDefaultLogMode()
+                : (yuFlowProperties != null && yuFlowProperties.getEngine() != null
+                        ? yuFlowProperties.getEngine().getDefaultLogMode() : null);
+        return LogMode.resolve(rawMode, globalDefault);
     }
 
     @Override

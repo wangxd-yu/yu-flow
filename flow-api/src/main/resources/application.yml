@@ -51,6 +51,8 @@ yu:
       pool-queue-capacity: ${YU_FLOW_ENGINE_POOL_QUEUE:1024}
       for-max-in-flight: ${YU_FLOW_FOR_MAX_IN_FLIGHT:64}
       resolved-content-cache-max-size: ${YU_FLOW_RESOLVED_CONTENT_CACHE:256}
+      # 全局默认日志策略模式：ERROR_ONLY(推荐) / ALL / OFF；资产级 SYSTEM_DEFAULT 时继承此值
+      default-log-mode: ${YU_FLOW_DEFAULT_LOG_MODE:ERROR_ONLY}
     security:
       # 无不安全默认值：必须设置环境变量；本地见 application-local.yml.example
       aes-secret-key: ${YU_FLOW_AES_SECRET:}
@@ -117,3 +119,9 @@ yu:
       send-timeout-ms: ${YU_FLOW_MQ_SEND_TIMEOUT_MS:10000}
       # 消息体大小上限（字节），<=0 不限制
       max-message-bytes: ${YU_FLOW_MQ_MAX_MESSAGE_BYTES:1048576}
+      # 日志留存的原始报文最大字符数，超出截断；<=0 不记录报文
+      log-body-max-chars: ${YU_FLOW_MQ_LOG_BODY_MAX_CHARS:8192}
+      # 原始报文落库全局默认：FULL / MASK / OFF
+      log-payload-mode: ${YU_FLOW_MQ_LOG_PAYLOAD_MODE:FULL}
+      # 积压查询缓存秒数
+      backlog-cache-seconds: ${YU_FLOW_MQ_BACKLOG_CACHE_SECONDS:60}

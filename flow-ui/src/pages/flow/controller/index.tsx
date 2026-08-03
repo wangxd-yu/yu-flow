@@ -442,24 +442,28 @@ const AutoApiConfigList: React.FC = () => {
       },
     },
     {
-      title: '执行日志',
-      dataIndex: 'logEnabled',
+      title: (
+        <Tooltip title="日志策略模式：继承全局 / 仅错误时记录 / 全量记录 / 完全关闭">
+          <span>日志策略</span>
+        </Tooltip>
+      ),
+      dataIndex: 'logMode',
       hideInSearch: true,
-      width: 90,
+      width: 100,
       align: 'center',
       render: (_, record) => {
-        const wrap = record.interceptMode === 'WRAP' || record.serviceType === 'HOST';
-        return (
-          <Tooltip title={wrap ? '包裹流量可能很大，建议按需开启' : undefined}>
-            <Switch
-              size="small"
-              checked={record.logEnabled === true || (!wrap && record.logEnabled !== false)}
-              checkedChildren="开"
-              unCheckedChildren="关"
-              onChange={(checked) => handleLogEnabledChange(record, checked)}
-            />
-          </Tooltip>
-        );
+        const mode = record.logMode || (record.logEnabled === false ? 'OFF' : (record.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT'));
+        switch (mode) {
+          case 'ALL':
+            return <Tag color="blue">全量记录</Tag>;
+          case 'ERROR_ONLY':
+            return <Tag color="warning">仅错误</Tag>;
+          case 'OFF':
+            return <Tag color="default">完全关闭</Tag>;
+          case 'SYSTEM_DEFAULT':
+          default:
+            return <Tag color="cyan">继承全局</Tag>;
+        }
       },
     },
     {

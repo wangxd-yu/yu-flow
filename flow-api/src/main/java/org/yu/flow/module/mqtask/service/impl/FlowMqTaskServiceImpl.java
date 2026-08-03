@@ -79,6 +79,8 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         if (taskDO.getConcurrency() == null || taskDO.getConcurrency() < 1) taskDO.setConcurrency(1);
         if (taskDO.getEnabled() == null) taskDO.setEnabled(true);
         if (taskDO.getLogEnabled() == null) taskDO.setLogEnabled(false);
+        if (taskDO.getRetryMax() == null) taskDO.setRetryMax(0);
+        if (taskDO.getRetryBackoffMs() == null) taskDO.setRetryBackoffMs(1000);
         // 保留天数 <0 视为未配置（跟随系统）
         if (taskDO.getLogRetentionDays() != null && taskDO.getLogRetentionDays() < 0) taskDO.setLogRetentionDays(null);
         if (taskDO.getPublishStatus() == null) taskDO.setPublishStatus(0);
@@ -110,6 +112,11 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         if (taskDO.getConcurrency() != null) existing.setConcurrency(Math.max(1, taskDO.getConcurrency()));
         if (taskDO.getEnabled() != null) existing.setEnabled(taskDO.getEnabled());
         if (taskDO.getLogEnabled() != null) existing.setLogEnabled(taskDO.getLogEnabled());
+        if (taskDO.getLogMode() != null) existing.setLogMode(taskDO.getLogMode());
+        if (taskDO.getLogPayloadMode() != null) existing.setLogPayloadMode(taskDO.getLogPayloadMode());
+        if (taskDO.getRetryMax() != null) existing.setRetryMax(Math.max(0, taskDO.getRetryMax()));
+        if (taskDO.getRetryBackoffMs() != null) existing.setRetryBackoffMs(Math.max(0, taskDO.getRetryBackoffMs()));
+        if (taskDO.getDeadLetterTopic() != null) existing.setDeadLetterTopic(taskDO.getDeadLetterTopic());
         // 保留天数：-1=清除任务级配置（回退系统），0=永久保留，>0=自定义天数
         if (taskDO.getLogRetentionDays() != null) {
             existing.setLogRetentionDays(taskDO.getLogRetentionDays() < 0 ? null : taskDO.getLogRetentionDays());
@@ -337,6 +344,21 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
             if (task.getLogEnabled() != null) {
                 snap.put("logEnabled", task.getLogEnabled());
             }
+            if (StrUtil.isNotBlank(task.getLogMode())) {
+                snap.put("logMode", task.getLogMode());
+            }
+            if (StrUtil.isNotBlank(task.getLogPayloadMode())) {
+                snap.put("logPayloadMode", task.getLogPayloadMode());
+            }
+            if (task.getRetryMax() != null) {
+                snap.put("retryMax", task.getRetryMax());
+            }
+            if (task.getRetryBackoffMs() != null) {
+                snap.put("retryBackoffMs", task.getRetryBackoffMs());
+            }
+            if (StrUtil.isNotBlank(task.getDeadLetterTopic())) {
+                snap.put("deadLetterTopic", task.getDeadLetterTopic());
+            }
             return SNAPSHOT_MAPPER.writeValueAsString(snap);
         } catch (Exception e) {
             throw new RuntimeException("生成发布快照失败", e);
@@ -363,6 +385,15 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
             if (snap.has("logEnabled") && !snap.get("logEnabled").isNull()) {
                 task.setLogEnabled(snap.get("logEnabled").asBoolean());
             }
+            applyText(snap, "logMode", task::setLogMode);
+            applyText(snap, "logPayloadMode", task::setLogPayloadMode);
+            if (snap.has("retryMax") && !snap.get("retryMax").isNull()) {
+                task.setRetryMax(Math.max(0, snap.get("retryMax").asInt(0)));
+            }
+            if (snap.has("retryBackoffMs") && !snap.get("retryBackoffMs").isNull()) {
+                task.setRetryBackoffMs(Math.max(0, snap.get("retryBackoffMs").asInt(1000)));
+            }
+            applyText(snap, "deadLetterTopic", task::setDeadLetterTopic);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {

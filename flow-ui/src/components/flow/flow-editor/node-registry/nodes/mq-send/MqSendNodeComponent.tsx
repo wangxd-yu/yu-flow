@@ -32,21 +32,22 @@ import {
 import {
     COMPACT_FOOTER_HEIGHT,
     COMPACT_NODE_WIDTH,
+    CompactExitLabels,
+    HTTP_COMPACT_FOOTER_HEIGHT,
+    compactExitPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
-import {
-    NODE_FOOTER_HEIGHT,
-    NodeResultFooter,
-    singleOutPortY,
-} from '../../shared/NodeFooter';
+import { NODE_FOOTER_SAFE_RIGHT } from '../../shared/useNodeSelection';
+
+const MQ_MULTI_FOOTER = 56;
 import { queryMqConnectionOptions } from '@/services/flow/mqConnection';
 
 export const MQ_SEND_COLOR = '#13c2c2';
 
 /** 连接 + topic + message 区最小高度（垂直拉高时该区 flex 吃掉多余高度） */
 const MIN_FIELDS_HEIGHT = 108;
-const FOOTER_HEIGHT = NODE_FOOTER_HEIGHT;
+const FOOTER_HEIGHT = MQ_MULTI_FOOTER;
 
 export const MQ_SEND_LAYOUT = {
     width: Math.max(MIN_WIDTH, 280),
@@ -65,7 +66,13 @@ export const MQ_SEND_LAYOUT = {
         );
     },
     get outPortY() {
-        return singleOutPortY(this.height);
+        return this.height - MQ_MULTI_FOOTER + 22;
+    },
+    successPortY(h: number) {
+        return h - MQ_MULTI_FOOTER + 28;
+    },
+    failPortY(h: number) {
+        return h - MQ_MULTI_FOOTER + 48;
     },
 };
 
@@ -134,7 +141,7 @@ export const MqSendNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
         COND_PADDING +
         FOOTER_HEIGHT;
     const minH = contentH + MIN_FIELDS_HEIGHT;
-    const compactHeight = HEADER_HEIGHT + COMPACT_FOOTER_HEIGHT;
+    const compactHeight = HEADER_HEIGHT + HTTP_COMPACT_FOOTER_HEIGHT;
 
     const { isCompact } = useCompactNodeResize(node, {
         cardMinHeight: minH,
@@ -161,22 +168,26 @@ export const MqSendNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const syncOutPort = React.useCallback(
         (nw: number, nh: number) => {
             const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-            const outY = singleOutPortY(nh, isCompactMode);
+            const successY = isCompactMode
+                ? compactExitPortY(nh - HTTP_COMPACT_FOOTER_HEIGHT, 0)
+                : MQ_SEND_LAYOUT.successPortY(nh);
+            const failY = isCompactMode
+                ? compactExitPortY(nh - HTTP_COMPACT_FOOTER_HEIGHT, 1)
+                : MQ_SEND_LAYOUT.failPortY(nh);
             try {
-                if (!node.hasPort('out')) {
-                    node.addPort({
-                        id: 'out',
-                        group: 'absolute-out-solid',
-                        args: { x: nw, y: outY, dx: 0 },
-                        zIndex: 1,
-                    });
-                } else {
-                    if (node.getPort('out')?.group !== 'absolute-out-solid') {
-                        node.setPortProp('out', 'group', 'absolute-out-solid');
+                if (node.hasPort('out')) node.removePort('out');
+                for (const [id, y, group] of [
+                    ['success', successY, 'absolute-out-solid'],
+                    ['fail', failY, 'absolute-out-hollow'],
+                ] as const) {
+                    if (!node.hasPort(id)) {
+                        node.addPort({ id, group, args: { x: nw, y, dx: 0 }, zIndex: 1 });
+                    } else {
+                        node.setPortProp(id, 'group', group);
+                        node.setPortProp(id, 'args', { x: nw, y, dx: 0 });
                     }
-                    node.setPortProp('out', 'args', { x: nw, y: outY, dx: 0 });
+                    updateEdges(id);
                 }
-                updateEdges('out');
             } catch {
                 /* ignore */
             }
@@ -298,12 +309,34 @@ export const MqSendNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
                 </>
             )}
 
-            <NodeResultFooter
-                label="out"
-                isCompact={isCompact}
-                color={theme.primary}
-                borderColor={theme.headerBorder}
-            />
+            {isCompact ? (
+                <CompactExitLabels
+                    height={HTTP_COMPACT_FOOTER_HEIGHT}
+                    exits={[
+                        { id: 'success', label: 'success', color: '#52c41a' },
+                        { id: 'fail', label: 'fail', color: '#ff4d4f' },
+                    ]}
+                />
+            ) : (
+                <div
+                    style={{
+                        marginTop: 'auto',
+                        height: MQ_MULTI_FOOTER,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'flex-end',
+                        paddingRight: NODE_FOOTER_SAFE_RIGHT,
+                        fontSize: 10,
+                        borderTop: `1px solid ${theme.headerBorder}`,
+                        gap: 2,
+                        boxSizing: 'border-box',
+                    }}
+                >
+                    <span style={{ color: '#52c41a' }}>success</span>
+                    <span style={{ color: '#ff4d4f' }}>fail</span>
+                </div>
+            )}
             {!isCompact && (
                 <ResizeHandle
                     node={node}

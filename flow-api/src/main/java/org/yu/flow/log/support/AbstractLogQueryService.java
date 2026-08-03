@@ -103,8 +103,15 @@ public abstract class AbstractLogQueryService<E, Q, L> {
      * HighGo/PG 下 IS NOT NULL 不会展开 TOAST/LONGTEXT。
      */
     protected Expression<Boolean> hasTraceExpression(CriteriaBuilder cb, Root<E> root) {
+        return notNullFlagExpression(cb, root, "traceData");
+    }
+
+    /**
+     * {@code CASE WHEN field IS NOT NULL} 投影布尔标志，不加载 LOB 内容。
+     */
+    protected Expression<Boolean> notNullFlagExpression(CriteriaBuilder cb, Root<E> root, String field) {
         return cb.<Boolean>selectCase()
-                .when(cb.isNotNull(root.get("traceData")), cb.literal(true))
+                .when(cb.isNotNull(root.get(field)), cb.literal(true))
                 .otherwise(cb.literal(false));
     }
 

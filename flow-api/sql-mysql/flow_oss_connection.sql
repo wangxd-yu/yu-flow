@@ -1,0 +1,31 @@
+-- Table: flow_oss_connection
+-- MinIO / S3 兼容对象存储连接配置
+CREATE TABLE IF NOT EXISTS `flow_oss_connection` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `name` varchar(128) NOT NULL COMMENT '连接名称',
+  `code` varchar(64) NOT NULL COMMENT '连接编码（未删除记录内唯一）',
+  `endpoint` varchar(512) NOT NULL COMMENT 'MinIO endpoint，如 http://minio:9000',
+  `access_key` varchar(128) COMMENT 'Access Key',
+  `secret_key` varchar(512) COMMENT 'Secret Key（AES 密文）',
+  `region` varchar(64) COMMENT '区域（可空）',
+  `path_style` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否 path-style 访问',
+  `public_bucket` varchar(128) COMMENT '公有桶名',
+  `private_bucket` varchar(128) COMMENT '私有桶名',
+  `public_base_url` varchar(512) COMMENT '公有访问前缀（Nginx 对外 URL）',
+  `key_prefix` varchar(256) COMMENT '对象键强制前缀',
+  `public_access_mode` varchar(32) DEFAULT 'NGINX_PROXY' COMMENT 'ANON / NGINX_PROXY',
+  `private_download_mode` varchar(16) NOT NULL DEFAULT 'STREAM' COMMENT '隐私下载：STREAM / PRESIGN',
+  `presign_expire_seconds` int NOT NULL DEFAULT 300 COMMENT '预签名有效期（秒）',
+  `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '启用状态',
+  `health_status` varchar(32) COMMENT 'HEALTHY / UNHEALTHY / UNKNOWN',
+  `last_error_msg` varchar(1024) COMMENT '最近测试错误',
+  `last_test_time` datetime COMMENT '最近测试时间',
+  `info` varchar(512) COMMENT '备注',
+  `deleted` int NOT NULL DEFAULT 0 COMMENT '软删除',
+  `create_time` datetime COMMENT '创建时间',
+  `update_time` datetime COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_oss_connection_code` (`code`),
+  KEY `idx_flow_oss_connection_enabled` (`enabled`),
+  KEY `idx_flow_oss_connection_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 连接配置';

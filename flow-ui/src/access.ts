@@ -38,6 +38,8 @@ export default function access(initialState: InitialStateType) {
     canLog: can('log:view', '*'),
     canDs: can('flow:ds:view', 'flow:ds:write', '*'),
     canMq: can('flow:mq:view', 'flow:mq:write', '*'),
+    canOss: can('flow:oss:view', 'flow:oss:write', '*'),
+    canOssAudit: can('flow:oss:audit', 'flow:oss:admin', '*'),
     canModel: can('flow:model:view', 'flow:model:write', '*'),
     canTemplate: can('sys:template:view', 'sys:template:write', '*'),
     canMacro: can('sys:macro:view', 'sys:macro:write', '*'),
@@ -65,6 +67,8 @@ export default function access(initialState: InitialStateType) {
     canInfraGroup: can(
       'flow:ds:view', 'flow:ds:write',
       'flow:model:view', 'flow:model:write',
+      'flow:oss:view', 'flow:oss:write',
+      'flow:oss:audit', 'flow:oss:admin',
       '*',
     ),
     /** 消息队列父菜单：任一子权限 */

@@ -56,6 +56,15 @@ public interface MqProvider {
         return Collections.emptyList();
     }
 
+    /**
+     * 估算积压：Kafka consumer lag 或 Rabbit 队列深度。
+     *
+     * @return 积压条数；null 表示不支持或查询失败
+     */
+    default Long estimateBacklog(MqConnectionSpec spec, String topic, String consumerGroup) {
+        return null;
+    }
+
     /** 销毁指定连接编码的缓存客户端（配置变更/删除时调用） */
     void invalidate(String connectionCode);
 }

@@ -42,8 +42,12 @@ public class DatabaseNodeExecutor extends AbstractStepExecutor<DatabaseStep> {
     @Override
     public String execute(DatabaseStep step, ExecutionContext context, FlowDefinition flow) {
         try {
-            // 1. 准备参数 (从 inputs 提取)
-            Map<String, Object> mergeParams = prepareParams(step, context, flow);
+            // 1. 准备参数 (优先使用 step.inputs 映射，同时合并全量上下文变量如 mq / request / service)
+            Map<String, Object> mergeParams = new HashMap<>();
+            if (context.getVar() != null) {
+                mergeParams.putAll(context.getVar());
+            }
+            mergeParams.putAll(prepareParams(step, context, flow));
 
             String sql = step.getSql();
             Object result = null;

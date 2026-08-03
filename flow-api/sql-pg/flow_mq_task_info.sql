@@ -10,7 +10,12 @@ CREATE TABLE IF NOT EXISTS flow_mq_task_info (
   concurrency integer NOT NULL DEFAULT 1,
   enabled smallint NOT NULL DEFAULT 1,
   log_enabled smallint NOT NULL DEFAULT 1,
+  log_mode varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT',
+  log_payload_mode varchar(16) DEFAULT 'SYSTEM_DEFAULT',
   log_retention_days integer,
+  retry_max integer DEFAULT 0,
+  retry_backoff_ms integer DEFAULT 1000,
+  dead_letter_topic varchar(255) DEFAULT NULL,
   dsl_content text,
   publish_status smallint NOT NULL DEFAULT 0,
   published_snapshot text,
@@ -32,7 +37,12 @@ COMMENT ON COLUMN flow_mq_task_info.consumer_group IS '消费组（Kafka group.i
 COMMENT ON COLUMN flow_mq_task_info.concurrency IS '消费并发数';
 COMMENT ON COLUMN flow_mq_task_info.enabled IS '启用状态：0=停用, 1=启用';
 COMMENT ON COLUMN flow_mq_task_info.log_enabled IS '是否记录执行日志';
+COMMENT ON COLUMN flow_mq_task_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT/OFF/ERROR_ONLY/ALL';
+COMMENT ON COLUMN flow_mq_task_info.log_payload_mode IS '原始报文落库策略：SYSTEM_DEFAULT/FULL/MASK/OFF';
 COMMENT ON COLUMN flow_mq_task_info.log_retention_days IS '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数';
+COMMENT ON COLUMN flow_mq_task_info.retry_max IS '失败重试次数（0=不重试）';
+COMMENT ON COLUMN flow_mq_task_info.retry_backoff_ms IS '重试间隔毫秒';
+COMMENT ON COLUMN flow_mq_task_info.dead_letter_topic IS '最终失败时转发的死信 topic/队列';
 COMMENT ON COLUMN flow_mq_task_info.dsl_content IS '流程定义 DSL JSON（草稿）';
 COMMENT ON COLUMN flow_mq_task_info.publish_status IS '发布状态：0=未发布，1=已发布';
 COMMENT ON COLUMN flow_mq_task_info.published_snapshot IS '发布快照 JSON：dslContent';

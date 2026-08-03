@@ -2,7 +2,7 @@
 // ApiNodeComponent.tsx
 // 内部 Flow API 编排调用（对齐 Database 骨架）：
 //   NodeWrapper + NodeHeader + 目标 API 选择 + DynamicVariableList + Footer Result
-//   端口：in:payload + in:var:* + out
+//   端口：in:payload + in:var:* + success / fail
 // ============================================================================
 
 import React from 'react';
@@ -52,14 +52,15 @@ import {
 import {
     COMPACT_FOOTER_HEIGHT,
     COMPACT_NODE_WIDTH,
+    CompactExitLabels,
+    HTTP_COMPACT_FOOTER_HEIGHT,
+    compactExitPortY,
     getGraphNodeViewMode,
     useCompactNodeResize,
 } from '../../shared/NodeViewMode';
-import {
-    NODE_FOOTER_HEIGHT,
-    NodeResultFooter,
-    singleOutPortY,
-} from '../../shared/NodeFooter';
+import { NODE_FOOTER_SAFE_RIGHT } from '../../shared/useNodeSelection';
+
+const API_MULTI_FOOTER = 56;
 
 const { Text } = Typography;
 
@@ -70,7 +71,7 @@ const SERVICE_BLOCK_HEIGHT = SERVICE_ROW_HEIGHT + SERVICE_META_HEIGHT;
 
 export const API_LAYOUT = {
     headerHeight: HEADER_HEIGHT,
-    footerHeight: NODE_FOOTER_HEIGHT,
+    footerHeight: API_MULTI_FOOTER,
     width: MIN_WIDTH,
     payloadPortY: PAYLOAD_PORT_Y,
     get totalHeight() {
@@ -79,14 +80,17 @@ export const API_LAYOUT = {
             SERVICE_BLOCK_HEIGHT +
             ROW_HEIGHT +
             VAR_PADDING +
-            NODE_FOOTER_HEIGHT
+            API_MULTI_FOOTER
         );
     },
     get footerTop() {
-        return this.totalHeight - NODE_FOOTER_HEIGHT;
+        return this.totalHeight - API_MULTI_FOOTER;
     },
-    get outPortY() {
-        return singleOutPortY(this.totalHeight);
+    successPortY(height: number) {
+        return height - API_MULTI_FOOTER + 28;
+    },
+    failPortY(height: number) {
+        return height - API_MULTI_FOOTER + 48;
     },
 };
 
@@ -313,8 +317,6 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
 
         const s = node.getSize();
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const outY = singleOutPortY(s.height, isCompactMode);
-        const outX = s.width;
 
         if (isCompactMode) {
             variables.forEach((v) => {
@@ -329,23 +331,28 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
             });
         }
 
-        if (!existing.has('out')) {
-            node.addPort({
-                id: 'out',
-                group: 'absolute-out-solid',
-                args: { x: outX, y: outY, dx: 0 },
-                zIndex: 1,
-            });
-        } else {
-            const p = ports.find((port) => port.id === 'out');
-            if (p?.attrs?.text?.text !== '') {
-                node.setPortProp('out', 'attrs/text/text', '');
+        const successY = isCompactMode
+            ? compactExitPortY(s.height - HTTP_COMPACT_FOOTER_HEIGHT, 0)
+            : API_LAYOUT.successPortY(s.height);
+        const failY = isCompactMode
+            ? compactExitPortY(s.height - HTTP_COMPACT_FOOTER_HEIGHT, 1)
+            : API_LAYOUT.failPortY(s.height);
+        const outX = s.width;
+
+        const setOut = (id: string, group: string, y: number) => {
+            if (!node.hasPort(id)) {
+                node.addPort({ id, group, args: { x: outX, y, dx: 0 }, zIndex: 1 });
+            } else {
+                node.setPortProp(id, 'group', group);
+                node.setPortProp(id, 'args', { x: outX, y, dx: 0 });
             }
-            if (p?.group !== 'absolute-out-solid') {
-                node.setPortProp('out', 'group', 'absolute-out-solid');
-            }
-            node.setPortProp('out', 'args', { x: outX, y: outY, dx: 0 });
+        };
+
+        if (node.hasPort('out')) {
+            node.removePort('out');
         }
+        setOut('success', 'absolute-out-solid', successY);
+        setOut('fail', 'absolute-out-hollow', failY);
     }, [variables, node, size]);
 
     const [resizing, setResizing] = React.useState(false);
@@ -354,9 +361,9 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         SERVICE_BLOCK_HEIGHT +
         variables.length * ROW_HEIGHT +
         VAR_PADDING +
-        NODE_FOOTER_HEIGHT;
+        API_MULTI_FOOTER;
 
-    const compactHeight = HEADER_HEIGHT + COMPACT_FOOTER_HEIGHT;
+    const compactHeight = HEADER_HEIGHT + HTTP_COMPACT_FOOTER_HEIGHT;
     const { isCompact } = useCompactNodeResize(node, {
         cardMinHeight: minH,
         compactHeight,
@@ -380,9 +387,16 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
     const handleResize = React.useCallback(
         (nw: number, nh: number) => {
             const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-            const outY = singleOutPortY(nh, isCompactMode);
-            node.setPortProp('out', 'args', { x: nw, y: outY, dx: 0 });
-            updateEdges('out');
+            const successY = isCompactMode
+                ? compactExitPortY(nh - HTTP_COMPACT_FOOTER_HEIGHT, 0)
+                : API_LAYOUT.successPortY(nh);
+            const failY = isCompactMode
+                ? compactExitPortY(nh - HTTP_COMPACT_FOOTER_HEIGHT, 1)
+                : API_LAYOUT.failPortY(nh);
+            node.setPortProp('success', 'args', { x: nw, y: successY, dx: 0 });
+            node.setPortProp('fail', 'args', { x: nw, y: failY, dx: 0 });
+            updateEdges('success');
+            updateEdges('fail');
         },
         [node, updateEdges],
     );
@@ -391,10 +405,17 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
         if (resizing) return;
         const s = node.getSize();
         const isCompactMode = getGraphNodeViewMode(node) === 'compact';
-        const outY = singleOutPortY(s.height, isCompactMode);
+        const successY = isCompactMode
+            ? compactExitPortY(s.height - HTTP_COMPACT_FOOTER_HEIGHT, 0)
+            : API_LAYOUT.successPortY(s.height);
+        const failY = isCompactMode
+            ? compactExitPortY(s.height - HTTP_COMPACT_FOOTER_HEIGHT, 1)
+            : API_LAYOUT.failPortY(s.height);
         try {
-            node.setPortProp('out', 'args', { x: s.width, y: outY, dx: 0 });
-            updateEdges('out');
+            node.setPortProp('success', 'args', { x: s.width, y: successY, dx: 0 });
+            node.setPortProp('fail', 'args', { x: s.width, y: failY, dx: 0 });
+            updateEdges('success');
+            updateEdges('fail');
         } catch {
             /* ignore */
         }
@@ -585,7 +606,34 @@ export const ApiNodeComponent = ({ node }: { node: Node }) => {
             />
             )}
 
-            <NodeResultFooter label="Result" isCompact={isCompact} />
+            {isCompact ? (
+                <CompactExitLabels
+                    height={HTTP_COMPACT_FOOTER_HEIGHT}
+                    exits={[
+                        { id: 'success', label: 'success', color: '#52c41a' },
+                        { id: 'fail', label: 'fail', color: '#ff4d4f' },
+                    ]}
+                />
+            ) : (
+                <div
+                    style={{
+                        marginTop: 'auto',
+                        height: API_MULTI_FOOTER,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'flex-end',
+                        paddingRight: NODE_FOOTER_SAFE_RIGHT,
+                        fontSize: 10,
+                        borderTop: `1px solid ${themeObj.headerBorder}`,
+                        gap: 2,
+                        boxSizing: 'border-box',
+                    }}
+                >
+                    <span style={{ color: '#52c41a' }}>success</span>
+                    <span style={{ color: '#ff4d4f' }}>fail</span>
+                </div>
+            )}
 
             {!isCompact && (
             <ResizeHandle

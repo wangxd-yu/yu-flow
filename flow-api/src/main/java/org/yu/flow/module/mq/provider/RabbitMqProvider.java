@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.core.QueueInformation;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -120,6 +121,24 @@ public class RabbitMqProvider implements MqProvider {
             } catch (Exception e) {
                 log.warn("[MQ][Rabbit] 销毁连接工厂失败 code={}: {}", connectionCode, e.getMessage());
             }
+        }
+    }
+
+    @Override
+    public Long estimateBacklog(MqConnectionSpec spec, String topic, String consumerGroup) {
+        if (StrUtil.isBlank(topic)) {
+            return null;
+        }
+        try {
+            CachedClient client = getOrCreateClient(spec);
+            QueueInformation info = client.admin.getQueueInfo(topic);
+            if (info != null) {
+                return (long) info.getMessageCount();
+            }
+            return null;
+        } catch (Exception e) {
+            log.debug("[MQ][Rabbit] estimateBacklog failed queue={}: {}", topic, e.getMessage());
+            return null;
         }
     }
 

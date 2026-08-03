@@ -1,0 +1,33 @@
+-- Table: flow_oss_upload_profile
+-- OSS 上传场景（业务 Profile）
+CREATE TABLE IF NOT EXISTS `flow_oss_upload_profile` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `name` varchar(128) NOT NULL COMMENT '场景名称',
+  `code` varchar(64) NOT NULL COMMENT '场景编码（未删除记录内唯一）',
+  `connection_code` varchar(64) NOT NULL COMMENT '绑定 OSS 连接编码',
+  `visibility` varchar(16) NOT NULL DEFAULT 'PRIVATE' COMMENT 'PUBLIC / PRIVATE',
+  `bucket_override` varchar(128) COMMENT '桶覆盖（可空）',
+  `key_pattern` varchar(512) COMMENT '对象键 pattern',
+  `allowed_content_types` text COMMENT 'Content-Type 白名单，逗号分隔',
+  `allowed_extensions` varchar(512) COMMENT '扩展名白名单，逗号分隔',
+  `max_size_bytes` bigint COMMENT '单文件大小上限（字节）',
+  `max_files_per_request` int DEFAULT 1 COMMENT '单次最多文件数',
+  `quota_max_bytes` bigint COMMENT '场景容量配额（字节），空=不限',
+  `quota_max_files` int COMMENT '场景文件数配额，空=不限',
+  `thumbnail_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否异步生成缩略图：0=否, 1=是',
+  `thumbnail_max_edge` int DEFAULT NULL COMMENT '缩略图最长边像素，空=用全局',
+  `thumbnail_max_source_bytes` bigint DEFAULT NULL COMMENT '参与缩略图的源文件上限，空=用全局',
+  `thumbnail_jpeg_quality` decimal(3,2) DEFAULT NULL COMMENT 'JPEG 质量 0~1，空=用全局',
+  `require_auth` tinyint(1) NOT NULL DEFAULT 1 COMMENT '上传是否必须登录',
+  `biz_fields_schema` text COMMENT '业务字段 JSON Schema',
+  `access_perm` varchar(128) COMMENT '上传所需权限码（可空）',
+  `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '启用状态',
+  `remark` varchar(512) COMMENT '备注',
+  `deleted` int NOT NULL DEFAULT 0 COMMENT '软删除',
+  `create_time` datetime COMMENT '创建时间',
+  `update_time` datetime COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_oss_upload_profile_code` (`code`),
+  KEY `idx_flow_oss_upload_profile_connection_code` (`connection_code`),
+  KEY `idx_flow_oss_upload_profile_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 上传场景';

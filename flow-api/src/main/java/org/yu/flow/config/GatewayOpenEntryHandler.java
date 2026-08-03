@@ -69,6 +69,51 @@ class GatewayOpenEntryHandler {
         return requestPath.equals(prefix) || requestPath.startsWith(prefix + "/");
     }
 
+    /**
+     * 开放入口下的原生 OSS MVC 路由（不经 Flow-API 路由匹配），如 /oss/upload。
+     */
+    boolean isNativeOpenOssPath(String realPath) {
+        if (StrUtil.isBlank(realPath)) {
+            return false;
+        }
+        String p = realPath.startsWith("/") ? realPath : "/" + realPath;
+        return p.equals("/oss") || p.startsWith("/oss/");
+    }
+
+    String extractRealPath(String requestPath) {
+        String prefix = normalizeOpenPrefix(resolveOpenEntryPrefix());
+        String realPath = requestPath.substring(prefix.length());
+        if (StrUtil.isBlank(realPath)) {
+            return "";
+        }
+        return realPath.startsWith("/") ? realPath : "/" + realPath;
+    }
+
+    /**
+     * 开放 OSS 原生路由：HMAC 鉴权后设置 AppKey 属性并放行给 Spring MVC。
+     */
+    void authenticateAndPassToMvc(HttpServletRequest request, HttpServletResponse response,
+                                  FilterChain filterChain, String realPath, String requestMethod)
+            throws IOException, ServletException {
+        boolean openEnabled = yuFlowRuntimeSettings != null
+                ? yuFlowRuntimeSettings.isOpenEnabled()
+                : flowProperties.getOpen() != null && flowProperties.getOpen().isEnabled();
+        if (!openEnabled) {
+            io.writeJsonResponse(response, HttpStatus.NOT_FOUND.value(), R.fail(404, "开放入口未启用"));
+            return;
+        }
+        HttpServletRequest effectiveRequest = wrapOpenBody(request);
+        try {
+            OpenAuthContext authCtx = openAuthService.authenticate(effectiveRequest, realPath, requestMethod);
+            effectiveRequest.setAttribute("yuOpenPlatformId", authCtx.getPlatformId());
+            effectiveRequest.setAttribute("yuOpenAppKey", authCtx.getAppKey());
+            filterChain.doFilter(effectiveRequest, response);
+        } catch (OpenAuthException e) {
+            io.writeJsonResponse(response, e.getHttpStatus(),
+                    R.failWithErrorCode(e.getHttpStatus(), e.getCode(), e.getMessage()));
+        }
+    }
+
     private String resolveOpenEntryPrefix() {
         if (yuFlowRuntimeSettings != null) {
             return yuFlowRuntimeSettings.getOpenEntryPrefix();

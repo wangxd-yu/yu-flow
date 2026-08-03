@@ -37,7 +37,9 @@ public final class SafeTypeLocator implements TypeLocator {
             "java.lang.Byte",
             "java.lang.Short",
             "java.lang.Number",
-            "org.yu.flow.engine.evaluator.expression."
+            "org.yu.flow.engine.evaluator.expression.",
+            "org.yu.flow.auto.util.SnowIdGenerator",
+            "org.yu.flow.auto.util.FlowSystemParamsUtil"
     ));
 
     /**

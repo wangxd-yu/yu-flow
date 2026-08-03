@@ -112,7 +112,7 @@ function logHref(assetType: MetricsAssetType, assetId: string, logPath?: string,
     return `/flow/open-platform?platformId=${encodeURIComponent(assetId)}&tab=callLogs`;
   }
   if (assetType === 'MQ_TASK') {
-    return `/flow/mq-task?mqTaskId=${encodeURIComponent(assetId)}&tab=logs`;
+    return `/log/mq?taskId=${encodeURIComponent(assetId)}`;
   }
   const path =
     assetType === 'API' ? '/log/execution' : assetType === 'TASK' ? '/log/task' : '/log/service';

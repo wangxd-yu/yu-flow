@@ -10,6 +10,8 @@ export interface FlowServiceFlow {
   directoryName?: string;
   enabled?: boolean;
   logEnabled?: boolean;
+  /** 日志策略模式：SYSTEM_DEFAULT-继承全局 OFF-完全关闭 ERROR_ONLY-仅错误时记录 ALL-全量记录 */
+  logMode?: string;
   dslContent?: string;
   /** 服务契约 JSON：{ inputs, outputs, outputDescription } */
   contract?: string;

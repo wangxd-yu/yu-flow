@@ -68,6 +68,10 @@ import { collectNodeReactRegistration } from './nodes/collect-node'; // Scatter-
 import { databaseNodeRegistration } from './nodes/database';
 import { systemVarNodeRegistration } from './nodes/system-var';
 import { systemMethodNodeRegistration } from './nodes/system-method';
+import { tryCatchNodeRegistration } from './nodes/try-catch';
+import { redisNodeRegistration } from './nodes/redis';
+import { jsonMapNodeRegistration } from './nodes/json-map';
+import { ossNodeRegistration } from './nodes/oss';
 
 import { registerNodes, registerAllShapes } from './registry';
 
@@ -96,6 +100,10 @@ const BUILTIN_NODES = [
     databaseNodeRegistration,
     systemVarNodeRegistration,
     systemMethodNodeRegistration,
+    tryCatchNodeRegistration,
+    redisNodeRegistration,
+    jsonMapNodeRegistration,
+    ossNodeRegistration,
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

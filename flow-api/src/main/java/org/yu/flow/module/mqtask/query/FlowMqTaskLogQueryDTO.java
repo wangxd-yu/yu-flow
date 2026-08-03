@@ -15,6 +15,10 @@ public class FlowMqTaskLogQueryDTO {
     private String taskId;
     /** 任务名称（模糊搜索） */
     private String taskName;
+    /** 消息 topic / 队列名（精确匹配） */
+    private String topic;
+    /** 消息ID（精确匹配） */
+    private String messageId;
     /** 执行状态：SUCCESS / FAILED / RUNNING / SKIPPED */
     private String status;
     /** 触发类型：MQ / MANUAL */

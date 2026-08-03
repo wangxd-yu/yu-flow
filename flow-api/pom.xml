@@ -93,6 +93,13 @@
             <version>4.12.0</version>
         </dependency>
 
+        <!-- MinIO Java SDK（S3 兼容对象存储） -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.17</version>
+        </dependency>
+
         <dependency>
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>

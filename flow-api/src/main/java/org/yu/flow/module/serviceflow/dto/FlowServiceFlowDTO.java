@@ -16,6 +16,8 @@ public class FlowServiceFlowDTO {
     private String directoryName;
     private Boolean enabled;
     private Boolean logEnabled;
+    /** 日志策略模式：SYSTEM_DEFAULT / OFF / ERROR_ONLY / ALL */
+    private String logMode;
     private String dslContent;
     /** 服务契约 JSON */
     private String contract;

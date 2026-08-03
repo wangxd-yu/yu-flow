@@ -61,6 +61,9 @@ public class YuFlowExceptionHandler {
         if ("PUBLISH_GATE_BLOCKED".equals(code) || "VALIDATION_ERROR".equals(code)) {
             return HttpStatus.BAD_REQUEST;
         }
+        if (code != null && (code.endsWith("_NOT_FOUND") || code.startsWith("OSS_THUMB_"))) {
+            return HttpStatus.NOT_FOUND;
+        }
         return getHttpStatus(ex.getSeverity());
     }
 

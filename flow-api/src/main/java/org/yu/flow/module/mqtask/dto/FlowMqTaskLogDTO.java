@@ -21,6 +21,8 @@ public class FlowMqTaskLogDTO {
     private String status;
     private Long costTimeMs;
     private String errorMsg;
+    private String messageBody;
+    private String messageHeaders;
     private String traceData;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
@@ -38,6 +40,8 @@ public class FlowMqTaskLogDTO {
         dto.setStatus(entity.getStatus());
         dto.setCostTimeMs(entity.getCostTimeMs());
         dto.setErrorMsg(entity.getErrorMsg());
+        dto.setMessageBody(entity.getMessageBody());
+        dto.setMessageHeaders(entity.getMessageHeaders());
         dto.setTraceData(entity.getTraceData());
         dto.setCreateTime(entity.getCreateTime());
         return dto;

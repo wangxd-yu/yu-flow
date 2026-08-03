@@ -78,7 +78,7 @@ interface KVEntry {
   id: string;
 }
 
-export type FlowDebuggerTriggerMode = 'http' | 'service';
+export type FlowDebuggerTriggerMode = 'http' | 'service' | 'mq' | 'task';
 
 export interface FlowDebuggerProps {
   /** 当前画布的 DSL JSON 字符串 */
@@ -88,7 +88,7 @@ export interface FlowDebuggerProps {
   /** 当前 API 的 HTTP Method */
   apiMethod?: string;
   /**
-   * 触发器形态：http（Headers/Query/Body）或 service（单一 JSON → $.service.input）。
+   * 触发器形态：http (Headers/Query/Body)、service ($.service.input)、mq ($.mq) 或 task。
    * 默认 http。
    */
   triggerMode?: FlowDebuggerTriggerMode;
@@ -360,6 +360,8 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   breakpoints,
 }) => {
   const isServiceMode = triggerMode === 'service';
+  const isMqMode = triggerMode === 'mq';
+  const isTaskMode = triggerMode === 'task';
   // ─── DOM 引用 ──────────────────────────────────────────────────────
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -420,18 +422,25 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
   const [triggerActiveTab, setTriggerActiveTab] = useState<string>(
     isServiceMode
       ? 'input'
-      : ((apiMethod || 'GET').toUpperCase() === 'GET' ? 'params' : 'body'),
+      : isMqMode
+        ? 'body'
+        : ((apiMethod || 'GET').toUpperCase() === 'GET' ? 'params' : 'body'),
   );
-  const isGetMethod = !isServiceMode && (apiMethod || 'GET').toUpperCase() === 'GET';
+  const isGetMethod = !isServiceMode && !isMqMode && (apiMethod || 'GET').toUpperCase() === 'GET';
   useEffect(() => {
     if (isServiceMode) {
       setTriggerActiveTab('input');
       return;
     }
+    // MQ 模式固定显示消息体 tab，不受 GET/POST 影响
+    if (isMqMode) {
+      setTriggerActiveTab((prev) => (prev === 'body' || prev === 'params' || prev === 'headers') ? prev : 'body');
+      return;
+    }
     if (isGetMethod && triggerActiveTab === 'body') {
       setTriggerActiveTab('params');
     }
-  }, [isServiceMode, isGetMethod, triggerActiveTab]);
+  }, [isServiceMode, isMqMode, isGetMethod, triggerActiveTab]);
 
   // 契约样例变更时同步预填
   useEffect(() => {
@@ -937,7 +946,7 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
             </button>
           </div>
 
-          {/* API / 服务 信息 */}
+          {/* API / 服务 / MQ / Task 信息 */}
           <div className="pfd-trigger-api-info">
             {isServiceMode ? (
               <>
@@ -946,6 +955,24 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                 </Tag>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   入参写入 $.service.input
+                </Text>
+              </>
+            ) : isMqMode ? (
+              <>
+                <Tag color="cyan" style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}>
+                  MQ TRIGGER
+                </Tag>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  消息体写入 $.mq.message，Headers 写入 $.mq.headers
+                </Text>
+              </>
+            ) : isTaskMode ? (
+              <>
+                <Tag color="orange" style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}>
+                  SCHEDULE
+                </Tag>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  调度变量写入 $.schedule
                 </Text>
               </>
             ) : (
@@ -960,13 +987,13 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                   }
                   style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}
                 >
-                  {apiMethod}
+                  {apiMethod || 'HTTP'}
                 </Tag>
                 <Text
                   code
                   style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
                 >
-                  {apiUrl}
+                  {apiUrl || '流程节点'}
                 </Text>
               </>
             )}
@@ -987,6 +1014,52 @@ const FlowDebugger: React.FC<FlowDebuggerProps> = ({
                 className="pfd-body-editor"
               />
             </div>
+          ) : isMqMode ? (
+            <Tabs
+              activeKey={triggerActiveTab}
+              onChange={setTriggerActiveTab}
+              size="small"
+              className="pfd-trigger-tabs"
+              items={[
+                {
+                  key: 'body',
+                  label: '消息体',
+                  children: (
+                    <CodeEditor
+                      value={triggerBody}
+                      onChange={setTriggerBody}
+                      language="json"
+                      height="auto"
+                      maxHeight="400px"
+                      className="pfd-body-editor"
+                    />
+                  ),
+                },
+                {
+                  key: 'headers',
+                  label: (
+                    <span>
+                      Headers
+                      {triggerHeaders.filter((h) => h.key.trim()).length > 0 && (
+                        <Badge
+                          count={triggerHeaders.filter((h) => h.key.trim()).length}
+                          size="small"
+                          style={{ marginLeft: 6, backgroundColor: '#e6f4ff', color: '#1677ff' }}
+                        />
+                      )}
+                    </span>
+                  ),
+                  children: (
+                    <KVEditor
+                      entries={triggerHeaders}
+                      onChange={setTriggerHeaders}
+                      keyPlaceholder="消息头 Key（如 correlationId）"
+                      valuePlaceholder="消息头 Value"
+                    />
+                  ),
+                },
+              ]}
+            />
           ) : (
           <Tabs
             activeKey={triggerActiveTab}

@@ -46,7 +46,11 @@ import java.util.Map;
         @JsonSubTypes.Type(value = DelayStep.class, name = "delay"),
         @JsonSubTypes.Type(value = SendMailStep.class, name = "sendMail"),
         @JsonSubTypes.Type(value = MqSendStep.class, name = "mqSend"),
-        @JsonSubTypes.Type(value = ErrorHandlerStep.class, name = "errorHandler")
+        @JsonSubTypes.Type(value = ErrorHandlerStep.class, name = "errorHandler"),
+        @JsonSubTypes.Type(value = TryCatchStep.class, name = "tryCatch"),
+        @JsonSubTypes.Type(value = RedisStep.class, name = "redis"),
+        @JsonSubTypes.Type(value = JsonMapStep.class, name = "jsonMap"),
+        @JsonSubTypes.Type(value = OssStep.class, name = "oss")
 })
 @JsonIgnoreProperties(ignoreUnknown = true)
 public abstract class Step {

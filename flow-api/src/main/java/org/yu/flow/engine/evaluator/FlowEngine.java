@@ -192,6 +192,10 @@ public class FlowEngine {
         executors.put("sendMail", new SendMailStepExecutor());
         executors.put("mqSend", new MqSendStepExecutor());
         executors.put("errorHandler", new ErrorHandlerStepExecutor());
+        executors.put("tryCatch", new TryCatchStepExecutor(this));
+        executors.put("redis", new RedisStepExecutor());
+        executors.put("jsonMap", new JsonMapStepExecutor());
+        executors.put("oss", new OssStepExecutor());
         wireApiExecutor();
     }
 
@@ -571,6 +575,10 @@ public class FlowEngine {
 
             context.markStepCompleted(currentStep.getId());
             Object nextTarget = currentStep.getNext().get(nextPort);
+            // 兼容旧 DSL：api / mqSend 等 success 口未连线时回退 out
+            if (nextTarget == null && PortNames.SUCCESS.equals(nextPort)) {
+                nextTarget = currentStep.getNext().get(PortNames.OUT);
+            }
 
             if (nextTarget == null) {
                 // 如果没有显式连接，且是普通输出，尝试顺序执行（兼容逻辑）

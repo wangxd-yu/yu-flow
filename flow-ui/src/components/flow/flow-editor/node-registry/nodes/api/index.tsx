@@ -4,12 +4,12 @@
 // ============================================================================
 
 import React from 'react';
-import { Input, Select } from 'antd';
+import { Input, InputNumber, Select } from 'antd';
 import type { DslPort } from '../../../types';
 import type { NodeRegistration, PropertyEditorProps } from '../../types';
 import { ApiNodeComponent, API_LAYOUT } from './ApiNodeComponent';
 import { PAYLOAD_PORT_ID, PAYLOAD_PORT_Y } from '../../shared/usePayloadEntryPort';
-import { PropertyField, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
+import { PropertyField, PropertyFieldRow, PropertyHint, PropertySection } from '../../shared/PropertyPanel';
 import { queryAutoApiConfigList } from '@/services/flow/flowController';
 import { queryServiceFlowPage } from '@/services/flow/serviceFlowService';
 
@@ -19,13 +19,16 @@ const buildApiPortItems = (ports: DslPort[]) => {
     for (const p of ports) {
         if (seen.has(p.id) || p.id === 'in' || p.id.startsWith('in:var:')) continue;
         seen.add(p.id);
-        const isOut = p.id === 'out' || p.id.startsWith('out');
+        const isOut = p.id === 'success' || p.id === 'fail' || p.id === 'out' || p.id.startsWith('out');
         const item: any = {
-            id: p.id,
+            id: p.id === 'out' ? 'success' : p.id,
             group: p.group || (isOut ? 'absolute-out-solid' : 'absolute-in-solid'),
         };
-        if (p.id === 'out') {
-            item.args = { x: API_LAYOUT.width, y: API_LAYOUT.outPortY, dx: 0 };
+        if (item.id === 'success') {
+            item.args = { x: API_LAYOUT.width, y: API_LAYOUT.successPortY(API_LAYOUT.totalHeight), dx: 0 };
+        } else if (item.id === 'fail') {
+            item.group = 'absolute-out-hollow';
+            item.args = { x: API_LAYOUT.width, y: API_LAYOUT.failPortY(API_LAYOUT.totalHeight), dx: 0 };
         } else if (p.id === PAYLOAD_PORT_ID) {
             item.args = { x: 0, y: PAYLOAD_PORT_Y, dx: 0 };
         } else {
@@ -40,11 +43,16 @@ const buildApiPortItems = (ports: DslPort[]) => {
             args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
         });
     }
-    if (!seen.has('out')) {
+    if (!seen.has('success') && !seen.has('out')) {
         items.push({
-            id: 'out',
+            id: 'success',
             group: 'absolute-out-solid',
-            args: { x: API_LAYOUT.width, y: API_LAYOUT.outPortY, dx: 0 },
+            args: { x: API_LAYOUT.width, y: API_LAYOUT.successPortY(API_LAYOUT.totalHeight), dx: 0 },
+        });
+        items.push({
+            id: 'fail',
+            group: 'absolute-out-hollow',
+            args: { x: API_LAYOUT.width, y: API_LAYOUT.failPortY(API_LAYOUT.totalHeight), dx: 0 },
         });
     }
     return items;
@@ -168,6 +176,41 @@ function ApiPropertyEditor({ data, onChange }: PropertyEditorProps) {
                     onChange={(e) => onChange({ output: e.target.value })}
                 />
             </PropertyField>
+            <PropertyFieldRow>
+                <PropertyField label="超时" extra="ms" labelWidth={40}>
+                    <InputNumber
+                        size="small"
+                        min={1000}
+                        max={600000}
+                        step={1000}
+                        value={typeof data.timeoutMs === 'number' ? data.timeoutMs : 30000}
+                        style={{ width: '100%' }}
+                        onChange={(val) => onChange({ timeoutMs: val ?? 30000 })}
+                    />
+                </PropertyField>
+                <PropertyField label="重试" tip="失败后额外重试次数，0=不重试" labelWidth={40}>
+                    <InputNumber
+                        size="small"
+                        min={0}
+                        max={10}
+                        value={typeof data.retryCount === 'number' ? data.retryCount : 0}
+                        style={{ width: '100%' }}
+                        onChange={(val) => onChange({ retryCount: val ?? 0 })}
+                    />
+                </PropertyField>
+            </PropertyFieldRow>
+            <PropertyField label="重试间隔" extra="ms" labelWidth={64}>
+                <InputNumber
+                    size="small"
+                    min={0}
+                    max={60000}
+                    step={500}
+                    value={typeof data.retryIntervalMs === 'number' ? data.retryIntervalMs : 1000}
+                    disabled={(data.retryCount ?? 0) <= 0}
+                    style={{ width: '100%' }}
+                    onChange={(val) => onChange({ retryIntervalMs: val ?? 1000 })}
+                />
+            </PropertyField>
             <PropertyHint>
                 {targetType === 'service'
                     ? '选择服务后按契约自动带出入参，执行时写入 $.service.input；下游取 $.本节点.out'
@@ -187,7 +230,8 @@ export const apiNodeRegistration: NodeRegistration = {
         '调用另一条已配置的内部 Flow API，或服务编排中的内部服务。\n\n' +
         '· 目标类型可选「接口 API」或「内部服务」\n' +
         '· API：从契约自动带出入参；服务：手动配置入参 → $.service.input\n' +
-        '· 结果从右侧 Result 输出，下游用 $.本节点.out 读取',
+        '· 成功走 success，失败走 fail（仍写 $.本节点.out）\n' +
+        '· 旧图 out 连线在引擎侧自动回退到 success',
     hasInputs: true,
 
     shape: {
@@ -208,13 +252,17 @@ export const apiNodeRegistration: NodeRegistration = {
     defaults: {
         ports: [
             { id: PAYLOAD_PORT_ID, group: 'absolute-in-solid' },
-            { id: 'out', group: 'absolute-out-solid' },
+            { id: 'success', group: 'absolute-out-solid' },
+            { id: 'fail', group: 'absolute-out-hollow' },
         ],
         data: {
             targetType: 'api',
             serviceId: '',
             __serviceName: '',
             output: '',
+            timeoutMs: 30000,
+            retryCount: 0,
+            retryIntervalMs: 1000,
             inputs: {},
             themeColor: 'blue',
         },

@@ -39,8 +39,17 @@ public class FlowServiceFlowDO implements Serializable {
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean enabled;
 
+    /** 是否记录执行日志
+     * @deprecated 请使用 {@link #logMode} 替代 */
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean logEnabled;
+
+    /**
+     * 日志策略模式（四态枚举）：SYSTEM_DEFAULT / OFF / ERROR_ONLY / ALL。
+     * 取代旧版 logEnabled 布尔值。null 等价于 SYSTEM_DEFAULT（继承全局配置）。
+     */
+    @Column(length = 16)
+    private String logMode;
 
     @Column(columnDefinition = "MEDIUMTEXT")
     private String dslContent;

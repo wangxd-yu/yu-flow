@@ -195,6 +195,33 @@ class JavaScriptEvaluatorImplTest {
         }
     }
 
+    @Test
+    @Order(12)
+    @DisplayName("12、VARIABLE/FUNCTION宏注入 - SNOWFLAKE 雪花ID 注入测试")
+    void testSnowflakeMacroInjection() {
+        try (MockedStatic<SpringUtil> springUtilMock = mockStatic(SpringUtil.class)) {
+            SysMacroCacheManager mockManager = mock(SysMacroCacheManager.class);
+            springUtilMock.when(() -> SpringUtil.getBean(SysMacroCacheManager.class))
+                    .thenReturn(mockManager);
+
+            Map<String, CachedMacro> macros = new ConcurrentHashMap<>();
+            SysMacroDO macroDO = SysMacroDO.builder()
+                    .macroCode("SNOWFLAKE")
+                    .macroType("VARIABLE")
+                    .scope("ALL")
+                    .build();
+            Expression expr = SPEL_PARSER.parseExpression("T(org.yu.flow.auto.util.SnowIdGenerator).getId()");
+            macros.put("SNOWFLAKE", new CachedMacro(macroDO, expr));
+
+            when(mockManager.getAllCachedMacros()).thenReturn(Collections.unmodifiableMap(macros));
+
+            Object result = evaluator.evaluate("SNOWFLAKE", null);
+            assertNotNull(result);
+            assertTrue(result instanceof String);
+            assertFalse(((String) result).isEmpty());
+        }
+    }
+
     // ============================= FUNCTION 宏注入测试 =============================
 
     @Test

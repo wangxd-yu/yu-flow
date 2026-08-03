@@ -39,6 +39,9 @@ public class MqTriggerStepExecutor extends AbstractStepExecutor<MqTriggerStep> {
         mqData.put("headers", context.getVariable(ARG_HEADERS));
         mqData.put("messageId", strOrEmpty(context.getVariable(ARG_MESSAGE_ID)));
         mqData.put("triggerTime", System.currentTimeMillis());
+        // 与调度入口对称：消费者经 execute(args) 注入 taskName
+        Object taskName = context.getVariable("taskName");
+        mqData.put("taskName", taskName == null ? "" : String.valueOf(taskName));
         context.setVar("mq", mqData);
         return PortNames.OUT;
     }

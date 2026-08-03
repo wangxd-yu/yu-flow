@@ -26,8 +26,18 @@ public class FlowMqTaskDTO {
     private Integer concurrency;
     private Boolean enabled;
     private Boolean logEnabled;
+    /** 日志策略模式：SYSTEM_DEFAULT / OFF / ERROR_ONLY / ALL */
+    private String logMode;
+    /** 原始报文落库策略：SYSTEM_DEFAULT / FULL / MASK / OFF */
+    private String logPayloadMode;
     /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
     private Integer logRetentionDays;
+    /** 失败重试次数（0=不重试） */
+    private Integer retryMax;
+    /** 重试间隔毫秒 */
+    private Integer retryBackoffMs;
+    /** 最终失败时转发的死信 topic/队列 */
+    private String deadLetterTopic;
     private String dslContent;
     private Integer publishStatus;
     private String publishedSnapshot;
@@ -56,7 +66,12 @@ public class FlowMqTaskDTO {
         dto.setConcurrency(entity.getConcurrency() != null ? entity.getConcurrency() : 1);
         dto.setEnabled(entity.getEnabled() != null ? entity.getEnabled() : true);
         dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : false);
+        dto.setLogMode(entity.getLogMode());
+        dto.setLogPayloadMode(entity.getLogPayloadMode());
         dto.setLogRetentionDays(entity.getLogRetentionDays());
+        dto.setRetryMax(entity.getRetryMax() != null ? entity.getRetryMax() : 0);
+        dto.setRetryBackoffMs(entity.getRetryBackoffMs() != null ? entity.getRetryBackoffMs() : 1000);
+        dto.setDeadLetterTopic(entity.getDeadLetterTopic());
         dto.setDslContent(entity.getDslContent());
         dto.setPublishStatus(entity.getPublishStatus() != null ? entity.getPublishStatus() : 0);
         dto.setPublishedSnapshot(entity.getPublishedSnapshot());

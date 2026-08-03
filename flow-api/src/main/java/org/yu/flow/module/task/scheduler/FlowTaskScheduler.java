@@ -12,6 +12,7 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
 import org.yu.flow.cache.FlowRedisUtil;
 import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowTrace;
@@ -20,6 +21,7 @@ import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
 import org.yu.flow.log.task.service.FlowTaskLogService;
+import org.yu.flow.engine.log.LogMode;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
 import org.yu.flow.module.metrics.MetricsOutcome;
@@ -71,6 +73,9 @@ public class FlowTaskScheduler {
 
     @Resource
     private YuFlowProperties yuFlowProperties;
+
+    @Resource
+    private YuFlowRuntimeSettings yuFlowRuntimeSettings;
 
     @Resource
     private AssetMetricsRecorder assetMetricsRecorder;
@@ -297,24 +302,15 @@ public class FlowTaskScheduler {
             args.put("taskName", publishedName);
             args.put("cron", snap.cron());
 
-            boolean logEnabled = Boolean.TRUE.equals(latestTask.getLogEnabled());
-            Object result = flowEngine.execute(dsl, args, logEnabled,
+            String resolvedMode = resolveLogMode(latestTask);
+            boolean traceEnabled = LogMode.ALL.equals(resolvedMode) || "DEBUG".equalsIgnoreCase(triggerType);
+            Object result = flowEngine.execute(dsl, args, traceEnabled,
                     "TASK", latestTask.getId(), publishedName);
 
-            if (logEnabled) {
-                FlowTrace trace = (result instanceof FlowTrace) ? (FlowTrace) result : null;
-                if (trace != null && "error".equalsIgnoreCase(trace.getStatus())) {
-                    status = "FAILED";
-                    errorMsg = trace.getErrorMsg();
-                } else {
-                    status = "SUCCESS";
-                }
-                if (trace != null) {
-                    // DSL 用内容哈希引用；超限递进截断
-                    TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
-                            yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
-                    traceData = TracePersistUtil.serializeForPersist(trace, dsl, objectMapper, opts);
-                }
+            FlowTrace trace = (result instanceof FlowTrace) ? (FlowTrace) result : null;
+            if (trace != null && "error".equalsIgnoreCase(trace.getStatus())) {
+                status = "FAILED";
+                errorMsg = trace.getErrorMsg();
             } else if (result instanceof ExecutionResult) {
                 ExecutionResult er = (ExecutionResult) result;
                 status = er.isSuccess() ? "SUCCESS" : "FAILED";
@@ -324,6 +320,12 @@ public class FlowTaskScheduler {
             } else {
                 status = "SUCCESS";
             }
+            boolean isSuccess = "SUCCESS".equals(status);
+            if (LogMode.shouldRecordTrace(resolvedMode, isSuccess) && trace != null) {
+                TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                        yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+                traceData = TracePersistUtil.serializeForPersist(trace, dsl, objectMapper, opts);
+            }
         } catch (Exception e) {
             status = "FAILED";
             errorMsg = e.getMessage();
@@ -331,7 +333,6 @@ public class FlowTaskScheduler {
                     latestTask.getId(), publishedName, e.getMessage(), e);
         }
 
-        // 写入日志（始终记录摘要；trace 仅在 logEnabled 时写入）
         long costTimeMs = System.currentTimeMillis() - startTime;
         assetMetricsRecorder.record(
                 MetricsAssetType.TASK,
@@ -339,19 +340,24 @@ public class FlowTaskScheduler {
                 MetricsOutcome.fromStatus(status),
                 costTimeMs,
                 triggerType);
-        try {
-            FlowTaskLogDO logDO = FlowTaskLogDO.builder()
-                    .taskId(latestTask.getId())
-                    .taskName(publishedName)
-                    .triggerType(triggerType)
-                    .status(status)
-                    .costTimeMs(costTimeMs)
-                    .errorMsg(errorMsg)
-                    .traceData(traceData)
-                    .build();
-            flowTaskLogService.saveAsync(logDO);
-        } catch (Exception e) {
-            log.error("[FlowTaskScheduler] 日志写入失败: taskId={}, error={}", latestTask.getId(), e.getMessage());
+
+        String resolvedMode = resolveLogMode(latestTask);
+        boolean isSuccess = "SUCCESS".equals(status);
+        if (LogMode.shouldRecord(resolvedMode, isSuccess)) {
+            try {
+                FlowTaskLogDO logDO = FlowTaskLogDO.builder()
+                        .taskId(latestTask.getId())
+                        .taskName(publishedName)
+                        .triggerType(triggerType)
+                        .status(status)
+                        .costTimeMs(costTimeMs)
+                        .errorMsg(errorMsg)
+                        .traceData(traceData)
+                        .build();
+                flowTaskLogService.saveAsync(logDO);
+            } catch (Exception e) {
+                log.error("[FlowTaskScheduler] 日志写入失败: taskId={}, error={}", latestTask.getId(), e.getMessage());
+            }
         }
 
         log.info("[FlowTaskScheduler] 任务执行完成: taskId={}, status={}, costTimeMs={}",
@@ -362,6 +368,10 @@ public class FlowTaskScheduler {
     private void saveSkippedLog(FlowTaskDO task, String triggerType, String reason) {
         assetMetricsRecorder.record(
                 MetricsAssetType.TASK, task.getId(), MetricsOutcome.SKIPPED, 0L, triggerType);
+        String resolvedMode = resolveLogMode(task);
+        if (!LogMode.shouldRecord(resolvedMode, false)) {
+            return;
+        }
         try {
             FlowTaskLogDO logDO = FlowTaskLogDO.builder()
                     .taskId(task.getId())
@@ -376,6 +386,15 @@ public class FlowTaskScheduler {
             log.error("[FlowTaskScheduler] SKIPPED 日志写入失败: taskId={}, error={}",
                     task.getId(), e.getMessage());
         }
+    }
+
+    private String resolveLogMode(FlowTaskDO task) {
+        String rawMode = task != null ? task.getLogMode() : null;
+        String globalDefault = yuFlowRuntimeSettings != null
+                ? yuFlowRuntimeSettings.getEngineDefaultLogMode()
+                : (yuFlowProperties != null && yuFlowProperties.getEngine() != null
+                        ? yuFlowProperties.getEngine().getDefaultLogMode() : null);
+        return LogMode.resolve(rawMode, globalDefault);
     }
 
     /** 已发布快照字段（一次 JSON 解析） */

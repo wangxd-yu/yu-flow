@@ -42,6 +42,9 @@ public class MqSendStep extends Step {
 
     @Override
     public List<PortDefinition> getOutputPorts() {
-        return Arrays.asList(PortDefinition.output(PortNames.OUT));
+        return Arrays.asList(
+                PortDefinition.output(PortNames.SUCCESS),
+                PortDefinition.output(PortNames.FAIL)
+        );
     }
 }

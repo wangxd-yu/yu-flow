@@ -49,6 +49,12 @@ public class HttpRequestStep extends Step {
     private Integer retryIntervalMs;
 
     /**
+     * 响应非成功且 HTTP 状态码 ≥ 500 时是否按网络异常重试（需 retryCount &gt; 0）。
+     * null / false 不重试。
+     */
+    private Boolean retryOnServerError;
+
+    /**
      * 成功条件（Aviator 表达式）。为空时回退 HTTP 2xx。
      * 求值上下文为响应结果：status / body / headers / timeMs
      * 示例：status == 200、status == 200 && body.code == 0

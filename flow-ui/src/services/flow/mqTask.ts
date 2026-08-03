@@ -17,8 +17,18 @@ export interface FlowMqTask {
   concurrency?: number;
   enabled?: boolean;
   logEnabled?: boolean;
+  /** 日志策略模式：SYSTEM_DEFAULT-继承全局 OFF-完全关闭 ERROR_ONLY-仅错误时记录 ALL-全量记录 */
+  logMode?: string;
   /** 日志保留天数：null/undefined=跟随系统配置，0=永久保留，>0=自定义天数；提交 -1 表示清除任务级配置 */
   logRetentionDays?: number | null;
+  /** 原始报文落库策略：SYSTEM_DEFAULT / FULL / MASK / OFF */
+  logPayloadMode?: string;
+  /** 失败重试次数（0=不重试） */
+  retryMax?: number;
+  /** 重试间隔毫秒 */
+  retryBackoffMs?: number;
+  /** 最终失败时转发的死信 topic/队列 */
+  deadLetterTopic?: string;
   dslContent?: string;
   /** 0=未发布 1=已发布 */
   publishStatus?: number;
@@ -42,7 +52,11 @@ export interface FlowMqTaskLog {
   status?: string;
   costTimeMs?: number;
   hasTrace?: boolean;
+  /** 列表投影：是否已留存原始报文（不加载大字段） */
+  hasMessageBody?: boolean;
   errorMsg?: string;
+  messageBody?: string;
+  messageHeaders?: string;
   traceData?: string;
   createTime?: string;
 }
@@ -124,10 +138,21 @@ export async function rollbackMqTask(id: string) {
 // ── 模拟触发 / 调试 ──
 
 /** 手动模拟一条消息触发（异步，结果在任务日志查看，仅已发布任务可用） */
-export async function simulateMqTask(id: string, message?: string) {
+export async function simulateMqTask(
+  id: string,
+  message?: string,
+  headers?: Record<string, any>,
+) {
   return request(`/flow-api/mq-task/${id}/simulate`, {
     method: 'POST',
-    data: { message },
+    data: { message, headers },
+  });
+}
+
+/** 批量查询任务积压（Kafka lag / Rabbit 队列深度），值为 null 表示未知/不支持 */
+export async function getMqTaskBacklog() {
+  return request<Record<string, number | null>>('/flow-api/mq-task/consumer-backlog', {
+    method: 'GET',
   });
 }
 

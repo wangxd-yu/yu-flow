@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Drawer, message, Button, Form, Input, InputNumber, Switch, Space, Tooltip, Tag,
+  Drawer, message, Button, Form, Input, InputNumber, Switch, Space, Tooltip, Tag, Radio,
 } from 'antd';
 import {
   SaveOutlined, CloseOutlined, PlayCircleOutlined,
@@ -34,6 +34,7 @@ import {
   ASSET_FORM_FILL_CLASS,
 } from '@/components/flow/ops';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import { useGlobalLogMode, getLogModeLabel } from '@/components/flow/useGlobalLogMode';
 
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
   nodes: [
@@ -81,12 +82,16 @@ const TaskForm: React.FC<TaskFormProps> = ({
   visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
 }) => {
   const [form] = Form.useForm();
+  const globalLogMode = useGlobalLogMode();
 
   const [name, setName] = useState<string>(initialValues.name || '');
   const [cron, setCron] = useState<string>(initialValues.cron || '');
   const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
   const [logEnabled, setLogEnabled] = useState<boolean>(!!initialValues.logEnabled);
+  const [logMode, setLogMode] = useState<string>(
+    initialValues.logMode || (initialValues.logEnabled === false ? 'OFF' : (initialValues.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
+  );
   const [logRetentionDays, setLogRetentionDays] = useState<number | undefined>(
     initialValues.logRetentionDays ?? undefined,
   );
@@ -111,6 +116,9 @@ const TaskForm: React.FC<TaskFormProps> = ({
       setDirectoryId(initialValues.directoryId);
       setEnabled(initialValues.enabled !== false);
       setLogEnabled(!!initialValues.logEnabled);
+      setLogMode(
+        initialValues.logMode || (initialValues.logEnabled === false ? 'OFF' : (initialValues.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
+      );
       setLogRetentionDays(initialValues.logRetentionDays ?? undefined);
       setInfo(initialValues.info || '');
       setDslContent(initialValues.dslContent || '');
@@ -139,14 +147,15 @@ const TaskForm: React.FC<TaskFormProps> = ({
       name: name.trim(),
       cron: cron.trim(),
       enabled,
-      logEnabled,
+      logEnabled: logMode === 'ALL' || logMode === 'ERROR_ONLY',
+      logMode,
       // 留空提交 -1：后端语义为清除任务级配置（回退系统保留天数）
       logRetentionDays: logRetentionDays ?? -1,
       info: info || undefined,
       dslContent: dslContent?.trim() || DEFAULT_SCHEDULE_DSL,
       directoryId: directoryId || '',
     };
-  }, [name, cron, enabled, logEnabled, logRetentionDays, info, dslContent, directoryId]);
+  }, [name, cron, enabled, logEnabled, logMode, logRetentionDays, info, dslContent, directoryId]);
 
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
@@ -382,15 +391,31 @@ const TaskForm: React.FC<TaskFormProps> = ({
           </div>
         </Form.Item>
 
-        <Form.Item label="开启日志">
-          <Switch
-            checked={logEnabled}
-            onChange={setLogEnabled}
-            checkedChildren="开启"
-            unCheckedChildren="关闭"
-          />
+        <Form.Item label="日志策略">
+          <Radio.Group
+            value={logMode}
+            onChange={(e) => setLogMode(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
+              <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
+            </Tooltip>
+            <Tooltip title="显式指定当前任务仅在发生报错/失败时记录日志">
+              <Radio.Button value="ERROR_ONLY">仅错误</Radio.Button>
+            </Tooltip>
+            <Tooltip title="显式指定当前任务全量记录成功与失败日志（含 FlowTrace 快照）">
+              <Radio.Button value="ALL">全量记录</Radio.Button>
+            </Tooltip>
+            <Tooltip title="显式指定当前任务完全禁用日志记录，任何情况下均不落库">
+              <Radio.Button value="OFF">完全关闭</Radio.Button>
+            </Tooltip>
+          </Radio.Group>
           <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-            开启后，每次执行的 FlowTrace 快照将被记录到任务日志中
+            {(!logMode || logMode === 'SYSTEM_DEFAULT') && `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`}
+            {logMode === 'ERROR_ONLY' && '覆盖全局配置：显式指定当前任务为【仅错误】，平时零开销，异常时保存错误日志'}
+            {logMode === 'ALL' && '覆盖全局配置：显式指定当前任务为【全量记录】，每次触发均保存 FlowTrace 步骤快照'}
+            {logMode === 'OFF' && '覆盖全局配置：显式指定当前任务为【完全关闭】，任何情况下均不保存日志'}
           </div>
         </Form.Item>
 

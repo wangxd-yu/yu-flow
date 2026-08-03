@@ -43,6 +43,7 @@ const ASSET_TYPE_OPTIONS: Array<{ label: string; value: MetricsAssetType }> = [
   { label: '接口', value: 'API' },
   { label: '任务', value: 'TASK' },
   { label: '服务', value: 'SERVICE' },
+  { label: 'MQ 任务', value: 'MQ_TASK' },
   { label: '开放平台', value: 'PLATFORM' },
 ];
 

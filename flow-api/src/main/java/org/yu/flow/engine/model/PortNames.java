@@ -34,6 +34,10 @@ public final class PortNames {
     public static final String SUCCESS = "success";
     /** HTTP 请求失败分支 */
     public static final String FAIL = "fail";
+    /** Try-Catch：受保护子流入口 */
+    public static final String TRY = "try";
+    /** Try-Catch：异常补偿链入口 */
+    public static final String CATCH = "catch";
 
     // ========== 数据流端口 ==========
     /** 单条元素流转 (For/ForEach/Collect) */

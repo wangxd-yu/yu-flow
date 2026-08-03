@@ -59,6 +59,15 @@ public class FlowMqTaskLogDO {
     @Column(columnDefinition = "TEXT")
     private String errorMsg;
 
+    /** 原始消息体（JSON 解析前的字符串，支持超限截断） */
+    @Basic(fetch = FetchType.LAZY)
+    @Column(columnDefinition = "LONGTEXT")
+    private String messageBody;
+
+    /** 消息头 JSON 字典 */
+    @Column(columnDefinition = "TEXT")
+    private String messageHeaders;
+
     /** FlowTrace JSON 快照（logEnabled=true 时记录）；列表查询勿 SELECT 此字段 */
     @Basic(fetch = FetchType.LAZY)
     @Column(columnDefinition = "LONGTEXT")

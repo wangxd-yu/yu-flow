@@ -48,12 +48,28 @@ public class YuFlowRuntimeSettings {
         public static final String INGRESS_DEFAULT_TIMEOUT_MS = "INGRESS_DEFAULT_TIMEOUT_MS";
 
         public static final String SCRIPT_ALLOWED_LANGUAGES = "SCRIPT_ALLOWED_LANGUAGES";
+        public static final String ENGINE_DEFAULT_LOG_MODE = "ENGINE_DEFAULT_LOG_MODE";
+        public static final String MQ_LOG_PAYLOAD_MODE = "MQ_LOG_PAYLOAD_MODE";
     }
 
     @Resource
     private YuFlowProperties yuFlowProperties;
     @Resource
     private SysConfigCacheManager sysConfigCacheManager;
+
+    // ── Engine ──
+
+    public String getEngineDefaultLogMode() {
+        String ymlDefault = yuFlowProperties != null && yuFlowProperties.getEngine() != null
+                ? yuFlowProperties.getEngine().getDefaultLogMode() : "ERROR_ONLY";
+        return resolveString(Keys.ENGINE_DEFAULT_LOG_MODE, ymlDefault);
+    }
+
+    public String getMqLogPayloadMode() {
+        String ymlDefault = yuFlowProperties != null && yuFlowProperties.getMq() != null
+                ? yuFlowProperties.getMq().getLogPayloadMode() : "FULL";
+        return resolveString(Keys.MQ_LOG_PAYLOAD_MODE, ymlDefault);
+    }
 
     // ── Open ──
 

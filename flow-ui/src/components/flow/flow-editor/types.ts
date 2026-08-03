@@ -51,7 +51,10 @@ export type DslNodeType =
   | 'collect'      // Scatter-Gather: 汇聚屏障（线程接力并发 Barrier）
   | 'database'
   | 'systemVar'
-  | 'systemMethod';
+  | 'systemMethod'
+  | 'tryCatch'
+  | 'redis'
+  | 'jsonMap';
 
 // ── 各节点 Data 定义 ──────────────────────────────────────────────
 
@@ -96,6 +99,9 @@ export interface ApiNodeData {
   __serviceUrl?: string;
   /** 可选：额外写入的上下文变量名 */
   output?: string;
+  timeoutMs?: number;
+  retryCount?: number;
+  retryIntervalMs?: number;
 }
 
 export interface HttpRequestNodeData {
@@ -115,6 +121,9 @@ export interface HttpRequestNodeData {
   authApiKeyIn?: string;
   authApiKeyName?: string;
   authApiKeyValue?: string;
+  retryCount?: number;
+  retryIntervalMs?: number;
+  retryOnServerError?: boolean;
 }
 
 /** 串行 ForEach 节点数据契约 */
@@ -375,7 +384,8 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     color: '#2f54eb',
     defaultPorts: [
       { id: 'in:payload', group: 'absolute-in-solid' },
-      { id: 'out', group: 'absolute-out-solid' },
+      { id: 'success', group: 'absolute-out-solid' },
+      { id: 'fail', group: 'absolute-out-hollow' },
     ],
   },
   for: {
@@ -497,7 +507,8 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     color: '#13c2c2',
     defaultPorts: [
       { id: 'in:payload', group: 'absolute-in-solid' },
-      { id: 'out', group: 'absolute-out-solid' },
+      { id: 'success', group: 'absolute-out-solid' },
+      { id: 'fail', group: 'absolute-out-hollow' },
     ],
   },
   service: {
@@ -557,5 +568,37 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     defaultPorts: [
       { id: 'out', group: 'right' },
     ],
-  }
+  },
+  tryCatch: {
+    type: 'tryCatch',
+    label: 'Try-Catch',
+    category: '逻辑节点',
+    color: '#7c3aed',
+    defaultPorts: [
+      { id: 'in', group: 'absolute-in-solid' },
+      { id: 'try', group: 'absolute-out-solid' },
+      { id: 'catch', group: 'absolute-out-hollow' },
+      { id: 'out', group: 'absolute-out-solid' },
+    ],
+  },
+  redis: {
+    type: 'redis',
+    label: 'Redis',
+    category: '数据节点',
+    color: '#cf1322',
+    defaultPorts: [
+      { id: 'in', group: 'absolute-in-solid' },
+      { id: 'out', group: 'absolute-out-solid' },
+    ],
+  },
+  jsonMap: {
+    type: 'jsonMap',
+    label: 'JSON 映射 (JsonMap)',
+    category: '数据节点',
+    color: '#531dab',
+    defaultPorts: [
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'out', group: 'absolute-out-solid' },
+    ],
+  },
 };

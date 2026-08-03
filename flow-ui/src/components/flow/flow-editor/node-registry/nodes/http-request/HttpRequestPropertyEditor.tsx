@@ -146,7 +146,7 @@ export function HttpRequestPropertyEditor({ data, onChange }: PropertyEditorProp
                     </PropertyField>
                     <PropertyField
                         label="重试"
-                        tip="仅对网络异常 / 超时重试；业务 fail 不重试。0 = 不重试"
+                        tip="网络异常 / 超时 / 可选 5xx 重试；业务 fail 不重试。0 = 不重试"
                         labelWidth={40}
                     >
                         <InputNumber
@@ -176,6 +176,19 @@ export function HttpRequestPropertyEditor({ data, onChange }: PropertyEditorProp
                         onChange={(val) => onChange({ retryIntervalMs: val ?? 1000 })}
                     />
                 </PropertyField>
+                {retryCount > 0 && (
+                    <PropertySwitchRow
+                        label="5xx 时重试"
+                        tip="HTTP 5xx 且未满足成功条件时，按网络异常同样重试"
+                        control={
+                            <Switch
+                                size="small"
+                                checked={!!data.retryOnServerError}
+                                onChange={(checked) => onChange({ retryOnServerError: checked })}
+                            />
+                        }
+                    />
+                )}
             </PropertySection>
 
             <PropertySection title="安全与日志">

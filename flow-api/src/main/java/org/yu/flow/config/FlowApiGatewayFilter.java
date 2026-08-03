@@ -183,7 +183,13 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
 
         // 2.5 第三方开放入口：/flow-api/open/{真实path}（不走管理端 JWT）
         if (openEntryHandler.isOpenEntryPath(requestPath)) {
-            openEntryHandler.handleOpenEntry(request, response, filterChain, requestPath, requestMethod);
+            String realPath = openEntryHandler.extractRealPath(requestPath);
+            if (openEntryHandler.isNativeOpenOssPath(realPath)) {
+                openEntryHandler.authenticateAndPassToMvc(
+                        request, response, filterChain, realPath, requestMethod);
+            } else {
+                openEntryHandler.handleOpenEntry(request, response, filterChain, requestPath, requestMethod);
+            }
             return;
         }
 

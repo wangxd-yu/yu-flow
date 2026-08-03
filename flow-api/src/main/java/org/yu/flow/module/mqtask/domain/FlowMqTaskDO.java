@@ -63,12 +63,36 @@ public class FlowMqTaskDO implements Serializable {
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean enabled;
 
-    /** 是否记录执行日志 */
+    /** 是否记录执行日志
+     * @deprecated 请使用 {@link #logMode} 替代 */
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean logEnabled;
 
+    /**
+     * 日志策略模式（四态枚举）：SYSTEM_DEFAULT / OFF / ERROR_ONLY / ALL。
+     * 取代旧版 logEnabled 布尔值。null 等价于 SYSTEM_DEFAULT（继承全局配置）。
+     */
+    @Column(length = 16)
+    private String logMode;
+
+    /** 原始报文落库策略：SYSTEM_DEFAULT / FULL / MASK / OFF */
+    @Column(length = 16)
+    private String logPayloadMode;
+
     /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
     private Integer logRetentionDays;
+
+    /** 失败重试次数（0=不重试） */
+    @Column(columnDefinition = "int default 0")
+    private Integer retryMax;
+
+    /** 重试间隔毫秒 */
+    @Column(columnDefinition = "int default 1000")
+    private Integer retryBackoffMs;
+
+    /** 最终失败时转发的死信 topic/队列 */
+    @Column(length = 255)
+    private String deadLetterTopic;
 
     /** 流程定义 DSL JSON（草稿） */
     @Column(columnDefinition = "MEDIUMTEXT")

@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Drawer, message, Button, Form, Input, InputNumber, Switch, Space, Tooltip, Tag, Modal,
-  Popconfirm, Select, AutoComplete,
+  Popconfirm, Select, AutoComplete, Radio,
 } from 'antd';
 import {
   SaveOutlined, CloseOutlined, PlayCircleOutlined, SendOutlined,
@@ -37,6 +37,7 @@ import {
   ASSET_FORM_FILL_CLASS,
 } from '@/components/flow/ops';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import { useGlobalLogMode, getLogModeLabel } from '@/components/flow/useGlobalLogMode';
 
 const DEFAULT_MQ_DSL = JSON.stringify({
   nodes: [
@@ -233,6 +234,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
   visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
 }) => {
   const [form] = Form.useForm();
+  const globalLogMode = useGlobalLogMode();
 
   const [name, setName] = useState<string>(initialValues.name || '');
   const [connectionCode, setConnectionCode] = useState<string>(initialValues.connectionCode || '');
@@ -242,6 +244,15 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
   const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
   const [logEnabled, setLogEnabled] = useState<boolean>(!!initialValues.logEnabled);
+  const [logMode, setLogMode] = useState<string>(
+    initialValues.logMode || (initialValues.logEnabled === false ? 'OFF' : (initialValues.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
+  );
+  const [logPayloadMode, setLogPayloadMode] = useState<string>(
+    initialValues.logPayloadMode || 'SYSTEM_DEFAULT',
+  );
+  const [retryMax, setRetryMax] = useState<number>(initialValues.retryMax ?? 0);
+  const [retryBackoffMs, setRetryBackoffMs] = useState<number>(initialValues.retryBackoffMs ?? 1000);
+  const [deadLetterTopic, setDeadLetterTopic] = useState<string>(initialValues.deadLetterTopic || '');
   const [logRetentionDays, setLogRetentionDays] = useState<number | undefined>(
     initialValues.logRetentionDays ?? undefined,
   );
@@ -257,6 +268,10 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const [debugReplayOpen, setDebugReplayOpen] = useState(false);
   const [debugReplayTrace, setDebugReplayTrace] = useState<any>(null);
+  const [debugModalOpen, setDebugModalOpen] = useState(false);
+  const [debugTopic, setDebugTopic] = useState('');
+  const [debugBody, setDebugBody] = useState('{\n  "demo": true\n}');
+  const [debugHeadersJson, setDebugHeadersJson] = useState('{}');
   const [connOptions, setConnOptions] = useState<{ label: string; value: string }[]>([]);
   const [topicOptions, setTopicOptions] = useState<{ value: string }[]>([]);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -338,6 +353,13 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
       setDirectoryId(initialValues.directoryId);
       setEnabled(initialValues.enabled !== false);
       setLogEnabled(!!initialValues.logEnabled);
+      setLogMode(
+        initialValues.logMode || (initialValues.logEnabled === false ? 'OFF' : (initialValues.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
+      );
+      setLogPayloadMode(initialValues.logPayloadMode || 'SYSTEM_DEFAULT');
+      setRetryMax(initialValues.retryMax ?? 0);
+      setRetryBackoffMs(initialValues.retryBackoffMs ?? 1000);
+      setDeadLetterTopic(initialValues.deadLetterTopic || '');
       setLogRetentionDays(initialValues.logRetentionDays ?? undefined);
       setInfo(initialValues.info || '');
       setDslContent(initialValues.dslContent || '');
@@ -373,14 +395,19 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
       consumerGroup: consumerGroup?.trim() || undefined,
       concurrency: concurrency || 1,
       enabled,
-      logEnabled,
+      logEnabled: logMode === 'ALL' || logMode === 'ERROR_ONLY',
+      logMode,
+      logPayloadMode,
+      retryMax: retryMax ?? 0,
+      retryBackoffMs: retryBackoffMs ?? 1000,
+      deadLetterTopic: deadLetterTopic?.trim() || undefined,
       // 留空提交 -1：后端语义为清除任务级配置（回退系统保留天数）
       logRetentionDays: logRetentionDays ?? -1,
       info: info || undefined,
       dslContent: dslContent?.trim() || DEFAULT_MQ_DSL,
       directoryId: directoryId || '',
     };
-  }, [name, connectionCode, topic, consumerGroup, concurrency, enabled, logEnabled, logRetentionDays, info, dslContent, directoryId]);
+  }, [name, connectionCode, topic, consumerGroup, concurrency, enabled, logMode, logPayloadMode, retryMax, retryBackoffMs, deadLetterTopic, logRetentionDays, info, dslContent, directoryId]);
 
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
@@ -400,6 +427,11 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
     if (detail.directoryId !== undefined) setDirectoryId(detail.directoryId || undefined);
     if (detail.enabled != null) setEnabled(!!detail.enabled);
     if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
+    if (detail.logMode != null) setLogMode(detail.logMode);
+    if (detail.logPayloadMode != null) setLogPayloadMode(detail.logPayloadMode);
+    if (detail.retryMax != null) setRetryMax(detail.retryMax);
+    if (detail.retryBackoffMs != null) setRetryBackoffMs(detail.retryBackoffMs);
+    if (detail.deadLetterTopic !== undefined) setDeadLetterTopic(detail.deadLetterTopic || '');
     if (detail.logRetentionDays !== undefined) setLogRetentionDays(detail.logRetentionDays ?? undefined);
     if (detail.info != null) setInfo(detail.info);
     onPublished?.(detail);
@@ -462,21 +494,37 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
     }
   }, [initialValues.id, applyDetail]);
 
-  const handleDebugRun = useCallback(async () => {
+  const openDebugModal = useCallback(() => {
     if (!dslContent) {
       message.warning('请先配置流程');
       return;
+    }
+    setDebugTopic(topic || initialValues.topic || '');
+    setDebugModalOpen(true);
+  }, [dslContent, topic, initialValues.topic]);
+
+  const executeDebugRun = useCallback(async () => {
+    let parsedHeaders: Record<string, string> | undefined;
+    if (debugHeadersJson.trim()) {
+      try {
+        parsedHeaders = JSON.parse(debugHeadersJson);
+      } catch {
+        message.error('消息头 JSON 格式不合法');
+        return;
+      }
     }
     const hide = message.loading('正在调试运行...');
     try {
       const result = await debugRunMqTask(dslContent, {
         sourceRef: initialValues.id,
         sourceName: name || initialValues.name,
-        topic: topic || undefined,
-        body: '{"demo":true}',
+        topic: debugTopic || topic || undefined,
+        body: debugBody,
+        headers: parsedHeaders,
       });
       const trace = unwrapDebugTrace(result);
       hide();
+      setDebugModalOpen(false);
       setDebugReplayTrace(trace);
       setDebugReplayOpen(true);
       if (trace?.status === 'error') {
@@ -488,14 +536,14 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
       hide();
       message.error('调试失败: ' + (e?.message || '未知错误'));
     }
-  }, [dslContent, initialValues.id, initialValues.name, name, topic]);
+  }, [dslContent, initialValues.id, initialValues.name, name, topic, debugTopic, debugBody, debugHeadersJson]);
 
   const handleSimulate = useCallback(() => {
     if (!initialValues.id || publishStatus !== 1) {
       message.warning('仅已发布任务可模拟触发');
       return;
     }
-    let simMessage = '{"demo":true}';
+    let simMessage = '{\n  "demo": true\n}';
     Modal.confirm({
       title: '模拟触发一条消息',
       width: 520,
@@ -505,9 +553,10 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
             按已发布版本异步执行一次，结果在「执行日志」查看（触发类型 = 手动）。
           </div>
           <Input.TextArea
-            rows={4}
+            rows={6}
             defaultValue={simMessage}
-            placeholder="模拟消息体（JSON 或纯文本）"
+            placeholder="模拟消息体（JSON 或纯文本，原样作为 $.mq.message 注入）"
+            style={{ fontFamily: 'monospace', fontSize: 13 }}
             onChange={(e) => {
               simMessage = e.target.value;
             }}
@@ -546,8 +595,8 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
 
   const headerExtra = (
     <Space size={8}>
-      <Tooltip title="调试：以模拟消息立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
-        <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
+      <Tooltip title="调试：自定义消息体/Headers/Topic运行当前草稿流程，查看完整 Trace 轨迹">
+        <Button icon={<PlayCircleOutlined />} onClick={openDebugModal}>
           调试运行
         </Button>
       </Tooltip>
@@ -711,16 +760,83 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
           </div>
         </Form.Item>
 
-        <Form.Item label="开启日志">
-          <Switch
-            checked={logEnabled}
-            onChange={setLogEnabled}
-            checkedChildren="开启"
-            unCheckedChildren="关闭"
-          />
+        <Form.Item label="日志策略">
+          <Radio.Group
+            value={logMode}
+            onChange={(e) => setLogMode(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
+              <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
+            </Tooltip>
+            <Tooltip title="显式指定当前 MQ 消费仅在发生报错/失败时记录日志与原始报文">
+              <Radio.Button value="ERROR_ONLY">仅错误</Radio.Button>
+            </Tooltip>
+            <Tooltip title="显式指定当前 MQ 消费全量记录成功与失败日志（含 FlowTrace 快照及原始报文）">
+              <Radio.Button value="ALL">全量记录</Radio.Button>
+            </Tooltip>
+            <Tooltip title="显式指定当前 MQ 消费完全禁用日志记录，任何情况下均不落库">
+              <Radio.Button value="OFF">完全关闭</Radio.Button>
+            </Tooltip>
+          </Radio.Group>
           <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-            开启后，每次消息触发的 FlowTrace 快照将被记录到执行日志中
+            {(!logMode || logMode === 'SYSTEM_DEFAULT') && `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`}
+            {logMode === 'ERROR_ONLY' && '覆盖全局配置：显式指定当前任务为【仅错误】，平时零开销，异常时保存错误与原始报文'}
+            {logMode === 'ALL' && '覆盖全局配置：显式指定当前任务为【全量记录】，全量保存消息日志、FlowTrace 快照及原始报文'}
+            {logMode === 'OFF' && '覆盖全局配置：显式指定当前任务为【完全关闭】，任何情况下均不保存日志'}
           </div>
+        </Form.Item>
+
+        <Form.Item label="报文留存策略">
+          <Radio.Group
+            value={logPayloadMode}
+            onChange={(e) => setLogPayloadMode(e.target.value)}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Tooltip title="跟随系统全局 MQ_LOG_PAYLOAD_MODE（默认 FULL）">
+              <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
+            </Tooltip>
+            <Tooltip title="落库完整报文（受 log-body-max-chars 截断）">
+              <Radio.Button value="FULL">明文</Radio.Button>
+            </Tooltip>
+            <Tooltip title="仅存占位符 [MASKED len=N]，不存明文">
+              <Radio.Button value="MASK">脱敏</Radio.Button>
+            </Tooltip>
+            <Tooltip title="不存储 messageBody / messageHeaders">
+              <Radio.Button value="OFF">不存</Radio.Button>
+            </Tooltip>
+          </Radio.Group>
+        </Form.Item>
+
+        <Form.Item label="失败重试">
+          <Space>
+            <span>最多</span>
+            <InputNumber min={0} max={10} value={retryMax} onChange={(v) => setRetryMax(v ?? 0)} />
+            <span>次，间隔</span>
+            <InputNumber min={0} max={60000} step={500} value={retryBackoffMs} onChange={(v) => setRetryBackoffMs(v ?? 1000)} />
+            <span>ms</span>
+          </Space>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+            应用层重试，不影响 MQ ack；仅最终 outcome 记一条日志。
+          </div>
+        </Form.Item>
+
+        <Form.Item
+          label="死信 Topic"
+          help={
+            <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+              最终仍失败时，将原文转发到此 topic/队列（同连接）；留空则不转发。
+            </span>
+          }
+        >
+          <Input
+            value={deadLetterTopic}
+            onChange={(e) => setDeadLetterTopic(e.target.value)}
+            placeholder="例如：order.created.dlq"
+            style={{ fontFamily: 'monospace' }}
+          />
         </Form.Item>
 
         <Form.Item label="日志保留天数">
@@ -826,6 +942,44 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
       >
         {renderTabContent()}
       </PageContainer>
+
+      <Modal
+        title="MQ 调试运行 - 触发器参数配置"
+        open={debugModalOpen}
+        onCancel={() => setDebugModalOpen(false)}
+        onOk={executeDebugRun}
+        okText="开始调试"
+        width={560}
+        destroyOnClose
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="模拟 Topic" help="MQ 消息来源 Topic（写入 $.mq.topic）">
+            <Input
+              value={debugTopic}
+              onChange={(e) => setDebugTopic(e.target.value)}
+              placeholder="请输入 Topic，例如 demo-topic"
+            />
+          </Form.Item>
+          <Form.Item label="模拟消息体 (Body)" help="消息内容，JSON 格式会自动解析为对象注入 $.mq.message">
+            <Input.TextArea
+              rows={6}
+              value={debugBody}
+              onChange={(e) => setDebugBody(e.target.value)}
+              placeholder='例如: {"orderId": "1001", "amount": 99.9}'
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+          </Form.Item>
+          <Form.Item label="消息头 (Headers，可选)" help="消息头 KV 字典（JSON 格式），注入 $.mq.headers">
+            <Input.TextArea
+              rows={3}
+              value={debugHeadersJson}
+              onChange={(e) => setDebugHeadersJson(e.target.value)}
+              placeholder='例如: {"correlationId": "req-123", "contentType": "application/json"}'
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {debugReplayOpen && (
         <Drawer

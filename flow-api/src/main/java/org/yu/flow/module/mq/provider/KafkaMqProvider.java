@@ -6,10 +6,14 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.DescribeClusterResult;
+import org.apache.kafka.clients.admin.ListOffsetsResult;
+import org.apache.kafka.clients.admin.OffsetSpec;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.Node;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -297,6 +301,60 @@ public class KafkaMqProvider implements MqProvider {
             } catch (Exception e) {
                 log.warn("[MQ][Kafka] 销毁生产者工厂失败 code={}: {}", connectionCode, e.getMessage());
             }
+        }
+    }
+
+    @Override
+    public Long estimateBacklog(MqConnectionSpec spec, String topic, String consumerGroup) {
+        if (StrUtil.isBlank(topic) || StrUtil.isBlank(consumerGroup)) {
+            return null;
+        }
+        Map<String, Object> props = commonProps(spec);
+        props.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 5000);
+        props.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 5000);
+        try (AdminClient admin = AdminClient.create(props)) {
+            Map<TopicPartition, OffsetAndMetadata> committed = admin
+                    .listConsumerGroupOffsets(consumerGroup)
+                    .partitionsToOffsetAndMetadata()
+                    .get(5, TimeUnit.SECONDS);
+            Map<TopicPartition, OffsetSpec> endRequest = new HashMap<>();
+            for (TopicPartition tp : committed.keySet()) {
+                if (topic.equals(tp.topic())) {
+                    endRequest.put(tp, OffsetSpec.latest());
+                }
+            }
+            if (endRequest.isEmpty()) {
+                return 0L;
+            }
+            Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> endOffsets =
+                    admin.listOffsets(endRequest).all().get(5, TimeUnit.SECONDS);
+            long lag = 0L;
+            for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : committed.entrySet()) {
+                if (!topic.equals(entry.getKey().topic())) {
+                    continue;
+                }
+                ListOffsetsResult.ListOffsetsResultInfo endInfo = endOffsets.get(entry.getKey());
+                if (endInfo == null) {
+                    continue;
+                }
+                lag += Math.max(0L, endInfo.offset() - entry.getValue().offset());
+            }
+            return lag;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception e) {
+            log.debug("[MQ][Kafka] estimateBacklog failed topic={}, group={}: {}",
+                    topic, consumerGroup, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 容器关闭或销毁时清理所有生产者连接 */
+    public void closeAll() {
+        List<String> codes = new ArrayList<>(producers.keySet());
+        for (String code : codes) {
+            invalidate(code);
         }
     }
 

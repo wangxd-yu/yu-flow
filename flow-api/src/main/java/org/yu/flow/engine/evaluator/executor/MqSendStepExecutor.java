@@ -19,7 +19,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 发送 MQ 消息节点：委托 {@link MqSendService}（经 MqProvider SPI 路由 RabbitMQ / Kafka）。
+ * 发送 MQ 消息节点：成功走 success，失败走 fail（软失败，不抛异常）。
  */
 @Slf4j
 public class MqSendStepExecutor extends AbstractStepExecutor<MqSendStep> {
@@ -40,48 +40,53 @@ public class MqSendStepExecutor extends AbstractStepExecutor<MqSendStep> {
         Map<String, Object> headers = resolveHeaders(step.getHeaders(), inputs);
 
         if (StrUtil.isBlank(connectionCode)) {
-            throw new FlowException("MQ_CONNECTION_REQUIRED", "MQ 连接编码 connectionCode 不能为空", step.getId());
+            return softFail(step, context, "MQ 连接编码 connectionCode 不能为空");
         }
         if (StrUtil.isBlank(topic)) {
-            throw new FlowException("MQ_TOPIC_REQUIRED", "目标 topic 不能为空", step.getId());
+            return softFail(step, context, "目标 topic 不能为空");
         }
         if (message == null || message.isEmpty()) {
-            throw new FlowException("MQ_MESSAGE_REQUIRED", "消息体 message 不能为空", step.getId());
+            return softFail(step, context, "消息体 message 不能为空");
         }
 
         MqSendService sendService;
         try {
             sendService = SpringUtil.getBean(MqSendService.class);
         } catch (Exception e) {
-            throw new FlowException("MQ_SERVICE_UNAVAILABLE", "MQ 发送服务不可用: " + e.getMessage(), step.getId());
+            return softFail(step, context, "MQ 发送服务不可用: " + e.getMessage());
         }
         if (sendService == null) {
-            throw new FlowException("MQ_NOT_CONFIGURED",
-                    "MQ 发送服务未装配，请检查 MQ 连接配置", step.getId());
+            return softFail(step, context, "MQ 发送服务未装配，请检查 MQ 连接配置");
         }
 
         long start = System.currentTimeMillis();
-        MqSendResult sendResult;
         try {
-            sendResult = sendService.send(connectionCode, topic, messageKey, headers, message);
-        } catch (FlowException e) {
-            throw e;
+            MqSendResult sendResult = sendService.send(connectionCode, topic, messageKey, headers, message);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("messageId", sendResult != null ? sendResult.getMessageId() : null);
+            result.put("topic", topic);
+            result.put("timeMs", System.currentTimeMillis() - start);
+            Map<String, Object> out = new HashMap<>();
+            out.put(PortNames.OUT, result);
+            context.setVar(step.getId(), out);
+            return PortNames.SUCCESS;
         } catch (Exception e) {
-            throw new FlowException("MQ_SEND_ERROR", "MQ 消息发送失败: " + e.getMessage(), step.getId());
+            log.warn("MqSend [{}] 失败: {}", step.getId(), e.getMessage());
+            return softFail(step, context, e.getMessage());
         }
+    }
 
+    private String softFail(MqSendStep step, ExecutionContext context, String message) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", true);
-        result.put("messageId", sendResult != null ? sendResult.getMessageId() : null);
-        result.put("topic", topic);
-        result.put("timeMs", System.currentTimeMillis() - start);
+        result.put("success", false);
+        result.put("error", message);
         Map<String, Object> out = new HashMap<>();
         out.put(PortNames.OUT, result);
         context.setVar(step.getId(), out);
-        return PortNames.OUT;
+        return PortNames.FAIL;
     }
 
-    /** inputs.message 为对象时自动 JSON 序列化；字符串走 ${var} 模板替换 */
     private static String resolveMessage(MqSendStep step, Map<String, Object> inputs) {
         Object bound = inputs.get("message");
         if (bound != null && !(bound instanceof String)) {
@@ -95,7 +100,6 @@ public class MqSendStepExecutor extends AbstractStepExecutor<MqSendStep> {
         return firstNonBlank(str(bound), resolveString(step.getMessage(), inputs));
     }
 
-    /** headers 值为字符串时支持 ${var} 模板替换 */
     private static Map<String, Object> resolveHeaders(Map<String, Object> headers, Map<String, Object> inputs) {
         if (headers == null || headers.isEmpty()) {
             return new LinkedHashMap<>();
@@ -120,12 +124,34 @@ public class MqSendStepExecutor extends AbstractStepExecutor<MqSendStep> {
         StringBuffer sb = new StringBuffer();
         while (matcher.find()) {
             String varName = matcher.group(1).trim();
-            Object val = inputs.get(varName);
+            Object val = getValueByPath(varName, inputs);
             String replacement = val != null ? String.valueOf(val) : "";
             matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
         }
         matcher.appendTail(sb);
         return sb.toString();
+    }
+
+    private static Object getValueByPath(String path, Map<String, Object> inputs) {
+        if (path == null || inputs == null || inputs.isEmpty()) {
+            return null;
+        }
+        if (inputs.containsKey(path)) {
+            return inputs.get(path);
+        }
+        String[] parts = path.split("\\.");
+        Object current = inputs;
+        for (String part : parts) {
+            if (current instanceof Map) {
+                current = ((Map<?, ?>) current).get(part);
+            } else {
+                return null;
+            }
+            if (current == null) {
+                return null;
+            }
+        }
+        return current;
     }
 
     private static String str(Object o) {

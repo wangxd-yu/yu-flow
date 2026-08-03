@@ -34,6 +34,8 @@ public class FlowApiDTO {
     private String hostBinding;
     private Integer publishStatus;
     private Boolean logEnabled;
+    /** 日志策略模式：SYSTEM_DEFAULT / OFF / ERROR_ONLY / ALL */
+    private String logMode;
     /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数 */
     private Integer logRetentionDays;
     /** 查询响应 Redis 缓存配置 JSON */

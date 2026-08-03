@@ -65,6 +65,8 @@ public class DemoModeGuard {
         loadProtectedIds("flow_open_platform", "开放平台");
         loadProtectedIds("flow_mq_connection", "MQ 连接");
         loadProtectedIds("flow_mq_task_info", "MQ 任务");
+        loadProtectedIds("flow_oss_connection", "OSS 连接");
+        loadProtectedIds("flow_oss_upload_profile", "OSS 上传场景");
         log.warn("[DemoModeGuard] 演示模式资产锁定完成，共保护 {} 个资产 ID。", protectedIds.size());
     }
 
@@ -194,6 +196,21 @@ public class DemoModeGuard {
             throw new FlowException(
                     "DEMO_RESTRICTED",
                     "演示模式限制：禁止向外部消息队列发送消息。如需体验 MQ 节点，请联系管理员获取完整版！"
+            );
+        }
+    }
+
+    /**
+     * 校验 OSS 写入（上传 / 删除对象），演示模式下禁止向真实桶写入。
+     *
+     * @param target 桶名或目标描述（用于日志）
+     */
+    public void checkOssWrite(String target) {
+        if (yuFlowProperties.isDemoMode()) {
+            log.warn("[DemoModeGuard] 拒绝 OSS 写入，target={}，当前为演示模式。", target);
+            throw new FlowException(
+                    "DEMO_RESTRICTED",
+                    "演示模式限制：禁止向对象存储写入或删除文件。如需体验 OSS 上传，请联系管理员获取完整版！"
             );
         }
     }

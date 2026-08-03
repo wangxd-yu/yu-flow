@@ -14,6 +14,7 @@ import {
   publishMqTask,
   unpublishMqTask,
   getRunningMqTaskIds,
+  getMqTaskBacklog,
   FlowMqTask,
 } from '@/services/flow/mqTask';
 import MqTaskForm from './components/MqTaskForm';
@@ -106,7 +107,8 @@ const openSimulateModal = (record: FlowMqTask) => {
  * 消费状态：区分「本来就不该跑」与「应该跑却没跑」。
  * 后者是真正需要告警的故障（发布后订阅注册失败 / 重启后未恢复 / rebalance 卡死）。
  */
-const renderConsumerStatus = (record: FlowMqTask, running: boolean) => {
+const renderConsumerStatus = (record: FlowMqTask, extra?: { running?: boolean }) => {
+  const running = !!extra?.running;
   const shouldRun = record.publishStatus === 1 && !!record.enabled;
   if (!shouldRun) {
     return (
@@ -228,7 +230,26 @@ const buildColumns = (
     dataIndex: 'consumerStatus',
     width: 100,
     hideInSearch: true,
-    render: (_, record) => renderConsumerStatus(record, !!ctx.extraMap[record.id]),
+    render: (_, record) => renderConsumerStatus(record, ctx.extraMap[record.id]),
+  },
+  {
+    title: (
+      <Tooltip title="Kafka=consumer lag，Rabbit=队列深度；「-」表示未知或不支持">
+        <span>积压</span>
+      </Tooltip>
+    ),
+    dataIndex: 'backlog',
+    width: 90,
+    align: 'right',
+    hideInSearch: true,
+    render: (_, record) => {
+      const backlog = ctx.extraMap[record.id]?.backlog;
+      if (backlog == null) {
+        return <span style={{ color: 'rgba(0,0,0,0.25)' }}>-</span>;
+      }
+      const color = backlog > 1000 ? '#ff4d4f' : backlog > 100 ? '#faad14' : undefined;
+      return <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{backlog.toLocaleString()}</span>;
+    },
   },
   {
     title: (
@@ -257,25 +278,28 @@ const buildColumns = (
     render: (_, record) => renderHealthTag(ctx.healthMap[record.id]),
   },
   {
-    title: '执行日志',
-    dataIndex: 'logEnabled',
-    width: 90,
-    hideInSearch: true,
-    render: (_, record) => (
-      <Switch
-        size="small"
-        checked={!!record.logEnabled}
-        onChange={async (checked) => {
-          try {
-            await updateMqTaskLogEnabled(record.id, checked);
-            message.success(checked ? '已开启日志' : '已关闭日志');
-            ctx.reload();
-          } catch {
-            message.error('操作失败');
-          }
-        }}
-      />
+    title: (
+      <Tooltip title="日志策略模式：继承全局 / 仅错误时记录 / 全量记录 / 完全关闭">
+        <span>日志策略</span>
+      </Tooltip>
     ),
+    dataIndex: 'logMode',
+    width: 100,
+    hideInSearch: true,
+    render: (_, record) => {
+      const mode = record.logMode || (record.logEnabled === false ? 'OFF' : (record.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT'));
+      switch (mode) {
+        case 'ALL':
+          return <Tag color="blue">全量记录</Tag>;
+        case 'ERROR_ONLY':
+          return <Tag color="warning">仅错误</Tag>;
+        case 'OFF':
+          return <Tag color="default">完全关闭</Tag>;
+        case 'SYSTEM_DEFAULT':
+        default:
+          return <Tag color="cyan">继承全局</Tag>;
+      }
+    },
   },
   {
     title: '创建时间',
@@ -392,14 +416,24 @@ const MqTaskManagement: React.FC = () => (
     submitUpdate={handleUpdate}
     removeRows={handleRemove}
     buildColumns={buildColumns}
-    scrollX={1780}
+    scrollX={1880}
     fetchRowExtra={async () => {
-      // 一次请求拿全部存活订阅，转为 taskId -> true 供消费状态列使用
-      const res: any = await getRunningMqTaskIds();
-      const ids = res?.data ?? res;
-      const map: Record<string, boolean> = {};
-      (Array.isArray(ids) ? ids : []).forEach((id: string) => {
-        map[id] = true;
+      const [runningRes, backlogRes]: any[] = await Promise.all([
+        getRunningMqTaskIds(),
+        getMqTaskBacklog(),
+      ]);
+      const runningIds = runningRes?.data ?? runningRes;
+      const backlogMap = backlogRes?.data ?? backlogRes ?? {};
+      const map: Record<string, { running: boolean; backlog: number | null }> = {};
+      const allIds = new Set<string>([
+        ...(Array.isArray(runningIds) ? runningIds : []),
+        ...Object.keys(backlogMap || {}),
+      ]);
+      allIds.forEach((id) => {
+        map[id] = {
+          running: Array.isArray(runningIds) && runningIds.includes(id),
+          backlog: backlogMap[id] ?? null,
+        };
       });
       return map;
     }}

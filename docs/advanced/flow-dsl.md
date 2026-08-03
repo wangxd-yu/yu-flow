@@ -250,7 +250,8 @@ outline: deep
 ```
 
 订阅的连接/Topic/消费组配在 **MQ 任务**资产上（非节点 data）；消费订阅仅跑**已发布快照**，草稿用调试运行/模拟触发验证。  
-消息体为合法 JSON 时自动解析为对象（`$.mq.message.orderId` 可直接取字段），否则保留原始字符串。
+消息体为合法 JSON 时自动解析为对象（`$.mq.message.orderId` 可直接取字段），否则保留原始字符串。  
+运行时写入 `$.mq.topic` / `message` / `headers` / `messageId` / `triggerTime` / `taskName`。任务资产还可配置日志策略、报文策略、应用层重试与死信 Topic（见 `doc/2026-07-30-逻辑编排引擎详细说明文档.md` §5.3.1）。
 
 ---
 
@@ -375,6 +376,7 @@ outline: deep
     "timeout": 30000,
     "retryCount": 0,
     "retryIntervalMs": 1000,
+    "retryOnServerError": false,
     "successCondition": "status == 200",
     "logEnabled": true,
     "ignoreSsl": true,
@@ -393,7 +395,7 @@ outline: deep
 
 `authType`：`none` | `bearer` | `basic` | `apiKey`。  
 API Key：`authApiKeyIn`=`header`|`query`，`authApiKeyName`，`authApiKeyValue`。  
-`successCondition` 为空时按 HTTP 2xx。
+`successCondition` 为空时按 HTTP 2xx。`retryOnServerError=true` 且 `retryCount>0` 时，5xx 也会进入重试。
 
 ---
 
@@ -402,9 +404,9 @@ API Key：`authApiKeyIn`=`header`|`query`，`authApiKeyName`，`authApiKeyValue`
 | | |
 | --- | --- |
 | 入 | `in:payload` |
-| 出 | `out` |
+| 出 | `success`, `fail`（结果仍在 `{nodeId}.out`；旧图 `out` 边引擎回退到 success） |
 | 必填 | `serviceId`（目标实体 id） |
-| 可选 | `targetType`：`api`（默认，Flow API）\| `service`（内部服务编排） |
+| 可选 | `targetType`：`api`（默认）\| `service`；`timeoutMs`（默认 30000）；`retryCount` / `retryIntervalMs` |
 
 调用 **Flow API**：
 
@@ -686,7 +688,68 @@ SQL 参数占位以项目数据源引擎为准（常见 `#{name}` / 命名参数
 }
 ```
 
-入 `in:payload`，出 `out`（`{ success, messageId, topic, timeMs }`）。`connectionCode` / `topic` / `message` 缺失时报错中断。
+入 `in:payload`，出 `success` / `fail`（失败软退出，不抛全局异常；`{ success, messageId, topic, timeMs }` 或 `{ success:false, error }`）。
+
+---
+
+### 5.17.2 `tryCatch` — 局部错误边界
+
+| | |
+| --- | --- |
+| 入 | `in` |
+| 出 | `try`（受保护子链入口）、`catch`（异常补偿）、`out`（try 成功继续） |
+
+`try` 边指向子链起点；子链异常写入 `$.error` 并走 `catch`，不触发全局 `errorHandler`。
+
+---
+
+### 5.17.3 `redis` — Redis 读写
+
+| | |
+| --- | --- |
+| 入 | `in` |
+| 出 | `out` |
+| 字段 | `operation`: `get`\|`set`\|`del`\|`incr`；`key`；`value`（set/incr）；`ttlSeconds`（set 可选） |
+
+---
+
+### 5.17.4 `jsonMap` — JSON 字段映射
+
+| | |
+| --- | --- |
+| 入 | `in:payload` |
+| 出 | `out` |
+| 字段 | `mappings`: `[{ "target": "orderId", "source": "$.payload.id" }]` |
+
+---
+
+### 5.17.5 `oss` — 对象存储
+
+依赖 **OSS 连接配置**（菜单：对象存储 → 连接配置），通过 `connectionCode` 引用 MinIO/S3 兼容存储。
+
+| | |
+| --- | --- |
+| 入 | `in:payload` + 变量口 |
+| 出 | `success` / `fail`（软失败） |
+| 字段 | `operation`: `put`\|`get`\|`delete`\|`list`\|`presignGet`；`connectionCode`；`bucket`；`objectKey`；`contentType`；`localBytesVar`（put）；`listPrefix`；`listMaxKeys`；`presignExpireSeconds` |
+
+```json
+{
+  "id": "oss_put_1",
+  "type": "oss",
+  "data": {
+    "operation": "put",
+    "connectionCode": "minio_main",
+    "bucket": "private-bucket",
+    "objectKey": "exports/${orderId}.csv",
+    "contentType": "text/csv",
+    "localBytesVar": "csvBytes",
+    "inputs": { "orderId": "$.req.params.orderId", "csvBytes": "$.transform.out" }
+  }
+}
+```
+
+`get` 输出 `bodyBase64`（单对象上限 5MB）；`list` 输出 `{ objects: [{ key, size, lastModified }], count }`；`presignGet` 输出 `{ url, expireSeconds }`。
 
 ---
 

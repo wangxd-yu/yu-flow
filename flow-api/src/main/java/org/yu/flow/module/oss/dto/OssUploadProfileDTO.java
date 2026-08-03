@@ -1,0 +1,73 @@
+package org.yu.flow.module.oss.dto;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.Data;
+import lombok.experimental.Accessors;
+import org.yu.flow.module.oss.domain.OssUploadProfileDO;
+
+import java.time.LocalDateTime;
+
+@Data
+@Accessors(chain = true)
+public class OssUploadProfileDTO {
+
+    private String id;
+    private String name;
+    private String code;
+    private String connectionCode;
+    private String visibility;
+    private String bucketOverride;
+    private String keyPattern;
+    private String allowedContentTypes;
+    private String allowedExtensions;
+    private Long maxSizeBytes;
+    private Integer maxFilesPerRequest;
+    private Long quotaMaxBytes;
+    private Integer quotaMaxFiles;
+    private Boolean thumbnailEnabled;
+    private Integer thumbnailMaxEdge;
+    private Long thumbnailMaxSourceBytes;
+    private Double thumbnailJpegQuality;
+    private Boolean requireAuth;
+    private String bizFieldsSchema;
+    private String accessPerm;
+    private Boolean enabled;
+    private String remark;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime updateTime;
+
+    public static OssUploadProfileDTO fromDO(OssUploadProfileDO entity) {
+        if (entity == null) {
+            return null;
+        }
+        return new OssUploadProfileDTO()
+                .setId(entity.getId())
+                .setName(entity.getName())
+                .setCode(entity.getCode())
+                .setConnectionCode(entity.getConnectionCode())
+                .setVisibility(entity.getVisibility())
+                .setBucketOverride(entity.getBucketOverride())
+                .setKeyPattern(entity.getKeyPattern())
+                .setAllowedContentTypes(entity.getAllowedContentTypes())
+                .setAllowedExtensions(entity.getAllowedExtensions())
+                .setMaxSizeBytes(entity.getMaxSizeBytes())
+                .setMaxFilesPerRequest(entity.getMaxFilesPerRequest())
+                .setQuotaMaxBytes(entity.getQuotaMaxBytes())
+                .setQuotaMaxFiles(entity.getQuotaMaxFiles())
+                .setThumbnailEnabled(entity.getThumbnailEnabled())
+                .setThumbnailMaxEdge(entity.getThumbnailMaxEdge())
+                .setThumbnailMaxSourceBytes(entity.getThumbnailMaxSourceBytes())
+                .setThumbnailJpegQuality(entity.getThumbnailJpegQuality())
+                .setRequireAuth(entity.getRequireAuth())
+                .setBizFieldsSchema(entity.getBizFieldsSchema())
+                .setAccessPerm(entity.getAccessPerm())
+                .setEnabled(entity.getEnabled())
+                .setRemark(entity.getRemark())
+                .setCreateTime(entity.getCreateTime())
+                .setUpdateTime(entity.getUpdateTime());
+    }
+}

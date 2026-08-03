@@ -80,7 +80,7 @@ export default defineConfig({
       access: 'canHome',
     },
 
-    // ── 流程资产：接口 / 任务 / 服务 / 页面 ──
+    // ── 流程资产：接口 / 任务 / 服务 / MQ 任务 / 页面 ──
     // 注意：分组节点不要写 path；子路由是绝对路径（如 /flow/api），父级挂 /asset 会触发 RR6 报错白屏
     {
       name: '流程资产',
@@ -112,6 +112,13 @@ export default defineConfig({
           path: '/flow/service',
           component: './flow/service',
           access: 'canService',
+        },
+        {
+          name: 'MQ 任务',
+          icon: 'MessageOutlined',
+          path: '/flow/mq-task',
+          component: './flow/mqTask',
+          access: 'canMq',
         },
         {
           name: '页面管理',
@@ -177,6 +184,12 @@ export default defineConfig({
               access: 'canLog',
             },
             {
+              name: 'MQ 日志',
+              path: '/log/mq',
+              component: './Log/MqLog',
+              access: 'canLog',
+            },
+            {
               name: '服务日志',
               path: '/log/service',
               component: './Log/ServiceLog',
@@ -205,7 +218,7 @@ export default defineConfig({
       ],
     },
 
-    // ── 基础设施：数据源 / 模型 ──
+    // ── 基础设施：数据源 / MQ 连接 / 模型 ──
     {
       name: '基础设施',
       icon: 'CloudServerOutlined',
@@ -220,37 +233,48 @@ export default defineConfig({
           access: 'canDs',
         },
         {
+          name: 'MQ 连接',
+          icon: 'ApiOutlined',
+          path: '/flow/mq-connection',
+          component: './flow/mqConnection',
+          access: 'canMq',
+        },
+        {
+          name: '对象存储连接',
+          icon: 'CloudUploadOutlined',
+          path: '/flow/oss-connection',
+          component: './flow/ossConnection',
+          access: 'canOss',
+        },
+        {
+          name: '上传场景',
+          icon: 'FolderOpenOutlined',
+          path: '/flow/oss-profile',
+          component: './flow/ossProfile',
+          access: 'canOss',
+        },
+        {
+          name: '文件台账',
+          icon: 'FileOutlined',
+          path: '/flow/oss-object',
+          component: './flow/ossObject',
+          access: 'canOss',
+        },
+        {
+          name: '下载审计',
+          icon: 'AuditOutlined',
+          path: '/flow/oss-download-log',
+          component: './flow/ossDownloadLog',
+          access: 'canOssAudit',
+        },
+        {
           name: '数据模型',
           icon: 'DatabaseOutlined',
           path: '/data-model/list',
           component: './DataModel/List',
           access: 'canModel',
         },
-      ],
-    },
-
-    // ── 消息队列：MQ 任务 / 连接配置 ──
-    {
-      name: '消息队列',
-      icon: 'MessageOutlined',
-      key: 'menu-mq',
-      access: 'canMqGroup',
-      routes: [
-        {
-          name: 'MQ 任务',
-          icon: 'ThunderboltOutlined',
-          path: '/flow/mq-task',
-          component: './flow/mqTask',
-          access: 'canMq',
-        },
-        {
-          name: '连接配置',
-          icon: 'ApiOutlined',
-          path: '/flow/mq-connection',
-          component: './flow/mqConnection',
-          access: 'canMq',
-        },
-      ],
+        ],
     },
 
     // ── 平台设置：模板 / 参数 / 配置 / 用户 / 文档 ──

@@ -129,11 +129,17 @@ const buildMqSendPortItems = (ports: DslPort[]) => {
                 group: 'absolute-in-solid',
                 args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
             });
-        } else if (p.id === 'out') {
+        } else if (p.id === 'success' || p.id === 'out') {
             items.push({
-                id: 'out',
+                id: 'success',
                 group: 'absolute-out-solid',
-                args: { x: w, y: outY, dx: 0 },
+                args: { x: w, y: MQ_SEND_LAYOUT.successPortY(MQ_SEND_LAYOUT.height), dx: 0 },
+            });
+        } else if (p.id === 'fail') {
+            items.push({
+                id: 'fail',
+                group: 'absolute-out-hollow',
+                args: { x: w, y: MQ_SEND_LAYOUT.failPortY(MQ_SEND_LAYOUT.height), dx: 0 },
             });
         }
     }
@@ -144,11 +150,16 @@ const buildMqSendPortItems = (ports: DslPort[]) => {
             args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
         });
     }
-    if (!seen.has('out')) {
+    if (!seen.has('success') && !seen.has('out')) {
         items.push({
-            id: 'out',
+            id: 'success',
             group: 'absolute-out-solid',
-            args: { x: w, y: outY, dx: 0 },
+            args: { x: w, y: MQ_SEND_LAYOUT.successPortY(MQ_SEND_LAYOUT.height), dx: 0 },
+        });
+        items.push({
+            id: 'fail',
+            group: 'absolute-out-hollow',
+            args: { x: w, y: MQ_SEND_LAYOUT.failPortY(MQ_SEND_LAYOUT.height), dx: 0 },
         });
     }
     return items;
@@ -164,7 +175,7 @@ export const mqSendNodeRegistration: NodeRegistration = {
         '向 RabbitMQ / Kafka 发送一条消息。\n\n' +
         '· 左上角 in:payload 总入口；卡片内可新增变量行\n' +
         '· topic / messageKey / message 支持 ${变量名}\n' +
-        '· 连接需先在「MQ 连接管理」中创建并启用',
+        '· 成功走 success，失败走 fail',
     sortOrder: 46,
     hasInputs: true,
 
@@ -180,9 +191,14 @@ export const mqSendNodeRegistration: NodeRegistration = {
                     args: { x: 0, y: PAYLOAD_PORT_Y, dx: 0 },
                 },
                 {
-                    id: 'out',
+                    id: 'success',
                     group: 'absolute-out-solid',
-                    args: { x: MQ_SEND_LAYOUT.width, y: MQ_SEND_LAYOUT.outPortY, dx: 0 },
+                    args: { x: MQ_SEND_LAYOUT.width, y: MQ_SEND_LAYOUT.successPortY(MQ_SEND_LAYOUT.height), dx: 0 },
+                },
+                {
+                    id: 'fail',
+                    group: 'absolute-out-hollow',
+                    args: { x: MQ_SEND_LAYOUT.width, y: MQ_SEND_LAYOUT.failPortY(MQ_SEND_LAYOUT.height), dx: 0 },
                 },
             ],
         },
@@ -191,7 +207,8 @@ export const mqSendNodeRegistration: NodeRegistration = {
     defaults: {
         ports: [
             { id: PAYLOAD_PORT_ID, group: 'absolute-in-solid' },
-            { id: 'out', group: 'absolute-out-solid' },
+            { id: 'success', group: 'absolute-out-solid' },
+            { id: 'fail', group: 'absolute-out-hollow' },
         ],
         data: {
             connectionCode: '',

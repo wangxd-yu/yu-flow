@@ -116,6 +116,11 @@ public class YuFlowProperties {
      */
     private Mq mq = new Mq();
 
+    /**
+     * 对象存储（MinIO / S3 兼容）配置组。
+     */
+    private Oss oss = new Oss();
+
     // ==================== Getters & Setters ====================
 
     public boolean isEnabled() {
@@ -230,6 +235,14 @@ public class YuFlowProperties {
         this.mq = mq;
     }
 
+    public Oss getOss() {
+        return oss;
+    }
+
+    public void setOss(Oss oss) {
+        this.oss = oss;
+    }
+
     // ==================== 内部配置组：Engine ====================
 
     /**
@@ -319,6 +332,24 @@ public class YuFlowProperties {
          * CALL 用 ResolvedContent 缓存上限（按 publishedSnapshot 内容 hash）。
          */
         private int resolvedContentCacheMaxSize = 256;
+
+        /**
+         * 全局默认日志策略模式（资产级 logMode=SYSTEM_DEFAULT 时继承此值）。
+         * <ul>
+         *   <li>{@code ERROR_ONLY} — 默认推荐：仅报错时记录，成本低、排障有保障</li>
+         *   <li>{@code ALL}        — 全量记录所有请求（高存储成本，适合联调阶段）</li>
+         *   <li>{@code OFF}        — 完全关闭，不记录任何日志</li>
+         * </ul>
+         */
+        private String defaultLogMode = "ERROR_ONLY";
+
+        public String getDefaultLogMode() {
+            return defaultLogMode;
+        }
+
+        public void setDefaultLogMode(String defaultLogMode) {
+            this.defaultLogMode = defaultLogMode;
+        }
 
         public String getExpressionEngine() {
             return expressionEngine;
@@ -1191,6 +1222,15 @@ public class YuFlowProperties {
         /** 消息体大小上限（字节），≤0 不限制。默认 1MB */
         private int maxMessageBytes = 1048576;
 
+        /** 日志留存的原始报文最大字符数，超出截断；<=0 不记录报文 */
+        private int logBodyMaxChars = 8192;
+
+        /** 原始报文落库全局默认：FULL / MASK / OFF */
+        private String logPayloadMode = "FULL";
+
+        /** 积压查询缓存秒数（Kafka lag / Rabbit 队列深度） */
+        private int backlogCacheSeconds = 60;
+
         public boolean isConsumerEnabled() {
             return consumerEnabled;
         }
@@ -1221,6 +1261,198 @@ public class YuFlowProperties {
 
         public void setMaxMessageBytes(int maxMessageBytes) {
             this.maxMessageBytes = maxMessageBytes;
+        }
+
+        public int getLogBodyMaxChars() {
+            return logBodyMaxChars;
+        }
+
+        public void setLogBodyMaxChars(int logBodyMaxChars) {
+            this.logBodyMaxChars = logBodyMaxChars;
+        }
+
+        public String getLogPayloadMode() {
+            return logPayloadMode;
+        }
+
+        public void setLogPayloadMode(String logPayloadMode) {
+            this.logPayloadMode = logPayloadMode;
+        }
+
+        public int getBacklogCacheSeconds() {
+            return backlogCacheSeconds;
+        }
+
+        public void setBacklogCacheSeconds(int backlogCacheSeconds) {
+            this.backlogCacheSeconds = backlogCacheSeconds;
+        }
+    }
+
+    // ==================== 内部配置组：Oss ====================
+
+    /**
+     * 对象存储配置。对应 YAML：{@code yu.flow.oss.*}
+     */
+    public static class Oss {
+
+        /** 全局单文件上传硬顶（字节），默认 50MB */
+        private long maxUploadBytes = 50L * 1024 * 1024;
+
+        /** 连接未配置时的隐私下载模式：STREAM / PRESIGN */
+        private String privateDownloadMode = "STREAM";
+
+        /** 连接未配置时的预签名有效期（秒） */
+        private int presignExpireSeconds = 300;
+
+        /** 软删对象物理清理间隔（分钟） */
+        private int cleanupIntervalMinutes = 30;
+
+        /** 打包下载最大文件数 */
+        private int packMaxFiles = 50;
+
+        /** 打包下载总大小上限（字节），默认 200MB */
+        private long packMaxBytes = 200L * 1024 * 1024;
+
+        /** 分片上传会话 TTL（分钟） */
+        private int multipartSessionTtlMinutes = 120;
+
+        /** 全局用户容量配额（字节），0=关闭 */
+        private long userQuotaMaxBytes = 0;
+
+        /** 全局用户文件数配额，0=关闭 */
+        private int userQuotaMaxFiles = 0;
+
+        /** 缩略图生成配置 */
+        private Thumbnail thumbnail = new Thumbnail();
+
+        public long getMaxUploadBytes() {
+            return maxUploadBytes;
+        }
+
+        public void setMaxUploadBytes(long maxUploadBytes) {
+            this.maxUploadBytes = maxUploadBytes;
+        }
+
+        public String getPrivateDownloadMode() {
+            return privateDownloadMode;
+        }
+
+        public void setPrivateDownloadMode(String privateDownloadMode) {
+            this.privateDownloadMode = privateDownloadMode;
+        }
+
+        public int getPresignExpireSeconds() {
+            return presignExpireSeconds;
+        }
+
+        public void setPresignExpireSeconds(int presignExpireSeconds) {
+            this.presignExpireSeconds = presignExpireSeconds;
+        }
+
+        public int getCleanupIntervalMinutes() {
+            return cleanupIntervalMinutes;
+        }
+
+        public void setCleanupIntervalMinutes(int cleanupIntervalMinutes) {
+            this.cleanupIntervalMinutes = cleanupIntervalMinutes;
+        }
+
+        public int getPackMaxFiles() {
+            return packMaxFiles;
+        }
+
+        public void setPackMaxFiles(int packMaxFiles) {
+            this.packMaxFiles = packMaxFiles;
+        }
+
+        public long getPackMaxBytes() {
+            return packMaxBytes;
+        }
+
+        public void setPackMaxBytes(long packMaxBytes) {
+            this.packMaxBytes = packMaxBytes;
+        }
+
+        public int getMultipartSessionTtlMinutes() {
+            return multipartSessionTtlMinutes;
+        }
+
+        public void setMultipartSessionTtlMinutes(int multipartSessionTtlMinutes) {
+            this.multipartSessionTtlMinutes = multipartSessionTtlMinutes;
+        }
+
+        public long getUserQuotaMaxBytes() {
+            return userQuotaMaxBytes;
+        }
+
+        public void setUserQuotaMaxBytes(long userQuotaMaxBytes) {
+            this.userQuotaMaxBytes = userQuotaMaxBytes;
+        }
+
+        public int getUserQuotaMaxFiles() {
+            return userQuotaMaxFiles;
+        }
+
+        public void setUserQuotaMaxFiles(int userQuotaMaxFiles) {
+            this.userQuotaMaxFiles = userQuotaMaxFiles;
+        }
+
+        public Thumbnail getThumbnail() {
+            return thumbnail;
+        }
+
+        public void setThumbnail(Thumbnail thumbnail) {
+            this.thumbnail = thumbnail != null ? thumbnail : new Thumbnail();
+        }
+
+        /**
+         * 缩略图生成配置。对应 YAML：{@code yu.flow.oss.thumbnail.*}
+         */
+        public static class Thumbnail {
+
+            /** 全局开关，默认开启 */
+            private boolean enabled = true;
+
+            /** 缩略图最长边（像素） */
+            private int maxEdge = 256;
+
+            /** 参与缩略图的源文件大小上限（字节），默认 20MB */
+            private long maxSourceBytes = 20L * 1024 * 1024;
+
+            /** JPEG 压缩质量 0~1 */
+            private float jpegQuality = 0.85f;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public int getMaxEdge() {
+                return maxEdge;
+            }
+
+            public void setMaxEdge(int maxEdge) {
+                this.maxEdge = maxEdge;
+            }
+
+            public long getMaxSourceBytes() {
+                return maxSourceBytes;
+            }
+
+            public void setMaxSourceBytes(long maxSourceBytes) {
+                this.maxSourceBytes = maxSourceBytes;
+            }
+
+            public float getJpegQuality() {
+                return jpegQuality;
+            }
+
+            public void setJpegQuality(float jpegQuality) {
+                this.jpegQuality = jpegQuality;
+            }
         }
     }
 }

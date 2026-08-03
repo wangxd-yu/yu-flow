@@ -23,6 +23,8 @@ export interface FlowController {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   publishStatus?: 0 | 1;
   logEnabled?: boolean;
+  /** 日志策略模式：SYSTEM_DEFAULT-继承全局 OFF-完全关闭 ERROR_ONLY-仅错误时记录 ALL-全量记录 */
+  logMode?: string;
   /** 日志保留天数：null=跟随系统配置，0=永久保留，>0=自定义天数；提交 -1 表示清除 API 级配置 */
   logRetentionDays?: number | null;
   /**

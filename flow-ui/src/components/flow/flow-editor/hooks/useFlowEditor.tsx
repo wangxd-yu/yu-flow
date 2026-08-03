@@ -59,7 +59,7 @@ export default function useFlowEditor(props: ExtendedFlowEditorProps) {
     readonlyTrace,
     defaultEntryNode = 'request',
     editorContext: editorContextProp,
-    triggerMode = 'http',
+    triggerMode: triggerModeProp,
     defaultTriggerBody,
     defaultTriggerHeaders,
     defaultTriggerQueryParams,
@@ -72,6 +72,16 @@ export default function useFlowEditor(props: ExtendedFlowEditorProps) {
     () => resolveEditorContext(editorContextProp, defaultEntryNode),
     [editorContextProp, defaultEntryNode],
   );
+
+  // 若调用方未显式传入 triggerMode，则根据 editorContext 自动推导：
+  // mq → 'mq'，service → 'service'，task → 'task'，其余默认 'http'
+  const triggerMode = React.useMemo(() => {
+    if (triggerModeProp) return triggerModeProp;
+    if (editorContext === 'mq') return 'mq' as const;
+    if (editorContext === 'service') return 'service' as const;
+    if (editorContext === 'task') return 'task' as const;
+    return 'http' as const;
+  }, [triggerModeProp, editorContext]);
 
   const isReadonlySnapshot = !!readonlyTrace;
   const isEdit = isReadonlySnapshot ? false : propsIsEdit;

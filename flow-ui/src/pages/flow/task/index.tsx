@@ -158,25 +158,28 @@ const buildColumns = (ctx: AssetListShellContext<FlowTask>): ProColumns<FlowTask
     render: (_, record) => renderHealthTag(ctx.healthMap[record.id]),
   },
   {
-    title: '执行日志',
-    dataIndex: 'logEnabled',
-    width: 90,
-    hideInSearch: true,
-    render: (_, record) => (
-      <Switch
-        size="small"
-        checked={!!record.logEnabled}
-        onChange={async (checked) => {
-          try {
-            await updateTaskLogEnabled(record.id, checked);
-            message.success(checked ? '已开启日志' : '已关闭日志');
-            ctx.reload();
-          } catch {
-            message.error('操作失败');
-          }
-        }}
-      />
+    title: (
+      <Tooltip title="日志策略模式：继承全局 / 仅错误时记录 / 全量记录 / 完全关闭">
+        <span>日志策略</span>
+      </Tooltip>
     ),
+    dataIndex: 'logMode',
+    width: 100,
+    hideInSearch: true,
+    render: (_, record) => {
+      const mode = record.logMode || (record.logEnabled === false ? 'OFF' : (record.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT'));
+      switch (mode) {
+        case 'ALL':
+          return <Tag color="blue">全量记录</Tag>;
+        case 'ERROR_ONLY':
+          return <Tag color="warning">仅错误</Tag>;
+        case 'OFF':
+          return <Tag color="default">完全关闭</Tag>;
+        case 'SYSTEM_DEFAULT':
+        default:
+          return <Tag color="cyan">继承全局</Tag>;
+      }
+    },
   },
   {
     title: '创建时间',

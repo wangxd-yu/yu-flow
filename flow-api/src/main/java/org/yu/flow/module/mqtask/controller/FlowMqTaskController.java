@@ -22,6 +22,7 @@ import org.yu.flow.module.mqtask.query.FlowMqTaskLogQueryDTO;
 import org.yu.flow.module.mqtask.query.FlowMqTaskQueryDTO;
 import org.yu.flow.module.mqtask.service.FlowMqTaskLogService;
 import org.yu.flow.module.mqtask.service.FlowMqTaskService;
+import org.yu.flow.module.mqtask.service.MqConsumerBacklogService;
 import org.yu.flow.module.rbac.support.RequirePerm;
 
 import jakarta.annotation.Resource;
@@ -62,6 +63,9 @@ public class FlowMqTaskController {
 
     @Resource
     private FlowEngine flowEngine;
+
+    @Resource
+    private MqConsumerBacklogService mqConsumerBacklogService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // CRUD
@@ -111,6 +115,12 @@ public class FlowMqTaskController {
     @GetMapping("/consumer-status/running")
     public R<Set<String>> runningConsumers() {
         return R.ok(mqConsumerManager.runningTaskIds());
+    }
+
+    /** 批量查询任务积压（Kafka lag / Rabbit 队列深度），null 表示未知 */
+    @GetMapping("/consumer-backlog")
+    public R<Map<String, Long>> consumerBacklog() {
+        return R.ok(mqConsumerBacklogService.backlogByTaskId());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -175,7 +185,8 @@ public class FlowMqTaskController {
             return R.fail("任务未发布，无法模拟触发。请先发布，或使用「调试运行」验证草稿。");
         }
         String message = requestDTO != null ? requestDTO.getMessage() : null;
-        mqConsumerManager.simulate(task, message);
+        Map<String, Object> headers = requestDTO != null ? requestDTO.getHeaders() : null;
+        mqConsumerManager.simulate(task, message, headers);
         return R.ok();
     }
 

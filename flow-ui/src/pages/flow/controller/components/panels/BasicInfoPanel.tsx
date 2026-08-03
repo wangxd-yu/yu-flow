@@ -8,13 +8,14 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Col, Form, Row, Switch } from 'antd';
+import { Alert, Col, Form, Row, Switch, Radio, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
 import {
-  ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea,
+  ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea, ProFormRadio,
 } from '@ant-design/pro-components';
 import { DatabaseOutlined, GiftOutlined, InfoCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import { useGlobalLogMode, getLogModeLabel } from '@/components/flow/useGlobalLogMode';
 import ResponseWrapperSection from './ResponseWrapperSection';
 import CacheConfigSection from './CacheConfigSection';
 import IngressSecuritySection from './IngressSecuritySection';
@@ -56,6 +57,8 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
     [isWrap],
   );
   const cacheEnabled = Form.useWatch('cacheEnabled', form);
+  const logMode = Form.useWatch('logMode', form);
+  const globalLogMode = useGlobalLogMode();
   const [activeKey, setActiveKey] = useState<NavKey>('meta');
   const scrollingByClick = useRef(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -271,6 +274,31 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                   tooltip="留空=跟随系统配置（LOG_EXECUTION_RETENTION_DAYS），0=永久保留，>0=按天数自动清理执行日志"
                   fieldProps={{ precision: 0, style: { width: '100%' } }}
                 />
+              </Col>
+
+              <Col span={24}>
+                <Form.Item name="logMode" label="日志策略" style={{ marginBottom: 4 }}>
+                  <Radio.Group optionType="button" buttonStyle="solid">
+                    <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
+                      <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
+                    </Tooltip>
+                    <Tooltip title="显式指定当前接口仅在发生报错/失败时记录日志">
+                      <Radio.Button value="ERROR_ONLY">仅错误</Radio.Button>
+                    </Tooltip>
+                    <Tooltip title="显式指定当前接口全量记录成功与失败日志（含 FlowTrace 快照）">
+                      <Radio.Button value="ALL">全量记录</Radio.Button>
+                    </Tooltip>
+                    <Tooltip title="显式指定当前接口完全禁用日志记录，任何情况下均不落库">
+                      <Radio.Button value="OFF">完全关闭</Radio.Button>
+                    </Tooltip>
+                  </Radio.Group>
+                </Form.Item>
+                <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 14 }}>
+                  {(!logMode || logMode === 'SYSTEM_DEFAULT') && `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`}
+                  {logMode === 'ERROR_ONLY' && '覆盖全局配置：显式指定当前接口为【仅错误】，平时零开销，异常自动保存日志排障'}
+                  {logMode === 'ALL' && '覆盖全局配置：显式指定当前接口为【全量记录】，每次调用均保存 FlowTrace 快照'}
+                  {logMode === 'OFF' && '覆盖全局配置：显式指定当前接口为【完全关闭】，任何情况下均不保存日志'}
+                </div>
               </Col>
 
               <Col span={24}>

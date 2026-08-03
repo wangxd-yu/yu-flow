@@ -6,10 +6,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.TracePersistUtil;
+import org.yu.flow.engine.log.LogMode;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.log.service.domain.FlowServiceLogDO;
@@ -51,6 +53,9 @@ public class FlowServiceFlowExecutionService {
 
     @Resource
     private YuFlowProperties yuFlowProperties;
+
+    @Resource
+    private YuFlowRuntimeSettings yuFlowRuntimeSettings;
 
     @Resource
     private ServiceResolvedContentCache serviceResolvedContentCache;
@@ -123,9 +128,8 @@ public class FlowServiceFlowExecutionService {
             args.put("serviceId", svc.getId());
             args.put("input", typedInput);
 
-            boolean logEnabled = Boolean.TRUE.equals(svc.getLogEnabled());
-            // CALL 时不强制开 trace，避免大快照；有 logEnabled 再记 trace
-            boolean traceEnabled = logEnabled || "DEBUG".equalsIgnoreCase(triggerType);
+            String resolvedMode = resolveLogMode(svc);
+            boolean traceEnabled = LogMode.ALL.equals(resolvedMode) || "DEBUG".equalsIgnoreCase(triggerType);
             Object result = flowEngine.execute(
                     resolved.dslContent(),
                     args,
@@ -144,7 +148,8 @@ public class FlowServiceFlowExecutionService {
                 } else {
                     status = "SUCCESS";
                 }
-                if (logEnabled) {
+                boolean isSuccess = "SUCCESS".equals(status);
+                if (LogMode.shouldRecordTrace(resolvedMode, isSuccess)) {
                     try {
                         TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
                                 yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
@@ -185,27 +190,39 @@ public class FlowServiceFlowExecutionService {
             }
             long cost = System.currentTimeMillis() - start;
             String trig = triggerType != null ? triggerType : "MANUAL";
-            // RUNNING 未终态时按 FAIL 计（异常路径已置 FAILED）；正常成功为 SUCCESS
             MetricsOutcome outcome = "SUCCESS".equals(status)
                     ? MetricsOutcome.SUCCESS
                     : MetricsOutcome.FAIL;
             if (!"RUNNING".equals(status)) {
                 assetMetricsRecorder.record(MetricsAssetType.SERVICE, svc.getId(), outcome, cost, trig);
             }
-            try {
-                flowServiceLogService.saveAsync(FlowServiceLogDO.builder()
-                        .serviceId(svc.getId())
-                        .serviceName(svc.getName())
-                        .triggerType(trig)
-                        .status(status)
-                        .costTimeMs(cost)
-                        .errorMsg(errorMsg)
-                        .traceData(traceData)
-                        .build());
-            } catch (Exception e) {
-                log.error("[ServiceFlow] 日志写入失败: serviceId={}, error={}", svc.getId(), e.getMessage());
+            String resolvedMode = resolveLogMode(svc);
+            boolean isSuccess = "SUCCESS".equals(status);
+            if (LogMode.shouldRecord(resolvedMode, isSuccess)) {
+                try {
+                    flowServiceLogService.saveAsync(FlowServiceLogDO.builder()
+                            .serviceId(svc.getId())
+                            .serviceName(svc.getName())
+                            .triggerType(trig)
+                            .status(status)
+                            .costTimeMs(cost)
+                            .errorMsg(errorMsg)
+                            .traceData(traceData)
+                            .build());
+                } catch (Exception e) {
+                    log.error("[ServiceFlow] 日志写入失败: serviceId={}, error={}", svc.getId(), e.getMessage());
+                }
             }
         }
+    }
+
+    private String resolveLogMode(FlowServiceFlowDO svc) {
+        String rawMode = svc != null ? svc.getLogMode() : null;
+        String globalDefault = yuFlowRuntimeSettings != null
+                ? yuFlowRuntimeSettings.getEngineDefaultLogMode()
+                : (yuFlowProperties != null && yuFlowProperties.getEngine() != null
+                        ? yuFlowProperties.getEngine().getDefaultLogMode() : null);
+        return LogMode.resolve(rawMode, globalDefault);
     }
 
     private Object unwrapBusinessOutput(Object result) {

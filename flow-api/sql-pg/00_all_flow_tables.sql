@@ -663,7 +663,12 @@ CREATE TABLE IF NOT EXISTS flow_mq_task_info (
   concurrency integer NOT NULL DEFAULT 1,
   enabled smallint NOT NULL DEFAULT 1,
   log_enabled smallint NOT NULL DEFAULT 1,
+  log_mode varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT',
+  log_payload_mode varchar(16) DEFAULT 'SYSTEM_DEFAULT',
   log_retention_days integer,
+  retry_max integer DEFAULT 0,
+  retry_backoff_ms integer DEFAULT 1000,
+  dead_letter_topic varchar(255) DEFAULT NULL,
   dsl_content text,
   publish_status smallint NOT NULL DEFAULT 0,
   published_snapshot text,
@@ -685,7 +690,12 @@ COMMENT ON COLUMN flow_mq_task_info.consumer_group IS '消费组（Kafka group.i
 COMMENT ON COLUMN flow_mq_task_info.concurrency IS '消费并发数';
 COMMENT ON COLUMN flow_mq_task_info.enabled IS '启用状态：0=停用, 1=启用';
 COMMENT ON COLUMN flow_mq_task_info.log_enabled IS '是否记录执行日志';
+COMMENT ON COLUMN flow_mq_task_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT/OFF/ERROR_ONLY/ALL';
+COMMENT ON COLUMN flow_mq_task_info.log_payload_mode IS '原始报文落库策略：SYSTEM_DEFAULT/FULL/MASK/OFF';
 COMMENT ON COLUMN flow_mq_task_info.log_retention_days IS '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数';
+COMMENT ON COLUMN flow_mq_task_info.retry_max IS '失败重试次数（0=不重试）';
+COMMENT ON COLUMN flow_mq_task_info.retry_backoff_ms IS '重试间隔毫秒';
+COMMENT ON COLUMN flow_mq_task_info.dead_letter_topic IS '最终失败时转发的死信 topic/队列';
 COMMENT ON COLUMN flow_mq_task_info.dsl_content IS '流程定义 DSL JSON（草稿）';
 COMMENT ON COLUMN flow_mq_task_info.publish_status IS '发布状态：0=未发布，1=已发布';
 COMMENT ON COLUMN flow_mq_task_info.published_snapshot IS '发布快照 JSON：dslContent';
@@ -713,6 +723,8 @@ CREATE TABLE IF NOT EXISTS flow_mq_task_log (
   status varchar(16) NOT NULL,
   cost_time_ms bigint,
   error_msg text,
+  message_body text,
+  message_headers text,
   trace_data text,
   create_time timestamp,
   PRIMARY KEY (id)
@@ -727,11 +739,14 @@ COMMENT ON COLUMN flow_mq_task_log.trigger_type IS '触发类型：MQ=消息触�
 COMMENT ON COLUMN flow_mq_task_log.status IS '执行状态：SUCCESS / FAILED / SKIPPED / RUNNING';
 COMMENT ON COLUMN flow_mq_task_log.cost_time_ms IS '耗时（毫秒）';
 COMMENT ON COLUMN flow_mq_task_log.error_msg IS '失败信息';
-COMMENT ON COLUMN flow_mq_task_log.trace_data IS 'FlowTrace JSON 快照（logEnabled=true 时记录）';
+COMMENT ON COLUMN flow_mq_task_log.message_body IS '原始消息体（JSON 解析前的字符串，支持超限截断）';
+COMMENT ON COLUMN flow_mq_task_log.message_headers IS '消息头 JSON 字典';
+COMMENT ON COLUMN flow_mq_task_log.trace_data IS 'FlowTrace JSON 快照（logMode=ALL 时记录）';
 COMMENT ON COLUMN flow_mq_task_log.create_time IS '执行开始时间';
 CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_create_time ON flow_mq_task_log (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_status ON flow_mq_task_log (status);
 CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_task_id ON flow_mq_task_log (task_id);
+CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_message_id ON flow_mq_task_log (message_id);
 
 -- Table: flow_open_api_grant
 -- 开放平台接口授权
@@ -800,6 +815,129 @@ COMMENT ON COLUMN flow_open_platform.expire_at IS '平台到期时间';
 COMMENT ON COLUMN flow_open_platform.open_call_log_enabled IS '是否记录入站摘要日志 0关1开';
 COMMENT ON COLUMN flow_open_platform.rate_limit_qps IS '平台级 QPS 上限，空=不限';
 CREATE INDEX IF NOT EXISTS idx_flow_open_platform_status ON flow_open_platform (status);
+
+-- Table: flow_oss_connection
+CREATE TABLE IF NOT EXISTS flow_oss_connection (
+  id varchar(32) NOT NULL,
+  name varchar(128) NOT NULL,
+  code varchar(64) NOT NULL,
+  endpoint varchar(512) NOT NULL,
+  access_key varchar(128),
+  secret_key varchar(512),
+  region varchar(64),
+  path_style smallint NOT NULL DEFAULT 1,
+  public_bucket varchar(128),
+  private_bucket varchar(128),
+  public_base_url varchar(512),
+  key_prefix varchar(256),
+  public_access_mode varchar(32) DEFAULT 'NGINX_PROXY',
+  private_download_mode varchar(16) NOT NULL DEFAULT 'STREAM',
+  presign_expire_seconds integer NOT NULL DEFAULT 300,
+  enabled smallint NOT NULL DEFAULT 1,
+  health_status varchar(32),
+  last_error_msg varchar(1024),
+  last_test_time timestamp,
+  info varchar(512),
+  deleted integer NOT NULL DEFAULT 0,
+  create_time timestamp,
+  update_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_oss_connection IS 'OSS 连接配置';
+COMMENT ON COLUMN flow_oss_connection.id IS '雪花ID';
+COMMENT ON COLUMN flow_oss_connection.code IS '连接编码（未删除记录内唯一）';
+COMMENT ON COLUMN flow_oss_connection.endpoint IS 'MinIO endpoint';
+COMMENT ON COLUMN flow_oss_connection.secret_key IS 'Secret Key（AES 密文）';
+COMMENT ON COLUMN flow_oss_connection.path_style IS '是否 path-style 访问';
+COMMENT ON COLUMN flow_oss_connection.public_access_mode IS 'ANON / NGINX_PROXY';
+CREATE INDEX IF NOT EXISTS idx_flow_oss_connection_code ON flow_oss_connection (code);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_connection_enabled ON flow_oss_connection (enabled);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_connection_create_time ON flow_oss_connection (create_time);
+
+-- Table: flow_oss_download_log
+CREATE TABLE IF NOT EXISTS flow_oss_download_log (
+  id varchar(32) NOT NULL,
+  object_id varchar(32),
+  downloaded_by varchar(64),
+  downloaded_by_name varchar(128),
+  client_ip varchar(64),
+  user_agent varchar(512),
+  result varchar(16),
+  deny_reason varchar(512),
+  time_ms bigint,
+  create_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_oss_download_log IS 'OSS 隐私下载审计';
+CREATE INDEX IF NOT EXISTS idx_flow_oss_download_log_object_id ON flow_oss_download_log (object_id);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_download_log_create_time ON flow_oss_download_log (create_time);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_download_log_result ON flow_oss_download_log (result);
+
+-- Table: flow_oss_object
+CREATE TABLE IF NOT EXISTS flow_oss_object (
+  id varchar(32) NOT NULL,
+  profile_code varchar(64),
+  connection_code varchar(64),
+  bucket varchar(128),
+  object_key varchar(1024),
+  visibility varchar(16),
+  public_path varchar(1024),
+  original_name varchar(512),
+  content_type varchar(128),
+  extension varchar(32),
+  size_bytes bigint,
+  checksum_sha256 varchar(64),
+  biz_meta text,
+  uploaded_by varchar(64),
+  uploaded_by_name varchar(128),
+  dept_id varchar(64),
+  status varchar(16) NOT NULL DEFAULT 'ACTIVE',
+  expires_at timestamp,
+  object_purged smallint NOT NULL DEFAULT 0,
+  create_time timestamp,
+  update_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_oss_object IS 'OSS 文件台账';
+COMMENT ON COLUMN flow_oss_object.status IS 'ACTIVE / DELETED';
+COMMENT ON COLUMN flow_oss_object.expires_at IS '临时文件过期时间，空=不过期';
+COMMENT ON COLUMN flow_oss_object.object_purged IS 'MinIO 对象是否已物理删除';
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_profile_code ON flow_oss_object (profile_code);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_uploaded_by ON flow_oss_object (uploaded_by);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_dept_id ON flow_oss_object (dept_id);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_status ON flow_oss_object (status);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_create_time ON flow_oss_object (create_time);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_expires_at ON flow_oss_object (expires_at);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_purge ON flow_oss_object (status, object_purged);
+
+-- Table: flow_oss_upload_profile
+CREATE TABLE IF NOT EXISTS flow_oss_upload_profile (
+  id varchar(32) NOT NULL,
+  name varchar(128) NOT NULL,
+  code varchar(64) NOT NULL,
+  connection_code varchar(64) NOT NULL,
+  visibility varchar(16) NOT NULL DEFAULT 'PRIVATE',
+  bucket_override varchar(128),
+  key_pattern varchar(512),
+  allowed_content_types text,
+  allowed_extensions varchar(512),
+  max_size_bytes bigint,
+  max_files_per_request integer DEFAULT 1,
+  require_auth smallint NOT NULL DEFAULT 1,
+  biz_fields_schema text,
+  access_perm varchar(128),
+  enabled smallint NOT NULL DEFAULT 1,
+  remark varchar(512),
+  deleted integer NOT NULL DEFAULT 0,
+  create_time timestamp,
+  update_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_oss_upload_profile IS 'OSS 上传场景';
+COMMENT ON COLUMN flow_oss_upload_profile.visibility IS 'PUBLIC / PRIVATE';
+CREATE INDEX IF NOT EXISTS idx_flow_oss_upload_profile_code ON flow_oss_upload_profile (code);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_upload_profile_connection_code ON flow_oss_upload_profile (connection_code);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_upload_profile_enabled ON flow_oss_upload_profile (enabled);
 
 -- Table: flow_page_directory
 -- 页面目录表

@@ -34,6 +34,13 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
     private static final Logger log = LoggerFactory.getLogger(HttpRequestStepExecutor.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** 5xx 可重试时抛出，供外层重试循环捕获（与网络异常同等处理） */
+    private static final class RetryableHttpStatusException extends Exception {
+        RetryableHttpStatusException(String message) {
+            super(message);
+        }
+    }
+
     // 正则匹配 ${varName}
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{([^}]+)\\}");
 
@@ -112,6 +119,31 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
                     return executeRequestAndParseResponse(step, request, stepClient, startTime, context, logDO);
+                } catch (RetryableHttpStatusException retryable) {
+                    lastError = retryable;
+                    if (attempt < maxAttempts) {
+                        log.warn("HttpRequest [{}] 5xx 第 {}/{} 次，{}ms 后重试: {}",
+                                step.getId(), attempt, maxAttempts, retryIntervalMs, retryable.getMessage());
+                        if (retryIntervalMs > 0) {
+                            try {
+                                Thread.sleep(retryIntervalMs);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                throw retryable;
+                            }
+                        }
+                        continue;
+                    }
+                    Map<String, Object> failResult = new HashMap<>();
+                    failResult.put("status", parseStatusFromMessage(retryable.getMessage()));
+                    failResult.put("error", retryable.getMessage());
+                    failResult.put("timeMs", System.currentTimeMillis() - startTime);
+                    context.setVar(step.getId(), failResult);
+                    if (logging && logDO != null) {
+                        logDO.setIsSuccess(0);
+                        logDO.setErrorMessage(truncate(retryable.getMessage(), 1000));
+                    }
+                    return PortNames.FAIL;
                 } catch (Exception first) {
                     if (!ignoreSsl && isCertificateProblem(first)) {
                         log.warn("HttpRequest [{}] SSL 证书校验失败。请在节点显式开启 ignoreSsl，或修复证书。err={}",
@@ -579,8 +611,36 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
                 }
             }
 
+            if (!success) {
+                if (shouldRetryOnServerError(step, response.code())) {
+                    throw new RetryableHttpStatusException("HTTP " + response.code());
+                }
+            }
+
             return success ? PortNames.SUCCESS : PortNames.FAIL;
         }
+    }
+
+    private static int parseStatusFromMessage(String message) {
+        if (message != null && message.startsWith("HTTP ")) {
+            try {
+                return Integer.parseInt(message.substring(5).trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return -1;
+    }
+
+    private static boolean shouldRetryOnServerError(HttpRequestStep step, int statusCode) {
+        if (statusCode < 500) {
+            return false;
+        }
+        Boolean flag = step.getRetryOnServerError();
+        if (!Boolean.TRUE.equals(flag)) {
+            return false;
+        }
+        int extraRetries = step.getRetryCount() == null ? 0 : Math.max(0, step.getRetryCount());
+        return extraRetries > 0;
     }
 
     /**

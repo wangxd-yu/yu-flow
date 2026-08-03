@@ -10,11 +10,14 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.yu.flow.cache.FlowRedisUtil;
 import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.evaluator.executor.MqTriggerStepExecutor;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.TracePersistUtil;
+import org.yu.flow.engine.log.LogMode;
+import org.yu.flow.engine.log.LogPayloadMode;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
 import org.yu.flow.module.metrics.MetricsOutcome;
@@ -24,6 +27,7 @@ import org.yu.flow.module.mq.provider.MqProvider;
 import org.yu.flow.module.mq.provider.MqProviderRegistry;
 import org.yu.flow.module.mq.provider.MqSubscription;
 import org.yu.flow.module.mq.service.MqConnectionService;
+import org.yu.flow.module.mq.service.MqSendService;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskLogDO;
 import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
@@ -90,10 +94,16 @@ public class MqConsumerManager {
     private YuFlowProperties yuFlowProperties;
 
     @Resource
+    private YuFlowRuntimeSettings yuFlowRuntimeSettings;
+
+    @Resource
     private AssetMetricsRecorder assetMetricsRecorder;
 
     @Resource
     private TaskScheduler taskScheduler;
+
+    @Resource
+    private MqSendService mqSendService;
 
     private static final ObjectMapper objectMapper = FlowObjectMapperUtil.flowObjectMapper();
 
@@ -239,17 +249,19 @@ public class MqConsumerManager {
      *
      * @param task    任务定义
      * @param message 模拟消息体
+     * @param headers 模拟消息头，可空
      */
-    public void simulate(FlowMqTaskDO task, String message) {
+    public void simulate(FlowMqTaskDO task, String message, Map<String, Object> headers) {
         if (task == null || StrUtil.isBlank(task.getId())) {
             return;
         }
         PublishedSnapshot snap = resolvePublishedSnapshot(task);
+        Map<String, Object> headerCopy = headers != null ? new HashMap<>(headers) : new HashMap<>();
         MqMessage mqMessage = MqMessage.builder()
                 .messageId("manual-" + UUID.randomUUID())
                 .topic(snap.topic())
                 .body(message)
-                .headers(new HashMap<>())
+                .headers(headerCopy)
                 .build();
         String taskId = task.getId();
         taskScheduler.schedule(() -> {
@@ -293,21 +305,80 @@ public class MqConsumerManager {
                             taskId, messageId, e.getMessage());
                 }
             }
-            executeTask(latestTask, message, TRIGGER_MQ);
+            executeWithRetry(latestTask, message, TRIGGER_MQ);
         } catch (Exception e) {
             // 必须吞掉：防止 Provider 侧 nack/requeue 死循环
             log.error("[MqConsumerManager] 消费回调异常: taskId={}, error={}", taskId, e.getMessage(), e);
         }
     }
 
+    /** 单次执行结果（不含持久化） */
+    private record ExecuteResult(String status, String errorMsg, String traceData, long costTimeMs) {}
+
+    /**
+     * 带应用层重试的消费执行：仅最终 outcome 记一条日志与指标。
+     */
+    private void executeWithRetry(FlowMqTaskDO latestTask, MqMessage message, String triggerType) {
+        PublishedSnapshot snap = resolvePublishedSnapshot(latestTask);
+        String publishedName = snap.name() != null ? snap.name() : latestTask.getName();
+        int retryMax = latestTask.getRetryMax() != null ? Math.max(0, latestTask.getRetryMax()) : 0;
+        int backoffMs = latestTask.getRetryBackoffMs() != null ? Math.max(0, latestTask.getRetryBackoffMs()) : 1000;
+
+        long totalStart = System.currentTimeMillis();
+        String status = "FAILED";
+        String errorMsg = null;
+        String traceData = null;
+
+        int maxAttempts = retryMax + 1;
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            if (attempt > 0) {
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    errorMsg = "重试被中断";
+                    break;
+                }
+                log.info("[MqConsumerManager] 重试执行: taskId={}, attempt={}/{}",
+                        latestTask.getId(), attempt, retryMax);
+            }
+            ExecuteResult result = executeOnce(latestTask, message, triggerType, snap, publishedName);
+            status = result.status();
+            errorMsg = result.errorMsg();
+            traceData = result.traceData();
+            if ("SUCCESS".equals(status)) {
+                break;
+            }
+        }
+
+        String body = message != null ? message.getBody() : null;
+        if ("FAILED".equals(status) && retryMax > 0) {
+            String retryHint = "重试耗尽（retryMax=" + retryMax + "）";
+            errorMsg = StrUtil.isBlank(errorMsg) ? retryHint : errorMsg + "；" + retryHint;
+        }
+        if ("FAILED".equals(status) && StrUtil.isNotBlank(latestTask.getDeadLetterTopic())) {
+            errorMsg = forwardDeadLetter(snap, latestTask.getDeadLetterTopic(), message, body, errorMsg);
+        }
+
+        long costTimeMs = System.currentTimeMillis() - totalStart;
+        finishExecution(latestTask, message, triggerType, snap, publishedName, status, errorMsg, traceData, costTimeMs);
+    }
+
+    /** 手动模拟：单次执行，无重试 */
     private void executeTask(FlowMqTaskDO latestTask, MqMessage message, String triggerType) {
+        PublishedSnapshot snap = resolvePublishedSnapshot(latestTask);
+        String publishedName = snap.name() != null ? snap.name() : latestTask.getName();
+        ExecuteResult result = executeOnce(latestTask, message, triggerType, snap, publishedName);
+        finishExecution(latestTask, message, triggerType, snap, publishedName,
+                result.status(), result.errorMsg(), result.traceData(), result.costTimeMs());
+    }
+
+    private ExecuteResult executeOnce(FlowMqTaskDO latestTask, MqMessage message, String triggerType,
+                                      PublishedSnapshot snap, String publishedName) {
         long startTime = System.currentTimeMillis();
         String status = "RUNNING";
         String errorMsg = null;
         String traceData = null;
-
-        PublishedSnapshot snap = resolvePublishedSnapshot(latestTask);
-        String publishedName = snap.name() != null ? snap.name() : latestTask.getName();
         String body = message != null ? message.getBody() : null;
 
         log.info("[MqConsumerManager] 开始执行任务: taskId={}, name={}, topic={}, messageId={}, triggerType={}",
@@ -325,7 +396,6 @@ public class MqConsumerManager {
                 throw new IllegalStateException("消息体超过大小上限 " + maxBytes + " 字节，拒绝执行");
             }
 
-            // 注入消息元信息，供 MqTriggerStepExecutor 写入 $.mq.*
             Map<String, Object> args = new HashMap<>();
             args.put("taskName", publishedName);
             args.put(MqTriggerStepExecutor.ARG_TOPIC, message != null ? message.getTopic() : null);
@@ -333,24 +403,15 @@ public class MqConsumerManager {
             args.put(MqTriggerStepExecutor.ARG_HEADERS, message != null ? message.getHeaders() : null);
             args.put(MqTriggerStepExecutor.ARG_MESSAGE_ID, message != null ? message.getMessageId() : null);
 
-            boolean logEnabled = Boolean.TRUE.equals(latestTask.getLogEnabled());
-            Object result = flowEngine.execute(dsl, args, logEnabled,
+            String resolvedMode = resolveLogMode(latestTask);
+            boolean traceEnabled = LogMode.ALL.equals(resolvedMode) || "DEBUG".equalsIgnoreCase(triggerType);
+            Object result = flowEngine.execute(dsl, args, traceEnabled,
                     "MQ", latestTask.getId(), publishedName);
 
-            if (logEnabled) {
-                FlowTrace trace = (result instanceof FlowTrace) ? (FlowTrace) result : null;
-                if (trace != null && "error".equalsIgnoreCase(trace.getStatus())) {
-                    status = "FAILED";
-                    errorMsg = trace.getErrorMsg();
-                } else {
-                    status = "SUCCESS";
-                }
-                if (trace != null) {
-                    // DSL 用内容哈希引用；超限递进截断
-                    TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
-                            yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
-                    traceData = TracePersistUtil.serializeForPersist(trace, dsl, objectMapper, opts);
-                }
+            FlowTrace trace = (result instanceof FlowTrace) ? (FlowTrace) result : null;
+            if (trace != null && "error".equalsIgnoreCase(trace.getStatus())) {
+                status = "FAILED";
+                errorMsg = trace.getErrorMsg();
             } else if (result instanceof ExecutionResult) {
                 ExecutionResult er = (ExecutionResult) result;
                 status = er.isSuccess() ? "SUCCESS" : "FAILED";
@@ -360,6 +421,12 @@ public class MqConsumerManager {
             } else {
                 status = "SUCCESS";
             }
+            boolean isSuccess = "SUCCESS".equals(status);
+            if (LogMode.shouldRecordTrace(resolvedMode, isSuccess) && trace != null) {
+                TracePersistUtil.PersistOptions opts = TracePersistUtil.PersistOptions.from(
+                        yuFlowProperties != null ? yuFlowProperties.getEngine() : null);
+                traceData = TracePersistUtil.serializeForPersist(trace, dsl, objectMapper, opts);
+            }
         } catch (Exception e) {
             status = "FAILED";
             errorMsg = e.getMessage();
@@ -367,38 +434,76 @@ public class MqConsumerManager {
                     latestTask.getId(), publishedName, e.getMessage(), e);
         }
 
-        // 写入日志（始终记录摘要；trace 仅在 logEnabled 时写入）
-        long costTimeMs = System.currentTimeMillis() - startTime;
+        return new ExecuteResult(status, errorMsg, traceData, System.currentTimeMillis() - startTime);
+    }
+
+    private void finishExecution(FlowMqTaskDO latestTask, MqMessage message, String triggerType,
+                                 PublishedSnapshot snap, String publishedName,
+                                 String status, String errorMsg, String traceData, long costTimeMs) {
         assetMetricsRecorder.record(
                 MetricsAssetType.MQ_TASK,
                 latestTask.getId(),
                 MetricsOutcome.fromStatus(status),
                 costTimeMs,
                 triggerType);
-        try {
-            FlowMqTaskLogDO logDO = FlowMqTaskLogDO.builder()
-                    .taskId(latestTask.getId())
-                    .taskName(publishedName)
-                    .topic(message != null ? message.getTopic() : null)
-                    .messageId(message != null ? message.getMessageId() : null)
-                    .triggerType(triggerType)
-                    .status(status)
-                    .costTimeMs(costTimeMs)
-                    .errorMsg(errorMsg)
-                    .traceData(traceData)
-                    .build();
-            flowMqTaskLogService.saveAsync(logDO);
-        } catch (Exception e) {
-            log.error("[MqConsumerManager] 日志写入失败: taskId={}, error={}", latestTask.getId(), e.getMessage());
+
+        String resolvedMode = resolveLogMode(latestTask);
+        boolean isSuccess = "SUCCESS".equals(status);
+        if (LogMode.shouldRecord(resolvedMode, isSuccess)) {
+            boolean recordPayload = LogMode.shouldRecordPayload(resolvedMode, isSuccess);
+            String body = message != null ? message.getBody() : null;
+            try {
+                FlowMqTaskLogDO logDO = FlowMqTaskLogDO.builder()
+                        .taskId(latestTask.getId())
+                        .taskName(publishedName)
+                        .topic(message != null ? message.getTopic() : null)
+                        .messageId(message != null ? message.getMessageId() : null)
+                        .triggerType(triggerType)
+                        .status(status)
+                        .costTimeMs(costTimeMs)
+                        .errorMsg(errorMsg)
+                        .messageBody(prepareLogMessageBody(recordPayload, body, latestTask))
+                        .messageHeaders(prepareLogMessageHeaders(recordPayload,
+                                message != null ? message.getHeaders() : null, latestTask))
+                        .traceData(traceData)
+                        .build();
+                flowMqTaskLogService.saveAsync(logDO);
+            } catch (Exception e) {
+                log.error("[MqConsumerManager] 日志写入失败: taskId={}, error={}", latestTask.getId(), e.getMessage());
+            }
         }
 
         log.info("[MqConsumerManager] 任务执行完成: taskId={}, status={}, costTimeMs={}",
                 latestTask.getId(), status, costTimeMs);
     }
 
+    private String forwardDeadLetter(PublishedSnapshot snap, String deadLetterTopic,
+                                     MqMessage message, String body, String errorMsg) {
+        try {
+            mqSendService.send(
+                    snap.connectionCode(),
+                    deadLetterTopic,
+                    message != null ? message.getMessageId() : null,
+                    message != null ? message.getHeaders() : null,
+                    body != null ? body : "");
+            return StrUtil.blankToDefault(errorMsg, "") + "；已转发死信";
+        } catch (Exception e) {
+            log.warn("[MqConsumerManager] 死信转发失败: taskId={}, dlq={}, error={}",
+                    snap.connectionCode(), deadLetterTopic, e.getMessage());
+            return StrUtil.blankToDefault(errorMsg, "") + "；死信转发失败: " + e.getMessage();
+        }
+    }
+
     private void saveSkippedLog(FlowMqTaskDO task, MqMessage message, String reason) {
         assetMetricsRecorder.record(
                 MetricsAssetType.MQ_TASK, task.getId(), MetricsOutcome.SKIPPED, 0L, TRIGGER_MQ);
+        String resolvedMode = resolveLogMode(task);
+        if (!LogMode.shouldRecord(resolvedMode, false)) {
+            return;
+        }
+        String body = message != null ? message.getBody() : null;
+        Map<String, Object> headers = message != null ? message.getHeaders() : null;
+        boolean recordPayload = LogMode.shouldRecordPayload(resolvedMode, false);
         try {
             FlowMqTaskLogDO logDO = FlowMqTaskLogDO.builder()
                     .taskId(task.getId())
@@ -409,11 +514,76 @@ public class MqConsumerManager {
                     .status("SKIPPED")
                     .costTimeMs(0L)
                     .errorMsg(reason)
+                    .messageBody(prepareLogMessageBody(recordPayload, body, task))
+                    .messageHeaders(prepareLogMessageHeaders(recordPayload, headers, task))
                     .build();
             flowMqTaskLogService.saveAsync(logDO);
         } catch (Exception e) {
             log.error("[MqConsumerManager] SKIPPED 日志写入失败: taskId={}, error={}",
                     task.getId(), e.getMessage());
+        }
+    }
+
+    private String resolveLogMode(FlowMqTaskDO task) {
+        String rawMode = task != null ? task.getLogMode() : null;
+        String globalDefault = yuFlowRuntimeSettings != null
+                ? yuFlowRuntimeSettings.getEngineDefaultLogMode()
+                : (yuFlowProperties != null && yuFlowProperties.getEngine() != null
+                        ? yuFlowProperties.getEngine().getDefaultLogMode() : null);
+        return LogMode.resolve(rawMode, globalDefault);
+    }
+
+    private String resolveLogPayloadMode(FlowMqTaskDO task) {
+        String rawMode = task != null ? task.getLogPayloadMode() : null;
+        String globalDefault = yuFlowRuntimeSettings != null
+                ? yuFlowRuntimeSettings.getMqLogPayloadMode()
+                : (yuFlowProperties != null && yuFlowProperties.getMq() != null
+                        ? yuFlowProperties.getMq().getLogPayloadMode() : null);
+        return LogPayloadMode.resolve(rawMode, globalDefault);
+    }
+
+    /** 原始消息体门控 + 敏感策略 + 超限截断 */
+    private String prepareLogMessageBody(boolean recordPayload, String body, FlowMqTaskDO task) {
+        if (!recordPayload) {
+            return null;
+        }
+        String resolvedPayloadMode = resolveLogPayloadMode(task);
+        if (!LogPayloadMode.shouldStorePayload(resolvedPayloadMode)) {
+            return null;
+        }
+        if (LogPayloadMode.isMask(resolvedPayloadMode)) {
+            int len = body != null ? body.length() : 0;
+            return "[MASKED len=" + len + "]";
+        }
+        if (StrUtil.isBlank(body)) {
+            return null;
+        }
+        int maxChars = yuFlowProperties.getMq().getLogBodyMaxChars();
+        if (maxChars <= 0) {
+            return null;
+        }
+        if (body.length() > maxChars) {
+            return body.substring(0, maxChars) + " ...(truncated)";
+        }
+        return body;
+    }
+
+    /** 消息头门控 + 敏感策略 + JSON 序列化 */
+    private String prepareLogMessageHeaders(boolean recordPayload, Map<String, Object> headers, FlowMqTaskDO task) {
+        if (!recordPayload || headers == null || headers.isEmpty()) {
+            return null;
+        }
+        String resolvedPayloadMode = resolveLogPayloadMode(task);
+        if (!LogPayloadMode.shouldStorePayload(resolvedPayloadMode)) {
+            return null;
+        }
+        if (LogPayloadMode.isMask(resolvedPayloadMode)) {
+            return "{\"_masked\":true}";
+        }
+        try {
+            return objectMapper.writeValueAsString(headers);
+        } catch (Exception ignore) {
+            return null;
         }
     }
 

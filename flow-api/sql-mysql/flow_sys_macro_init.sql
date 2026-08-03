@@ -36,7 +36,7 @@ VALUES
      '生成32位无连字符的UUID字符串', 'SYSTEM_INIT'),
 
     ('SNOWFLAKE', '雪花算法ID', 'FUNCTION',
-     'T(util.auto.org.yu.flow.SnowIdGenerator).getId()',
+     'T(org.yu.flow.auto.util.SnowIdGenerator).getId()',
      'ALL', 'String', NULL, 1,
      '基于雪花算法生成分布式唯一ID字符串', 'SYSTEM_INIT'),
 

@@ -48,6 +48,15 @@ public class ApiServiceCallStep extends Step {
     /** 可选：将返回值额外写入该变量名 */
     private String output;
 
+    /** 单次调用超时（毫秒），默认 30000 */
+    private Integer timeoutMs;
+
+    /** 失败后的额外重试次数（不含首次），默认 0 */
+    private Integer retryCount;
+
+    /** 重试间隔（毫秒），默认 1000 */
+    private Integer retryIntervalMs;
+
     @Override
     public String getType() {
         return NodeType.API;
@@ -55,6 +64,9 @@ public class ApiServiceCallStep extends Step {
 
     @Override
     public List<PortDefinition> getOutputPorts() {
-        return Arrays.asList(PortDefinition.output(PortNames.OUT));
+        return Arrays.asList(
+                PortDefinition.output(PortNames.SUCCESS),
+                PortDefinition.output(PortNames.FAIL)
+        );
     }
 }

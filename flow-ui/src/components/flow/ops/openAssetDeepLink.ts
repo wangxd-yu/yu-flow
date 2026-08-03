@@ -21,6 +21,8 @@ export function openAssetDeepLink({
     history.push(`/flow/api?apiId=${encodeURIComponent(assetId)}${t}`);
   } else if (type === 'TASK') {
     history.push(`/flow/task?taskId=${encodeURIComponent(assetId)}${t}`);
+  } else if (type === 'MQ_TASK') {
+    history.push(`/flow/mq-task?mqTaskId=${encodeURIComponent(assetId)}${t}`);
   } else if (type === 'PLATFORM') {
     history.push(`/flow/open-platform?platformId=${encodeURIComponent(assetId)}${t}`);
   } else {

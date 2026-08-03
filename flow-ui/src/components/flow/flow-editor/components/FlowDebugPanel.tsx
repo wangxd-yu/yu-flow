@@ -15,7 +15,7 @@ export interface FlowDebugPanelProps {
   value?: string;
   apiUrl?: string;
   apiMethod?: string;
-  triggerMode?: 'http' | 'service';
+  triggerMode?: 'http' | 'service' | 'mq' | 'task';
   defaultTriggerBody?: string;
   defaultTriggerHeaders?: Record<string, string>;
   defaultTriggerQueryParams?: Record<string, string>;

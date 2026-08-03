@@ -382,25 +382,38 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
           </div>
 
           <div className="pfd-trigger-api-info">
-            <Tag
-              color={
-                apiMethod === 'GET' ? 'blue'
-                  : apiMethod === 'POST' ? 'green'
-                    : apiMethod === 'PUT' ? 'orange'
-                      : apiMethod === 'DELETE' ? 'red'
-                        : 'default'
-              }
-              style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}
-            >
-              {apiMethod}
-            </Tag>
-            <Text
-              code
-              style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
-            >
-              {apiUrl || '未设置路径'}
-            </Text>
-            {responseType && <Tag style={{ marginLeft: 4 }}>{responseType}</Tag>}
+            {apiUrl ? (
+              <>
+                <Tag
+                  color={
+                    apiMethod === 'GET' ? 'blue'
+                      : apiMethod === 'POST' ? 'green'
+                        : apiMethod === 'PUT' ? 'orange'
+                          : apiMethod === 'DELETE' ? 'red'
+                            : 'default'
+                  }
+                  style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}
+                >
+                  {apiMethod || 'HTTP'}
+                </Tag>
+                <Text
+                  code
+                  style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                  {apiUrl}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Tag color="geekblue" style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11 }}>
+                  DATABASE
+                </Tag>
+                <Tag color="blue" style={{ fontSize: 11 }}>
+                  数据源: {datasource || '默认数据源'}
+                </Tag>
+                {responseType && <Tag color="purple" style={{ fontSize: 11 }}>返回: {responseType}</Tag>}
+              </>
+            )}
           </div>
 
           <Tabs
@@ -409,6 +422,29 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
             size="small"
             className="pfd-trigger-tabs"
             items={[
+              {
+                key: 'params',
+                label: (
+                  <span>
+                    SQL 参数
+                    {triggerParams.filter((p) => p.key.trim()).length > 0 && (
+                      <Badge
+                        count={triggerParams.filter((p) => p.key.trim()).length}
+                        size="small"
+                        style={{ marginLeft: 6, backgroundColor: '#e6f4ff', color: '#1677ff' }}
+                      />
+                    )}
+                  </span>
+                ),
+                children: (
+                  <KVEditor
+                    entries={triggerParams}
+                    onChange={setTriggerParams}
+                    keyPlaceholder="变量名 (:id 或 ${name})"
+                    valuePlaceholder="变量值"
+                  />
+                ),
+              },
               {
                 key: 'headers',
                 label: (
@@ -429,29 +465,6 @@ const DbDebugger: React.FC<DbDebuggerProps> = ({
                     onChange={setTriggerHeaders}
                     keyPlaceholder="Header Name"
                     valuePlaceholder="Header Value"
-                  />
-                ),
-              },
-              {
-                key: 'params',
-                label: (
-                  <span>
-                    Query Params
-                    {triggerParams.filter((p) => p.key.trim()).length > 0 && (
-                      <Badge
-                        count={triggerParams.filter((p) => p.key.trim()).length}
-                        size="small"
-                        style={{ marginLeft: 6, backgroundColor: '#e6f4ff', color: '#1677ff' }}
-                      />
-                    )}
-                  </span>
-                ),
-                children: (
-                  <KVEditor
-                    entries={triggerParams}
-                    onChange={setTriggerParams}
-                    keyPlaceholder="Param Key"
-                    valuePlaceholder="Param Value"
                   />
                 ),
               },

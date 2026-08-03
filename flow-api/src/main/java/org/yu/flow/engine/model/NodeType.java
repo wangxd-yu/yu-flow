@@ -61,4 +61,12 @@ public final class NodeType {
     public static final String MQ_SEND = "mqSend";
     /** 统一错误处理入口（引擎异常时跳转，单例） */
     public static final String ERROR_HANDLER = "errorHandler";
+    /** 局部 try/catch 错误边界 */
+    public static final String TRY_CATCH = "tryCatch";
+    /** Redis 读写（GET/SET/DEL/INCR） */
+    public static final String REDIS = "redis";
+    /** 声明式 JSON 字段映射 */
+    public static final String JSON_MAP = "jsonMap";
+    /** OSS 对象存储读写（MinIO/S3 兼容） */
+    public static final String OSS = "oss";
 }
