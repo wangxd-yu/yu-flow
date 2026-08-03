@@ -25,7 +25,7 @@ import {
 import {
     PAYLOAD_PORT_Y,
     ensurePayloadPort,
-    usePayloadEntryPort,
+    usePayloadEntryConnection,
     hasPayloadInput,
     PayloadEntryChrome,
 } from '../../shared/usePayloadEntryPort';
@@ -68,7 +68,7 @@ export const OssNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
     const viewMode = getGraphNodeViewMode(graph);
     const isCompact = viewMode === 'compact';
     const { variables, addVariable, removeVariable, updateVariable } = useNodeVariables(node, data);
-    usePayloadEntryPort(node);
+    usePayloadEntryConnection(node);
     const { width, height, onResizeMouseDown } = useCompactNodeResize(node, OSS_LAYOUT.width, OSS_LAYOUT.height);
 
     const [connOptions, setConnOptions] = React.useState<{ label: string; value: string }[]>([]);

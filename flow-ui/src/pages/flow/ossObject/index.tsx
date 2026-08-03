@@ -184,13 +184,13 @@ const OssObjectList: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: '文件台账',
+        title: 'OSS 文件',
       }}
     >
       <OssIntegrationAlert />
       <ProTable<OssObject>
         className="fh-table"
-        headerTitle="文件列表"
+        headerTitle="OSS 文件列表"
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"

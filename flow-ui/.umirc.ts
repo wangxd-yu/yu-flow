@@ -80,7 +80,7 @@ export default defineConfig({
       access: 'canHome',
     },
 
-    // ── 流程资产：接口 / 任务 / 服务 / MQ 任务 / 页面 ──
+    // ── 流程资产：接口 / 任务 / 服务 / MQ 任务 / 上传配置 / 页面 ──
     // 注意：分组节点不要写 path；子路由是绝对路径（如 /flow/api），父级挂 /asset 会触发 RR6 报错白屏
     {
       name: '流程资产',
@@ -121,6 +121,13 @@ export default defineConfig({
           access: 'canMq',
         },
         {
+          name: '上传配置',
+          icon: 'CloudUploadOutlined',
+          path: '/flow/oss-profile',
+          component: './flow/ossProfile',
+          access: 'canOss',
+        },
+        {
           name: '页面管理',
           icon: 'LayoutOutlined',
           path: '/page-manage/list',
@@ -130,7 +137,7 @@ export default defineConfig({
       ],
     },
 
-    // ── 运行观测：运行 / 开放 / 日志 ──
+    // ── 运行观测：运行 / 告警 / 开放 ──
     {
       name: '运行观测',
       icon: 'DashboardOutlined',
@@ -165,60 +172,75 @@ export default defineConfig({
           component: './flow/openPlatform',
           access: 'canOpen',
         },
+      ],
+    },
+
+    // ── 日志中心：执行日志 / OSS 文件与下载 / 审计 ──
+    // 注意：子路由含 /log/* 与 /flow/oss-*，父级勿写 path，避免 RR6 白屏
+    {
+      name: '日志中心',
+      icon: 'FileSearchOutlined',
+      key: 'menu-log',
+      access: 'canLogGroup',
+      routes: [
         {
-          name: '日志中心',
-          icon: 'FileSearchOutlined',
-          path: '/log',
+          name: '接口日志',
+          path: '/log/execution',
+          component: './Log/ExecutionLog',
           access: 'canLog',
-          routes: [
-            {
-              name: '接口日志',
-              path: '/log/execution',
-              component: './Log/ExecutionLog',
-              access: 'canLog',
-            },
-            {
-              name: '任务日志',
-              path: '/log/task',
-              component: './Log/TaskLog',
-              access: 'canLog',
-            },
-            {
-              name: 'MQ 日志',
-              path: '/log/mq',
-              component: './Log/MqLog',
-              access: 'canLog',
-            },
-            {
-              name: '服务日志',
-              path: '/log/service',
-              component: './Log/ServiceLog',
-              access: 'canLog',
-            },
-            {
-              name: '三方日志',
-              path: '/log/third',
-              component: './Log/ThirdLog',
-              access: 'canLog',
-            },
-            {
-              name: '登录日志',
-              path: '/log/login',
-              component: './Log/LoginLog',
-              access: 'canLog',
-            },
-            {
-              name: '变更审计',
-              path: '/log/audit',
-              component: './Log/AuditLog',
-              access: 'canLog',
-            },
-          ],
+        },
+        {
+          name: '任务日志',
+          path: '/log/task',
+          component: './Log/TaskLog',
+          access: 'canLog',
+        },
+        {
+          name: 'MQ 日志',
+          path: '/log/mq',
+          component: './Log/MqLog',
+          access: 'canLog',
+        },
+        {
+          name: '服务日志',
+          path: '/log/service',
+          component: './Log/ServiceLog',
+          access: 'canLog',
+        },
+        {
+          name: '三方日志',
+          path: '/log/third',
+          component: './Log/ThirdLog',
+          access: 'canLog',
+        },
+        {
+          name: 'OSS 文件',
+          path: '/flow/oss-object',
+          component: './flow/ossObject',
+          access: 'canOss',
+        },
+        {
+          name: 'OSS 下载',
+          path: '/flow/oss-download-log',
+          component: './flow/ossDownloadLog',
+          access: 'canOssAudit',
+        },
+        {
+          name: '登录日志',
+          path: '/log/login',
+          component: './Log/LoginLog',
+          access: 'canLog',
+        },
+        {
+          name: '变更审计',
+          path: '/log/audit',
+          component: './Log/AuditLog',
+          access: 'canLog',
         },
       ],
     },
 
-    // ── 基础设施：数据源 / MQ 连接 / 模型 ──
+    // ── 基础设施：数据源 / MQ 连接 / OSS 连接 / 模型 ──
     {
       name: '基础设施',
       icon: 'CloudServerOutlined',
@@ -240,32 +262,11 @@ export default defineConfig({
           access: 'canMq',
         },
         {
-          name: '对象存储连接',
+          name: 'OSS 连接',
           icon: 'CloudUploadOutlined',
           path: '/flow/oss-connection',
           component: './flow/ossConnection',
           access: 'canOss',
-        },
-        {
-          name: '上传场景',
-          icon: 'FolderOpenOutlined',
-          path: '/flow/oss-profile',
-          component: './flow/ossProfile',
-          access: 'canOss',
-        },
-        {
-          name: '文件台账',
-          icon: 'FileOutlined',
-          path: '/flow/oss-object',
-          component: './flow/ossObject',
-          access: 'canOss',
-        },
-        {
-          name: '下载审计',
-          icon: 'AuditOutlined',
-          path: '/flow/oss-download-log',
-          component: './flow/ossDownloadLog',
-          access: 'canOssAudit',
         },
         {
           name: '数据模型',
@@ -274,7 +275,7 @@ export default defineConfig({
           component: './DataModel/List',
           access: 'canModel',
         },
-        ],
+      ],
     },
 
     // ── 平台设置：模板 / 参数 / 配置 / 用户 / 文档 ──

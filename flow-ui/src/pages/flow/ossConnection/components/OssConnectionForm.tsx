@@ -87,7 +87,7 @@ const OssConnectionForm: React.FC<OssConnectionFormProps> = (props) => {
 
   return (
     <DrawerForm
-      title={isEdit ? '编辑对象存储连接' : '新建对象存储连接'}
+      title={isEdit ? '编辑 OSS 连接' : '新建 OSS 连接'}
       width="60%"
       layout="horizontal"
       open={modalVisible}
@@ -131,7 +131,7 @@ const OssConnectionForm: React.FC<OssConnectionFormProps> = (props) => {
         name="code"
         label="连接编码"
         placeholder="如 minio_main"
-        tooltip="全局唯一编码，上传场景通过 connectionCode 引用，创建后不可修改"
+        tooltip="全局唯一编码，上传配置通过 connectionCode 引用，创建后不可修改"
         disabled={isEdit}
         rules={
           isEdit

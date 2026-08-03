@@ -9,8 +9,9 @@ server:
 spring:
   servlet:
     multipart:
-      max-file-size: 2MB
-      max-request-size: 4MB
+      # 需 ≥ yu.flow.oss.max-upload-bytes（默认 50MB），否则大文件在进业务前就被拒
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:50MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:55MB}
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/flow?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${SPRING_DATASOURCE_USERNAME:root}

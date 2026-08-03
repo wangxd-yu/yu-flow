@@ -87,13 +87,13 @@ const OssDownloadLogList: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: '下载审计',
+        title: 'OSS 下载',
       }}
     >
       <OssIntegrationAlert />
       <ProTable<OssDownloadLog>
         className="fh-table"
-        headerTitle="下载审计日志"
+        headerTitle="OSS 下载日志"
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"

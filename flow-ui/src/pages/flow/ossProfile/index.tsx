@@ -8,6 +8,7 @@ import {
 import { Button, Divider, message, Popconfirm, Tag } from 'antd';
 import React, { useRef, useState } from 'react';
 import OssIntegrationAlert from '@/components/flow/OssIntegrationAlert';
+import OssSimulateUploadModal from './components/OssSimulateUploadModal';
 import OssUploadProfileForm from './components/OssUploadProfileForm';
 import {
   batchDeleteOssUploadProfile,
@@ -39,6 +40,7 @@ const OssProfileList: React.FC = () => {
   const [createModalVisible, handleModalVisible] = useState<boolean>(false);
   const [updateModalVisible, handleUpdateModalVisible] = useState<boolean>(false);
   const [stepFormValues, setStepFormValues] = useState<Partial<OssUploadProfile>>();
+  const [simulateProfile, setSimulateProfile] = useState<Partial<OssUploadProfile> | null>(null);
   const actionRef = useRef<ActionType>();
   const [selectedRowsState, setSelectedRows] = useState<OssUploadProfile[]>([]);
 
@@ -103,10 +105,14 @@ const OssProfileList: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 120,
+      width: 180,
       fixed: 'right',
       render: (_, record) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+          <a key="simulate" onClick={() => setSimulateProfile(record)}>
+            试上传
+          </a>
+          <Divider type="vertical" key="d0" />
           <a
             key="edit"
             onClick={() => {
@@ -119,7 +125,7 @@ const OssProfileList: React.FC = () => {
           <Divider type="vertical" key="d1" />
           <Popconfirm
             key="delete"
-            title="确定要删除该上传场景吗？"
+            title="确定要删除该上传配置吗？"
             onConfirm={async () => {
               try {
                 await deleteOssUploadProfile(record.id);
@@ -141,13 +147,13 @@ const OssProfileList: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: '上传场景',
+        title: '上传配置',
       }}
     >
       <OssIntegrationAlert />
       <ProTable<OssUploadProfile>
         className="fh-table"
-        headerTitle="上传场景列表"
+        headerTitle="上传配置列表"
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"
@@ -240,6 +246,11 @@ const OssProfileList: React.FC = () => {
           isEdit={true}
         />
       ) : null}
+      <OssSimulateUploadModal
+        open={!!simulateProfile}
+        profile={simulateProfile}
+        onClose={() => setSimulateProfile(null)}
+      />
     </PageContainer>
   );
 };

@@ -155,3 +155,35 @@ export async function fetchOssObjectThumbnailBlobUrl(id: string): Promise<string
 export async function rebuildOssObjectThumbnail(id: string) {
   return request(`/flow-api/oss/objects/${id}/thumbnail/rebuild`, { method: 'POST' });
 }
+
+export interface OssUploadResult {
+  id: string;
+  visibility?: string;
+  originalName?: string;
+  sizeBytes?: number;
+  contentType?: string;
+  publicUrl?: string;
+  publicPath?: string;
+  thumbStatus?: string;
+  thumbPublicPath?: string;
+  hasThumbnail?: boolean;
+  expiresAt?: string;
+}
+
+/** 管理端试上传：POST /flow-api/oss/upload?profile=xxx */
+export async function uploadOssByProfile(
+  profileCode: string,
+  file: File,
+): Promise<OssUploadResult[]> {
+  const form = new FormData();
+  form.append('file', file);
+  const result = await request<OssUploadResult[]>(
+    `/flow-api/oss/upload?profile=${encodeURIComponent(profileCode)}`,
+    {
+      method: 'POST',
+      data: form,
+    },
+  );
+  return (result as any)?.data ?? result;
+}
+

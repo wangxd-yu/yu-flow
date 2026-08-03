@@ -5,7 +5,7 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Drawer, message, Button, Form, Input, Switch, Space, Tooltip, Typography, Tag, Radio,
+  Drawer, message, Button, Form, Input, Switch, Space, Tooltip, Typography, Tag, Radio, Row, Col,
 } from 'antd';
 import {
   SaveOutlined, CloseOutlined, PlayCircleOutlined, ThunderboltOutlined,
@@ -31,6 +31,10 @@ import {
   AssetFormShell,
   ASSET_FORM_SHELL_CLASS,
   ASSET_FORM_FILL_CLASS,
+  ASSET_FORM_SCROLL_CLASS,
+  ASSET_FORM_BASIC_CLASS,
+  ASSET_FORM_COL_FIELD,
+  ASSET_FORM_COL_FULL,
 } from '@/components/flow/ops';
 import { SchemaTreeTable } from '@/components/flow/ApiContractDesigner';
 import type { SchemaNode } from '@/components/flow/ApiContractDesigner';
@@ -370,90 +374,105 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   );
 
   const basicInfoContent = (
-    <div style={{ maxWidth: 600, padding: '16px 0' }}>
+    <div className={ASSET_FORM_SCROLL_CLASS}>
+      <div className={ASSET_FORM_BASIC_CLASS}>
       <Form layout="vertical" form={form}>
-        <Form.Item
-          label="服务名称"
-          required
-          validateStatus={submitAttempted && !name?.trim() ? 'error' : ''}
-          help={submitAttempted && !name?.trim() ? '请输入服务名称' : undefined}
-        >
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="请输入服务名称，如：生成 Token、通用查询"
-          />
-        </Form.Item>
-
-        <DirectoryTreeSelect
-          bizType="service"
-          name="directoryId"
-          label="所属目录"
-          placeholder="不选默认为根目录"
-          fieldProps={{
-            showSearch: true,
-            treeDefaultExpandAll: true,
-            allowClear: true,
-            value: directoryId,
-            onChange: (v: string | undefined) => setDirectoryId(v || undefined),
-            style: { width: '100%' },
-          }}
-        />
-
-        <Form.Item label="启用状态">
-          <Switch
-            checked={enabled}
-            onChange={setEnabled}
-            checkedChildren="启用"
-            unCheckedChildren="停用"
-          />
-          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-            停用后，其他流程通过 api 节点调用将失败。调用方仅能选择「已发布」的服务。
-          </div>
-        </Form.Item>
-
-        <Form.Item label="日志策略">
-          <Radio.Group
-            value={logMode}
-            onChange={(e) => setLogMode(e.target.value)}
-            optionType="button"
-            buttonStyle="solid"
-          >
-            <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
-              <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
-            </Tooltip>
-            <Tooltip title="显式指定当前服务仅在发生报错/失败时记录日志">
-              <Radio.Button value="ERROR_ONLY">仅错误</Radio.Button>
-            </Tooltip>
-            <Tooltip title="显式指定当前服务全量记录成功与失败日志（含 FlowTrace 快照）">
-              <Radio.Button value="ALL">全量记录</Radio.Button>
-            </Tooltip>
-            <Tooltip title="显式指定当前服务完全禁用日志记录，任何情况下均不落库">
-              <Radio.Button value="OFF">完全关闭</Radio.Button>
-            </Tooltip>
-          </Radio.Group>
-          <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
-            {(!logMode || logMode === 'SYSTEM_DEFAULT') && `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`}
-            {logMode === 'ERROR_ONLY' && '覆盖全局配置：显式指定当前服务为【仅错误】，平时零开销，异常时保存错误日志'}
-            {logMode === 'ALL' && '覆盖全局配置：显式指定当前服务为【全量记录】，每次调用均保存 FlowTrace 步骤快照'}
-            {logMode === 'OFF' && '覆盖全局配置：显式指定当前服务为【完全关闭】，任何情况下均不保存日志'}
-          </div>
-        </Form.Item>
-
-        <Form.Item label="服务描述">
-          <Input.TextArea
-            value={info}
-            onChange={(e) => setInfo(e.target.value)}
-            rows={3}
-            placeholder="可选：服务的功能说明"
-          />
-        </Form.Item>
+        <Row gutter={[24, 0]} className="yf-asset-form-row">
+          <Col {...ASSET_FORM_COL_FIELD}>
+            <Form.Item
+              label="服务名称"
+              required
+              validateStatus={submitAttempted && !name?.trim() ? 'error' : ''}
+              help={submitAttempted && !name?.trim() ? '请输入服务名称' : undefined}
+            >
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="请输入服务名称，如：生成 Token、通用查询"
+              />
+            </Form.Item>
+          </Col>
+          <Col {...ASSET_FORM_COL_FIELD}>
+            <DirectoryTreeSelect
+              bizType="service"
+              name="directoryId"
+              label="所属目录"
+              placeholder="不选默认为根目录"
+              fieldProps={{
+                showSearch: true,
+                treeDefaultExpandAll: true,
+                allowClear: true,
+                value: directoryId,
+                onChange: (v: string | undefined) => setDirectoryId(v || undefined),
+                style: { width: '100%' },
+              }}
+            />
+          </Col>
+          <Col {...ASSET_FORM_COL_FIELD}>
+            <Form.Item
+              label="启用状态"
+              help={
+                <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+                  停用后，其他流程通过 api 节点调用将失败。调用方仅能选择「已发布」的服务。
+                </span>
+              }
+            >
+              <Switch
+                checked={enabled}
+                onChange={setEnabled}
+                checkedChildren="启用"
+                unCheckedChildren="停用"
+              />
+            </Form.Item>
+          </Col>
+          <Col {...ASSET_FORM_COL_FULL}>
+            <Form.Item label="日志策略">
+              <Radio.Group
+                value={logMode}
+                onChange={(e) => setLogMode(e.target.value)}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
+                  <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
+                </Tooltip>
+                <Tooltip title="显式指定当前服务仅在发生报错/失败时记录日志">
+                  <Radio.Button value="ERROR_ONLY">仅错误</Radio.Button>
+                </Tooltip>
+                <Tooltip title="显式指定当前服务全量记录成功与失败日志（含 FlowTrace 快照）">
+                  <Radio.Button value="ALL">全量记录</Radio.Button>
+                </Tooltip>
+                <Tooltip title="显式指定当前服务完全禁用日志记录，任何情况下均不落库">
+                  <Radio.Button value="OFF">完全关闭</Radio.Button>
+                </Tooltip>
+              </Radio.Group>
+              <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                {(!logMode || logMode === 'SYSTEM_DEFAULT') && `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`}
+                {logMode === 'ERROR_ONLY' && '覆盖全局配置：显式指定当前服务为【仅错误】，平时零开销，异常时保存错误日志'}
+                {logMode === 'ALL' && '覆盖全局配置：显式指定当前服务为【全量记录】，每次调用均保存 FlowTrace 步骤快照'}
+                {logMode === 'OFF' && '覆盖全局配置：显式指定当前服务为【完全关闭】，任何情况下均不保存日志'}
+              </div>
+            </Form.Item>
+          </Col>
+          <Col {...ASSET_FORM_COL_FULL}>
+            <Form.Item label="服务描述">
+              <Input.TextArea
+                value={info}
+                onChange={(e) => setInfo(e.target.value)}
+                rows={3}
+                placeholder="可选：服务的功能说明"
+              />
+            </Form.Item>
+          </Col>
+        </Row>
       </Form>
+      </div>
     </div>
   );
 
   const contractContent = (
-    <div style={{ padding: '12px 0 24px', maxWidth: 960 }}>
+    <div className={ASSET_FORM_SCROLL_CLASS}>
+      <div className={ASSET_FORM_BASIC_CLASS}>
       <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
         定义调用方可见的入参与返回结构。修改后会同步到流程编排中的 Service 卡片摘要；
         发布后，其他流程的 api 节点按已发布契约同步入参。
@@ -490,6 +509,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
           />
         </Form.Item>
       </Form>
+      </div>
     </div>
   );
 
@@ -498,7 +518,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
     if (activeTab === 'contract') return contractContent;
     if (activeTab === 'runtime') {
       return (
-        <div style={{ overflow: 'auto', height: '100%', padding: '0 8px' }}>
+        <div className={ASSET_FORM_SCROLL_CLASS}>
           <AssetRuntimePanel assetType="SERVICE" assetId={initialValues.id} />
         </div>
       );

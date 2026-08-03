@@ -201,6 +201,71 @@
   overflow: hidden !important;
 }
 
+/**
+ * 可滚动 Tab 内容区（基本信息 / 运行面板等）
+ * 必须作为 PageContainer children 的直接子节点，才能在 overflow:hidden 外壳内纵向滚动。
+ */
+.yf-asset-form-scroll {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 4px 28px;
+  box-sizing: border-box;
+}
+
+/** 基本信息表单：占满滚动区内可用宽度，由 Row/Col 24 栅格分配列 */
+.yf-asset-form-basic {
+  width: 100%;
+  max-width: none;
+  padding: 8px 0 16px;
+  box-sizing: border-box;
+}
+
+.yf-asset-form-basic .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.yf-asset-form-basic .ant-form-item-extra,
+.yf-asset-form-basic .ant-form-item-explain {
+  font-size: 12px;
+}
+
+/** 响应式栅格：窄 1 列 / 中 2 列 / 宽 3 列（配合 Col xs=24 md=12 xl=8） */
+.yf-asset-form-basic .yf-asset-form-row {
+  width: 100%;
+}
+
+/** 分区小标题：降低长表单认知负担 */
+.yf-asset-form-section-title {
+  width: 100%;
+  margin: 4px 0 12px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid #f0f0f0;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.yf-asset-form-section-title:not(:first-child) {
+  margin-top: 8px;
+}
+
+/** 策略按钮组拉满列宽，避免右侧大块空白 */
+.yf-asset-form-basic .ant-radio-group-solid {
+  display: flex !important;
+  flex-wrap: wrap;
+  width: 100%;
+  gap: 0;
+}
+
+.yf-asset-form-basic .ant-radio-group-solid .ant-radio-button-wrapper {
+  flex: 1 1 0;
+  text-align: center;
+  min-width: 0;
+}
+
 /* 非 PageContainer 场景（如开放平台抽屉）：对齐 padding / tabs */
 .yf-asset-form-shell-plain {
   height: 100%;

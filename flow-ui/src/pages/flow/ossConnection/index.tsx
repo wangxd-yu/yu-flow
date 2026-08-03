@@ -56,7 +56,7 @@ const OssConnectionList: React.FC = () => {
     {
       title: '连接编码',
       dataIndex: 'code',
-      tip: '全局唯一编码，上传场景通过 connectionCode 引用',
+      tip: '全局唯一编码，上传配置通过 connectionCode 引用',
       width: 140,
       copyable: true,
       ellipsis: true,
@@ -171,7 +171,7 @@ const OssConnectionList: React.FC = () => {
           <Divider type="vertical" key="d2" />
           <Popconfirm
             key="delete"
-            title="确定要删除吗？删除前请确认没有上传场景引用该连接。"
+            title="确定要删除吗？删除前请确认没有上传配置引用该连接。"
             onConfirm={async () => {
               try {
                 await deleteOssConnection(record.id);
@@ -225,13 +225,13 @@ const OssConnectionList: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: '对象存储连接',
+        title: 'OSS 连接',
       }}
     >
       <OssIntegrationAlert />
       <ProTable<OssConnection>
         className="fh-table"
-        headerTitle="对象存储连接列表"
+        headerTitle="OSS 连接列表"
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"

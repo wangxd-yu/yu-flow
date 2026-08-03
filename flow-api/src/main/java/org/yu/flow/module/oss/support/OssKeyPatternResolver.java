@@ -9,7 +9,23 @@ import java.time.format.DateTimeFormatter;
 import java.util.regex.Pattern;
 
 /**
- * 对象键 pattern 解析：{profile}/{yyyy}/{MM}/{uuid}_{filename}
+ * 对象键 pattern 解析。
+ *
+ * <p>支持占位符：
+ * <ul>
+ *   <li>{@code {profile}} — 场景编码</li>
+ *   <li>{@code {yyyy}} — 年</li>
+ *   <li>{@code {MM}} — 月（两位）</li>
+ *   <li>{@code {dd}} — 日（两位）</li>
+ *   <li>{@code {HH}} — 时（24 小时，两位）</li>
+ *   <li>{@code {mm}} — 分（两位）</li>
+ *   <li>{@code {ss}} — 秒（两位）</li>
+ *   <li>{@code {uuid}} — 无横线 UUID</li>
+ *   <li>{@code {filename}} — 原始文件名（已净化）</li>
+ *   <li>{@code {name}} — 不含扩展名的文件名</li>
+ *   <li>{@code {ext}} — 扩展名（小写，不含点）</li>
+ * </ul>
+ * 默认：{@code {profile}/{yyyy}/{MM}/{uuid}_{filename}}
  */
 public final class OssKeyPatternResolver {
 
@@ -24,13 +40,28 @@ public final class OssKeyPatternResolver {
         String p = StrUtil.isNotBlank(pattern) ? pattern.trim() : DEFAULT_PATTERN;
         LocalDateTime now = LocalDateTime.now(ZONE_SH);
         String safeName = sanitizeFilename(originalFilename);
+        String baseName = stripExtension(safeName);
+        String ext = extractExtension(originalFilename);
+        String yyyy = now.format(DateTimeFormatter.ofPattern("yyyy"));
+        String month = now.format(DateTimeFormatter.ofPattern("MM"));
+        String day = now.format(DateTimeFormatter.ofPattern("dd"));
+        String hour = now.format(DateTimeFormatter.ofPattern("HH"));
+        String minute = now.format(DateTimeFormatter.ofPattern("mm"));
+        String second = now.format(DateTimeFormatter.ofPattern("ss"));
+        String uuid = IdUtil.fastSimpleUUID();
+
         String resolved = p
                 .replace("{profile}", StrUtil.blankToDefault(profileCode, "default"))
-                .replace("{yyyy}", now.format(DateTimeFormatter.ofPattern("yyyy")))
-                .replace("{MM}", now.format(DateTimeFormatter.ofPattern("MM")))
-                .replace("{dd}", now.format(DateTimeFormatter.ofPattern("dd")))
-                .replace("{uuid}", IdUtil.fastSimpleUUID())
-                .replace("{filename}", safeName);
+                .replace("{yyyy}", yyyy)
+                .replace("{MM}", month)
+                .replace("{dd}", day)
+                .replace("{HH}", hour)
+                .replace("{mm}", minute)
+                .replace("{ss}", second)
+                .replace("{uuid}", uuid)
+                .replace("{filename}", safeName)
+                .replace("{name}", baseName)
+                .replace("{ext}", ext);
 
         resolved = resolved.replace('\\', '/');
         while (resolved.startsWith("/")) {
@@ -96,5 +127,34 @@ public final class OssKeyPatternResolver {
             return "file";
         }
         return StrUtil.maxLength(name, 200);
+    }
+
+    private static String stripExtension(String safeName) {
+        if (StrUtil.isBlank(safeName)) {
+            return "file";
+        }
+        int dot = safeName.lastIndexOf('.');
+        if (dot <= 0) {
+            return safeName;
+        }
+        return safeName.substring(0, dot);
+    }
+
+    /** 小写扩展名，不含点；无扩展名时返回空串 */
+    private static String extractExtension(String originalFilename) {
+        if (StrUtil.isBlank(originalFilename)) {
+            return "";
+        }
+        String name = originalFilename.replace('\\', '/');
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || dot >= name.length() - 1) {
+            return "";
+        }
+        String ext = name.substring(dot + 1).toLowerCase();
+        return UNSAFE.matcher(ext).replaceAll("");
     }
 }

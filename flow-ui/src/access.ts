@@ -49,26 +49,36 @@ export default function access(initialState: InitialStateType) {
     canRole: can('sys:role:view', 'sys:role:write', '*'),
     canRoleWrite: can('sys:role:write', '*'),
     canDocs: can('docs:view', '*'),
-    /** 流程资产父菜单：任一子权限 */
+    /** 流程资产父菜单：任一子权限（含 MQ 任务 / 上传配置） */
     canAssetGroup: can(
       'flow:api:view', 'flow:api:write',
       'flow:task:view', 'flow:task:write',
       'flow:service:view', 'flow:service:write',
       'flow:page:view', 'flow:page:write',
+      'flow:mq:view', 'flow:mq:write',
+      'flow:oss:view', 'flow:oss:write',
       '*',
     ),
+    /** 运行观测：运行 / 告警 / 开放（日志已独立一级） */
     canOpsGroup: can(
       'flow:runtime:view',
       'flow:alert:view', 'flow:alert:edit',
       'flow:open:view', 'flow:open:write',
-      'log:view',
       '*',
     ),
-    canInfraGroup: can(
-      'flow:ds:view', 'flow:ds:write',
-      'flow:model:view', 'flow:model:write',
+    /** 日志中心父菜单：执行日志或 OSS 台账/下载任一权限 */
+    canLogGroup: can(
+      'log:view',
       'flow:oss:view', 'flow:oss:write',
       'flow:oss:audit', 'flow:oss:admin',
+      '*',
+    ),
+    /** 基础设施：连接与模型（OSS 仅连接配置） */
+    canInfraGroup: can(
+      'flow:ds:view', 'flow:ds:write',
+      'flow:mq:view', 'flow:mq:write',
+      'flow:oss:view', 'flow:oss:write',
+      'flow:model:view', 'flow:model:write',
       '*',
     ),
     /** 消息队列父菜单：任一子权限 */

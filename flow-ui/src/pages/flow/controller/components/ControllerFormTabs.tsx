@@ -7,6 +7,7 @@ import React from 'react';
 import type { FormInstance } from 'antd/es/form';
 import {
   ASSET_FORM_FILL_CLASS,
+  ASSET_FORM_SCROLL_CLASS,
 } from '@/components/flow/ops';
 import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
@@ -225,7 +226,7 @@ const ControllerFormTabs: React.FC<ControllerFormTabsProps> = (props) => {
     }
     case 'runtime':
       return (
-        <div style={{ overflow: 'auto', height: '100%' }}>
+        <div className={ASSET_FORM_SCROLL_CLASS}>
           <AssetRuntimePanel assetType="API" assetId={valuesId} />
         </div>
       );

@@ -17,6 +17,68 @@ import {
   updateOssUploadProfile,
 } from '@/services/flow/ossUploadProfile';
 
+const MB = 1024 * 1024;
+
+const MIME_OPTIONS = [
+  { label: 'image/jpeg', value: 'image/jpeg' },
+  { label: 'image/png', value: 'image/png' },
+  { label: 'image/gif', value: 'image/gif' },
+  { label: 'image/webp', value: 'image/webp' },
+  { label: 'image/bmp', value: 'image/bmp' },
+  { label: 'image/svg+xml', value: 'image/svg+xml' },
+  { label: 'application/pdf', value: 'application/pdf' },
+  { label: 'application/zip', value: 'application/zip' },
+  { label: 'application/json', value: 'application/json' },
+  { label: 'text/plain', value: 'text/plain' },
+  { label: 'text/csv', value: 'text/csv' },
+  {
+    label: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (xlsx)',
+    value: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  },
+  {
+    label: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document (docx)',
+    value: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  },
+  { label: 'video/mp4', value: 'video/mp4' },
+  { label: 'audio/mpeg', value: 'audio/mpeg' },
+];
+
+const EXT_OPTIONS = [
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'txt', 'csv', 'json', 'zip', 'rar', '7z',
+  'mp4', 'mp3', 'wav',
+].map((ext) => ({ label: ext, value: ext }));
+
+/** 逗号串 → 多选数组 */
+function splitCsv(raw?: string | null): string[] | undefined {
+  if (!raw?.trim()) return undefined;
+  const list = raw
+    .split(/[,，\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length ? list : undefined;
+}
+
+/** 多选数组 → 逗号串（空则空串） */
+function joinCsv(list?: string[] | null): string {
+  if (!list?.length) return '';
+  return list.map((s) => String(s).trim()).filter(Boolean).join(',');
+}
+
+/** 字节 → MB 表单值；空保持空 */
+function bytesToMb(bytes?: number | null): number | undefined {
+  if (bytes == null || bytes === 0) return undefined;
+  const mb = bytes / MB;
+  return Math.round(mb * 1000) / 1000;
+}
+
+/** MB → 字节；空/0 → 0（便于后端清空可选上限） */
+function mbToBytes(mb?: number | null): number {
+  if (mb == null || Number.isNaN(Number(mb)) || Number(mb) <= 0) return 0;
+  return Math.round(Number(mb) * MB);
+}
+
 export type OssUploadProfileFormProps = {
   onCancel: () => void;
   onSubmit: (success: boolean) => Promise<boolean>;
@@ -64,6 +126,11 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         values.thumbnailEnabled === undefined
           ? false
           : Boolean(Number(values.thumbnailEnabled)),
+      maxSizeMb: bytesToMb(values.maxSizeBytes),
+      quotaMaxMb: bytesToMb(values.quotaMaxBytes),
+      thumbnailMaxSourceMb: bytesToMb(values.thumbnailMaxSourceBytes),
+      allowedContentTypes: splitCsv(values.allowedContentTypes),
+      allowedExtensions: splitCsv(values.allowedExtensions),
     }),
     [values],
   );
@@ -74,18 +141,27 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
       if (formValues.bizFieldsSchema?.trim()) {
         JSON.parse(formValues.bizFieldsSchema);
       }
-      // 空值用 0 表示「回退全局」，便于编辑时清空场景覆盖
+      const {
+        maxSizeMb,
+        quotaMaxMb,
+        thumbnailMaxSourceMb,
+        maxSizeBytes: _dropMax,
+        quotaMaxBytes: _dropQuota,
+        thumbnailMaxSourceBytes: _dropThumbSrc,
+        ...rest
+      } = formValues;
+      // 空值用 0 表示「不限 / 回退全局」，便于编辑时清空
       const payload = {
-        ...formValues,
+        ...rest,
+        allowedContentTypes: joinCsv(formValues.allowedContentTypes),
+        allowedExtensions: joinCsv(formValues.allowedExtensions),
+        maxSizeBytes: mbToBytes(maxSizeMb),
+        quotaMaxBytes: mbToBytes(quotaMaxMb),
         thumbnailMaxEdge:
           formValues.thumbnailMaxEdge == null || formValues.thumbnailMaxEdge === ''
             ? 0
             : formValues.thumbnailMaxEdge,
-        thumbnailMaxSourceBytes:
-          formValues.thumbnailMaxSourceBytes == null ||
-          formValues.thumbnailMaxSourceBytes === ''
-            ? 0
-            : formValues.thumbnailMaxSourceBytes,
+        thumbnailMaxSourceBytes: mbToBytes(thumbnailMaxSourceMb),
         thumbnailJpegQuality:
           formValues.thumbnailJpegQuality == null || formValues.thumbnailJpegQuality === ''
             ? 0
@@ -115,7 +191,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
 
   return (
     <DrawerForm
-      title={isEdit ? '编辑上传场景' : '新建上传场景'}
+      title={isEdit ? '编辑上传配置' : '新建上传配置'}
       width="60%"
       layout="horizontal"
       open={modalVisible}
@@ -194,28 +270,61 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
       <ProFormText
         name="keyPattern"
         label="Key 模式"
-        placeholder="如 {yyyy}/{MM}/{uuid}.{ext}"
-        colProps={{ span: 12 }}
+        placeholder="{profile}/{yyyy}/{MM}/{uuid}_{filename}"
+        colProps={{ span: 24 }}
+        tooltip="对象键模板；连接上的 Key 前缀会再拼在最前面"
+        extra={
+          <span>
+            可用占位符：
+            <code>{'{profile}'}</code> 场景编码、
+            <code>{'{yyyy}'}</code> 年、
+            <code>{'{MM}'}</code> 月、
+            <code>{'{dd}'}</code> 日、
+            <code>{'{HH}'}</code> 时、
+            <code>{'{mm}'}</code> 分、
+            <code>{'{ss}'}</code> 秒、
+            <code>{'{uuid}'}</code>、
+            <code>{'{filename}'}</code> 完整文件名、
+            <code>{'{name}'}</code> 不含扩展名、
+            <code>{'{ext}'}</code> 扩展名(小写无点)。
+            默认：<code>{'{profile}/{yyyy}/{MM}/{uuid}_{filename}'}</code>
+          </span>
+        }
       />
-      <ProFormText
+      <ProFormSelect
         name="allowedContentTypes"
         label="允许 MIME"
-        placeholder="逗号分隔，如 image/png,image/jpeg"
+        mode="tags"
+        options={MIME_OPTIONS}
+        placeholder="下拉多选，也可输入自定义后回车"
         colProps={{ span: 12 }}
+        fieldProps={{
+          tokenSeparators: [',', '，', ' '],
+          maxTagCount: 'responsive',
+        }}
+        tooltip="空=不限制；提交时按逗号写入后端"
       />
-      <ProFormText
+      <ProFormSelect
         name="allowedExtensions"
         label="允许扩展名"
-        placeholder="逗号分隔，如 png,jpg,pdf"
+        mode="tags"
+        options={EXT_OPTIONS}
+        placeholder="下拉多选，也可输入自定义后回车"
         colProps={{ span: 12 }}
+        fieldProps={{
+          tokenSeparators: [',', '，', ' '],
+          maxTagCount: 'responsive',
+        }}
+        tooltip="不含点，如 png；空=不限制"
       />
       <ProFormDigit
-        name="maxSizeBytes"
-        label="最大字节数"
-        placeholder="可选"
+        name="maxSizeMb"
+        label="单文件上限"
+        placeholder="空=不限"
         min={0}
-        fieldProps={{ precision: 0 }}
+        fieldProps={{ precision: 3, addonAfter: 'MB' }}
         colProps={{ span: 12 }}
+        tooltip="后端仍按字节存储；勿超过 spring.servlet.multipart.max-file-size（默认 50MB）"
       />
       <ProFormDigit
         name="maxFilesPerRequest"
@@ -225,11 +334,11 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         colProps={{ span: 12 }}
       />
       <ProFormDigit
-        name="quotaMaxBytes"
-        label="场景容量配额(字节)"
+        name="quotaMaxMb"
+        label="场景容量配额"
         placeholder="空=不限"
         min={0}
-        fieldProps={{ precision: 0 }}
+        fieldProps={{ precision: 3, addonAfter: 'MB' }}
         colProps={{ span: 12 }}
       />
       <ProFormDigit
@@ -262,13 +371,13 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                 tooltip="像素；头像场景可设 128，相册可设 512"
               />
               <ProFormDigit
-                name="thumbnailMaxSourceBytes"
+                name="thumbnailMaxSourceMb"
                 label="缩略图源文件上限"
                 placeholder="空=全局默认"
                 min={0}
-                fieldProps={{ precision: 0 }}
+                fieldProps={{ precision: 3, addonAfter: 'MB' }}
                 colProps={{ span: 12 }}
-                tooltip="超过则跳过生成（字节）"
+                tooltip="超过则跳过生成"
               />
               <ProFormDigit
                 name="thumbnailJpegQuality"

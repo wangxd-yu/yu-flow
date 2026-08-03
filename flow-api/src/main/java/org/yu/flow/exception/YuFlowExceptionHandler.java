@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.yu.flow.annotation.YuFlowApi;
 import org.yu.flow.dto.R;
 
@@ -123,6 +124,14 @@ public class YuFlowExceptionHandler {
         String ct = ex.getContentType() != null ? ex.getContentType().toString() : "unknown";
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
                 .body(R.fail(415, "不支持的 Content-Type: " + ct + "，请使用 application/json"));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<R<?>> handleMaxUploadSize(MaxUploadSizeExceededException ex, WebRequest request) {
+        log.warn("[YuFlowExceptionHandler] 上传超过 Spring multipart 限制: path={}, message={}",
+                getRequestPath(request), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(R.fail(413, "上传文件过大，已超过服务端 multipart 限制（见 spring.servlet.multipart.max-file-size）"));
     }
 
     @ExceptionHandler(org.yu.flow.module.mail.FlowMailException.class)
