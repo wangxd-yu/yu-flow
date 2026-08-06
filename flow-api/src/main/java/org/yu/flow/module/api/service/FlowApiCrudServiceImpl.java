@@ -158,6 +158,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             // WRAP 默认关日志，避免宿主流量打爆；REPLACE 保持历史默认开
             flowApiDO.setLogEnabled(!ApiInterceptMode.isWrap(flowApiDO.getInterceptMode()));
         }
+        if (StrUtil.isBlank(flowApiDO.getLogMode())) {
+            flowApiDO.setLogMode("SYSTEM_DEFAULT");
+        }
         // 保留天数 <0 视为未配置（跟随系统）
         if (flowApiDO.getLogRetentionDays() != null && flowApiDO.getLogRetentionDays() < 0) {
             flowApiDO.setLogRetentionDays(null);
@@ -192,6 +195,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             normalizeAndAssertInterceptMode(api);
             if (api.getLogEnabled() == null) {
                 api.setLogEnabled(!ApiInterceptMode.isWrap(api.getInterceptMode()));
+            }
+            if (StrUtil.isBlank(api.getLogMode())) {
+                api.setLogMode("SYSTEM_DEFAULT");
             }
             // 保留天数 <0 视为未配置（跟随系统）
             if (api.getLogRetentionDays() != null && api.getLogRetentionDays() < 0) {
@@ -238,6 +244,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         flowApiDO.setPublishTime(dbRecord.getPublishTime());
         if (flowApiDO.getLogEnabled() == null) {
             flowApiDO.setLogEnabled(dbRecord.getLogEnabled());
+        }
+        if (StrUtil.isBlank(flowApiDO.getLogMode())) {
+            flowApiDO.setLogMode(StrUtil.blankToDefault(dbRecord.getLogMode(), "SYSTEM_DEFAULT"));
         }
         // 保留天数：null=未传保留旧值，-1=清除 API 级配置（回退系统），0=永久保留，>0=自定义天数
         if (flowApiDO.getLogRetentionDays() == null) {

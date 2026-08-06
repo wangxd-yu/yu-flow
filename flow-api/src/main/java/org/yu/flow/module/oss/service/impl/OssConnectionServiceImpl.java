@@ -335,4 +335,38 @@ public class OssConnectionServiceImpl implements OssConnectionService {
         return ossConnectionRepository.findById(id)
                 .orElseThrow(() -> new FlowException("OSS_CONNECTION_NOT_FOUND", "OSS 连接不存在: " + id));
     }
+
+    @Override
+    public List<String> listBucketsByCode(String code) {
+        OssConnectionDO conn = findByCode(code);
+        if (conn == null) {
+            throw new FlowException("OSS_CONN_NOT_FOUND", "OSS 连接不存在: " + code);
+        }
+        List<String> list = new ArrayList<>();
+        try {
+            io.minio.MinioClient client = minioClientFactory.getClient(conn.getCode());
+            List<io.minio.messages.Bucket> buckets = client.listBuckets();
+            if (buckets != null) {
+                for (io.minio.messages.Bucket b : buckets) {
+                    if (StrUtil.isNotBlank(b.name())) {
+                        list.add(b.name());
+                    }
+                }
+            }
+            log.info("[OSS] listBucketsByCode success code={} count={} buckets={}", code, list.size(), list);
+        } catch (Exception e) {
+            log.error("[OSS] listBucketsByCode failed code=" + code + ": " + e.getMessage(), e);
+        }
+        if (StrUtil.isNotBlank(conn.getPublicBucket()) && !list.contains(conn.getPublicBucket())) {
+            list.add(0, conn.getPublicBucket());
+        }
+        if (StrUtil.isNotBlank(conn.getPrivateBucket()) && !list.contains(conn.getPrivateBucket())) {
+            if (StrUtil.isNotBlank(conn.getPublicBucket()) && list.size() > 1) {
+                list.add(1, conn.getPrivateBucket());
+            } else {
+                list.add(0, conn.getPrivateBucket());
+            }
+        }
+        return list;
+    }
 }

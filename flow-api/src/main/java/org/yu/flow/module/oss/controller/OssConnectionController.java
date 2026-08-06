@@ -113,4 +113,9 @@ public class OssConnectionController {
             return R.fail("连接测试失败：" + e.getMessage());
         }
     }
+
+    @GetMapping("/code/{code}/buckets")
+    public R<List<String>> listBucketsByCode(@PathVariable String code) {
+        return R.ok(ossConnectionService.listBucketsByCode(code));
+    }
 }

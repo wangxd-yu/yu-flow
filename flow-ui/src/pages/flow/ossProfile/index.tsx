@@ -147,7 +147,7 @@ const OssProfileList: React.FC = () => {
       className="fh-container"
       style={{ height: 'calc(100vh - 26px)', overflow: 'hidden' }}
       header={{
-        title: '上传配置',
+        title: 'OSS 上传配置',
       }}
     >
       <OssIntegrationAlert />

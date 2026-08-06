@@ -330,6 +330,21 @@ export default defineConfig({
       ],
     },
 
+    // ── 系统集成：开发者中心 ──
+    {
+      name: '系统集成',
+      icon: 'LinkOutlined',
+      key: 'menu-integration',
+      routes: [
+        {
+          name: '开发者中心',
+          icon: 'BookOutlined',
+          path: '/integration/docs',
+          component: './integration/Docs',
+        },
+      ],
+    },
+
     // ── 兼容跳转 / 无菜单页 ──
     {
       path: '/flow/task-log',

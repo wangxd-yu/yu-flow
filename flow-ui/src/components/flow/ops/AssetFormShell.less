@@ -239,30 +239,33 @@
 /** 分区小标题：降低长表单认知负担 */
 .yf-asset-form-section-title {
   width: 100%;
-  margin: 4px 0 12px;
-  padding: 0 0 8px;
-  border-bottom: 1px solid #f0f0f0;
-  color: rgba(0, 0, 0, 0.88);
-  font-size: 13px;
+  margin: 8px 0 14px;
+  padding: 0 0 6px 10px;
+  border-bottom: 1px solid #f0f4f8;
+  color: #0f172a;
+  font-size: 14px;
   font-weight: 600;
   line-height: 22px;
+  border-left: 3px solid #1677ff;
 }
 
 .yf-asset-form-section-title:not(:first-child) {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
-/** 策略按钮组拉满列宽，避免右侧大块空白 */
+/** 策略按钮组自然宽度，不强制拖长 */
 .yf-asset-form-basic .ant-radio-group-solid {
-  display: flex !important;
+  display: inline-flex !important;
   flex-wrap: wrap;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   gap: 0;
 }
 
 .yf-asset-form-basic .ant-radio-group-solid .ant-radio-button-wrapper {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   text-align: center;
+  padding: 0 16px;
   min-width: 0;
 }
 

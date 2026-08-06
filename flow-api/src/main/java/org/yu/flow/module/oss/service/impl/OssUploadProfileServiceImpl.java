@@ -116,8 +116,11 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         if (profileDO.getBizFieldsSchema() != null) {
             existing.setBizFieldsSchema(profileDO.getBizFieldsSchema());
         }
-        if (profileDO.getAccessPerm() != null) {
-            existing.setAccessPerm(profileDO.getAccessPerm());
+        if (profileDO.getUploadPerm() != null) {
+            existing.setUploadPerm(profileDO.getUploadPerm());
+        }
+        if (profileDO.getDownloadPerm() != null) {
+            existing.setDownloadPerm(profileDO.getDownloadPerm());
         }
         if (profileDO.getEnabled() != null) {
             existing.setEnabled(profileDO.getEnabled());

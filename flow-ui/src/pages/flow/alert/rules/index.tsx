@@ -241,7 +241,7 @@ const AlertRulesPage: React.FC = () => {
                     </Button>,
                   ]}
                   pagination={{ defaultPageSize: 20 }}
-                  scroll={{ x: 1100, y: 100000 }}
+                  scroll={{ y: 100000 }}
                 />
               </div>
             ),
@@ -269,7 +269,7 @@ const AlertRulesPage: React.FC = () => {
                     </Button>,
                   ]}
                   pagination={{ defaultPageSize: 20 }}
-                  scroll={{ x: 900, y: 100000 }}
+                  scroll={{ y: 100000 }}
                 />
               </div>
             ),

@@ -1,19 +1,5 @@
 /* 运行中心 — 产品化监控看板 */
 
-.runtime-page.ant-pro-page-container .ant-page-header {
-  padding-block: 10px 6px;
-}
-
-.runtime-page.ant-pro-page-container .ant-pro-page-container-children-container {
-  padding-inline: 16px !important;
-  padding-block: 0 10px !important;
-  overflow: hidden !important;
-  display: flex !important;
-  flex-direction: column !important;
-  min-height: 0 !important;
-  flex: 1 !important;
-}
-
 .runtime-shell {
   flex: 1;
   min-height: 0;
@@ -511,25 +497,33 @@
 
 /* 行级健康态 */
 .runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child,
-.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child {
+.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child,
+.runtime-pane .runtime-table.fh-table .rt-detail-error > td:first-child,
+.runtime-pane .runtime-table.fh-table .rt-detail-warn > td:first-child {
   position: relative;
 }
 
 .runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child::before,
-.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child::before {
+.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child::before,
+.runtime-pane .runtime-table.fh-table .rt-detail-error > td:first-child::before,
+.runtime-pane .runtime-table.fh-table .rt-detail-warn > td:first-child::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
+  top: -1px;
+  bottom: -1px;
+  width: 4px;
+  z-index: 3;
+  pointer-events: none;
 }
 
-.runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child::before {
+.runtime-pane .runtime-table.fh-table .rt-row-error > td:first-child::before,
+.runtime-pane .runtime-table.fh-table .rt-detail-error > td:first-child::before {
   background: #f87171;
 }
 
-.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child::before {
+.runtime-pane .runtime-table.fh-table .rt-row-warn > td:first-child::before,
+.runtime-pane .runtime-table.fh-table .rt-detail-warn > td:first-child::before {
   background: #fbbf24;
 }
 
@@ -539,6 +533,11 @@
 
 .runtime-pane .runtime-table.fh-table .rt-row-error:hover > td {
   background: #fff1f0 !important;
+}
+
+.runtime-pane .runtime-table.fh-table .ant-table-row-expand-icon {
+  margin-top: 0 !important;
+  vertical-align: middle !important;
 }
 
 .rt-empty-desc {
@@ -554,14 +553,15 @@
 
 .rt-detail {
   display: flex;
-  align-items: stretch;
-  gap: 16px;
-  padding: 12px 16px 14px 48px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 14px 44px;
 }
 
 .rt-detail-main {
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 
 .rt-detail-head {
@@ -591,13 +591,6 @@
   align-items: center;
   justify-content: center;
   height: 140px;
-}
-
-.rt-detail-side {
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-start;
-  padding-top: 2px;
 }
 
 .rt-detail-link {

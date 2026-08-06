@@ -45,6 +45,7 @@ public class FlowServiceFlowDTO {
         dto.setDirectoryId(entity.getDirectoryId());
         dto.setEnabled(entity.getEnabled() != null ? entity.getEnabled() : true);
         dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : false);
+        dto.setLogMode(entity.getLogMode() != null ? entity.getLogMode() : "SYSTEM_DEFAULT");
         dto.setDslContent(entity.getDslContent());
         dto.setContract(entity.getContract());
         dto.setPublishStatus(entity.getPublishStatus() != null ? entity.getPublishStatus() : 0);

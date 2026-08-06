@@ -264,7 +264,7 @@ const ResponseTemplateManage: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 120,
+      width: 140,
       fixed: 'right',
       render: (_, record) => (
         <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>

@@ -79,6 +79,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         flowDirectoryService.assertDirectoryBizType(entity.getDirectoryId(), "service");
         if (entity.getEnabled() == null) entity.setEnabled(true);
         if (entity.getLogEnabled() == null) entity.setLogEnabled(false);
+        if (StrUtil.isBlank(entity.getLogMode())) entity.setLogMode("SYSTEM_DEFAULT");
         if (entity.getPublishStatus() == null) entity.setPublishStatus(0);
         if (entity.getDeleted() == null) entity.setDeleted(0);
         LocalDateTime now = LocalDateTime.now();
@@ -99,6 +100,8 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         if (entity.getName() != null) existing.setName(entity.getName());
         if (entity.getEnabled() != null) existing.setEnabled(entity.getEnabled());
         if (entity.getLogEnabled() != null) existing.setLogEnabled(entity.getLogEnabled());
+        if (entity.getLogMode() != null) existing.setLogMode(entity.getLogMode());
+        if (StrUtil.isBlank(existing.getLogMode())) existing.setLogMode("SYSTEM_DEFAULT");
         if (entity.getDslContent() != null) existing.setDslContent(entity.getDslContent());
         if (entity.getContract() != null) existing.setContract(entity.getContract());
         if (entity.getInfo() != null) existing.setInfo(entity.getInfo());

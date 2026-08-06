@@ -31,4 +31,6 @@ public interface OssConnectionService {
     OssConnectionDO disable(String id);
 
     OssConnectionTestResultDTO testConnection(OssConnectionDO probe);
+
+    List<String> listBucketsByCode(String code);
 }

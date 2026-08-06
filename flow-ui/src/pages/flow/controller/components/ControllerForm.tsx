@@ -479,7 +479,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               { tab: '服务实现', key: 'implementation' },
               { tab: 'API 文档定义 · 请求', key: 'req-schema' },
               { tab: 'API 文档定义 · 响应', key: 'res-schema' },
-              { tab: '基础信息 / 缓存', key: 'basic-info' },
+              { tab: '基本信息', key: 'basic-info' },
               ...(values?.id ? [{ tab: '运行', key: 'runtime' }] : []),
             ]}
             tabBarExtraContent={
@@ -651,6 +651,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 version: detail.version,
                 level: detail.level,
                 logEnabled: detail.logEnabled,
+                logMode: detail.logMode || 'SYSTEM_DEFAULT',
                 logRetentionDays: detail.logRetentionDays,
                 templateId: detail.templateId,
                 customSuccessWrapper: detail.customSuccessWrapper,

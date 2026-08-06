@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Empty, Spin, Typography } from 'antd';
+import { Alert, Empty, Spin, Tooltip, Typography } from 'antd';
 import { ReloadOutlined, RightOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { history, request } from '@umijs/max';
@@ -44,6 +44,8 @@ type RecentLogItem = {
   costMs?: number | null;
   createTime?: string;
   subtitle?: string;
+  status?: string;
+  errorMsg?: string;
 };
 
 function fmtRate(v?: number | null) {
@@ -120,6 +122,27 @@ function logHref(assetType: MetricsAssetType, assetId: string, logPath?: string,
   return `${path}?${key}=${encodeURIComponent(assetId)}`;
 }
 
+function classifyErrorReason(log: RecentLogItem): { label: string; tone: 'bad' | 'warn' | 'default' } {
+  if (log.ok) return { label: '成功', tone: 'default' };
+  if (log.status === 'SKIPPED') {
+    return { label: '幂等跳过', tone: 'default' };
+  }
+  const msg = log.errorMsg || log.statusText || '';
+  if (msg.includes('超限') || msg.includes('上限')) {
+    return { label: '超限拒绝', tone: 'warn' };
+  }
+  if (msg.includes('未发布')) {
+    return { label: '未发布', tone: 'warn' };
+  }
+  if (msg.includes('死信') || msg.includes('重试耗尽')) {
+    return { label: '毒消息/重试耗尽', tone: 'bad' };
+  }
+  if (msg.includes('超时') || msg.includes('timeout')) {
+    return { label: '请求超时', tone: 'bad' };
+  }
+  return { label: log.errorMsg || log.statusText || '流程失败', tone: 'bad' };
+}
+
 async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Promise<RecentLogItem[]> {
   if (assetType === 'API') {
     const result = await request('/flow-api/log/execution/page', {
@@ -129,10 +152,12 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
     return (result?.items || []).map((r: any) => ({
       id: r.id,
       ok: r.status === 'SUCCESS',
+      status: r.status,
       statusText: r.status === 'SUCCESS' ? '成功' : '失败',
       costMs: r.costTimeMs,
       createTime: r.createTime,
       subtitle: r.method || undefined,
+      errorMsg: r.errorMsg || r.message,
     }));
   }
   if (assetType === 'TASK') {
@@ -141,11 +166,13 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
     return (data?.items || []).map((r: any) => ({
       id: r.id,
       ok: r.status === 'SUCCESS',
+      status: r.status,
       statusText:
         r.status === 'SUCCESS' ? '成功' : r.status === 'SKIPPED' ? '跳过' : r.status === 'RUNNING' ? '运行中' : '失败',
       costMs: r.costTimeMs,
       createTime: r.createTime,
       subtitle: r.triggerType,
+      errorMsg: r.errorMsg,
     }));
   }
   if (assetType === 'MQ_TASK') {
@@ -154,11 +181,13 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
     return (data?.items || []).map((r: any) => ({
       id: r.id,
       ok: r.status === 'SUCCESS',
+      status: r.status,
       statusText:
         r.status === 'SUCCESS' ? '成功' : r.status === 'SKIPPED' ? '跳过' : r.status === 'RUNNING' ? '运行中' : '失败',
       costMs: r.costTimeMs,
       createTime: r.createTime,
       subtitle: r.triggerType,
+      errorMsg: r.errorMsg,
     }));
   }
   if (assetType === 'SERVICE') {
@@ -167,11 +196,13 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
     return (data?.items || []).map((r: any) => ({
       id: r.id,
       ok: r.status === 'SUCCESS',
+      status: r.status,
       statusText:
         r.status === 'SUCCESS' ? '成功' : r.status === 'SKIPPED' ? '跳过' : r.status === 'RUNNING' ? '运行中' : '失败',
       costMs: r.costTimeMs,
       createTime: r.createTime,
       subtitle: r.triggerType,
+      errorMsg: r.errorMsg,
     }));
   }
   const data = await pageOpenCallLogs(assetId, { page: 0, size: RECENT_LOG_LIMIT });
@@ -180,10 +211,12 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
     return {
       id: r.id,
       ok,
+      status: String(r.status),
       statusText: ok ? '成功' : r.errorCode || String(r.status ?? '失败'),
       costMs: r.costMs,
       createTime: r.createTime,
       subtitle: [r.method, r.path].filter(Boolean).join(' '),
+      errorMsg: r.errorMessage || r.errorCode,
     };
   });
 }
@@ -287,6 +320,34 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
       else fail += 1;
     }
     return { ok, fail, total: recentLogs.length };
+  }, [recentLogs]);
+
+  const errorSummary = useMemo(() => {
+    const stats: Record<
+      string,
+      { label: string; count: number; tone: 'bad' | 'warn' | 'default'; latestMsg?: string }
+    > = {};
+    let totalFail = 0;
+    for (const l of recentLogs) {
+      if (!l.ok) {
+        totalFail += 1;
+        const reason = classifyErrorReason(l);
+        if (!stats[reason.label]) {
+          stats[reason.label] = {
+            label: reason.label,
+            count: 0,
+            tone: reason.tone,
+            latestMsg: l.errorMsg,
+          };
+        }
+        stats[reason.label].count += 1;
+      }
+    }
+    return {
+      hasError: totalFail > 0,
+      totalFail,
+      items: Object.values(stats).sort((a, b) => b.count - a.count),
+    };
   }, [recentLogs]);
 
   if (!assetId) {
@@ -421,6 +482,31 @@ const AssetRuntimePanel: React.FC<AssetRuntimePanelProps> = ({
                     全部日志 <RightOutlined />
                   </Link>
                 </div>
+              </div>
+
+              {/* 错误诊断与摘要卡片 (方案 3) */}
+              <div className="arp-error-summary">
+                {!errorSummary.hasError ? (
+                  <div className="arp-error-summary-healthy">
+                    <span className="arp-healthy-dot" />
+                    <span>运行健康 · 最近执行暂未捕获到异常报错</span>
+                  </div>
+                ) : (
+                  <div className="arp-error-summary-box">
+                    <div className="arp-error-summary-head">
+                      <span className="arp-error-title">⚠️ 最近异常诊断摘要（共 {errorSummary.totalFail} 次异常）：</span>
+                      <div className="arp-error-tags">
+                        {errorSummary.items.map((item) => (
+                          <Tooltip key={item.label} title={item.latestMsg ? `最新报错: ${item.latestMsg}` : undefined}>
+                            <span className={`arp-error-tag tone-${item.tone}`}>
+                              {item.label} <strong>{item.count}次</strong> ({Math.round((item.count / errorSummary.totalFail) * 100)}%)
+                            </span>
+                          </Tooltip>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Spin spinning={logsLoading}>

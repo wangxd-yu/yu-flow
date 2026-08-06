@@ -38,7 +38,7 @@ public class OssIntegrationStatusController {
                     FlowHostScopeType.SELF.name()
             ));
             dto.setHints(List.of(
-                    "当前使用内置用户上下文。嵌入宿主机时请实现 FlowHostPrincipalProvider / FlowHostDataScopeProvider，以启用部门范围与用户列表授权。"
+                    "当前使用内置用户上下文。嵌入宿主机时请实现 <a href=\"https://doc.yu-flow.com/guide/integration/host-auth-spi\" target=\"_blank\">FlowHostPrincipalProvider / FlowHostDataScopeProvider</a>，以启用部门范围与用户列表授权。"
             ));
         } else {
             dto.setSupportedScopes(Arrays.stream(FlowHostScopeType.values())

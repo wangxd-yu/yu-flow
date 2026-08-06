@@ -1,6 +1,8 @@
 package org.yu.flow.module.oss.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.GetObjectResponse;
@@ -29,6 +31,7 @@ import org.yu.flow.module.oss.domain.OssConnectionDO;
 import org.yu.flow.module.oss.domain.OssDownloadLogDO;
 import org.yu.flow.module.oss.domain.OssObjectDO;
 import org.yu.flow.module.oss.domain.OssUploadProfileDO;
+import org.yu.flow.module.oss.dto.FlowOssFileResolvedDTO;
 import org.yu.flow.module.oss.dto.OssObjectDTO;
 import org.yu.flow.module.oss.dto.OssPresignUrlDTO;
 import org.yu.flow.module.oss.dto.OssUploadOptions;
@@ -36,6 +39,7 @@ import org.yu.flow.module.oss.dto.OssUploadResultDTO;
 import org.yu.flow.module.oss.query.OssObjectQueryDTO;
 import org.yu.flow.module.oss.repository.OssConnectionRepository;
 import org.yu.flow.module.oss.repository.OssObjectRepository;
+import org.yu.flow.module.oss.repository.OssUploadProfileRepository;
 import org.yu.flow.module.oss.service.OssDownloadLogService;
 import org.yu.flow.module.oss.service.OssObjectRefService;
 import org.yu.flow.module.oss.service.OssObjectService;
@@ -60,12 +64,14 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -75,6 +81,18 @@ import java.util.zip.ZipOutputStream;
 public class OssObjectServiceImpl implements OssObjectService {
 
     private static final ZoneId ZONE_SH = ZoneId.of("Asia/Shanghai");
+
+    /** 纯 Caffeine 堆内本地缓存：fileId:absolute -> resolvedUrl (5分钟过期，最多5万条) */
+    private final Cache<String, String> fileUrlCache = Caffeine.newBuilder()
+            .maximumSize(50000)
+            .expireAfterWrite(5, TimeUnit.MINUTES)
+            .build();
+
+    /** 纯 Caffeine 堆内本地缓存：fileId:absolute -> FlowOssFileResolvedDTO (5分钟过期，最多5万条) */
+    private final Cache<String, FlowOssFileResolvedDTO> fileDetailCache = Caffeine.newBuilder()
+            .maximumSize(50000)
+            .expireAfterWrite(5, TimeUnit.MINUTES)
+            .build();
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Resource
@@ -112,6 +130,9 @@ public class OssObjectServiceImpl implements OssObjectService {
 
     @Resource
     private OssThumbnailService ossThumbnailService;
+
+    @Resource
+    private OssUploadProfileRepository ossUploadProfileRepository;
 
     @Override
     public PageBean<OssObjectDTO> findPage(OssObjectQueryDTO queryDTO, FlowHostDataScope scope,
@@ -201,10 +222,10 @@ public class OssObjectServiceImpl implements OssObjectService {
         if (requireAuth && principal == null) {
             throw new FlowException("RBAC_UNAUTHORIZED", "未登录或凭证无效");
         }
-        if (principal != null && StrUtil.isNotBlank(profile.getAccessPerm())
+        if (principal != null && StrUtil.isNotBlank(profile.getUploadPerm())
                 && !isOpenPrincipal(principal)) {
-            if (!rbacService.hasAnyPerm(principal.getUsername(), profile.getAccessPerm(), "*")) {
-                throw new FlowException("RBAC_FORBIDDEN", "无上传权限: " + profile.getAccessPerm());
+            if (!rbacService.hasAnyPerm(principal.getUsername(), profile.getUploadPerm(), "*")) {
+                throw new FlowException("RBAC_FORBIDDEN", "无上传权限: " + profile.getUploadPerm());
             }
         }
 
@@ -251,8 +272,10 @@ public class OssObjectServiceImpl implements OssObjectService {
                                   HttpServletRequest request, HttpServletResponse response) {
         long start = System.currentTimeMillis();
         OssObjectDO object = loadActivePrivateObject(id, principal, scope, request, start);
+        boolean forceStream = "true".equalsIgnoreCase(request.getParameter("stream"))
+                || "1".equals(request.getParameter("stream"));
         String mode = resolvePrivateDownloadMode(object.getConnectionCode());
-        if (OssConnectionDO.PRIVATE_DOWNLOAD_PRESIGN.equals(mode)) {
+        if (!forceStream && OssConnectionDO.PRIVATE_DOWNLOAD_PRESIGN.equals(mode)) {
             int expireSeconds = resolvePresignExpireSeconds(object.getConnectionCode());
             String url = ossStorageService.presignGetUrl(
                     object.getConnectionCode(), object.getBucket(), object.getObjectKey(), expireSeconds);
@@ -353,14 +376,22 @@ public class OssObjectServiceImpl implements OssObjectService {
                     OssDownloadLogDO.RESULT_NOT_FOUND, "文件不存在", System.currentTimeMillis() - start);
             throw new FlowException("OSS_OBJECT_NOT_FOUND", "文件不存在: " + id);
         }
-        if (OssObjectDO.VISIBILITY_PUBLIC.equals(object.getVisibility())) {
-            throw new FlowException("OSS_USE_PUBLIC_PATH",
-                    "公有文件请使用 publicPath 直链访问: " + object.getPublicPath());
-        }
-        if (!ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DOWNLOAD)) {
-            ossDownloadLogService.writeLog(id, principal, request, object.getVisibility(),
-                    OssDownloadLogDO.RESULT_DENIED, "数据权限不足", System.currentTimeMillis() - start);
-            throw new FlowException("RBAC_FORBIDDEN", "无权下载该文件");
+        // 公有文件无访问限制，直接通过；私有文件才需要检查 DataScope / downloadPerm
+        if (!OssObjectDO.VISIBILITY_PUBLIC.equals(object.getVisibility())) {
+            if (!ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DOWNLOAD)) {
+                // DataScope 不通过时，尝试用 downloadPerm 权限码二次放行（适合管理员/客服角色跨范围访问）
+                OssUploadProfileDO profile = ossUploadProfileRepository.findByCode(object.getProfileCode()).orElse(null);
+                boolean grantedByPerm = profile != null
+                        && StrUtil.isNotBlank(profile.getDownloadPerm())
+                        && principal != null
+                        && !isOpenPrincipal(principal)
+                        && rbacService.hasAnyPerm(principal.getUsername(), profile.getDownloadPerm(), "*");
+                if (!grantedByPerm) {
+                    ossDownloadLogService.writeLog(id, principal, request, object.getVisibility(),
+                            OssDownloadLogDO.RESULT_DENIED, "数据权限不足", System.currentTimeMillis() - start);
+                    throw new FlowException("RBAC_FORBIDDEN", "无权下载该文件");
+                }
+            }
         }
         return object;
     }
@@ -640,5 +671,180 @@ public class OssObjectServiceImpl implements OssObjectService {
     private static boolean isOpenPrincipal(FlowHostPrincipal principal) {
         return principal != null && StrUtil.isNotBlank(principal.getUserId())
                 && principal.getUserId().startsWith("open:");
+    }
+
+    // ── 注解解析与 Caffeine 本地缓存（支持带/不带 IP:Port 全路径或相对路径） ──
+
+    @Override
+    public String resolveAccessUrl(String fileId, String profileCode, boolean absolute) {
+        if (StrUtil.isBlank(fileId)) {
+            return null;
+        }
+        String cacheKey = fileId.trim() + ":" + absolute;
+        String cached = fileUrlCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        OssObjectDO object = ossObjectRepository.findById(fileId.trim()).orElse(null);
+        if (object == null || !OssObjectDO.STATUS_ACTIVE.equals(object.getStatus())) {
+            return fileId;
+        }
+
+        String url = buildResolvedUrl(object, absolute);
+        if (url != null) {
+            fileUrlCache.put(cacheKey, url);
+        }
+        return url != null ? url : fileId;
+    }
+
+    @Override
+    public FlowOssFileResolvedDTO resolveFileDetail(String fileId, String profileCode, boolean absolute) {
+        if (StrUtil.isBlank(fileId)) {
+            return null;
+        }
+        String cacheKey = fileId.trim() + ":" + absolute;
+        FlowOssFileResolvedDTO cached = fileDetailCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        OssObjectDO object = ossObjectRepository.findById(fileId.trim()).orElse(null);
+        if (object == null || !OssObjectDO.STATUS_ACTIVE.equals(object.getStatus())) {
+            return null;
+        }
+
+        String url = buildResolvedUrl(object, absolute);
+        FlowOssFileResolvedDTO dto = FlowOssFileResolvedDTO.builder()
+                .id(object.getId())
+                .originalName(object.getOriginalName())
+                .sizeBytes(object.getSizeBytes())
+                .contentType(object.getContentType())
+                .extension(object.getExtension())
+                .bucket(object.getBucket())
+                .visibility(object.getVisibility())
+                .url(url)
+                .build();
+
+        fileDetailCache.put(cacheKey, dto);
+        return dto;
+    }
+
+    @Override
+    public void batchPreloadUrls(Collection<String> fileIds, boolean absolute) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return;
+        }
+        List<String> uncached = fileIds.stream()
+                .filter(StrUtil::isNotBlank)
+                .map(String::trim)
+                .distinct()
+                .filter(id -> fileUrlCache.getIfPresent(id + ":" + absolute) == null)
+                .collect(Collectors.toList());
+
+        if (uncached.isEmpty()) {
+            return;
+        }
+
+        List<OssObjectDO> objects = ossObjectRepository.findAllById(uncached);
+        for (OssObjectDO obj : objects) {
+            if (OssObjectDO.STATUS_ACTIVE.equals(obj.getStatus())) {
+                String url = buildResolvedUrl(obj, absolute);
+                if (url != null) {
+                    fileUrlCache.put(obj.getId() + ":" + absolute, url);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void batchPreloadDetails(Collection<String> fileIds, boolean absolute) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return;
+        }
+        List<String> uncached = fileIds.stream()
+                .filter(StrUtil::isNotBlank)
+                .map(String::trim)
+                .distinct()
+                .filter(id -> fileDetailCache.getIfPresent(id + ":" + absolute) == null)
+                .collect(Collectors.toList());
+
+        if (uncached.isEmpty()) {
+            return;
+        }
+
+        List<OssObjectDO> objects = ossObjectRepository.findAllById(uncached);
+        for (OssObjectDO obj : objects) {
+            if (OssObjectDO.STATUS_ACTIVE.equals(obj.getStatus())) {
+                String url = buildResolvedUrl(obj, absolute);
+                FlowOssFileResolvedDTO dto = FlowOssFileResolvedDTO.builder()
+                        .id(obj.getId())
+                        .originalName(obj.getOriginalName())
+                        .sizeBytes(obj.getSizeBytes())
+                        .contentType(obj.getContentType())
+                        .extension(obj.getExtension())
+                        .bucket(obj.getBucket())
+                        .visibility(obj.getVisibility())
+                        .url(url)
+                        .build();
+                fileDetailCache.put(obj.getId() + ":" + absolute, dto);
+            }
+        }
+    }
+
+    private String buildResolvedUrl(OssObjectDO object, boolean absolute) {
+        if (object == null) {
+            return null;
+        }
+        String downloadPath = "/flow-api/oss/objects/" + object.getId() + "/content";
+
+        if (OssObjectDO.VISIBILITY_PUBLIC.equals(object.getVisibility())) {
+            OssConnectionDO conn = ossConnectionRepository.findByCode(object.getConnectionCode()).orElse(null);
+            String publicBaseUrl = conn != null ? conn.getPublicBaseUrl() : null;
+
+            if (absolute) {
+                if (StrUtil.isNotBlank(publicBaseUrl)) {
+                    return OssKeyPatternResolver.buildPublicUrl(publicBaseUrl, object.getPublicPath());
+                }
+                return buildAbsoluteUrl(downloadPath);
+            } else {
+                return StrUtil.isNotBlank(object.getPublicPath()) ? object.getPublicPath() : downloadPath;
+            }
+        } else {
+            return absolute ? buildAbsoluteUrl(downloadPath) : downloadPath;
+        }
+    }
+
+    private String buildAbsoluteUrl(String path) {
+        if (StrUtil.isBlank(path)) {
+            return path;
+        }
+        String p = path.startsWith("/") ? path : "/" + path;
+        String base = null;
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attrs =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                            org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attrs != null) {
+                HttpServletRequest req = attrs.getRequest();
+                String scheme = req.getScheme();
+                String serverName = req.getServerName();
+                int port = req.getServerPort();
+                if (("http".equalsIgnoreCase(scheme) && port == 80) || ("https".equalsIgnoreCase(scheme) && port == 443)) {
+                    base = scheme + "://" + serverName;
+                } else {
+                    base = scheme + "://" + serverName + ":" + port;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (StrUtil.isBlank(base)) {
+            return p;
+        }
+        base = base.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + p;
     }
 }

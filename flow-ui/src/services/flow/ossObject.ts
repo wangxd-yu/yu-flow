@@ -69,7 +69,7 @@ export async function deleteOssObject(id: string) {
 
 /** 私有文件内容下载（携带 Cookie + CSRF） */
 export async function downloadOssObjectContent(id: string, fallbackName = 'download') {
-  const url = `${apiContextPath()}/flow-api/oss/objects/${encodeURIComponent(id)}/content?_t=${Date.now()}`;
+  const url = `${apiContextPath()}/flow-api/oss/objects/${encodeURIComponent(id)}/content?stream=true&_t=${Date.now()}`;
   const res = await fetch(url, {
     method: 'GET',
     headers: csrfHeaders(),
@@ -152,6 +152,28 @@ export async function fetchOssObjectThumbnailBlobUrl(id: string): Promise<string
   return URL.createObjectURL(blob);
 }
 
+/** 获取原图文件内容 Blob URL（需手动 revokeObjectURL） */
+export async function fetchOssObjectOriginalBlobUrl(id: string): Promise<string> {
+  const url = `${apiContextPath()}/flow-api/oss/objects/${encodeURIComponent(id)}/content?stream=true&_t=${Date.now()}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: csrfHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    let msg = `原图不可用 (${res.status})`;
+    try {
+      const j = await res.json();
+      msg = j?.msg || j?.message || msg;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function rebuildOssObjectThumbnail(id: string) {
   return request(`/flow-api/oss/objects/${id}/thumbnail/rebuild`, { method: 'POST' });
 }
@@ -173,17 +195,18 @@ export interface OssUploadResult {
 /** 管理端试上传：POST /flow-api/oss/upload?profile=xxx */
 export async function uploadOssByProfile(
   profileCode: string,
-  file: File,
+  files: File | File[],
 ): Promise<OssUploadResult[]> {
   const form = new FormData();
-  form.append('file', file);
+  const fileArray = Array.isArray(files) ? files : [files];
+  fileArray.forEach((f) => form.append('file', f));
   const result = await request<OssUploadResult[]>(
     `/flow-api/oss/upload?profile=${encodeURIComponent(profileCode)}`,
     {
       method: 'POST',
       data: form,
+      headers: csrfHeaders(),
     },
   );
   return (result as any)?.data ?? result;
 }
-

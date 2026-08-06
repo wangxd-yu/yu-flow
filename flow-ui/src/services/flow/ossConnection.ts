@@ -115,3 +115,10 @@ export async function testOssConnectionById(id: string) {
   );
   return (result as any)?.data ?? result;
 }
+
+export async function queryOssConnectionBuckets(code: string) {
+  const result = await request<string[]>(`/flow-api/oss/connections/code/${code}/buckets`, {
+    method: 'GET',
+  });
+  return (result as any)?.data ?? result;
+}

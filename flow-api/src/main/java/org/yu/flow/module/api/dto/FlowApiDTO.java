@@ -89,6 +89,7 @@ public class FlowApiDTO {
         dto.setHostBinding(configDO.getHostBinding());
         dto.setPublishStatus(configDO.getPublishStatus());
         dto.setLogEnabled(configDO.getLogEnabled() == null || configDO.getLogEnabled());
+        dto.setLogMode(configDO.getLogMode() != null ? configDO.getLogMode() : "SYSTEM_DEFAULT");
         dto.setLogRetentionDays(configDO.getLogRetentionDays());
         dto.setCacheConfig(configDO.getCacheConfig());
         dto.setSecurityConfig(configDO.getSecurityConfig());
@@ -128,6 +129,7 @@ public class FlowApiDTO {
         configDO.setHostBinding(this.getHostBinding());
         configDO.setPublishStatus(this.getPublishStatus());
         configDO.setLogEnabled(this.getLogEnabled());
+        configDO.setLogMode(this.getLogMode() != null ? this.getLogMode() : "SYSTEM_DEFAULT");
         configDO.setLogRetentionDays(this.getLogRetentionDays());
         configDO.setCacheConfig(this.getCacheConfig());
         configDO.setSecurityConfig(this.getSecurityConfig());

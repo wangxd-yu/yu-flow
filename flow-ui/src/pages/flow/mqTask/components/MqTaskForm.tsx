@@ -7,15 +7,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Drawer, message, Button, Form, Input, InputNumber, Switch, Space, Tooltip, Tag, Modal,
-  Popconfirm, Select, AutoComplete, Radio, Row, Col,
+  Popconfirm, Select, AutoComplete, Radio, Row, Col, Alert, Tabs,
 } from 'antd';
 import {
   SaveOutlined, CloseOutlined, PlayCircleOutlined, SendOutlined,
   CloudUploadOutlined, CloudDownloadOutlined, RollbackOutlined, DeleteOutlined,
+  EyeOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import type { FlowMqTask, FlowMqTaskLog } from '@/services/flow/mqTask';
 import FlowEditor from '@/components/flow/FlowEditorLazy';
+import { LogCodePanel } from '@/pages/Log/shared';
 import {
   debugRunMqTask,
   updateMqTask,
@@ -76,6 +78,18 @@ function unwrapDebugTrace(result: any) {
 
 // ── 执行日志面板（编辑态 Tab） ──
 
+function parseHeadersJson(raw?: string): Record<string, any> | undefined {
+  if (!raw?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// ── 执行日志面板（编辑态 Tab） ──
+
 const MqTaskLogPanel: React.FC<{
   taskId: string;
   taskName?: string;
@@ -85,8 +99,16 @@ const MqTaskLogPanel: React.FC<{
   const [traceOpen, setTraceOpen] = useState(false);
   const [trace, setTrace] = useState<any>(null);
 
-  const openTrace = async (record: FlowMqTaskLog) => {
-    const hide = message.loading('正在加载 Trace...');
+  const [rawDrawerVisible, setRawDrawerVisible] = useState(false);
+  const [rawLogDetail, setRawLogDetail] = useState<FlowMqTaskLog | null>(null);
+  const [rawActiveTab, setRawActiveTab] = useState<'body' | 'headers'>('body');
+
+  const handleViewTrace = async (record: FlowMqTaskLog) => {
+    if (!record.hasTrace) {
+      message.warning('该消费日志没有关联的追踪快照数据');
+      return;
+    }
+    const hide = message.loading('正在加载快照...');
     try {
       const res: any = await getMqTaskLog(record.id);
       const detail = res?.data ?? res;
@@ -99,7 +121,98 @@ const MqTaskLogPanel: React.FC<{
       setTraceOpen(true);
     } catch (e: any) {
       hide();
-      message.error(e?.message || '加载 Trace 失败');
+      message.error(e?.message || '加载快照失败');
+    }
+  };
+
+  const handleViewRawMessage = async (record: FlowMqTaskLog) => {
+    try {
+      const res: any = await getMqTaskLog(record.id);
+      const log: FlowMqTaskLog = res?.data ?? res;
+      setRawLogDetail(log);
+      setRawActiveTab('body');
+      setRawDrawerVisible(true);
+    } catch (e) {
+      message.error('获取原始报文失败');
+    }
+  };
+
+  const handleSimulateFromLog = async (record: FlowMqTaskLog) => {
+    const targetTaskId = record.taskId || taskId;
+    if (!targetTaskId) {
+      message.warning('缺少任务 ID，无法模拟');
+      return;
+    }
+    try {
+      const [logRes, taskRes]: any[] = await Promise.all([
+        getMqTaskLog(record.id),
+        getMqTask(targetTaskId),
+      ]);
+      const log: FlowMqTaskLog = logRes?.data ?? logRes;
+      const task = taskRes?.data ?? taskRes;
+      if (!task || task.publishStatus !== 1) {
+        message.warning('任务未发布，无法模拟触发。请先发布，或在编辑页头部使用「调试运行」。');
+        return;
+      }
+      if (!log?.messageBody) {
+        message.warning('该条日志未留存原始报文，无法预填模拟');
+        return;
+      }
+      let simMessage = log.messageBody;
+      let simHeadersText = log.messageHeaders || '';
+      Modal.confirm({
+        title: `用此报文模拟 - ${task.name || taskName || ''}`,
+        width: 640,
+        content: (
+          <div style={{ marginTop: 12 }}>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="将按已发布版本异步执行一次，结果写入 MQ 日志（触发类型=手动模拟）"
+            />
+            <div style={{ marginBottom: 8, color: 'rgba(0,0,0,0.65)' }}>消息体</div>
+            <Input.TextArea
+              rows={6}
+              defaultValue={simMessage}
+              onChange={(e) => {
+                simMessage = e.target.value;
+              }}
+            />
+            <div style={{ margin: '12px 0 8px', color: 'rgba(0,0,0,0.65)' }}>
+              消息头 JSON（可选）
+            </div>
+            <Input.TextArea
+              rows={3}
+              defaultValue={simHeadersText}
+              placeholder='例如 {"x-trace-id":"abc"}'
+              onChange={(e) => {
+                simHeadersText = e.target.value;
+              }}
+            />
+          </div>
+        ),
+        okText: '触发模拟',
+        onOk: async () => {
+          let headers: Record<string, any> | undefined;
+          if (simHeadersText.trim()) {
+            headers = parseHeadersJson(simHeadersText);
+            if (!headers) {
+              message.error('消息头不是合法 JSON 对象');
+              throw new Error('invalid headers');
+            }
+          } else {
+            headers = parseHeadersJson(log.messageHeaders);
+          }
+          await simulateMqTask(targetTaskId, simMessage, headers);
+          message.success('已触发模拟，请稍后刷新日志查看结果');
+          actionRef.current?.reload();
+        },
+      });
+    } catch (e: any) {
+      if (e?.message !== 'invalid headers') {
+        message.error(e?.message || '打开模拟失败');
+      }
     }
   };
 
@@ -109,7 +222,7 @@ const MqTaskLogPanel: React.FC<{
       dataIndex: 'triggerType',
       width: 90,
       render: (_, r) =>
-        r.triggerType === 'MANUAL' ? <Tag>手动</Tag> : <Tag color="blue">消息</Tag>,
+        r.triggerType === 'MANUAL' ? <Tag color="blue">手动模拟</Tag> : <Tag color="purple">消息触发</Tag>,
     },
     { title: 'Topic', dataIndex: 'topic', width: 160, ellipsis: true },
     { title: '消息ID', dataIndex: 'messageId', width: 180, ellipsis: true, copyable: true },
@@ -138,17 +251,59 @@ const MqTaskLogPanel: React.FC<{
     {
       title: '操作',
       valueType: 'option',
-      width: 110,
+      width: 260,
+      fixed: 'right',
       render: (_, r) => [
-        r.hasTrace ? (
-          <a key="trace" onClick={() => openTrace(r)}>
-            查看 Trace
-          </a>
-        ) : (
-          <span key="trace" style={{ color: 'rgba(0,0,0,0.25)' }}>
-            无 Trace
+        <Tooltip
+          key="raw"
+          title={
+            r.hasMessageBody === false
+              ? '该条日志未留存原始报文（日志策略关闭、消息体为空，或升级前 ERROR_ONLY 未落库）'
+              : undefined
+          }
+        >
+          <span>
+            <Button
+              type="link"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => handleViewRawMessage(r)}
+              disabled={r.hasMessageBody === false}
+            >
+              原始报文
+            </Button>
           </span>
-        ),
+        </Tooltip>,
+        <Tooltip
+          key="sim"
+          title={
+            r.hasMessageBody === false
+              ? '无原始报文，无法预填模拟'
+              : '用此报文按已发布版本模拟触发'
+          }
+        >
+          <span>
+            <Button
+              type="link"
+              size="small"
+              icon={<PlayCircleOutlined />}
+              onClick={() => handleSimulateFromLog(r)}
+              disabled={r.hasMessageBody === false}
+            >
+              模拟
+            </Button>
+          </span>
+        </Tooltip>,
+        <Button
+          key="view"
+          type="link"
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => handleViewTrace(r)}
+          disabled={!r.hasTrace}
+        >
+          查看快照
+        </Button>,
       ],
     },
   ];
@@ -194,9 +349,89 @@ const MqTaskLogPanel: React.FC<{
         columns={columns}
       />
 
+      {rawDrawerVisible && (
+        <Drawer
+          title={`原始报文 - ${rawLogDetail?.taskName || taskName || 'MQ 消息'}`}
+          width={640}
+          open={rawDrawerVisible}
+          onClose={() => setRawDrawerVisible(false)}
+          destroyOnClose
+          extra={
+            rawLogDetail?.messageBody ? (
+              <Button
+                type="primary"
+                size="small"
+                icon={<PlayCircleOutlined />}
+                onClick={() => {
+                  setRawDrawerVisible(false);
+                  handleSimulateFromLog(rawLogDetail);
+                }}
+              >
+                用此报文模拟
+              </Button>
+            ) : null
+          }
+        >
+          <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Tag color="cyan">Topic: {rawLogDetail?.topic || '-'}</Tag>
+            <Tag color="blue">MessageID: {rawLogDetail?.messageId || '-'}</Tag>
+            <Tag color={rawLogDetail?.status === 'SUCCESS' ? 'success' : rawLogDetail?.status === 'FAILED' ? 'error' : 'default'}>
+              {rawLogDetail?.status}
+            </Tag>
+          </div>
+          {rawLogDetail?.messageBody?.includes('...(truncated)') && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="报文已截断，非完整原文"
+              description="超过 yu-flow.mq.log-body-max-chars 上限的部分已丢弃，对账请以消息中间件侧原文为准。"
+            />
+          )}
+          <Tabs
+            activeKey={rawActiveTab}
+            onChange={(k) => setRawActiveTab(k as any)}
+            items={[
+              {
+                key: 'body',
+                label: '原始消息体 (Body)',
+                children: (
+                  <div style={{ height: 440 }}>
+                    <LogCodePanel
+                      content={rawLogDetail?.messageBody}
+                      language={
+                        rawLogDetail?.messageBody?.trim().startsWith('{') || rawLogDetail?.messageBody?.trim().startsWith('[')
+                          ? 'json'
+                          : 'text'
+                      }
+                      emptyText="未记录原始消息体（日志策略为「完全关闭」、消息体为空，或升级前 ERROR_ONLY 未落库）"
+                      height="100%"
+                    />
+                  </div>
+                ),
+              },
+              {
+                key: 'headers',
+                label: '消息头 (Headers)',
+                children: (
+                  <div style={{ height: 440 }}>
+                    <LogCodePanel
+                      content={rawLogDetail?.messageHeaders}
+                      language="json"
+                      emptyText="未记录消息头（无 Headers，或升级前未落库）"
+                      height="100%"
+                    />
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </Drawer>
+      )}
+
       {traceOpen && (
         <Drawer
-          title={`执行 Trace - ${taskName || 'MQ 任务'}`}
+          title={`消费快照复原 - ${taskName || 'MQ 任务'}`}
           width="100%"
           open={traceOpen}
           onClose={() => {
@@ -622,27 +857,29 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
         </Tooltip>
       )}
 
-      {isEdit && (
-        <Button
-          type="primary"
-          style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
-          icon={<CloudUploadOutlined />}
-          onClick={handlePublish}
-        >
-          {publishStatus === 1 ? '保存并发布' : '发布上线'}
-        </Button>
-      )}
-
       {isEdit && publishStatus === 1 && (
         <Button danger icon={<CloudDownloadOutlined />} onClick={handleUnpublish}>
           下线
         </Button>
       )}
 
-      <Button icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
+      <Button icon={<CloseOutlined />} onClick={onCancel}>
+        取消
+      </Button>
+
+      <Button icon={<SaveOutlined />} onClick={handleSave}>
         保存草稿
       </Button>
+
+      {isEdit && (
+        <Button
+          type="primary"
+          icon={<CloudUploadOutlined />}
+          onClick={handlePublish}
+        >
+          {publishStatus === 1 ? '保存并发布' : '发布上线'}
+        </Button>
+      )}
     </Space>
   );
 

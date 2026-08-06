@@ -79,6 +79,8 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         if (taskDO.getConcurrency() == null || taskDO.getConcurrency() < 1) taskDO.setConcurrency(1);
         if (taskDO.getEnabled() == null) taskDO.setEnabled(true);
         if (taskDO.getLogEnabled() == null) taskDO.setLogEnabled(false);
+        if (StrUtil.isBlank(taskDO.getLogMode())) taskDO.setLogMode("SYSTEM_DEFAULT");
+        if (StrUtil.isBlank(taskDO.getLogPayloadMode())) taskDO.setLogPayloadMode("SYSTEM_DEFAULT");
         if (taskDO.getRetryMax() == null) taskDO.setRetryMax(0);
         if (taskDO.getRetryBackoffMs() == null) taskDO.setRetryBackoffMs(1000);
         // 保留天数 <0 视为未配置（跟随系统）
@@ -113,7 +115,9 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         if (taskDO.getEnabled() != null) existing.setEnabled(taskDO.getEnabled());
         if (taskDO.getLogEnabled() != null) existing.setLogEnabled(taskDO.getLogEnabled());
         if (taskDO.getLogMode() != null) existing.setLogMode(taskDO.getLogMode());
+        if (StrUtil.isBlank(existing.getLogMode())) existing.setLogMode("SYSTEM_DEFAULT");
         if (taskDO.getLogPayloadMode() != null) existing.setLogPayloadMode(taskDO.getLogPayloadMode());
+        if (StrUtil.isBlank(existing.getLogPayloadMode())) existing.setLogPayloadMode("SYSTEM_DEFAULT");
         if (taskDO.getRetryMax() != null) existing.setRetryMax(Math.max(0, taskDO.getRetryMax()));
         if (taskDO.getRetryBackoffMs() != null) existing.setRetryBackoffMs(Math.max(0, taskDO.getRetryBackoffMs()));
         if (taskDO.getDeadLetterTopic() != null) existing.setDeadLetterTopic(taskDO.getDeadLetterTopic());

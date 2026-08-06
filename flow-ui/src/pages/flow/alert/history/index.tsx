@@ -143,7 +143,7 @@ const AlertHistoryPage: React.FC = () => {
         search={{ labelWidth: 'auto' }}
         tableLayout="fixed"
         pagination={{ defaultPageSize: 20 }}
-        scroll={{ x: 1200, y: 100000 }}
+        scroll={{ y: 100000 }}
       />
     </PageContainer>
   );

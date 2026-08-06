@@ -99,6 +99,7 @@ export function useControllerFormInit(options: UseControllerFormInitOptions) {
 
     form.setFieldsValue({
       ...processedValues,
+      logMode: processedValues.logMode || 'SYSTEM_DEFAULT',
       isCustomSuccess: !!processedValues.customSuccessWrapper,
       isCustomPage: !!processedValues.customPageWrapper,
       isCustomFail: !!processedValues.customFailWrapper,

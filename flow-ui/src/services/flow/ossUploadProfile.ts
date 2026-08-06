@@ -25,7 +25,10 @@ export interface OssUploadProfile {
   thumbnailJpegQuality?: number;
   requireAuth?: boolean;
   bizFieldsSchema?: string;
-  accessPerm?: string;
+  /** 上传权限码：哪些 RBAC 权限才能上传 */
+  uploadPerm?: string;
+  /** 下载权限码：DataScope 不通过时的 RBAC 兜底权限码 */
+  downloadPerm?: string;
   enabled?: boolean;
   remark?: string;
   createTime?: string;

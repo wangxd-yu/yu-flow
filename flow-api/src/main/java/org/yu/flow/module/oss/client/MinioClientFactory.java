@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MinioClientFactory {
 
     private final ConcurrentHashMap<String, MinioClient> cache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, MinioClient> externalCache = new ConcurrentHashMap<>();
 
     @Resource
     private OssConnectionRepository ossConnectionRepository;
@@ -34,9 +35,17 @@ public class MinioClientFactory {
         return cache.computeIfAbsent(connectionCode.trim(), this::buildClient);
     }
 
+    public MinioClient getExternalClient(String connectionCode) {
+        if (StrUtil.isBlank(connectionCode)) {
+            throw new FlowException("OSS_CONNECTION_REQUIRED", "连接编码不能为空");
+        }
+        return externalCache.computeIfAbsent(connectionCode.trim(), this::buildExternalClient);
+    }
+
     public void invalidate(String connectionCode) {
         if (StrUtil.isNotBlank(connectionCode)) {
             cache.remove(connectionCode.trim());
+            externalCache.remove(connectionCode.trim());
         }
     }
 
@@ -57,6 +66,20 @@ public class MinioClientFactory {
         String secret = StrUtil.isNotBlank(connection.getSecretKey())
                 ? aesEncryptUtil.decrypt(connection.getSecretKey()) : "";
         return buildFromParams(connection.getEndpoint(), connection.getAccessKey(), secret,
+                connection.getRegion(), connection.getPathStyle());
+    }
+
+    private MinioClient buildExternalClient(String code) {
+        OssConnectionDO connection = ossConnectionRepository.findByCode(code)
+                .orElseThrow(() -> new FlowException("OSS_CONNECTION_NOT_FOUND", "OSS 连接不存在: " + code));
+        if (connection.getEnabled() == null || !connection.getEnabled()) {
+            throw new FlowException("OSS_CONNECTION_DISABLED", "OSS 连接已停用: " + code);
+        }
+        String secret = StrUtil.isNotBlank(connection.getSecretKey())
+                ? aesEncryptUtil.decrypt(connection.getSecretKey()) : "";
+        // 关键：如果配置了公有访问基址，外网签名 Client 强制使用公有基址作为 Endpoint！
+        String endpoint = StrUtil.isNotBlank(connection.getPublicBaseUrl()) ? connection.getPublicBaseUrl() : connection.getEndpoint();
+        return buildFromParams(endpoint, connection.getAccessKey(), secret,
                 connection.getRegion(), connection.getPathStyle());
     }
 

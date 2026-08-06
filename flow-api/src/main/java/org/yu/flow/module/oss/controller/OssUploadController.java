@@ -13,6 +13,7 @@ import org.yu.flow.module.oss.dto.OssUploadResultDTO;
 import org.yu.flow.module.oss.service.OssObjectService;
 import org.yu.flow.module.oss.support.OssUploadRequestParser;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,24 +31,46 @@ public class OssUploadController {
 
     @PostMapping("/upload")
     public R<List<OssUploadResultDTO>> upload(@RequestParam("profile") String profileCode,
-                                              @RequestParam(value = "file", required = false) MultipartFile file,
+                                              @RequestParam(value = "file", required = false) MultipartFile[] file,
                                               @RequestParam(value = "files", required = false) MultipartFile[] files,
                                               HttpServletRequest request) {
         FlowHostPrincipal principal = flowHostAuthSupport.getPrincipalProvider().resolve(request).orElse(null);
-        MultipartFile[] uploadFiles = resolveFiles(file, files);
+        MultipartFile[] uploadFiles = resolveFiles(file, files, request);
         Map<String, String> bizFields = extractBizFields(request);
         OssUploadOptions options = OssUploadRequestParser.parseOptions(request, bizFields);
         return R.ok(ossObjectService.upload(profileCode, uploadFiles, bizFields, principal, request, options));
     }
 
-    private static MultipartFile[] resolveFiles(MultipartFile file, MultipartFile[] files) {
-        if (files != null && files.length > 0) {
-            return files;
+    private static MultipartFile[] resolveFiles(MultipartFile[] file, MultipartFile[] files, HttpServletRequest request) {
+        List<MultipartFile> list = extractNonEmpty(files);
+        if (!list.isEmpty()) {
+            return list.toArray(new MultipartFile[0]);
         }
-        if (file != null && !file.isEmpty()) {
-            return new MultipartFile[]{file};
+        list = extractNonEmpty(file);
+        if (!list.isEmpty()) {
+            return list.toArray(new MultipartFile[0]);
+        }
+        if (request instanceof org.springframework.web.multipart.MultipartHttpServletRequest multiRequest) {
+            for (List<MultipartFile> fileList : multiRequest.getMultiFileMap().values()) {
+                List<MultipartFile> extracted = extractNonEmpty(fileList != null ? fileList.toArray(new MultipartFile[0]) : null);
+                if (!extracted.isEmpty()) {
+                    return extracted.toArray(new MultipartFile[0]);
+                }
+            }
         }
         return new MultipartFile[0];
+    }
+
+    private static List<MultipartFile> extractNonEmpty(MultipartFile[] files) {
+        List<MultipartFile> list = new ArrayList<>();
+        if (files != null) {
+            for (MultipartFile f : files) {
+                if (f != null && !f.isEmpty()) {
+                    list.add(f);
+                }
+            }
+        }
+        return list;
     }
 
     private static Map<String, String> extractBizFields(HttpServletRequest request) {

@@ -84,4 +84,12 @@ public class FlowServiceFlowDO implements Serializable {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime updateTime;
+
+    @PrePersist
+    @PreUpdate
+    public void ensureLogModeDefaults() {
+        if (logMode == null || logMode.isBlank()) {
+            logMode = "SYSTEM_DEFAULT";
+        }
+    }
 }

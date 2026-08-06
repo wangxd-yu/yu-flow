@@ -91,8 +91,13 @@ public class OssUploadProfileDO implements Serializable {
     @Column(name = "biz_fields_schema", columnDefinition = "text")
     private String bizFieldsSchema;
 
-    @Column(name = "access_perm", length = 128)
-    private String accessPerm;
+    /** 上传权限码：哪些 RBAC 权限才能调用该场景的上传 API；留空=仅 requireAuth 控制 */
+    @Column(name = "upload_perm", length = 128)
+    private String uploadPerm;
+
+    /** 下载权限码：哪些 RBAC 权限可突破 DataScope 限制访问私有文件；留空=仅 DataScope 控制 */
+    @Column(name = "download_perm", length = 128)
+    private String downloadPerm;
 
     @Column(columnDefinition = "tinyint(1) default 1")
     private Boolean enabled;

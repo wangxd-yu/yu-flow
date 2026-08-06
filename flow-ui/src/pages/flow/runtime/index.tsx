@@ -112,6 +112,15 @@ const RowTrend: React.FC<{ item: AssetMetricsRankItem; window: MetricsWindow }> 
       <div className="rt-detail-main">
         <div className="rt-detail-head">
           <div className="rt-detail-title">调用量 / P95</div>
+          <button
+            type="button"
+            className="rt-detail-link"
+            onClick={() =>
+              openAssetDeepLink({ assetType: item.assetType, assetId: item.assetId })
+            }
+          >
+            资产运行详情 <ArrowRightOutlined />
+          </button>
         </div>
         <div className="rt-detail-chart">
           {loading ? (
@@ -135,17 +144,6 @@ const RowTrend: React.FC<{ item: AssetMetricsRankItem; window: MetricsWindow }> 
             />
           )}
         </div>
-      </div>
-      <div className="rt-detail-side">
-        <button
-          type="button"
-          className="rt-detail-link"
-          onClick={() =>
-            openAssetDeepLink({ assetType: item.assetType, assetId: item.assetId })
-          }
-        >
-          资产运行详情 <ArrowRightOutlined />
-        </button>
       </div>
     </div>
   );
@@ -409,7 +407,8 @@ const RuntimeCenterPage: React.FC = () => {
       r.health === 'error' ? 'rt-row-error' : r.health === 'warn' ? 'rt-row-warn' : '',
     expandable: {
       columnWidth: 36,
-      expandedRowClassName: () => 'rt-detail-row',
+      expandedRowClassName: (r: AssetMetricsRankItem) =>
+        `rt-detail-row ${r.health === 'error' ? 'rt-detail-error' : r.health === 'warn' ? 'rt-detail-warn' : ''}`,
       expandedRowRender: (r: AssetMetricsRankItem) => <RowTrend item={r} window={window} />,
     },
   };

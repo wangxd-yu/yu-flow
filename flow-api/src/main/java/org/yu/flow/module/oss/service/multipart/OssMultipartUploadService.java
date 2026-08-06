@@ -416,9 +416,9 @@ public class OssMultipartUploadService {
         if (requireAuth && principal == null) {
             throw new FlowException("RBAC_UNAUTHORIZED", "未登录或凭证无效");
         }
-        if (principal != null && StrUtil.isNotBlank(profile.getAccessPerm())) {
-            if (!rbacService.hasAnyPerm(principal.getUsername(), profile.getAccessPerm(), "*")) {
-                throw new FlowException("RBAC_FORBIDDEN", "无上传权限: " + profile.getAccessPerm());
+        if (principal != null && StrUtil.isNotBlank(profile.getUploadPerm())) {
+            if (!rbacService.hasAnyPerm(principal.getUsername(), profile.getUploadPerm(), "*")) {
+                throw new FlowException("RBAC_FORBIDDEN", "无上传权限: " + profile.getUploadPerm());
             }
         }
     }

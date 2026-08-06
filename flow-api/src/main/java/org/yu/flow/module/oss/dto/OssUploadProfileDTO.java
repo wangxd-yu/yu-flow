@@ -30,7 +30,8 @@ public class OssUploadProfileDTO {
     private Double thumbnailJpegQuality;
     private Boolean requireAuth;
     private String bizFieldsSchema;
-    private String accessPerm;
+    private String uploadPerm;
+    private String downloadPerm;
     private Boolean enabled;
     private String remark;
 
@@ -64,7 +65,8 @@ public class OssUploadProfileDTO {
                 .setThumbnailJpegQuality(entity.getThumbnailJpegQuality())
                 .setRequireAuth(entity.getRequireAuth())
                 .setBizFieldsSchema(entity.getBizFieldsSchema())
-                .setAccessPerm(entity.getAccessPerm())
+                .setUploadPerm(entity.getUploadPerm())
+                .setDownloadPerm(entity.getDownloadPerm())
                 .setEnabled(entity.getEnabled())
                 .setRemark(entity.getRemark())
                 .setCreateTime(entity.getCreateTime())

@@ -19,7 +19,7 @@ export interface SectionCardProps {
   description?: React.ReactNode;
   /** 标题栏右侧操作区，如启用开关 */
   extra?: React.ReactNode;
-  /** default: 灰白底；primary: 蓝色强调底 */
+  /** @deprecated 已统一为统一精美白底卡片 */
   tone?: SectionCardTone;
   /** 为 false 时隐藏正文，仅保留标题栏 */
   bodyVisible?: boolean;
@@ -27,33 +27,27 @@ export interface SectionCardProps {
   style?: React.CSSProperties;
 }
 
-const TONE_STYLE: Record<SectionCardTone, { bg: string; border: string; divider: string }> = {
-  default: { bg: '#fff', border: '#ebeef5', divider: '#ebeef5' },
-  primary: { bg: '#f0f7ff', border: '#91caff', divider: '#bae0ff' },
-};
-
 const SectionCard: React.FC<SectionCardProps> = ({
   id,
   icon,
   title,
   description,
   extra,
-  tone = 'default',
   bodyVisible = true,
   children,
   style,
 }) => {
-  const t = TONE_STYLE[tone];
-
   return (
     <div
       id={id}
       style={{
-        background: t.bg,
-        border: `1px solid ${t.border}`,
+        background: '#ffffff',
+        border: '1px solid #f0f0f0',
         borderRadius: 8,
         marginBottom: 16,
         scrollMarginTop: 12,
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
+        overflow: 'hidden',
         ...style,
       }}
     >
@@ -61,23 +55,24 @@ const SectionCard: React.FC<SectionCardProps> = ({
       <div
         style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'space-between',
           gap: 16,
-          padding: '12px 20px',
-          borderBottom: bodyVisible ? `1px solid ${t.divider}` : 'none',
+          padding: '12px 18px',
+          background: '#fafafa',
+          borderBottom: bodyVisible ? '1px solid #f0f0f0' : 'none',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ fontSize: 16, color: '#1677ff', lineHeight: 1, display: 'flex' }}>
+          <span style={{ fontSize: 15, color: '#1677ff', display: 'flex', alignItems: 'center' }}>
             {icon}
           </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: '#1d2129', lineHeight: 1.4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#1f1f1f', lineHeight: 1.4 }}>
               {title}
             </span>
             {description && (
-              <span style={{ fontSize: 12, color: '#8c8c8c', lineHeight: 1.5 }}>
+              <span style={{ fontSize: 12, color: '#8c8c8c', lineHeight: 1.4 }}>
                 {description}
               </span>
             )}
@@ -92,7 +87,7 @@ const SectionCard: React.FC<SectionCardProps> = ({
       </div>
 
       {/* ── 正文 ── */}
-      {bodyVisible && <div style={{ padding: '16px 20px' }}>{children}</div>}
+      {bodyVisible && <div style={{ padding: '20px 20px 8px' }}>{children}</div>}
     </div>
   );
 };

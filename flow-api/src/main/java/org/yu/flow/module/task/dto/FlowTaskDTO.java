@@ -52,6 +52,7 @@ public class FlowTaskDTO {
         dto.setCron(entity.getCron());
         dto.setEnabled(entity.getEnabled() != null ? entity.getEnabled() : true);
         dto.setLogEnabled(entity.getLogEnabled() != null ? entity.getLogEnabled() : false);
+        dto.setLogMode(entity.getLogMode() != null ? entity.getLogMode() : "SYSTEM_DEFAULT");
         dto.setLogRetentionDays(entity.getLogRetentionDays());
         dto.setDslContent(entity.getDslContent());
         dto.setPublishStatus(entity.getPublishStatus() != null ? entity.getPublishStatus() : 0);

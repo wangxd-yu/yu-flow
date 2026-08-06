@@ -2,7 +2,7 @@ import { ActionType, PageContainer, ProColumns, ProTable } from '@ant-design/pro
 import { Tag } from 'antd';
 import React, { useRef } from 'react';
 import OssIntegrationAlert from '@/components/flow/OssIntegrationAlert';
-import { OssDownloadLog, queryOssDownloadLogPage } from '@/services/flow/ossDownloadLog';
+import { queryOssDownloadLogPage, OssDownloadLog } from '@/services/flow/ossDownloadLog';
 
 import '@/styles/fullHeightTable.css';
 

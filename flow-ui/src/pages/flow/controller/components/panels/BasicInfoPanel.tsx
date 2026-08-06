@@ -192,15 +192,16 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                     gap: 8,
                     width: '100%',
                     border: 'none',
-                    borderRadius: 8,
+                    borderLeft: active ? '3px solid #1677ff' : '3px solid transparent',
+                    borderRadius: active ? '0 6px 6px 0' : '6px',
                     background: active ? '#e6f4ff' : 'transparent',
                     color: active ? '#1677ff' : '#4e5969',
                     fontWeight: active ? 600 : 400,
                     fontSize: 13,
-                    padding: '9px 10px',
+                    padding: '8px 10px',
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'background 0.2s, color 0.2s',
+                    transition: 'all 0.2s cubic-bezier(0.2, 0, 0, 1)',
                   }}
                 >
                   <span style={{ fontSize: 14, display: 'flex', color: active ? '#1677ff' : '#86909c' }}>
@@ -316,7 +317,6 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
 
           <SectionCard
             id="basic-info-ingress"
-            tone="primary"
             icon={<SafetyCertificateOutlined />}
             title="入站防护"
             description="鉴权 / 防重放 / 限流 / IP；继承全局或按接口覆盖，需发布后生效"
@@ -329,14 +329,13 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
               type="info"
               showIcon
               style={{ marginBottom: 12 }}
-              message="查询缓存与返回包装仅「替换」模式生效"
-              description="包裹增强会透传宿主原始响应，不缓存、不套用成功 / 分页 / 失败包装。若需统一响应壳或查询缓存，请改用「替换宿主」并由 Yu Flow 引擎输出。"
+              message="当前为「包裹模式」：查询缓存与返回包装已自动停用"
+              description="包裹模式专注于透传宿主的原始响应。查询缓存与响应包装功能已在「替换模式」中完整支持；若需启用缓存或统一响应壳，请在右上角切换为「替换宿主」。"
             />
           ) : (
             <>
               <SectionCard
                 id="basic-info-cache"
-                tone="primary"
                 icon={<DatabaseOutlined />}
                 title="查询响应缓存"
                 description="开启后按选定入参缓存响应；需保存草稿后生效（已发布接口保存即可）"

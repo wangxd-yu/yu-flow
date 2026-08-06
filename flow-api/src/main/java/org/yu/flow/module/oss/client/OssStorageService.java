@@ -96,7 +96,7 @@ public class OssStorageService {
             expireSeconds = 300;
         }
         try {
-            MinioClient client = minioClientFactory.getClient(connectionCode);
+            MinioClient client = minioClientFactory.getExternalClient(connectionCode);
             return client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
                     .bucket(bucket)
