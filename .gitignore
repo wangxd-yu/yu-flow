@@ -86,9 +86,29 @@ out/
 .springBeans
 .sts4-cache
 
-# VS Code
+# VS Code / Cursor / AI tooling
 .vscode/
 *.code-workspace
+.cursor/
+.skill/
+.lingma/
+.qoder/
+.agents/
+.workbuddy/
+
+# Local Maven / accidental dumps
+.mvn-http-settings.xml
+**/cp.txt
+/org/
+Sm2Interop.java
+startup-failure.txt
+
+# Local secrets
+**/application-local.yml
+application-local.yml
+.env
+.env.*
+!.env.example
 
 # ==========================================
 # 🖥️ 操作系统生成的文件
