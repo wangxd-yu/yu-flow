@@ -1,0 +1,13 @@
+-- Table: flow_oss_object_ref
+-- 对象存储业务引用
+CREATE TABLE IF NOT EXISTS `flow_oss_object_ref` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `object_id` varchar(32) NOT NULL COMMENT '台账ID',
+  `biz_type` varchar(64) NOT NULL COMMENT '业务类型',
+  `biz_id` varchar(128) NOT NULL COMMENT '业务单据ID',
+  `create_time` datetime COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_flow_oss_object_ref_object_id_biz_type_biz_id` (`object_id`, `biz_type`, `biz_id`),
+  KEY `idx_flow_oss_object_ref_object_id` (`object_id`),
+  KEY `idx_flow_oss_object_ref_biz_type_biz_id` (`biz_type`, `biz_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对象存储业务引用';

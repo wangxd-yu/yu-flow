@@ -863,11 +863,16 @@ public class DynamicSqlParser {
             throw new RuntimeException("SQL参数格式错误");
         }
 
+        // 标识位禁止 ${}（表名/列名/ORDER BY 等）；须在 AST 降级之前拦截，避免落入 transferHandler 变成 FROM ?
+        assertNoIdentifierPlaceholders(sql);
+
         try {
             // 先处理动态SQL，移除不存在的参数条件
             String processedSql = parseDynamicSql(sql, params);
             // 再将处理后的SQL转换为预编译格式
             return transferHandler(processedSql, params);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (RuntimeException e) {
             if (!canFallbackToDirectTransfer(sql, params)) {
                 throw e;
@@ -875,6 +880,137 @@ public class DynamicSqlParser {
             log.warn("SQL AST解析失败，已降级为直接参数化处理: {}", e.getMessage());
             return transferHandler(sql, params);
         }
+    }
+
+    /**
+     * 禁止将 {@code ${}} 用于 SQL 标识位（表名、列名、ORDER/GROUP BY、SET 左侧等）。
+     * JDBC 预处理无法绑定标识符；若放行会变成 {@code FROM ?} 或诱使调用方改为字符串拼装。
+     *
+     * <p>字面量与注释中的 {@code ${}} 不参与检测（例如 {@code LIKE '%${x}%'}）。</p>
+     */
+    static void assertNoIdentifierPlaceholders(String sql) {
+        String masked = maskSqlLiteralsAndComments(sql);
+        List<Pattern> forbidden = List.of(
+                Pattern.compile("(?i)\\b(?:FROM|JOIN|INTO|TABLE|USING)\\s+\\$\\{"),
+                Pattern.compile("(?i)\\bUPDATE\\s+\\$\\{"),
+                Pattern.compile("(?i)\\b(?:ORDER|GROUP|PARTITION)\\s+BY\\s+\\$\\{"),
+                Pattern.compile("(?i)\\b(?:ORDER|GROUP|PARTITION)\\s+BY\\b[^;]*?,\\s*\\$\\{"),
+                Pattern.compile("(?i)\\.\\s*\\$\\{"),
+                Pattern.compile("(?i)\\$\\{[^}]+}\\s*\\."),
+                Pattern.compile("(?i)\\bSET\\s+\\$\\{"),
+                Pattern.compile("(?i)\\bSET\\b[^;]*?,\\s*\\$\\{[^}]+}\\s*=")
+        );
+        for (Pattern pattern : forbidden) {
+            Matcher matcher = pattern.matcher(masked);
+            if (matcher.find()) {
+                throw new IllegalArgumentException(
+                        "SQL 标识位禁止使用 ${} 参数（表名/列名/ORDER BY/GROUP BY/SET 左侧等须写死或走白名单）。"
+                                + " 命中片段: " + matcher.group());
+            }
+        }
+    }
+
+    /**
+     * 将字符串字面量与注释替换为空格，保留长度与换行，便于在「代码位」上做标识符占位检测。
+     */
+    static String maskSqlLiteralsAndComments(String sql) {
+        if (sql == null || sql.isEmpty()) {
+            return sql;
+        }
+        StringBuilder out = new StringBuilder(sql.length());
+        boolean inSingle = false;
+        boolean inDouble = false;
+        boolean inBacktick = false;
+        boolean inLineComment = false;
+        boolean inBlockComment = false;
+
+        for (int i = 0; i < sql.length(); i++) {
+            char c = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+
+            if (inLineComment) {
+                if (c == '\n' || c == '\r') {
+                    inLineComment = false;
+                    out.append(c);
+                } else {
+                    out.append(' ');
+                }
+                continue;
+            }
+            if (inBlockComment) {
+                if (c == '*' && next == '/') {
+                    out.append("  ");
+                    i++;
+                    inBlockComment = false;
+                } else {
+                    out.append(c == '\n' || c == '\r' ? c : ' ');
+                }
+                continue;
+            }
+
+            if (!inSingle && !inDouble && !inBacktick) {
+                if (c == '-' && next == '-') {
+                    out.append("  ");
+                    i++;
+                    inLineComment = true;
+                    continue;
+                }
+                if (c == '/' && next == '*') {
+                    out.append("  ");
+                    i++;
+                    inBlockComment = true;
+                    continue;
+                }
+            }
+
+            if (inSingle) {
+                if (c == '\'' && next == '\'') {
+                    out.append("  ");
+                    i++;
+                } else if (c == '\'') {
+                    inSingle = false;
+                    out.append(' ');
+                } else {
+                    out.append(c == '\n' || c == '\r' ? c : ' ');
+                }
+                continue;
+            }
+            if (inDouble) {
+                if (c == '"' && next == '"') {
+                    out.append("  ");
+                    i++;
+                } else if (c == '"') {
+                    inDouble = false;
+                    out.append(' ');
+                } else {
+                    out.append(c == '\n' || c == '\r' ? c : ' ');
+                }
+                continue;
+            }
+            if (inBacktick) {
+                if (c == '`') {
+                    inBacktick = false;
+                    out.append(' ');
+                } else {
+                    out.append(c == '\n' || c == '\r' ? c : ' ');
+                }
+                continue;
+            }
+
+            if (c == '\'') {
+                inSingle = true;
+                out.append(' ');
+            } else if (c == '"') {
+                inDouble = true;
+                out.append(' ');
+            } else if (c == '`') {
+                inBacktick = true;
+                out.append(' ');
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
     }
 
     /**

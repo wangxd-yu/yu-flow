@@ -2,6 +2,8 @@ package org.yu.flow.module.api.service;
 
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.dto.BatchApplyDirPrefixResult;
+import org.yu.flow.module.api.dto.FlowApiCopyDTO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.springframework.data.domain.Page;
@@ -26,6 +28,14 @@ public interface FlowApiCrudService {
     /** 更新 API 配置 */
     FlowApiDO update(FlowApiDO flowApiDO);
 
+    /**
+     * 复制 API：整条配置克隆为新的未发布草稿。
+     *
+     * @param id      源接口 ID
+     * @param copyDTO 新接口的名称 / path / 目录，缺省时沿用源接口
+     */
+    FlowApiDO copy(String id, FlowApiCopyDTO copyDTO);
+
     /** 根据 ID 删除 */
     void delete(String id);
 
@@ -34,6 +44,14 @@ public interface FlowApiCrudService {
 
     /** 批量移动到指定目录 */
     void batchMove(List<String> ids, String targetDirectoryId);
+
+    /**
+     * 按各接口所属目录的当前有效 pathPrefix（根→叶叠加）重写草稿 url。
+     *
+     * @param ids       接口 ID
+     * @param oldPrefix 从现有 path 剥离的旧前缀；空白则用勾选 URL 最长公共前缀
+     */
+    BatchApplyDirPrefixResult batchApplyDirPrefix(List<String> ids, String oldPrefix);
 
     /** 更新执行日志开关 */
     FlowApiDO updateLogEnabled(String id, boolean enabled);

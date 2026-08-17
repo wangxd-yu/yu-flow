@@ -1,6 +1,6 @@
 import { history, RequestConfig } from '@umijs/max';
 import { message, Modal } from 'antd';
-import { clearAuthHint, csrfHeaders } from '@/utils/session';
+import { clearAuthHint, csrfHeaders, hostAuthHeaders } from '@/utils/session';
 import { markUiHandled } from '@/utils/errorText';
 
 function handleUnauthorized() {
@@ -41,9 +41,9 @@ export const requestConfig: RequestConfig = {
         ...options.headers,
       };
 
-      // Cookie 会话：同源请求附加 CSRF；不再从 localStorage 注入 JWT
+      // Cookie 会话：同源请求附加 CSRF；嵌入时再附宿主 OPCENTER Authorization
       if (!isExternalAbsolute) {
-        Object.assign(headers, csrfHeaders());
+        Object.assign(headers, csrfHeaders(), hostAuthHeaders());
       }
 
       const method = (options.method || 'GET').toUpperCase();

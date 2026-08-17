@@ -195,8 +195,20 @@ public class FlowEngine {
         executors.put("tryCatch", new TryCatchStepExecutor(this));
         executors.put("redis", new RedisStepExecutor());
         executors.put("jsonMap", new JsonMapStepExecutor());
-        executors.put("oss", new OssStepExecutor());
+        registerOssExecutorIfAvailable();
         wireApiExecutor();
+    }
+
+    /** MinIO 不在 classpath 时跳过 OSS 节点，避免宿主嵌入时拖垮引擎启动。 */
+    private void registerOssExecutorIfAvailable() {
+        try {
+            Class.forName("io.minio.MinioClient");
+            executors.put("oss", new OssStepExecutor());
+        } catch (ClassNotFoundException | NoClassDefFoundError e) {
+            log.info("[FlowEngine] MinIO SDK 未找到，跳过 OSS 节点执行器注册");
+        } catch (Throwable t) {
+            log.warn("[FlowEngine] OSS 节点执行器注册失败: {}", t.toString());
+        }
     }
 
     public void setSqlExecutorService(SqlExecutorService sqlExecutorService) {

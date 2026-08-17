@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS `flow_log_execution` (
   `error_msg` text,
   `cost_time_ms` bigint COMMENT '耗时(毫秒)',
   `trace_data` longtext COMMENT '完整追踪快照(如有)',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `service_type` varchar(32) COMMENT '接口类型: FLOW/DB/JSON/STRING',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_execution_api_id` (`api_id`),
   KEY `idx_flow_log_execution_create_time` (`create_time`)

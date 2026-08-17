@@ -45,12 +45,12 @@ public class FlowTaskDO implements Serializable {
     private String cron;
 
     /** 启用状态：0=停用，1=启用 */
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean enabled;
 
     /** 是否记录执行日志
      * @deprecated 请使用 {@link #logMode} 替代 */
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean logEnabled;
 
     /**

@@ -1,5 +1,7 @@
 package org.yu.flow.module.api.security;
 
+import org.yu.flow.module.host.CallerPolicy;
+
 /**
  * 合并全局默认与接口覆盖后的不可变入站防护生效配置。
  */
@@ -13,15 +15,23 @@ public final class EffectiveSecurity {
     private final String ipAllowlist;
     /** ≤0 表示不限制执行时间 */
     private final int timeoutMs;
+    /** 接口启用优先，否则目录链；未配置则为 null */
+    private final CallerPolicy callerPolicy;
 
     public EffectiveSecurity(IngressAuthMode authMode, boolean antiReplay, boolean rateLimitEnabled,
                              int rateLimitQps, String ipAllowlist, int timeoutMs) {
+        this(authMode, antiReplay, rateLimitEnabled, rateLimitQps, ipAllowlist, timeoutMs, null);
+    }
+
+    public EffectiveSecurity(IngressAuthMode authMode, boolean antiReplay, boolean rateLimitEnabled,
+                             int rateLimitQps, String ipAllowlist, int timeoutMs, CallerPolicy callerPolicy) {
         this.authMode = authMode == null ? IngressAuthMode.NONE : authMode;
         this.antiReplay = antiReplay;
         this.rateLimitEnabled = rateLimitEnabled;
         this.rateLimitQps = Math.max(0, rateLimitQps);
         this.ipAllowlist = ipAllowlist == null ? "" : ipAllowlist;
         this.timeoutMs = timeoutMs;
+        this.callerPolicy = callerPolicy;
     }
 
     public IngressAuthMode getAuthMode() {
@@ -46,6 +56,10 @@ public final class EffectiveSecurity {
 
     public int getTimeoutMs() {
         return timeoutMs;
+    }
+
+    public CallerPolicy getCallerPolicy() {
+        return callerPolicy;
     }
 
     /** 信任宿主：无鉴权、无限流、无 IP 限制；超时仍可配置 */

@@ -1,2 +1,3 @@
 org.yu.flow.config.FlowAutoConfiguration
 org.yu.flow.config.FlowUiAutoConfiguration
+org.yu.flow.module.oss.config.OssAutoConfiguration

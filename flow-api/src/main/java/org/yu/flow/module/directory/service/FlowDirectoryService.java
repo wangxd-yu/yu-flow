@@ -53,4 +53,28 @@ public interface FlowDirectoryService {
      * 否则必须与 expectedBizType 一致（api / task / service / model / page）。
      */
     void assertDirectoryBizType(String directoryId, String expectedBizType);
+
+    /**
+     * 按 ID 查询目录（不含树）。
+     */
+    FlowDirectoryDO getById(String id);
+
+    /**
+     * 从根到当前目录，将各级非空 {@code pathPrefix} 依次拼接（规范化后）。
+     * directoryId 为空或均未配置时返回 null。
+     * <p>走内存目录快照，不按层查库。</p>
+     */
+    String resolveEffectivePathPrefix(String directoryId);
+
+    /**
+     * 从目录起沿 parent 向上合并入站配置（字段级：子覆盖父；null 继续向上）。
+     * 不含全局默认；调用方再与接口 / 全局合并。
+     * <p>走内存目录快照 + 按 directoryId 缓存合并结果；目录增删改后失效。</p>
+     */
+    org.yu.flow.module.api.security.ApiSecurityConfig resolveDirectorySecurityOverrides(String directoryId);
+
+    /**
+     * 从目录起沿 parent 向上合并出站隐私配置（字段级：子覆盖父；inherit=false 停止向上）。
+     */
+    org.yu.flow.module.api.privacy.ApiPrivacyConfig resolveDirectoryPrivacyOverrides(String directoryId);
 }

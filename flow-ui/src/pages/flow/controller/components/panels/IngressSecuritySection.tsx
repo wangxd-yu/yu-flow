@@ -2,13 +2,14 @@
  * 入站防护：继承全局 yu.flow.ingress，或按接口覆盖。改完需发布后生效。
  */
 import React from 'react';
-import { Alert, Col, Form, Row, Switch } from 'antd';
+import { Alert, Col, Divider, Form, Row, Switch } from 'antd';
 import {
-  ProFormDigit,
   ProFormDependency,
+  ProFormDigit,
   ProFormRadio,
   ProFormText,
 } from '@ant-design/pro-components';
+import CallerPolicyFields from '@/components/flow/CallerPolicyFields';
 
 const AUTH_OPTIONS = [
   { label: '继承全局', value: 'INHERIT' },
@@ -24,8 +25,8 @@ const IngressSecuritySection: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="入站防护需发布后生效"
-        description="全局默认由 yu.flow.ingress 控制（默认关闭=信任宿主网关）。开放入口 /flow-api/open/** 始终走开放鉴权，不受本接口 authMode=NONE 影响。"
+        message="接口级入站防护需发布后生效；目录级覆盖对未设置字段即时生效"
+        description="合并顺序：接口显式值 → 所属目录链 → 全局 yu.flow.ingress。调用方策略：接口未启用时用目录（再沿父目录）。开放入口 /flow-api/open/** 始终走开放鉴权与 grant。调用方策略仅对 HOST（及未放开匿名时的 NONE→HOST）生效；OPEN 以平台授权为准。"
       />
 
       <ProFormDependency name={['secAuthMode']}>
@@ -36,7 +37,7 @@ const IngressSecuritySection: React.FC = () => {
               showIcon
               style={{ marginBottom: 16 }}
               message="NONE = 匿名可调"
-              description="生产默认禁止保存/发布 authMode=NONE。确需公开接口请改用开放平台 OPEN，或由管理员设置 YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true。"
+              description="生产默认禁止保存/发布 authMode=NONE。确需公开接口请改用开放平台 OPEN，或由管理员设置 YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true。匿名模式不能启用调用方策略。"
             />
           ) : null
         }
@@ -163,6 +164,61 @@ const IngressSecuritySection: React.FC = () => {
           </Form.Item>
         </Col>
       </Row>
+
+      <Divider orientation="left" plain>
+        调用方策略
+      </Divider>
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="按用户类型 / 角色 / 权限限制谁能调用本接口"
+        description="依赖宿主实现 FlowHostPrincipalProvider（内置 JWT 固定为 ADMIN）。下拉选项仅在宿主实现 FlowHostIdentityCatalogProvider 后出现。关闭时仅校验鉴权方式。维度全空且开启时，仅要求能解析到主体。"
+      />
+
+      <ProFormDependency name={['secAuthMode', 'secCallerEnabled']}>
+        {({ secAuthMode, secCallerEnabled }) => (
+          <>
+            {secAuthMode === 'OPEN' && secCallerEnabled ? (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="OPEN 模式下调用方策略不参与匹配"
+                description="第三方访问以开放平台 grant 为准；此处配置仅在改回 HOST 后生效。"
+              />
+            ) : null}
+            {secAuthMode === 'NONE' && secCallerEnabled ? (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="NONE 不能启用调用方策略"
+                description="请先将鉴权方式改为 HOST，或关闭调用方策略后再保存。"
+              />
+            ) : null}
+
+            <Row gutter={[16, 0]}>
+              <CallerPolicyFields
+                names={{
+                  enabled: 'secCallerEnabled',
+                  match: 'secCallerMatch',
+                  userTypes: 'secCallerUserTypes',
+                  roles: 'secCallerRoles',
+                  permissions: 'secCallerPermissions',
+                  deptIds: 'secCallerDeptIds',
+                  deptIncludeChildren: 'secCallerDeptIncludeChildren',
+                  userIds: 'secCallerUserIds',
+                }}
+                enabled={!!secCallerEnabled}
+                enabledLabel="启用调用方策略"
+                enabledExtra="需发布后生效；匹配失败返回 403 INGRESS_CALLER_DENIED"
+              />
+            </Row>
+          </>
+        )}
+      </ProFormDependency>
     </>
   );
 };

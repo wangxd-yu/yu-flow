@@ -2,8 +2,8 @@
 -- OSS 上传场景（业务 Profile）
 CREATE TABLE IF NOT EXISTS `flow_oss_upload_profile` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `name` varchar(128) NOT NULL COMMENT '场景名称',
   `code` varchar(64) NOT NULL COMMENT '场景编码（未删除记录内唯一）',
+  `name` varchar(128) NOT NULL COMMENT '场景名称',
   `connection_code` varchar(64) NOT NULL COMMENT '绑定 OSS 连接编码',
   `visibility` varchar(16) NOT NULL DEFAULT 'PRIVATE' COMMENT 'PUBLIC / PRIVATE',
   `bucket_override` varchar(128) COMMENT '桶覆盖（可空）',
@@ -19,8 +19,11 @@ CREATE TABLE IF NOT EXISTS `flow_oss_upload_profile` (
   `thumbnail_max_source_bytes` bigint DEFAULT NULL COMMENT '参与缩略图的源文件上限，空=用全局',
   `thumbnail_jpeg_quality` decimal(3,2) DEFAULT NULL COMMENT 'JPEG 质量 0~1，空=用全局',
   `require_auth` tinyint(1) NOT NULL DEFAULT 1 COMMENT '上传是否必须登录',
+  `presign_upload_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否开放预签名直传：0=仅网关代理上传, 1=允许客户端 PUT 直达 OSS',
   `biz_fields_schema` text COMMENT '业务字段 JSON Schema',
-  `access_perm` varchar(128) COMMENT '上传所需权限码（可空）',
+  `upload_perm` varchar(128) DEFAULT NULL COMMENT '上传权限码：哪些 RBAC 权限才能调用该场景的上传 API；留空=仅 require_auth 控制',
+  `download_perm` varchar(128) DEFAULT NULL COMMENT '下载权限码：哪些 RBAC 权限可突破 DataScope 访问私有文件；留空=仅 DataScope 控制',
+  `caller_policy` text COMMENT '访问规则 JSON：{"rules":[OssAccessRule]}',
   `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '启用状态',
   `remark` varchar(512) COMMENT '备注',
   `deleted` int NOT NULL DEFAULT 0 COMMENT '软删除',

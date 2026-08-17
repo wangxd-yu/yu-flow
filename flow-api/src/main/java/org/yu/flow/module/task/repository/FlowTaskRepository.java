@@ -34,6 +34,15 @@ public interface FlowTaskRepository extends JpaRepository<FlowTaskDO, String>, J
     @Query("UPDATE FlowTaskDO t SET t.deleted = 1 WHERE t.id IN :ids")
     int logicDeleteByIds(@Param("ids") List<String> ids);
 
+    /** 含逻辑删除行的存在性判断（跨环境导入按 ID upsert 时用于识别被删除过的同 ID 任务） */
+    @Query(value = "SELECT COUNT(1) FROM flow_task_info WHERE id = :id", nativeQuery = true)
+    long countAnyById(@Param("id") String id);
+
+    /** 恢复逻辑删除行，使其重新可见 */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE flow_task_info SET deleted = 0 WHERE id = :id", nativeQuery = true)
+    int restoreDeletedById(@Param("id") String id);
+
     /** 粗筛：DSL / 发布快照中可能引用某 ID 的定时任务 */
     @Query("SELECT t FROM FlowTaskDO t WHERE "
             + "(t.dslContent IS NOT NULL AND t.dslContent LIKE CONCAT('%', :needle, '%')) "

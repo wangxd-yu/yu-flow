@@ -27,6 +27,20 @@ public class FlowDirectoryDTO {
 
     private Integer sort;
 
+    /** URL 路径前缀（本目录配置，可空） */
+    private String pathPrefix;
+
+    /** 根→叶叠加后的有效前缀（只读展示） */
+    private String effectivePathPrefix;
+
+    /** 目录级入站防护 JSON */
+    private String securityConfig;
+
+    /** 目录级出站隐私 JSON */
+    private String privacyConfig;
+
+    private String remark;
+
     /** 子目录列表（用于构造树形结构） */
     private List<FlowDirectoryDTO> children = new ArrayList<>();
 
@@ -48,6 +62,10 @@ public class FlowDirectoryDTO {
         dto.setName(entity.getName());
         dto.setBizType(entity.getBizType());
         dto.setSort(entity.getSort());
+        dto.setPathPrefix(entity.getPathPrefix());
+        dto.setSecurityConfig(entity.getSecurityConfig());
+        dto.setPrivacyConfig(entity.getPrivacyConfig());
+        dto.setRemark(entity.getRemark());
         dto.setCreateTime(entity.getCreateTime());
         dto.setUpdateTime(entity.getUpdateTime());
         return dto;

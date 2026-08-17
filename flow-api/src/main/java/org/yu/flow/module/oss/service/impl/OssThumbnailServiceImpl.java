@@ -26,6 +26,8 @@ import org.yu.flow.module.oss.service.OssThumbnailService;
 import org.yu.flow.module.oss.spi.FlowOssObjectAccessVoter;
 import org.yu.flow.module.oss.support.OssAccessEvaluator;
 import org.yu.flow.module.oss.support.OssKeyPatternResolver;
+import org.yu.flow.module.oss.support.OssProfileCallerAuth;
+import org.yu.flow.module.oss.support.OssUploaderIdentity;
 import org.yu.flow.module.rbac.service.RbacService;
 
 import javax.imageio.IIOImage;
@@ -49,8 +51,10 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @Slf4j
+@ConditionalOnOssEnabled
 @Service
 public class OssThumbnailServiceImpl implements OssThumbnailService {
 
@@ -77,6 +81,9 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
 
     @Resource
     private OssAccessEvaluator ossAccessEvaluator;
+
+    @Resource
+    private OssProfileCallerAuth ossProfileCallerAuth;
 
     @Resource
     private RbacService rbacService;
@@ -204,6 +211,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
         if (object == null || !OssObjectDO.STATUS_ACTIVE.equals(object.getStatus())) {
             throw new FlowException("OSS_OBJECT_NOT_FOUND", "文件不存在: " + id);
         }
+        ossProfileCallerAuth.assertDownload(object, principal);
         if (!ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DOWNLOAD)) {
             throw new FlowException("RBAC_FORBIDDEN", "无权查看该文件缩略图");
         }
@@ -273,8 +281,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
         if (rbacService.hasAnyPerm(principal.getUsername(), "flow:oss:admin", "*")) {
             return true;
         }
-        if (StrUtil.isNotBlank(object.getUploadedBy())
-                && object.getUploadedBy().equals(principal.getUserId())) {
+        if (OssUploaderIdentity.isSelf(object, principal)) {
             return true;
         }
         return ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DELETE);

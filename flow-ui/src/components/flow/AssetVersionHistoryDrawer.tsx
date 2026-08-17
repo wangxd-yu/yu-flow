@@ -22,6 +22,8 @@ export interface AssetVersionHistoryDrawerProps {
   restoreVersion: (versionId: string) => Promise<void>;
   /** 回退后刷新外层表单 */
   onRestored?: () => void;
+  /** 只读：无写权限时仅查看版本记录，不展示回退操作 */
+  readOnly?: boolean;
 }
 
 const SOURCE_LABEL: Record<string, { text: string; color: string }> = {
@@ -40,6 +42,7 @@ const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
   loadVersions,
   restoreVersion,
   onRestored,
+  readOnly = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -120,7 +123,10 @@ const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
       ellipsis: true,
       render: (t) => t || '-',
     },
-    {
+  ];
+
+  if (!readOnly) {
+    columns.push({
       title: '操作',
       width: 120,
       render: (_, record) => (
@@ -143,8 +149,8 @@ const AssetVersionHistoryDrawer: React.FC<AssetVersionHistoryDrawerProps> = ({
           </Button>
         </Tooltip>
       ),
-    },
-  ];
+    });
+  }
 
   return (
     <Drawer

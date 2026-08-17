@@ -45,4 +45,10 @@ public class OpenAuthException extends RuntimeException {
     public static OpenAuthException hostAuthRequired() {
         return new OpenAuthException(401, "OPEN_HOST_AUTH_REQUIRED", "需要宿主登录后访问该接口");
     }
+
+    /** 管理端双层鉴权：宿主登录探测未通过 */
+    public static OpenAuthException managementHostAuthRequired() {
+        return new OpenAuthException(401, "FLOW_HOST_AUTH_REQUIRED",
+                "需要宿主登录后访问管理端接口");
+    }
 }

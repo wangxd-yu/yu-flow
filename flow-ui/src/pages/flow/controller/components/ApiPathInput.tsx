@@ -1,13 +1,16 @@
 /**
  * ApiPathInput
  * ─────────────────────────────────────────────────────────────────────────────
- * 可复用的 API 业务路径输入框。
- * 负责：前缀回显、路径编辑、复制完整 URL。
+ * 可复用的 API 业务路径输入框（模型 B）：
+ * - value = 相对路径（不含目录有效前缀）
+ * - addonBefore = SYSTEM_PREFIX + 目录有效前缀
+ * - 复制完整 URL = 前缀 + 相对段
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Input, Tooltip } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
 import { request } from '@umijs/max';
+import { joinPathSegments, normalizePathPrefix } from '@/utils/apiPathPrefix';
 
 export interface ApiPathInputProps {
   value?: string;
@@ -17,28 +20,33 @@ export interface ApiPathInputProps {
   className?: string;
   size?: 'large' | 'middle' | 'small';
   style?: React.CSSProperties;
+  /** 目录有效 pathPrefix（根→叶叠加，不含 SYSTEM_PREFIX） */
+  directoryPrefix?: string;
   [key: string]: any;
 }
 
 const ApiPathInput = React.forwardRef<any, ApiPathInputProps>(
-  ({ value, onChange, disabled, status, className, size, style, ...rest }, ref) => {
-    const [prefix, setPrefix] = useState<string>('/');
+  ({ value, onChange, disabled, status, className, size, style, directoryPrefix, ...rest }, ref) => {
+    const [systemPrefix, setSystemPrefix] = useState<string>('/');
 
     useEffect(() => {
-      // 从后端接口获取系统级前缀
       request('/flow-api/sys-configs/key/SYSTEM_PREFIX', { method: 'GET' })
         .then((res: any) => {
           const data = typeof res === 'string' ? res : res?.data;
-          setPrefix(data ? data : '/');
+          setSystemPrefix(data ? normalizePathPrefix(data) || '/' : '/');
         })
         .catch(() => {
-          setPrefix('/');
+          setSystemPrefix('/');
         });
     }, []);
 
+    const addonBefore = useMemo(() => {
+      const joined = joinPathSegments(systemPrefix === '/' ? '' : systemPrefix, directoryPrefix);
+      return joined || '/';
+    }, [systemPrefix, directoryPrefix]);
+
     const handleCopy = () => {
-      // 处理完整 URL，合并时去除可能会出现的双斜杠
-      let fullUrl = `${prefix}${value || ''}`;
+      let fullUrl = joinPathSegments(addonBefore === '/' ? '' : addonBefore, value) || '/';
       fullUrl = fullUrl.replace(/(?<!:)\/\/+/g, '/');
 
       if (navigator.clipboard) {
@@ -143,8 +151,8 @@ const ApiPathInput = React.forwardRef<any, ApiPathInputProps>(
               rest.onClick(e);
             }
           }}
-          placeholder="请输入业务路径，例如: /user/info"
-          addonBefore={prefix === '/' ? '/' : prefix}
+          placeholder="相对路径，例如: /user/info"
+          addonBefore={addonBefore}
           suffix={
             <Tooltip title="复制完整 URL">
               <CopyOutlined

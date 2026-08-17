@@ -1,5 +1,6 @@
 -- log_mode 日志策略模式列（PostgreSQL）
--- 历史数据平滑迁移：log_enabled=true → ALL，log_enabled=false → OFF，null → SYSTEM_DEFAULT
+-- 历史数据平滑迁移：log_enabled 真/1 → ALL，假/0 → OFF，null → SYSTEM_DEFAULT
+-- 现网可能混有 boolean 与 smallint，统一 ::integer 再比较（true→1 / false→0）
 
 -- ── 接口管理 flow_api_info ──
 ALTER TABLE flow_api_info
@@ -8,8 +9,8 @@ COMMENT ON COLUMN flow_api_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT
 
 UPDATE flow_api_info
 SET log_mode = CASE
-    WHEN log_enabled = true  THEN 'ALL'
-    WHEN log_enabled = false THEN 'OFF'
+    WHEN log_enabled::integer = 1 THEN 'ALL'
+    WHEN log_enabled::integer = 0 THEN 'OFF'
     ELSE 'SYSTEM_DEFAULT'
 END
 WHERE (deleted = 0 OR deleted IS NULL);
@@ -21,8 +22,8 @@ COMMENT ON COLUMN flow_task_info.log_mode IS '日志策略模式：SYSTEM_DEFAUL
 
 UPDATE flow_task_info
 SET log_mode = CASE
-    WHEN log_enabled = true  THEN 'ALL'
-    WHEN log_enabled = false THEN 'OFF'
+    WHEN log_enabled::integer = 1 THEN 'ALL'
+    WHEN log_enabled::integer = 0 THEN 'OFF'
     ELSE 'SYSTEM_DEFAULT'
 END
 WHERE (deleted = 0 OR deleted IS NULL);
@@ -34,8 +35,8 @@ COMMENT ON COLUMN flow_mq_task_info.log_mode IS '日志策略模式：SYSTEM_DEF
 
 UPDATE flow_mq_task_info
 SET log_mode = CASE
-    WHEN log_enabled = true  THEN 'ALL'
-    WHEN log_enabled = false THEN 'OFF'
+    WHEN log_enabled::integer = 1 THEN 'ALL'
+    WHEN log_enabled::integer = 0 THEN 'OFF'
     ELSE 'SYSTEM_DEFAULT'
 END
 WHERE (deleted = 0 OR deleted IS NULL);
@@ -47,8 +48,8 @@ COMMENT ON COLUMN flow_service_info.log_mode IS '日志策略模式：SYSTEM_DEF
 
 UPDATE flow_service_info
 SET log_mode = CASE
-    WHEN log_enabled = true  THEN 'ALL'
-    WHEN log_enabled = false THEN 'OFF'
+    WHEN log_enabled::integer = 1 THEN 'ALL'
+    WHEN log_enabled::integer = 0 THEN 'OFF'
     ELSE 'SYSTEM_DEFAULT'
 END
 WHERE (deleted = 0 OR deleted IS NULL);

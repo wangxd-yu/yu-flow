@@ -25,6 +25,7 @@ public class OssObjectDTO {
     private String checksumSha256;
     private String bizMeta;
     private String uploadedBy;
+    private String uploadedByUserType;
     private String uploadedByName;
     private String deptId;
     private String status;
@@ -60,6 +61,7 @@ public class OssObjectDTO {
                 .setChecksumSha256(entity.getChecksumSha256())
                 .setBizMeta(entity.getBizMeta())
                 .setUploadedBy(entity.getUploadedBy())
+                .setUploadedByUserType(entity.getUploadedByUserType())
                 .setUploadedByName(entity.getUploadedByName())
                 .setDeptId(entity.getDeptId())
                 .setStatus(entity.getStatus())

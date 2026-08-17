@@ -112,6 +112,29 @@ class GatewayManagementAuthHandler {
     }
 
     /**
+     * 管理端 {@code /flow-api/**} 在 JWT 通过后的宿主登录探测（双层鉴权第二关）。
+     * <p>login / captcha 不走本方法。独立部署默认 Probe=JWT，与上一关等价。</p>
+     *
+     * @return false 表示已写出拒绝响应
+     */
+    boolean assertManagementHostAuthIfRequired(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        boolean require = flowProperties.getSecurity() != null
+                && flowProperties.getSecurity().isManagementRequireHostAuth();
+        if (!require) {
+            return true;
+        }
+        boolean ok = hostAuthenticationProbe == null || hostAuthenticationProbe.isAuthenticated(request);
+        if (ok) {
+            return true;
+        }
+        OpenAuthException e = OpenAuthException.managementHostAuthRequired();
+        io.writeJsonResponse(response, e.getHttpStatus(),
+                R.failWithErrorCode(e.getHttpStatus(), e.getCode(), e.getMessage()));
+        return false;
+    }
+
+    /**
      * 管理端会话主体须存在且启用（含受控的 yml 兜底账号）；拒绝幽灵/禁用用户 JWT。
      */
     private boolean isActiveManagementPrincipal(String username) {

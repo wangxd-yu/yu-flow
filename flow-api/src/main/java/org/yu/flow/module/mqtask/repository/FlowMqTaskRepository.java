@@ -29,6 +29,14 @@ public interface FlowMqTaskRepository extends JpaRepository<FlowMqTaskDO, String
     /** 判断某个连接编码是否被任务引用（删除连接时校验） */
     boolean existsByConnectionCode(String connectionCode);
 
+    /**
+     * 已发布任务的订阅坐标（[id, connectionCode, topic, consumerGroup, publishedSnapshot]），供积压查询使用。
+     * <p>只投影必要列，避免把每个任务的 MEDIUMTEXT 草稿 DSL 一并拉进内存。</p>
+     */
+    @Query("SELECT t.id, t.connectionCode, t.topic, t.consumerGroup, t.publishedSnapshot FROM FlowMqTaskDO t "
+            + "WHERE t.publishStatus = 1 AND t.publishedSnapshot IS NOT NULL")
+    List<Object[]> findPublishedSubscribeTargets();
+
     @Modifying
     @Query("UPDATE FlowMqTaskDO t SET t.directoryId = :directoryId WHERE t.id IN :ids")
     int updateDirectoryIdByIds(@Param("directoryId") String directoryId, @Param("ids") List<String> ids);

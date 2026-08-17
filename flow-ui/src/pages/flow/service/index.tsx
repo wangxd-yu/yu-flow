@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ProColumns } from '@ant-design/pro-components';
-import { Divider, message, Popconfirm, Switch, Tag, Tooltip } from 'antd';
-import { history } from '@umijs/max';
+import type { MenuProps } from 'antd';
+import { Divider, Dropdown, message, Modal, Switch, Tag, Tooltip } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
+import { history, useAccess } from '@umijs/max';
 import {
   queryServiceFlowPage,
   createServiceFlow,
@@ -9,10 +11,10 @@ import {
   batchDeleteServiceFlow,
   enableServiceFlow,
   disableServiceFlow,
-  updateServiceFlowLogEnabled,
   getServiceFlow,
   publishServiceFlow,
   unpublishServiceFlow,
+  republishServiceFlow,
   FlowServiceFlow,
 } from '@/services/flow/serviceFlowService';
 import ServiceFlowForm from './components/ServiceFlowForm';
@@ -67,201 +69,280 @@ const handleRemove = async (selectedRows: FlowServiceFlow[]) => {
   }
 };
 
-const ServiceFlowManagement: React.FC = () => {
-  const [manualRunOpen, setManualRunOpen] = useState(false);
-  const [manualRunTarget, setManualRunTarget] = useState<FlowServiceFlow | null>(null);
+/** 日志策略：老数据只有 logEnabled 布尔值，按其真假映射到四态枚举 */
+const resolveLogMode = (record: FlowServiceFlow) => {
+  if (record.logMode) return record.logMode;
+  if (record.logEnabled === false) return 'OFF';
+  if (record.logEnabled === true) return 'ALL';
+  return 'SYSTEM_DEFAULT';
+};
 
-  const buildColumns = (
-    ctx: AssetListShellContext<FlowServiceFlow>,
-  ): ProColumns<FlowServiceFlow>[] => [
-    {
-      title: '服务名称',
-      dataIndex: 'name',
-      ellipsis: true,
-      width: 200,
-      render: (_, record) => (
-        <a onClick={() => ctx.openEdit(record)} title={record.name}>
-          {record.name}
-        </a>
-      ),
+const LOG_MODE_TAGS: Record<string, { color: string; text: string }> = {
+  ALL: { color: 'blue', text: '全量记录' },
+  ERROR_ONLY: { color: 'warning', text: '仅错误' },
+  OFF: { color: 'default', text: '完全关闭' },
+  SYSTEM_DEFAULT: { color: 'cyan', text: '继承全局' },
+};
+
+/** 发布：先过环境门禁拿到 envCode，再调用发布/更新发布 */
+const publishWithGate = async (
+  record: FlowServiceFlow,
+  submit: (envCode: string) => Promise<unknown>,
+  successText: string,
+  onDone: () => void,
+) => {
+  try {
+    const { confirmPublishWithGate } = await import(
+      '@/components/flow/release/confirmPublishWithGate'
+    );
+    const envCode = await confirmPublishWithGate({
+      assetType: 'SERVICE',
+      assetId: record.id,
+      assetName: record.name,
+    });
+    if (!envCode) return;
+    await submit(envCode);
+    message.success(successText);
+    onDone();
+  } catch (e: any) {
+    message.error(e?.message || '发布失败');
+  }
+};
+
+interface ColumnDeps {
+  canWrite: boolean;
+  onManualRun: (record: FlowServiceFlow) => void;
+}
+
+const buildColumns = (
+  ctx: AssetListShellContext<FlowServiceFlow>,
+  deps: ColumnDeps,
+): ProColumns<FlowServiceFlow>[] => [
+  {
+    title: '服务名称',
+    dataIndex: 'name',
+    ellipsis: true,
+    width: 200,
+    render: (_, record) => (
+      <a onClick={() => ctx.openEdit(record)} title={record.name}>
+        {record.name}
+      </a>
+    ),
+  },
+  {
+    title: '所属目录',
+    dataIndex: 'directoryName',
+    width: 120,
+    hideInSearch: true,
+    ellipsis: true,
+    render: (_, record) =>
+      record.directoryName ? <Tag>{record.directoryName}</Tag> : '-',
+  },
+  {
+    title: '启用状态',
+    dataIndex: 'enabled',
+    width: 90,
+    valueType: 'select',
+    valueEnum: {
+      true: { text: '启用' },
+      false: { text: '停用' },
     },
-    {
-      title: '所属目录',
-      dataIndex: 'directoryName',
-      width: 120,
-      hideInSearch: true,
-      ellipsis: true,
-      render: (_, record) =>
-        record.directoryName ? <Tag>{record.directoryName}</Tag> : '-',
-    },
-    {
-      title: '启用状态',
-      dataIndex: 'enabled',
-      width: 90,
-      valueType: 'select',
-      valueEnum: {
-        true: { text: '启用' },
-        false: { text: '停用' },
-      },
-      render: (_, record) => (
-        <Switch
-          size="small"
-          checked={!!record.enabled}
-          onChange={async (checked) => {
-            try {
-              if (checked) {
-                await enableServiceFlow(record.id);
-              } else {
-                await disableServiceFlow(record.id);
-              }
-              message.success(checked ? '已启用' : '已停用');
-              ctx.reload();
-            } catch {
-              message.error('操作失败');
+    render: (_, record) => (
+      <Switch
+        size="small"
+        checked={!!record.enabled}
+        disabled={!deps.canWrite}
+        onChange={async (checked) => {
+          try {
+            if (checked) {
+              await enableServiceFlow(record.id);
+            } else {
+              await disableServiceFlow(record.id);
             }
-          }}
-        />
-      ),
+            message.success(checked ? '已启用' : '已停用');
+            ctx.reload();
+          } catch (e: any) {
+            message.error(e?.message || '操作失败');
+          }
+        }}
+      />
+    ),
+  },
+  {
+    title: '发布状态',
+    dataIndex: 'publishStatus',
+    width: 120,
+    valueType: 'select',
+    valueEnum: {
+      0: { text: '未发布', status: 'Default' },
+      1: { text: '已发布', status: 'Success' },
     },
-    {
-      title: '发布状态',
-      dataIndex: 'publishStatus',
-      width: 120,
-      valueType: 'select',
-      valueEnum: {
-        0: { text: '未发布', status: 'Default' },
-        1: { text: '已发布', status: 'Success' },
-      },
-      render: (_, record) => {
-        if (record.publishStatus === 1 && record.hasUnpublishedChanges) {
-          return (
-            <Tooltip title="存在未发布的草稿修改">
-              <Tag color="warning">待更新发布</Tag>
-            </Tooltip>
+    render: (_, record) => {
+      if (record.publishStatus === 1 && record.hasUnpublishedChanges) {
+        return (
+          <Tooltip title="存在未发布的草稿修改">
+            <Tag color="warning">待更新发布</Tag>
+          </Tooltip>
+        );
+      }
+      return record.publishStatus === 1 ? (
+        <Tag color="success">已发布</Tag>
+      ) : (
+        <Tag>未发布</Tag>
+      );
+    },
+  },
+  {
+    title: '运行健康',
+    dataIndex: 'runtimeHealth',
+    width: 100,
+    hideInSearch: true,
+    render: (_, record) => renderHealthTag(ctx.healthMap[record.id]),
+  },
+  {
+    title: (
+      <Tooltip title="日志策略模式：继承全局 / 仅错误时记录 / 全量记录 / 完全关闭">
+        <span>日志策略</span>
+      </Tooltip>
+    ),
+    dataIndex: 'logMode',
+    width: 100,
+    hideInSearch: true,
+    render: (_, record) => {
+      const tag =
+        LOG_MODE_TAGS[resolveLogMode(record)] || LOG_MODE_TAGS.SYSTEM_DEFAULT;
+      return <Tag color={tag.color}>{tag.text}</Tag>;
+    },
+  },
+  {
+    title: '创建时间',
+    dataIndex: 'createTime',
+    width: 160,
+    hideInSearch: true,
+  },
+  {
+    title: '操作',
+    dataIndex: 'option',
+    valueType: 'option',
+    width: 190,
+    fixed: 'right',
+    render: (_, record) => {
+      const published = record.publishStatus === 1;
+      // 手动调用走 POST /{id}/run，切面按 HTTP 方法要求 flow:service:write，只读账号不展示
+      const moreItems: MenuProps['items'] = [
+        ...(deps.canWrite ? [{ key: 'run', label: '手动调用' }] : []),
+        ...(deps.canWrite && published && record.hasUnpublishedChanges
+          ? [{ key: 'republish', label: '更新发布' }]
+          : []),
+        { key: 'logs', label: '查看日志' },
+        ...(deps.canWrite
+          ? [
+              { type: 'divider' as const },
+              { key: 'delete', label: '删除', danger: true },
+            ]
+          : []),
+      ];
+
+      const onMenuClick: MenuProps['onClick'] = ({ key }) => {
+        if (key === 'run') {
+          deps.onManualRun(record);
+          return;
+        }
+        if (key === 'republish') {
+          publishWithGate(
+            record,
+            (envCode) => republishServiceFlow(record.id, envCode),
+            '已更新发布',
+            ctx.reload,
           );
+          return;
         }
-        return record.publishStatus === 1
-          ? <Tag color="success">已发布</Tag>
-          : <Tag>未发布</Tag>;
-      },
-    },
-    {
-      title: '运行健康',
-      dataIndex: 'runtimeHealth',
-      width: 100,
-      hideInSearch: true,
-      render: (_, record) => renderHealthTag(ctx.healthMap[record.id]),
-    },
-    {
-      title: (
-        <Tooltip title="日志策略模式：继承全局 / 仅错误时记录 / 全量记录 / 完全关闭">
-          <span>日志策略</span>
-        </Tooltip>
-      ),
-      dataIndex: 'logMode',
-      width: 100,
-      hideInSearch: true,
-      render: (_, record) => {
-        const mode = record.logMode || (record.logEnabled === false ? 'OFF' : (record.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT'));
-        switch (mode) {
-          case 'ALL':
-            return <Tag color="blue">全量记录</Tag>;
-          case 'ERROR_ONLY':
-            return <Tag color="warning">仅错误</Tag>;
-          case 'OFF':
-            return <Tag color="default">完全关闭</Tag>;
-          case 'SYSTEM_DEFAULT':
-          default:
-            return <Tag color="cyan">继承全局</Tag>;
+        if (key === 'logs') {
+          history.push(`/log/service?serviceId=${record.id}`);
+          return;
         }
-      },
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createTime',
-      width: 160,
-      hideInSearch: true,
-    },
-    {
-      title: '操作',
-      dataIndex: 'option',
-      valueType: 'option',
-      width: 380,
-      render: (_, record) => [
+        if (key === 'delete') {
+          Modal.confirm({
+            title: '确定删除该服务？',
+            content: `服务「${record.name}」删除后不可恢复；若仍被接口 / 任务引用会被拦截。`,
+            okType: 'danger',
+            onOk: () => ctx.removeAndReload([record]),
+          });
+        }
+      };
+
+      return [
         <a key="edit" onClick={() => ctx.openEdit(record)}>
-          编辑
+          {deps.canWrite ? '编辑' : '查看'}
         </a>,
-        <Divider key="d0" type="vertical" />,
-        <a
-          key="run"
-          onClick={() => {
-            setManualRunTarget(record);
-            setManualRunOpen(true);
-          }}
-        >
-          手动调用
-        </a>,
+        ...(deps.canWrite
+          ? [
+              <Divider key="d0" type="vertical" />,
+              published ? (
+                <a
+                  key="unpublish"
+                  onClick={async () => {
+                    const ok = await confirmServiceUnpublish(
+                      record.id,
+                      record.name,
+                    );
+                    if (!ok) return;
+                    try {
+                      await unpublishServiceFlow(record.id);
+                      message.success('已下线');
+                      ctx.reload();
+                    } catch (e: any) {
+                      message.error(e?.message || '下线失败');
+                    }
+                  }}
+                >
+                  下线
+                </a>
+              ) : (
+                <a
+                  key="publish"
+                  onClick={() =>
+                    publishWithGate(
+                      record,
+                      (envCode) => publishServiceFlow(record.id, envCode),
+                      '发布成功',
+                      ctx.reload,
+                    )
+                  }
+                >
+                  发布
+                </a>
+              ),
+            ]
+          : []),
         <Divider key="d1" type="vertical" />,
-        record.publishStatus === 1 ? (
-          <a
-            key="unpublish"
-            onClick={async () => {
-              const ok = await confirmServiceUnpublish(record.id, record.name);
-              if (!ok) return;
-              try {
-                await unpublishServiceFlow(record.id);
-                message.success('已下线');
-                ctx.reload();
-              } catch (e: any) {
-                message.error(e?.message || '下线失败');
-              }
-            }}
-          >
-            下线
+        <Dropdown key="more" menu={{ items: moreItems, onClick: onMenuClick }}>
+          <a>
+            更多 <DownOutlined style={{ fontSize: 10 }} />
           </a>
-        ) : (
-          <a
-            key="publish"
-            onClick={async () => {
-              try {
-                const { confirmPublishWithGate } = await import(
-                  '@/components/flow/release/confirmPublishWithGate'
-                );
-                const envCode = await confirmPublishWithGate({
-                  assetType: 'SERVICE',
-                  assetId: record.id,
-                  assetName: record.name,
-                });
-                if (!envCode) return;
-                await publishServiceFlow(record.id, envCode);
-                message.success('发布成功');
-                ctx.reload();
-              } catch (e: any) {
-                message.error(e?.message || '发布失败');
-              }
-            }}
-          >
-            发布
-          </a>
-        ),
-        <Divider key="d2" type="vertical" />,
-        <a
-          key="logs"
-          onClick={() => history.push(`/log/service?serviceId=${record.id}`)}
-        >
-          查看日志
-        </a>,
-        <Divider key="d3" type="vertical" />,
-        <Popconfirm
-          key="delete"
-          title="确定删除该服务？"
-          onConfirm={() => ctx.removeAndReload([record])}
-        >
-          <a style={{ color: '#ff4d4f' }}>删除</a>
-        </Popconfirm>,
-      ],
+        </Dropdown>,
+      ];
     },
-  ];
+  },
+];
+
+const ServiceFlowManagement: React.FC = () => {
+  const access = useAccess();
+  const canWrite = !!(access as any)?.canServiceWrite;
+  const [manualRunOpen, setManualRunOpen] = useState(false);
+  const [manualRunTarget, setManualRunTarget] =
+    useState<FlowServiceFlow | null>(null);
+
+  const handleManualRun = useCallback((record: FlowServiceFlow) => {
+    setManualRunTarget(record);
+    setManualRunOpen(true);
+  }, []);
+
+  const columnsBuilder = useCallback(
+    (ctx: AssetListShellContext<FlowServiceFlow>) =>
+      buildColumns(ctx, { canWrite, onManualRun: handleManualRun }),
+    [canWrite, handleManualRun],
+  );
 
   return (
     <AssetDirectoryListShell<FlowServiceFlow>
@@ -271,25 +352,33 @@ const ServiceFlowManagement: React.FC = () => {
       listTitle="服务列表"
       emptyHint="沉淀可复用的编排流程，供接口 / 任务作为子流程调用"
       metricsAssetType="SERVICE"
+      transferAssetType="SERVICE"
       deepLinkParam="serviceId"
+      canWrite={canWrite}
+      fitColumns={false}
+      scrollX={1200}
       fetchDetail={getServiceFlow}
       isFiltered={({ directoryId, name, enabled, publishStatus }) =>
-        !!directoryId || !!name || enabled !== undefined || publishStatus !== undefined
+        !!directoryId ||
+        !!name ||
+        enabled !== undefined ||
+        publishStatus !== undefined
       }
       fetchPage={async (params) => {
-        const { current, pageSize, directoryId, name, enabled, publishStatus } = params;
+        const { current, pageSize, directoryId, name, enabled, publishStatus } =
+          params;
         const enabledParam =
           enabled === true || enabled === 'true'
             ? true
             : enabled === false || enabled === 'false'
-              ? false
-              : undefined;
+            ? false
+            : undefined;
         const publishParam =
           publishStatus === 0 || publishStatus === '0'
             ? 0
             : publishStatus === 1 || publishStatus === '1'
-              ? 1
-              : undefined;
+            ? 1
+            : undefined;
         const result = await queryServiceFlowPage({
           directoryId,
           name,
@@ -304,13 +393,14 @@ const ServiceFlowManagement: React.FC = () => {
       submitCreate={handleAdd}
       submitUpdate={handleUpdate}
       removeRows={handleRemove}
-      buildColumns={buildColumns}
+      buildColumns={columnsBuilder}
       renderForm={(form) => (
         <ServiceFlowForm
           visible={form.visible}
           isEdit={form.isEdit}
           initialValues={form.currentRow}
           initialTab={form.initialTab}
+          canWrite={canWrite}
           onCancel={form.close}
           onSubmit={form.submit}
           onPublished={form.onPublished}

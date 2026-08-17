@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS flow_mq_task_info (
   topic varchar(255) NOT NULL,
   consumer_group varchar(128),
   concurrency integer NOT NULL DEFAULT 1,
-  enabled smallint NOT NULL DEFAULT 1,
-  log_enabled smallint NOT NULL DEFAULT 1,
+  enabled boolean NOT NULL DEFAULT true,
+  log_enabled boolean NOT NULL DEFAULT true,
   log_mode varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT',
   log_payload_mode varchar(16) DEFAULT 'SYSTEM_DEFAULT',
   log_retention_days integer,
@@ -37,7 +37,7 @@ COMMENT ON COLUMN flow_mq_task_info.consumer_group IS '消费组（Kafka group.i
 COMMENT ON COLUMN flow_mq_task_info.concurrency IS '消费并发数';
 COMMENT ON COLUMN flow_mq_task_info.enabled IS '启用状态：0=停用, 1=启用';
 COMMENT ON COLUMN flow_mq_task_info.log_enabled IS '是否记录执行日志';
-COMMENT ON COLUMN flow_mq_task_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT/OFF/ERROR_ONLY/ALL';
+COMMENT ON COLUMN flow_mq_task_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT-继承全局，OFF-完全关闭，ERROR_ONLY-仅错误时记录，ALL-全量记录';
 COMMENT ON COLUMN flow_mq_task_info.log_payload_mode IS '原始报文落库策略：SYSTEM_DEFAULT/FULL/MASK/OFF';
 COMMENT ON COLUMN flow_mq_task_info.log_retention_days IS '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数';
 COMMENT ON COLUMN flow_mq_task_info.retry_max IS '失败重试次数（0=不重试）';

@@ -70,6 +70,14 @@ public class SysConfigCacheManager {
         return Optional.ofNullable(CONFIG_CACHE.get(configKey));
     }
 
+    /** 写入后立刻更新 L1，避免 refresh 广播完成前读到旧值。 */
+    public void putLocal(SysConfigDO config) {
+        if (config == null || config.getConfigKey() == null) {
+            return;
+        }
+        CONFIG_CACHE.put(config.getConfigKey(), config);
+    }
+
     /**
      * 获取字符串类型的配置值
      */

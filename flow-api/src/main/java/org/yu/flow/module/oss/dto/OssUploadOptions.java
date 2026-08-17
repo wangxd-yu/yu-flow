@@ -13,5 +13,6 @@ public class OssUploadOptions {
     private Long expiresInSeconds;
     private boolean overwrite;
     private String uploadedByOverride;
+    private String uploadedByUserTypeOverride;
     private String uploadedByNameOverride;
 }

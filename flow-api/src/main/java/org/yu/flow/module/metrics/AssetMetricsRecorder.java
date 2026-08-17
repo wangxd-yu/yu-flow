@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.yu.flow.cache.FlowRedisUtil;
 import org.yu.flow.config.YuFlowProperties;
+import org.yu.flow.module.host.HostCatalogReserved;
 
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
@@ -34,6 +35,7 @@ public class AssetMetricsRecorder {
             if (assetType == null || StrUtil.isBlank(assetId) || outcome == null) {
                 return;
             }
+            MetricsAssetType effectiveType = classify(assetType, assetId);
             if (assetType == MetricsAssetType.SERVICE
                     && "DEBUG".equalsIgnoreCase(triggerType)
                     && !cfg.isIncludeDebug()) {
@@ -42,7 +44,7 @@ public class AssetMetricsRecorder {
 
             String trigger = StrUtil.isBlank(triggerType) ? MetricsKeys.TRIGGER_DEFAULT : triggerType.trim().toUpperCase();
             LocalDateTime bucket = MetricsKeys.nowMinute();
-            String key = MetricsKeys.minuteBucketKey(assetType, assetId, trigger, bucket);
+            String key = MetricsKeys.minuteBucketKey(effectiveType, assetId, trigger, bucket);
 
             switch (outcome) {
                 case SUCCESS -> FlowRedisUtil.hincrBy(key, MetricsKeys.FIELD_SUCCESS, 1);
@@ -64,11 +66,18 @@ public class AssetMetricsRecorder {
             FlowRedisUtil.expire(key, ttlHours, TimeUnit.HOURS);
             FlowRedisUtil.expire(MetricsKeys.ACTIVE_SET, ttlHours + 1L, TimeUnit.HOURS);
 
-            updateMeta(assetType, assetId, outcome, ttlHours);
+            updateMeta(effectiveType, assetId, outcome, ttlHours);
         } catch (Exception e) {
             log.warn("[AssetMetricsRecorder] 计量写入失败（已忽略）: type={}, id={}, err={}",
                     assetType, assetId, e.getMessage());
         }
+    }
+
+    static MetricsAssetType classify(MetricsAssetType type, String assetId) {
+        if (type == MetricsAssetType.API && HostCatalogReserved.isReservedId(assetId)) {
+            return MetricsAssetType.SYSTEM;
+        }
+        return type;
     }
 
     private void updateMeta(MetricsAssetType type, String assetId, MetricsOutcome outcome, int ttlHours) {

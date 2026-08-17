@@ -13,6 +13,8 @@ public interface FlowOpenApiGrantRepository extends JpaRepository<FlowOpenApiGra
 
     List<FlowOpenApiGrantDO> findByPlatformId(String platformId);
 
+    List<FlowOpenApiGrantDO> findByApiId(String apiId);
+
     Optional<FlowOpenApiGrantDO> findByPlatformIdAndApiId(String platformId, String apiId);
 
     boolean existsByPlatformIdAndApiId(String platformId, String apiId);

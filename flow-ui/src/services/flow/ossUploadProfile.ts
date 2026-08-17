@@ -24,11 +24,15 @@ export interface OssUploadProfile {
   /** JPEG 质量 0~1，空=用全局 */
   thumbnailJpegQuality?: number;
   requireAuth?: boolean;
+  /** 是否开放预签名直传（客户端 PUT 直达 OSS） */
+  presignUploadEnabled?: boolean;
   bizFieldsSchema?: string;
   /** 上传权限码：哪些 RBAC 权限才能上传 */
   uploadPerm?: string;
   /** 下载权限码：DataScope 不通过时的 RBAC 兜底权限码 */
   downloadPerm?: string;
+  /** 访问规则 JSON：{"rules":[...]} */
+  callerPolicy?: string;
   enabled?: boolean;
   remark?: string;
   createTime?: string;

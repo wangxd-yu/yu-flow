@@ -39,6 +39,28 @@ public class FlowDirectoryController {
     }
 
     /**
+     * 目录详情
+     */
+    @GetMapping("/{id}")
+    public R<FlowDirectoryDTO> getById(@PathVariable String id) {
+        FlowDirectoryDO entity = flowDirectoryService.getById(id);
+        if (entity == null) {
+            return R.fail(404, "目录不存在");
+        }
+        FlowDirectoryDTO dto = FlowDirectoryDTO.fromDO(entity);
+        dto.setEffectivePathPrefix(flowDirectoryService.resolveEffectivePathPrefix(id));
+        return R.ok(dto);
+    }
+
+    /**
+     * 解析目录有效 pathPrefix（根→叶各级非空前缀叠加）
+     */
+    @GetMapping("/{id}/effective-path-prefix")
+    public R<String> effectivePathPrefix(@PathVariable String id) {
+        return R.ok(flowDirectoryService.resolveEffectivePathPrefix(id));
+    }
+
+    /**
      * 新增目录
      */
     @PostMapping

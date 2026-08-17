@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Button,
   Card,
   Modal,
+  Segmented,
   Space,
   Tag,
   Typography,
@@ -22,7 +23,11 @@ import type { UploadFile } from 'antd/es/upload/interface';
 import { history } from '@umijs/max';
 
 import { OssUploadProfile } from '@/services/flow/ossUploadProfile';
-import { OssUploadResult, uploadOssByProfile } from '@/services/flow/ossObject';
+import {
+  OssUploadResult,
+  uploadOssByPresign,
+  uploadOssByProfile,
+} from '@/services/flow/ossObject';
 
 export type OssSimulateUploadModalProps = {
   open: boolean;
@@ -49,6 +54,13 @@ const OssSimulateUploadModal: React.FC<OssSimulateUploadModalProps> = ({
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState<OssUploadResult[]>([]);
+  const [uploadMode, setUploadMode] = useState<'STANDARD' | 'PRESIGN'>('STANDARD');
+
+  useEffect(() => {
+    if (open) {
+      setUploadMode(profile?.presignUploadEnabled ? 'PRESIGN' : 'STANDARD');
+    }
+  }, [open, profile?.presignUploadEnabled]);
 
   const reset = () => {
     setFileList([]);
@@ -70,7 +82,7 @@ const OssSimulateUploadModal: React.FC<OssSimulateUploadModalProps> = ({
   const handleOk = async () => {
     const rawFiles = fileList
       .map((f) => f.originFileObj)
-      .filter((f): f is File => Boolean(f));
+      .filter((f): f is NonNullable<typeof f> => Boolean(f));
     if (!profile?.code) {
       message.warning('场景编码缺失');
       return;
@@ -85,7 +97,10 @@ const OssSimulateUploadModal: React.FC<OssSimulateUploadModalProps> = ({
     }
     setUploading(true);
     try {
-      const list = await uploadOssByProfile(profile.code, rawFiles);
+      const list =
+        uploadMode === 'PRESIGN'
+          ? await Promise.all(rawFiles.map((file) => uploadOssByPresign(profile.code!, file)))
+          : await uploadOssByProfile(profile.code, rawFiles);
       const newItems = Array.isArray(list) ? list : [];
       setResults((prev) => [...newItems, ...prev]);
       setFileList([]); // 成功后自动清空待上传列表，防止二次重复提交
@@ -108,10 +123,15 @@ const OssSimulateUploadModal: React.FC<OssSimulateUploadModalProps> = ({
         </Space>
       }
       open={open}
-      onCancel={handleClose}
+      onCancel={() => {
+        if (!uploading) handleClose();
+      }}
       onOk={handleOk}
       okText="开始上传"
       confirmLoading={uploading}
+      closable={!uploading}
+      maskClosable={!uploading}
+      keyboard={!uploading}
       destroyOnClose
       width={680}
       styles={{ body: { padding: '16px 24px' } }}
@@ -144,10 +164,26 @@ const OssSimulateUploadModal: React.FC<OssSimulateUploadModalProps> = ({
         </Space>
       </div>
 
+      {profile?.presignUploadEnabled ? (
+        <div style={{ marginBottom: 14 }}>
+          <Segmented
+            block
+            value={uploadMode}
+            disabled={uploading}
+            onChange={(value) => setUploadMode(value as 'STANDARD' | 'PRESIGN')}
+            options={[
+              { label: '普通上传（经过网关）', value: 'STANDARD' },
+              { label: '预签名直传（客户端直连 OSS）', value: 'PRESIGN' },
+            ]}
+          />
+        </div>
+      ) : null}
+
       {/* ── 2. 拖拽/点击上传选区 ── */}
       <Upload.Dragger
         maxCount={maxFiles}
         multiple={isMultiple}
+        disabled={uploading}
         fileList={fileList}
         beforeUpload={() => false}
         onChange={({ fileList: next }) => {

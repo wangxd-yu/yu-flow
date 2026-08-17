@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS `flow_mq_task_info` (
   `concurrency` int NOT NULL DEFAULT 1 COMMENT '消费并发数',
   `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '启用状态：0=停用, 1=启用',
   `log_enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否记录执行日志',
-  `log_mode` varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT' COMMENT '日志策略模式：SYSTEM_DEFAULT/OFF/ERROR_ONLY/ALL',
+  `log_mode` varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT' COMMENT '日志策略模式：SYSTEM_DEFAULT-继承全局，OFF-完全关闭，ERROR_ONLY-仅错误时记录，ALL-全量记录',
   `log_payload_mode` varchar(16) DEFAULT 'SYSTEM_DEFAULT' COMMENT '原始报文落库策略：SYSTEM_DEFAULT/FULL/MASK/OFF',
   `log_retention_days` int COMMENT '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数',
   `retry_max` int DEFAULT 0 COMMENT '失败重试次数（0=不重试）',

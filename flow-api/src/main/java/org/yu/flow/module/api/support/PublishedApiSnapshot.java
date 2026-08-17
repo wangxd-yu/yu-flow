@@ -1,11 +1,16 @@
 package org.yu.flow.module.api.support;
 
 import cn.hutool.core.util.StrUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.util.FlowObjectMapperUtil;
+
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 已发布 API 的运行时视图：优先从 {@code publishedSnapshot} 读取契约 / 路由元数据，
@@ -15,6 +20,14 @@ import org.yu.flow.util.FlowObjectMapperUtil;
 public final class PublishedApiSnapshot {
 
     private static final ObjectMapper MAPPER = FlowObjectMapperUtil.flowObjectMapper();
+    /**
+     * 同一个已发布 API 会被网关的路由、鉴权、契约校验反复读取。
+     * 以快照原文为键缓存解析树，发布新版本时原文变化，无需显式失效。
+     */
+    private static final Cache<String, Optional<JsonNode>> SNAPSHOT_CACHE = Caffeine.newBuilder()
+            .maximumSize(4096)
+            .expireAfterAccess(30, TimeUnit.MINUTES)
+            .build();
 
     private PublishedApiSnapshot() {
     }
@@ -86,6 +99,21 @@ public final class PublishedApiSnapshot {
     }
 
     /**
+     * 出站隐私配置：已发布时只读快照；未发布回退草稿列。
+     */
+    public static String resolvePrivacyConfig(FlowApiDO api) {
+        JsonNode snap = parseSnapshot(api);
+        if (snap != null) {
+            if (!snap.has("privacyConfig") || snap.get("privacyConfig").isNull()) {
+                return null;
+            }
+            String value = snap.get("privacyConfig").asText(null);
+            return StrUtil.isBlank(value) ? null : value;
+        }
+        return api == null ? null : api.getPrivacyConfig();
+    }
+
+    /**
      * 入站防护配置：已发布时只读快照（缺字段 / null → 全继承全局，不读草稿列）。
      * <p>未发布时回退草稿列（管理端预览用）。</p>
      */
@@ -99,6 +127,13 @@ public final class PublishedApiSnapshot {
             return StrUtil.isBlank(value) ? null : value;
         }
         return api == null ? null : api.getSecurityConfig();
+    }
+
+    /**
+     * 返回已发布快照的缓存只读树；调用方不得修改该节点。
+     */
+    public static JsonNode resolveSnapshotNode(FlowApiDO api) {
+        return parseSnapshot(api);
     }
 
     private static String textFromSnapshot(FlowApiDO api, String field) {
@@ -117,11 +152,17 @@ public final class PublishedApiSnapshot {
                 || StrUtil.isBlank(api.getPublishedSnapshot())) {
             return null;
         }
+        String raw = api.getPublishedSnapshot();
+        return SNAPSHOT_CACHE.get(raw, PublishedApiSnapshot::parseSnapshotJson).orElse(null);
+    }
+
+    private static Optional<JsonNode> parseSnapshotJson(String raw) {
         try {
-            return MAPPER.readTree(api.getPublishedSnapshot());
+            return Optional.ofNullable(MAPPER.readTree(raw));
         } catch (Exception e) {
-            log.warn("[PublishedApiSnapshot] 解析 publishedSnapshot 失败。apiId={}", api.getId(), e);
-            return null;
+            // 负缓存避免损坏快照在每次请求中反复解析、刷日志。
+            log.warn("[PublishedApiSnapshot] 解析 publishedSnapshot 失败: {}", e.getMessage());
+            return Optional.empty();
         }
     }
 }

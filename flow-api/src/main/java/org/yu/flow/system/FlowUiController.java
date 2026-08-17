@@ -156,8 +156,9 @@ public class FlowUiController {
             return;
         }
 
-        // 获取运行时 contextPath（如 "/flow"，无前缀时为 ""）
-        String contextPath = request.getContextPath();
+        // 对外嵌入时网关会传 X-Forwarded-Prefix（如 /ssp/opcenter/lowcode），优先于 servlet context-path
+        String contextPath = resolvePublicContextPath(request);
+        boolean embedded = isEmbeddedViaForwardedPrefix(request);
 
         String html = indexHtmlTemplate;
 
@@ -175,8 +176,8 @@ public class FlowUiController {
         String runtimePublicPath = contextPath + UI_PATH_PREFIX + "/";
         boolean isDemoMode = yuFlowProperties != null && yuFlowProperties.isDemoMode();
         String injectedScript = "<script>"
-                + "window.__CONTEXT_PATH__='" + contextPath + "';"
-                + "window.publicPath='" + runtimePublicPath + "';"
+                + "window.__CONTEXT_PATH__='" + escapeJs(contextPath) + "';"
+                + "window.publicPath='" + escapeJs(runtimePublicPath) + "';"
                 + "window.__DEMO_MODE__=" + isDemoMode + ";"
                 + "</script>";
         html = html.replace("<head>", "<head>" + injectedScript);
@@ -184,12 +185,87 @@ public class FlowUiController {
         response.setContentType("text/html;charset=UTF-8");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("X-Content-Type-Options", "nosniff");
-        response.setHeader("X-Frame-Options", "DENY");
-        response.setHeader("Content-Security-Policy",
-                "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; "
-                        + "object-src 'none'; img-src 'self' data: blob:; font-src 'self' data:; "
-                        + "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-                        + "connect-src 'self'; worker-src 'self' blob:");
+        // 网关嵌入运营中心时允许 iframe；直连管理台仍禁止被嵌
+        if (embedded) {
+            response.setHeader("Content-Security-Policy",
+                    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' *; "
+                            + "object-src 'none'; img-src 'self' data: blob:; font-src 'self' data:; "
+                            + "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                            + "connect-src 'self'; worker-src 'self' blob:");
+        } else {
+            response.setHeader("X-Frame-Options", "DENY");
+            response.setHeader("Content-Security-Policy",
+                    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; "
+                            + "object-src 'none'; img-src 'self' data: blob:; font-src 'self' data:; "
+                            + "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                            + "connect-src 'self'; worker-src 'self' blob:");
+        }
         response.getWriter().write(html);
+    }
+
+    /**
+     * 优先使用对外前缀（自定义头 / X-Forwarded-Prefix / 配置），使前端 API 走公网路径而非内部 context-path。
+     */
+    private String resolvePublicContextPath(HttpServletRequest request) {
+        String forwarded = firstPublicPrefix(request);
+        if (forwarded != null) {
+            return forwarded;
+        }
+        if (yuFlowProperties != null) {
+            String configured = sanitizePathPrefix(yuFlowProperties.getPublicContextPath());
+            if (configured != null) {
+                return configured;
+            }
+        }
+        String ctx = request.getContextPath();
+        return ctx == null ? "" : ctx;
+    }
+
+    private boolean isEmbeddedViaForwardedPrefix(HttpServletRequest request) {
+        if (firstPublicPrefix(request) != null) {
+            return true;
+        }
+        return yuFlowProperties != null
+                && sanitizePathPrefix(yuFlowProperties.getPublicContextPath()) != null;
+    }
+
+    private static String firstPublicPrefix(HttpServletRequest request) {
+        String ssp = sanitizePathPrefix(request.getHeader("X-SSP-Public-Prefix"));
+        if (ssp != null) {
+            return ssp;
+        }
+        return sanitizePathPrefix(request.getHeader("X-Forwarded-Prefix"));
+    }
+
+    /** 仅允许安全的路径前缀：以 / 开头、无空白与引号。 */
+    private static String sanitizePathPrefix(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String v = raw.trim();
+        if (v.isEmpty() || v.charAt(0) != '/') {
+            return null;
+        }
+        if (v.length() > 128) {
+            return null;
+        }
+        for (int i = 0; i < v.length(); i++) {
+            char c = v.charAt(i);
+            if (c <= ' ' || c == '"' || c == '\'' || c == '<' || c == '>' || c == '\\') {
+                return null;
+            }
+        }
+        // 去掉尾部 /
+        while (v.length() > 1 && v.endsWith("/")) {
+            v = v.substring(0, v.length() - 1);
+        }
+        return v;
+    }
+
+    private static String escapeJs(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("\\", "\\\\").replace("'", "\\'");
     }
 }

@@ -22,8 +22,10 @@ import org.yu.flow.module.oss.service.OssObjectService;
 import org.yu.flow.module.oss.service.OssThumbnailService;
 
 import java.util.List;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss/objects")
 public class OssObjectController {

@@ -69,6 +69,16 @@ yu:
       allow-ingress-auth-none: ${YU_FLOW_ALLOW_INGRESS_AUTH_NONE:false}
       # HttpRequest 节点 ignoreSsl 总开关；生产建议 false（一刀切禁用跳过证书校验）
       allow-ignore-ssl: ${YU_FLOW_ALLOW_IGNORE_SSL:true}
+      # 管理端 /flow-api/** 在 JWT 通过后再校验 HostAuthenticationProbe（双层鉴权，默认关）
+      # 仅加强防护时开启；开启后嵌入宿主请覆盖 Probe 读宿主 Session
+      management-require-host-auth: ${YU_FLOW_MANAGEMENT_REQUIRE_HOST_AUTH:false}
+      # 登录口令 SM2（与前端 sm-crypto C1C3C2 对齐）；多节点须固定密钥，否则各进程公钥不一致
+      sm2-private-key: ${YU_FLOW_SM2_PRIVATE_KEY:}
+      sm2-public-key: ${YU_FLOW_SM2_PUBLIC_KEY:}
+      sm2-password-ttl-seconds: ${YU_FLOW_SM2_PASSWORD_TTL_SECONDS:300}
+    privacy:
+      # 库内密文字段 SM4 密钥：16 字节明文或 32 位 hex；未配置则 *_encrypt 字段失败关闭为 ****
+      at-rest-sm4-key: ${YU_FLOW_PRIVACY_AT_REST_SM4_KEY:}
     task:
       lock-ttl-minutes: ${YU_FLOW_TASK_LOCK_TTL_MINUTES:30}
       lock-renew-interval-seconds: ${YU_FLOW_TASK_LOCK_RENEW_SECONDS:60}

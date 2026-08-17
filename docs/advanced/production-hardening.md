@@ -14,6 +14,7 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 不安全默认拦截 | `YU_FLOW_FAIL_ON_INSECURE_DEFAULTS` | 保持 `true`（默认）；`false` 仅限本地 |
 | yml 管理员回退 | `YU_FLOW_ALLOW_YML_ADMIN_FALLBACK` | 保持 `false`（默认） |
 | 数据库口令 | `SPRING_DATASOURCE_PASSWORD` | 环境变量注入，禁止弱口令 |
+| 登录 SM2 密钥 | `YU_FLOW_SM2_PRIVATE_KEY` / `YU_FLOW_SM2_PUBLIC_KEY` | 多节点必须固定同一对 hex；单节点可留空（进程内临时生成） |
 
 ## 二、默认已收紧（确认未被放开）
 
@@ -36,7 +37,9 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 限流降级策略 | `ingress.rate-limit-fail-open`（默认 `true`） | 高危环境改 `false`（Redis 故障时拒绝），并保障 Redis 高可用 |
 | 脚本引擎语言面 | `yu.flow.security.script-allowed-languages`（默认 `aviator,spel,javascript`） | `groovy` / `python` 逃逸面较大，默认禁用；确需开放请显式加入白名单并限制编辑权限 |
 | HttpRequest `ignoreSsl` | `yu.flow.security.allow-ignore-ssl`（默认 `true`） | 生产设 `YU_FLOW_ALLOW_IGNORE_SSL=false` 一刀切禁用跳过证书校验；确需自签名请配置受信 CA |
-| 宿主登录探测 | `HostAuthenticationProbe` Bean | `ingress` 关闭 + WRAP 场景下**必须**由宿主实现；未实现时视为已登录（宽松） |
+| 宿主登录探测 | `HostAuthenticationProbe` Bean | 嵌入时覆盖为宿主 Session；默认校验管理端 JWT |
+| 管理端进程内双层 | `yu.flow.security.management-require-host-auth` | **默认 false**；加强时设 true，并覆盖 Probe。宿主 Security 外层与本开关独立 |
+| 管理端登录策略 | 宿主登录 + Flow JWT | **不**静默换发 Flow JWT，须单独登录 Flow |
 
 ## 四、运维与审计
 

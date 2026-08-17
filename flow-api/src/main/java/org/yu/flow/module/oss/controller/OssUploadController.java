@@ -17,8 +17,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss")
 public class OssUploadController {
@@ -81,7 +83,8 @@ public class OssUploadController {
         request.getParameterMap().forEach((key, values) -> {
             if ("profile".equals(key) || "file".equals(key) || "files".equals(key)
                     || "expiresAt".equals(key) || "expiresInSeconds".equals(key)
-                    || "overwrite".equals(key) || "uploadedBy".equals(key) || "uploadedByName".equals(key)) {
+                    || "overwrite".equals(key) || "uploadedBy".equals(key)
+                    || "uploadedByName".equals(key) || "uploadedByUserType".equals(key)) {
                 return;
             }
             if (values != null && values.length > 0) {

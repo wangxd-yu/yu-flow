@@ -21,11 +21,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 /**
  * 开放平台 OSS 上传（AppKey/HMAC 鉴权，不经管理端 JWT）。
  */
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/open/oss")
 public class OpenOssUploadController {
@@ -45,6 +47,8 @@ public class OpenOssUploadController {
         FlowHostPrincipal principal = FlowHostPrincipal.builder()
                 .userId("open:" + appKey)
                 .username(appKey)
+                .userType(FlowHostPrincipal.TYPE_OPEN_APP)
+                .authChannel("OPEN_APP")
                 .build();
         MultipartFile[] uploadFiles = resolveFiles(file, files);
         Map<String, String> bizFields = extractBizFields(request);
@@ -84,7 +88,8 @@ public class OpenOssUploadController {
         request.getParameterMap().forEach((key, values) -> {
             if ("profile".equals(key) || "file".equals(key) || "files".equals(key)
                     || "expiresAt".equals(key) || "expiresInSeconds".equals(key)
-                    || "overwrite".equals(key) || "uploadedBy".equals(key) || "uploadedByName".equals(key)) {
+                    || "overwrite".equals(key) || "uploadedBy".equals(key)
+                    || "uploadedByName".equals(key) || "uploadedByUserType".equals(key)) {
                 return;
             }
             if (values != null && values.length > 0) {

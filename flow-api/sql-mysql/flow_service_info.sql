@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS `flow_service_info` (
   `directory_id` varchar(32) COMMENT '关联目录ID（复用全局目录树）',
   `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '启用状态：0=停用, 1=启用',
   `log_enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否记录执行日志',
+  `log_mode` varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT' COMMENT '日志策略模式：SYSTEM_DEFAULT-继承全局，OFF-完全关闭，ERROR_ONLY-仅错误时记录，ALL-全量记录',
   `dsl_content` mediumtext COMMENT '流程定义 DSL JSON（草稿）',
   `contract` mediumtext COMMENT '服务契约 JSON：inputs/outputs/outputDescription',
   `publish_status` tinyint NOT NULL DEFAULT 0 COMMENT '发布状态：0=未发布, 1=已发布',

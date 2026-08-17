@@ -1,6 +1,7 @@
 -- ============================================================================
--- 系统配置初始化数据
--- 说明：这些是平台启动所需的核心内置配置项，is_builtin = 1 不允许删除
+-- 【已由 00_system_init.sql 取代】保留仅作历史参考；新环境请用：
+--   1) 00_all_flow_tables.sql
+--   2) 00_system_init.sql
 -- ============================================================================
 
 INSERT INTO `flow_sys_config` (`config_key`, `config_value`, `value_type`, `config_group`, `remark`, `is_builtin`, `status`)

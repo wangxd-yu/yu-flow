@@ -58,4 +58,17 @@ public class FlowServiceFlowDTO {
         dto.setHasUnpublishedChanges(UnpublishedChangeDetector.serviceHasUnpublishedChanges(entity));
         return dto;
     }
+
+    /**
+     * 列表投影：清掉 DSL、契约、发布快照三个大文本字段。
+     *
+     * <p>草稿是否有未发布变更已在 {@link #fromDO} 里比对完成，列表页与流程编辑器的服务选择器
+     * 都只用元信息；带上大字段会让一页 50 条的响应膨胀到数 MB。详情仍走 {@code GET /{id}}。</p>
+     */
+    public FlowServiceFlowDTO stripHeavyFields() {
+        this.dslContent = null;
+        this.contract = null;
+        this.publishedSnapshot = null;
+        return this;
+    }
 }

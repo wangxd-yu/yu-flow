@@ -7,6 +7,7 @@ import org.yu.flow.module.oss.spi.FlowOssObjectAccessVoter;
 
 import java.util.Optional;
 
+@ConditionalOnOssEnabled
 @Configuration
 public class OssAccessVoterConfiguration {
 

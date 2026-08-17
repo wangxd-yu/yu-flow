@@ -1,4 +1,4 @@
-import { clearAuthHint, hasAuthHint } from '@/utils/session';
+import { clearAuthHint, hasAuthHint, hostAuthHeaders } from '@/utils/session';
 
 export interface AuthMe {
   userId?: string;
@@ -7,6 +7,8 @@ export interface AuthMe {
   roles: string[];
   permissions: string[];
   legacyAdmin?: boolean;
+  /** false：后端未装配 OSS（未引入 minio 或 yu.flow.oss.enabled=false）。缺省按 true，兼容旧后端。 */
+  ossEnabled?: boolean;
 }
 
 /**
@@ -16,10 +18,17 @@ export async function fetchAuthMe(): Promise<AuthMe | null> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch('/flow-api/auth/me', {
+    // 与 request 拦截器一致：生产带 context-path（如 /flow）时必须拼前缀
+    const contextPath =
+      (typeof window !== 'undefined' && (window as any).__CONTEXT_PATH__) || '';
+    const meUrl = `${contextPath}/flow-api/auth/me`;
+    const res = await fetch(meUrl, {
       method: 'GET',
       credentials: 'include',
       signal: controller.signal,
+      headers: {
+        ...hostAuthHeaders(),
+      },
     });
     if (!res.ok) return null;
     const body: any = await res.json();
@@ -32,6 +41,7 @@ export async function fetchAuthMe(): Promise<AuthMe | null> {
       roles: Array.isArray(data.roles) ? data.roles : [],
       permissions: Array.isArray(data.permissions) ? data.permissions : [],
       legacyAdmin: !!data.legacyAdmin,
+      ossEnabled: data.ossEnabled !== false,
     };
   } catch {
     return null;

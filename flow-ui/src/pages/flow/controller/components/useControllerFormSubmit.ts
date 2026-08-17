@@ -11,6 +11,7 @@ import { addAutoApiConfig, updateAutoApiConfig } from '@/services/flow/flowContr
 import { getStaticJsonError } from './panels/ImplementationPanel';
 import { stringifyHostBinding } from './panels/HostWrapConfig';
 import { buildSecurityConfigFromForm } from './securityConfig';
+import { buildPrivacyConfigFromForm, stringifyPrivacyConfig } from './privacyConfig';
 import type { EngineMode } from './panels/ImplementationPanel';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
 
@@ -137,8 +138,11 @@ export function useControllerFormSubmit(options: UseControllerFormSubmitOptions)
 
       const effectiveIntercept = interceptMode === 'WRAP' || engineMode === 'HOST' ? 'WRAP' : 'REPLACE';
       const effectiveServiceType = effectiveIntercept === 'WRAP' ? 'HOST' : engineMode;
+      // directoryId 在「基本信息」Tab：未打开该 Tab 时 validateFields 不含此字段，需从初始 values 回补
+      const directoryId = formValues.directoryId ?? values?.directoryId;
       const payload = {
         ...formValues,
+        directoryId,
         name,
         url,
         method,
@@ -173,6 +177,7 @@ export function useControllerFormSubmit(options: UseControllerFormSubmitOptions)
             : [],
         }),
         securityConfig: JSON.stringify(buildSecurityConfigFromForm(formValues)),
+        privacyConfig: stringifyPrivacyConfig(buildPrivacyConfigFromForm(formValues)),
       };
 
       hide = message.loading(isEdit ? '正在更新...' : '正在添加...');

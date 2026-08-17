@@ -1,0 +1,52 @@
+-- Yu Flow 全量删表（验证初始化前清空用）
+-- 由 scripts/gen-drop-all-flow-tables.js 生成，勿手工维护表清单
+-- 用法：本文件 → 00_all_flow_tables.sql → 00_system_init.sql
+-- 警告：删除全部 flow_* 业务表及数据，不可恢复
+
+DROP TABLE IF EXISTS flow_task_info CASCADE;
+DROP TABLE IF EXISTS flow_sys_user_role CASCADE;
+DROP TABLE IF EXISTS flow_sys_user CASCADE;
+DROP TABLE IF EXISTS flow_sys_role_permission CASCADE;
+DROP TABLE IF EXISTS flow_sys_role CASCADE;
+DROP TABLE IF EXISTS flow_sys_permission CASCADE;
+DROP TABLE IF EXISTS flow_sys_macro CASCADE;
+DROP TABLE IF EXISTS flow_sys_config CASCADE;
+DROP TABLE IF EXISTS flow_service_info CASCADE;
+DROP TABLE IF EXISTS flow_response_template CASCADE;
+DROP TABLE IF EXISTS flow_regression_suite CASCADE;
+DROP TABLE IF EXISTS flow_regression_run_case CASCADE;
+DROP TABLE IF EXISTS flow_regression_run CASCADE;
+DROP TABLE IF EXISTS flow_regression_case CASCADE;
+DROP TABLE IF EXISTS flow_page_info CASCADE;
+DROP TABLE IF EXISTS flow_page_directory CASCADE;
+DROP TABLE IF EXISTS flow_oss_upload_profile CASCADE;
+DROP TABLE IF EXISTS flow_oss_object_ref CASCADE;
+DROP TABLE IF EXISTS flow_oss_object CASCADE;
+DROP TABLE IF EXISTS flow_oss_download_log CASCADE;
+DROP TABLE IF EXISTS flow_oss_connection CASCADE;
+DROP TABLE IF EXISTS flow_open_platform CASCADE;
+DROP TABLE IF EXISTS flow_open_credential CASCADE;
+DROP TABLE IF EXISTS flow_open_api_grant CASCADE;
+DROP TABLE IF EXISTS flow_mq_task_log CASCADE;
+DROP TABLE IF EXISTS flow_mq_task_info CASCADE;
+DROP TABLE IF EXISTS flow_mq_connection CASCADE;
+DROP TABLE IF EXISTS flow_model_info CASCADE;
+DROP TABLE IF EXISTS flow_model_directory CASCADE;
+DROP TABLE IF EXISTS flow_metrics_minute CASCADE;
+DROP TABLE IF EXISTS flow_metrics_meta CASCADE;
+DROP TABLE IF EXISTS flow_log_third CASCADE;
+DROP TABLE IF EXISTS flow_log_task CASCADE;
+DROP TABLE IF EXISTS flow_log_service CASCADE;
+DROP TABLE IF EXISTS flow_log_open_call CASCADE;
+DROP TABLE IF EXISTS flow_log_login CASCADE;
+DROP TABLE IF EXISTS flow_log_execution CASCADE;
+DROP TABLE IF EXISTS flow_log_audit CASCADE;
+DROP TABLE IF EXISTS flow_env CASCADE;
+DROP TABLE IF EXISTS flow_directory CASCADE;
+DROP TABLE IF EXISTS flow_datasource CASCADE;
+DROP TABLE IF EXISTS flow_asset_version CASCADE;
+DROP TABLE IF EXISTS flow_api_info CASCADE;
+DROP TABLE IF EXISTS flow_api_excel_template CASCADE;
+DROP TABLE IF EXISTS flow_alert_rule CASCADE;
+DROP TABLE IF EXISTS flow_alert_event CASCADE;
+DROP TABLE IF EXISTS flow_alert_channel CASCADE;

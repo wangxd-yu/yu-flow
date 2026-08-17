@@ -9,6 +9,8 @@ import { Button, message, Popconfirm } from 'antd';
 import { useLocation } from '@umijs/max';
 import DirectoryTreeLayout, { type DirectoryBizType } from '@/components/DirectoryTreeLayout';
 import TableEmpty from '@/components/TableEmpty';
+import AssetExportModal from '@/components/flow/transfer/AssetExportModal';
+import AssetImportModal from '@/components/flow/transfer/AssetImportModal';
 import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
 import '@/styles/fullHeightTable.css';
 
@@ -72,6 +74,22 @@ export interface AssetDirectoryListShellProps<T extends { id: string; directoryI
   fetchRowExtra?: (items: T[]) => Promise<Record<string, any>>;
   /** 表格横向滚动宽度，列较多的页面可调大（默认 1400） */
   scrollX?: number;
+  /**
+   * 列宽是否随容器自适应（fh-table-fit，默认 true）。
+   * <p>需要 fixed 固定列的页面必须传 false：fh-table-fit 会把表格强制压到容器宽度，
+   * sticky 偏移量测量失真，表头与表体错位。false 时按 scrollX 真实横向滚动。</p>
+   */
+  fitColumns?: boolean;
+  /**
+   * 是否具备写权限（默认 true）。为 false 时隐藏新建 / 批量删除与行勾选，
+   * 行内写操作由页面在 buildColumns 中自行收敛。
+   */
+  canWrite?: boolean;
+  /**
+   * 开启跨环境资产包导出 / 导入，值为迁移用的资产类型。
+   * <p>不传则不显示相关入口。</p>
+   */
+  transferAssetType?: 'SERVICE' | 'TASK';
   /** 表单弹层：仅在 visible 时渲染 */
   renderForm: (ctx: AssetFormContext<T>) => React.ReactNode;
   /** 页面级附加弹层（如手动调用 Modal），始终渲染 */
@@ -103,6 +121,9 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
     renderForm,
     fetchRowExtra,
     scrollX = 1400,
+    fitColumns = true,
+    canWrite = true,
+    transferAssetType,
     children,
   } = props;
 
@@ -115,6 +136,8 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
   const [extraMap, setExtraMap] = useState<Record<string, any>>({});
   const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
+  const [exportOpen, setExportOpen] = useState<boolean>(false);
+  const [importOpen, setImportOpen] = useState<boolean>(false);
   // 空态区分：是否处于筛选（目录 / 搜索条件）
   const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
 
@@ -207,7 +230,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
       <DirectoryTreeLayout bizType={bizType} height="calc(100vh - 90px)">
         {(selectedDirectoryId, selectedDirectoryName) => (
           <ProTable<T>
-            className="fh-table fh-table-fit"
+            className={fitColumns ? 'fh-table fh-table-fit' : 'fh-table'}
             headerTitle={`${listTitle} (${selectedDirectoryName || '全部'})`}
             tableLayout="fixed"
             scroll={{ x: scrollX, y: 100000 }}
@@ -220,28 +243,50 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
             actionRef={actionRef}
             rowKey="id"
             search={{ labelWidth: 80 }}
-            toolBarRender={() => [
-              <Button
-                key="add"
-                type="primary"
-                onClick={() => handleAddAction(selectedDirectoryId)}
-              >
-                新建{entityLabel}
-              </Button>,
-              selectedRowsState?.length > 0 && (
-                <Popconfirm
-                  key="batchDelete"
-                  title={`确定删除选中的 ${selectedRowsState.length} 个${entityLabel}？`}
-                  onConfirm={async () => {
-                    await removeRows(selectedRowsState);
-                    setSelectedRows([]);
-                    reload();
-                  }}
-                >
-                  <Button danger>批量删除</Button>
-                </Popconfirm>
-              ),
-            ]}
+            toolBarRender={() => {
+              const actions: React.ReactNode[] = [];
+              if (canWrite) {
+                actions.push(
+                  <Button
+                    key="add"
+                    type="primary"
+                    onClick={() => handleAddAction(selectedDirectoryId)}
+                  >
+                    新建{entityLabel}
+                  </Button>,
+                );
+              }
+              if (transferAssetType && selectedRowsState?.length > 0) {
+                actions.push(
+                  <Button key="bundleExport" onClick={() => setExportOpen(true)}>
+                    批量导出
+                  </Button>,
+                );
+              }
+              if (canWrite && transferAssetType) {
+                actions.push(
+                  <Button key="bundleImport" onClick={() => setImportOpen(true)}>
+                    导入资产包
+                  </Button>,
+                );
+              }
+              if (canWrite && selectedRowsState?.length > 0) {
+                actions.push(
+                  <Popconfirm
+                    key="batchDelete"
+                    title={`确定删除选中的 ${selectedRowsState.length} 个${entityLabel}？`}
+                    onConfirm={async () => {
+                      await removeRows(selectedRowsState);
+                      setSelectedRows([]);
+                      reload();
+                    }}
+                  >
+                    <Button danger>批量删除</Button>
+                  </Popconfirm>,
+                );
+              }
+              return actions;
+            }}
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}) => {
               setEmptyFiltered(isFiltered(params as Record<string, any>));
@@ -280,13 +325,13 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
                   entityName={entityLabel}
                   filtered={emptyFiltered}
                   hint={emptyHint}
-                  onCreate={() => handleAddAction(selectedDirectoryId)}
+                  onCreate={canWrite ? () => handleAddAction(selectedDirectoryId) : undefined}
                 />
               ),
             }}
-            rowSelection={{
+            rowSelection={canWrite ? {
               onChange: (_, selectedRows) => setSelectedRows(selectedRows),
-            }}
+            } : undefined}
           />
         )}
       </DirectoryTreeLayout>
@@ -307,6 +352,22 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
             reload();
           },
         })}
+
+      {transferAssetType && (
+        <>
+          <AssetExportModal
+            open={exportOpen}
+            assetType={transferAssetType}
+            ids={selectedRowsState.map((r) => r.id).filter(Boolean)}
+            onCancel={() => setExportOpen(false)}
+          />
+          <AssetImportModal
+            open={importOpen}
+            onCancel={() => setImportOpen(false)}
+            onSuccess={reload}
+          />
+        </>
+      )}
 
       {children}
     </PageContainer>

@@ -12,6 +12,8 @@ public interface FlowRegressionSuiteRepository
 
     List<FlowRegressionSuiteDO> findByAssetTypeAndAssetIdAndEnabled(String assetType, String assetId, Integer enabled);
 
+    List<FlowRegressionSuiteDO> findByAssetTypeAndAssetId(String assetType, String assetId);
+
     Optional<FlowRegressionSuiteDO> findFirstByAssetTypeAndAssetIdOrderByUpdateTimeDesc(String assetType, String assetId);
 
     long countByAssetTypeAndAssetId(String assetType, String assetId);

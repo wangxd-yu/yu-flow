@@ -14,9 +14,11 @@ import org.yu.flow.module.oss.service.OssConnectionService;
 import org.yu.flow.module.rbac.support.RequirePerm;
 
 import java.util.List;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @Slf4j
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss/connections")
 @RequirePerm({"flow:oss:view", "flow:oss:write"})

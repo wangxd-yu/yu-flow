@@ -15,12 +15,6 @@ public class RegularSqlParseUtil {
 
     private static final String DB_TYPE = "mysql"; // 按需调整
 
-    /** 安全的列名正则：仅允许字母、数字、下划线以及用于表别名的点号 */
-    private static final Pattern SAFE_COLUMN_PATTERN = Pattern.compile("^[a-zA-Z0-9_\\.]+$");
-
-
-
-
     /**
      * 提取 SQL 中的所有 WITH 子句
      */
@@ -54,7 +48,10 @@ public class RegularSqlParseUtil {
     }
 
     /**
-     * 构建 ORDER BY 子句
+     * 构建 ORDER BY 子句。
+     *
+     * <p>排序字段统一经 {@link SqlIdentifierSanitizer} 白名单校验后按段加反引号拼接，
+     * 禁止将未校验的用户输入直接拼入 SQL。</p>
      *
      * @param sort 排序信息
      * @return 构建好的 ORDER BY 子句
@@ -65,15 +62,14 @@ public class RegularSqlParseUtil {
             if (orderByClause.length() > 0) {
                 orderByClause.append(", ");
             }
-            // SQL 注入防护：严格校验排序字段名只能包含字母、数字、下划线
             String property = order.getProperty();
-            if (!SAFE_COLUMN_PATTERN.matcher(property).matches()) {
+            try {
+                orderByClause.append(SqlIdentifierSanitizer.quoteMysql(property));
+            } catch (IllegalArgumentException e) {
                 throw new FlowException("SQL_INJECTION_BLOCK",
                         "排序字段名包含非法字符，已拦截。字段: " + property);
             }
-            orderByClause.append("`").append(property).append("`") // 排序字段
-                    .append(" ")
-                    .append(order.getDirection().name()); // 排序方向（ASC/DESC）
+            orderByClause.append(" ").append(order.getDirection().name());
         }
         return orderByClause.toString();
     }

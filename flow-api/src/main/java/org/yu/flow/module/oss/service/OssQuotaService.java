@@ -10,11 +10,12 @@ public interface OssQuotaService {
     /**
      * 上传前校验配额（文件数 + 容量）。
      *
-     * @param profile          上传场景
-     * @param uploadedBy       上传者 ID（可空）
-     * @param additionalBytes  本次新增字节数
-     * @param additionalFiles  本次新增文件数
+     * @param profile             上传场景
+     * @param uploadedBy          上传者 ID（可空）
+     * @param uploadedByUserType  上传者 userType（可空；与 ID 一起构成用户配额键）
+     * @param additionalBytes     本次新增字节数
+     * @param additionalFiles     本次新增文件数
      */
-    void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy,
+    void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy, String uploadedByUserType,
                            long additionalBytes, int additionalFiles);
 }

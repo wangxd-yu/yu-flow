@@ -46,6 +46,7 @@ public final class UnpublishedChangeDetector {
                     || differs(api.getCustomPageWrapper(), snap, "customPageWrapper")
                     || differs(api.getCustomFailWrapper(), snap, "customFailWrapper")
                     || differs(api.getSecurityConfig(), snap, "securityConfig")
+                    || differs(api.getPrivacyConfig(), snap, "privacyConfig")
                     || differsInt(api.getLevel(), snap, "level");
             // logEnabled / cacheConfig 视为运营配置，不计入「待更新发布」
         } catch (Exception e) {

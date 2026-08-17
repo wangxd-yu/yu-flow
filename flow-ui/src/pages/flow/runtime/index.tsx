@@ -156,30 +156,63 @@ const RuntimeCenterPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'rank' | 'anomalies'>('rank');
   const [rank, setRank] = useState<AssetMetricsRankItem[]>([]);
   const [anomalies, setAnomalies] = useState<AssetMetricsRankItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [rankLoading, setRankLoading] = useState(false);
+  const [anomaliesLoading, setAnomaliesLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState<number>(0);
-  const [lastUpdated, setLastUpdated] = useState<number>(0);
+  const [lastUpdated, setLastUpdated] = useState({ rank: 0, anomalies: 0 });
+  const rankRequestSeq = useRef(0);
+  const anomaliesRequestSeq = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadRank = useCallback(async () => {
+    const requestId = ++rankRequestSeq.current;
+    setRankLoading(true);
     try {
-      const [r, a] = await Promise.all([
-        getMetricsRank({ assetType, window, orderBy, limit: 30 }),
-        getMetricsAnomalies({ window, limit: 30 }),
-      ]);
-      setRank(r || []);
-      setAnomalies(a || []);
-      setLastUpdated(Date.now());
+      const result = await getMetricsRank({ assetType, window, orderBy, limit: 30 });
+      if (requestId !== rankRequestSeq.current) return;
+      setRank(result || []);
+      setLastUpdated((prev) => ({ ...prev, rank: Date.now() }));
     } catch (e: any) {
-      message.error(e?.message || '加载运行中心失败');
+      if (requestId === rankRequestSeq.current) {
+        message.error(e?.message || '加载资产排行失败');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === rankRequestSeq.current) {
+        setRankLoading(false);
+      }
     }
   }, [assetType, window, orderBy]);
 
+  const loadAnomalies = useCallback(async () => {
+    const requestId = ++anomaliesRequestSeq.current;
+    setAnomaliesLoading(true);
+    try {
+      const result = await getMetricsAnomalies({ window, limit: 30 });
+      if (requestId !== anomaliesRequestSeq.current) return;
+      setAnomalies(result || []);
+      setLastUpdated((prev) => ({ ...prev, anomalies: Date.now() }));
+    } catch (e: any) {
+      if (requestId === anomaliesRequestSeq.current) {
+        message.error(e?.message || '加载异常资产失败');
+      }
+    } finally {
+      if (requestId === anomaliesRequestSeq.current) {
+        setAnomaliesLoading(false);
+      }
+    }
+  }, [window]);
+
   useEffect(() => {
-    load();
-  }, [load]);
+    if (activeTab === 'rank') loadRank();
+  }, [activeTab, loadRank]);
+
+  useEffect(() => {
+    loadAnomalies();
+  }, [loadAnomalies]);
+
+  const load = useCallback(
+    () => (activeTab === 'rank' ? loadRank() : loadAnomalies()),
+    [activeTab, loadAnomalies, loadRank],
+  );
 
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -190,6 +223,8 @@ const RuntimeCenterPage: React.FC = () => {
   }, [autoRefresh]);
 
   const dataset = activeTab === 'rank' ? rank : anomalies;
+  const loading = activeTab === 'rank' ? rankLoading : anomaliesLoading;
+  const activeUpdatedAt = lastUpdated[activeTab];
 
   const kpi = useMemo(() => {
     const totalCalls = dataset.reduce((s, r) => s + (r.totalCalls || 0), 0);
@@ -217,7 +252,7 @@ const RuntimeCenterPage: React.FC = () => {
       icon: <AppstoreOutlined />,
       tone: 'slate',
       value: kpi.assets,
-      label: activeTab === 'rank' ? '监控资产' : '异常资产',
+      label: activeTab === 'rank' ? '上榜资产' : '异常样本',
       hint: `近 ${window}`,
     },
     {
@@ -225,7 +260,7 @@ const RuntimeCenterPage: React.FC = () => {
       icon: <ThunderboltOutlined />,
       tone: 'cyan',
       value: fmtNum(kpi.totalCalls),
-      label: '总调用量',
+      label: '所列调用量',
       hint:
         kpi.totalCalls > 0
           ? `成功 ${fmtNum(kpi.totalCalls - dataset.reduce((s, r) => s + (r.failCount || 0), 0))}`
@@ -236,7 +271,7 @@ const RuntimeCenterPage: React.FC = () => {
       icon: <PercentageOutlined />,
       tone: kpi.errorRate > 0 ? 'red' : 'green',
       value: fmtPct(kpi.errorRate),
-      label: '整体错误率',
+      label: '所列错误率',
       hint: kpi.errorRate > 0 ? '需关注' : '运行平稳',
     },
     {
@@ -273,6 +308,7 @@ const RuntimeCenterPage: React.FC = () => {
       {
         title: '资产',
         dataIndex: 'assetName',
+        width: 280,
         render: (_, r) => {
           const showId = !!r.assetId && r.assetName && r.assetName !== r.assetId;
           return (
@@ -400,7 +436,7 @@ const RuntimeCenterPage: React.FC = () => {
     loading,
     columns,
     tableLayout: 'fixed' as const,
-    scroll: { y: 100000 },
+    scroll: { x: activeTab === 'rank' ? 1128 : 1076, y: 100000 },
     className: 'fh-table runtime-table',
     size: 'middle' as const,
     rowClassName: (r: AssetMetricsRankItem) =>
@@ -465,7 +501,7 @@ const RuntimeCenterPage: React.FC = () => {
           )}
 
           <div className="runtime-meta">
-            <span className="runtime-updated">更新于 {fmtClock(lastUpdated)}</span>
+            <span className="runtime-updated">更新于 {fmtClock(activeUpdatedAt)}</span>
             <SoftSegmented
               ariaLabel="自动刷新"
               value={autoRefresh}
@@ -476,6 +512,7 @@ const RuntimeCenterPage: React.FC = () => {
               <button
                 type="button"
                 className="rt-icon-btn"
+                disabled={loading}
                 onClick={() => load()}
                 aria-label="刷新"
               >

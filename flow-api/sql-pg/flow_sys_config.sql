@@ -1,7 +1,7 @@
 -- Table: flow_sys_config
 -- 系统配置表 (System Configuration)
 CREATE TABLE IF NOT EXISTS flow_sys_config (
-  id bigserial,
+  id varchar(32) NOT NULL,
   config_key varchar(100) NOT NULL,
   config_value text,
   value_type varchar(20) NOT NULL DEFAULT 'STRING',
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS flow_sys_config (
   CONSTRAINT uk_flow_sys_config_config_key UNIQUE (config_key)
 );
 COMMENT ON TABLE flow_sys_config IS '系统配置表 (System Configuration)';
-COMMENT ON COLUMN flow_sys_config.id IS '主键ID';
+COMMENT ON COLUMN flow_sys_config.id IS '雪花ID';
 COMMENT ON COLUMN flow_sys_config.config_key IS '配置键 (唯一标识，如: SYSTEM_PREFIX, TOKEN_EXPIRE)';
 COMMENT ON COLUMN flow_sys_config.config_value IS '配置值 (支持字符串、数字、JSON 等格式)';
 COMMENT ON COLUMN flow_sys_config.value_type IS '值类型 (STRING / NUMBER / BOOLEAN / JSON)';

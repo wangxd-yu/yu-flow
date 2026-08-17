@@ -26,11 +26,11 @@ import {
   republishMqTask,
   rollbackMqTask,
   getMqTask,
-  simulateMqTask,
   queryMqTaskLogPage,
   getMqTaskLog,
   clearMqTaskLog,
 } from '@/services/flow/mqTask';
+import MqSimulateModal from './MqSimulateModal';
 import { queryMqConnectionOptions, queryMqTopics } from '@/services/flow/mqConnection';
 import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
 import {
@@ -78,23 +78,12 @@ function unwrapDebugTrace(result: any) {
 
 // ── 执行日志面板（编辑态 Tab） ──
 
-function parseHeadersJson(raw?: string): Record<string, any> | undefined {
-  if (!raw?.trim()) return undefined;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// ── 执行日志面板（编辑态 Tab） ──
-
 const MqTaskLogPanel: React.FC<{
   taskId: string;
   taskName?: string;
   dslContent?: string;
-}> = ({ taskId, taskName, dslContent }) => {
+  canWrite?: boolean;
+}> = ({ taskId, taskName, dslContent, canWrite = true }) => {
   const actionRef = useRef<ActionType>();
   const [traceOpen, setTraceOpen] = useState(false);
   const [trace, setTrace] = useState<any>(null);
@@ -102,6 +91,7 @@ const MqTaskLogPanel: React.FC<{
   const [rawDrawerVisible, setRawDrawerVisible] = useState(false);
   const [rawLogDetail, setRawLogDetail] = useState<FlowMqTaskLog | null>(null);
   const [rawActiveTab, setRawActiveTab] = useState<'body' | 'headers'>('body');
+  const [simulateSeed, setSimulateSeed] = useState<{ body?: string; headers?: string } | null>(null);
 
   const handleViewTrace = async (record: FlowMqTaskLog) => {
     if (!record.hasTrace) {
@@ -137,6 +127,7 @@ const MqTaskLogPanel: React.FC<{
     }
   };
 
+  /** 用历史报文预填模拟：先确认任务已发布且该条日志留存了报文 */
   const handleSimulateFromLog = async (record: FlowMqTaskLog) => {
     const targetTaskId = record.taskId || taskId;
     if (!targetTaskId) {
@@ -158,61 +149,9 @@ const MqTaskLogPanel: React.FC<{
         message.warning('该条日志未留存原始报文，无法预填模拟');
         return;
       }
-      let simMessage = log.messageBody;
-      let simHeadersText = log.messageHeaders || '';
-      Modal.confirm({
-        title: `用此报文模拟 - ${task.name || taskName || ''}`,
-        width: 640,
-        content: (
-          <div style={{ marginTop: 12 }}>
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message="将按已发布版本异步执行一次，结果写入 MQ 日志（触发类型=手动模拟）"
-            />
-            <div style={{ marginBottom: 8, color: 'rgba(0,0,0,0.65)' }}>消息体</div>
-            <Input.TextArea
-              rows={6}
-              defaultValue={simMessage}
-              onChange={(e) => {
-                simMessage = e.target.value;
-              }}
-            />
-            <div style={{ margin: '12px 0 8px', color: 'rgba(0,0,0,0.65)' }}>
-              消息头 JSON（可选）
-            </div>
-            <Input.TextArea
-              rows={3}
-              defaultValue={simHeadersText}
-              placeholder='例如 {"x-trace-id":"abc"}'
-              onChange={(e) => {
-                simHeadersText = e.target.value;
-              }}
-            />
-          </div>
-        ),
-        okText: '触发模拟',
-        onOk: async () => {
-          let headers: Record<string, any> | undefined;
-          if (simHeadersText.trim()) {
-            headers = parseHeadersJson(simHeadersText);
-            if (!headers) {
-              message.error('消息头不是合法 JSON 对象');
-              throw new Error('invalid headers');
-            }
-          } else {
-            headers = parseHeadersJson(log.messageHeaders);
-          }
-          await simulateMqTask(targetTaskId, simMessage, headers);
-          message.success('已触发模拟，请稍后刷新日志查看结果');
-          actionRef.current?.reload();
-        },
-      });
+      setSimulateSeed({ body: log.messageBody, headers: log.messageHeaders || '' });
     } catch (e: any) {
-      if (e?.message !== 'invalid headers') {
-        message.error(e?.message || '打开模拟失败');
-      }
+      message.error(e?.message || '打开模拟失败');
     }
   };
 
@@ -220,21 +159,46 @@ const MqTaskLogPanel: React.FC<{
     {
       title: '触发类型',
       dataIndex: 'triggerType',
-      width: 90,
+      width: 100,
+      valueEnum: {
+        MQ: { text: '消息触发' },
+        MANUAL: { text: '手动模拟' },
+      },
       render: (_, r) =>
         r.triggerType === 'MANUAL' ? <Tag color="blue">手动模拟</Tag> : <Tag color="purple">消息触发</Tag>,
     },
-    { title: 'Topic', dataIndex: 'topic', width: 160, ellipsis: true },
-    { title: '消息ID', dataIndex: 'messageId', width: 180, ellipsis: true, copyable: true },
+    {
+      title: 'Topic',
+      dataIndex: 'topic',
+      width: 160,
+      ellipsis: true,
+      fieldProps: { placeholder: '精确匹配' },
+    },
+    {
+      title: '消息ID',
+      dataIndex: 'messageId',
+      width: 180,
+      ellipsis: true,
+      copyable: true,
+      fieldProps: { placeholder: '精确匹配' },
+    },
     {
       title: '状态',
       dataIndex: 'status',
       width: 90,
+      valueEnum: {
+        SUCCESS: { text: '成功', status: 'Success' },
+        FAILED: { text: '失败', status: 'Error' },
+        RUNNING: { text: '运行中', status: 'Processing' },
+        SKIPPED: { text: '已跳过', status: 'Default' },
+      },
       render: (_, r) =>
         r.status === 'SUCCESS' ? (
           <Tag color="success">成功</Tag>
         ) : r.status === 'RUNNING' ? (
           <Tag color="processing">运行中</Tag>
+        ) : r.status === 'SKIPPED' ? (
+          <Tag>已跳过</Tag>
         ) : (
           <Tooltip title={r.errorMsg}>
             <Tag color="error">失败</Tag>
@@ -245,66 +209,84 @@ const MqTaskLogPanel: React.FC<{
       title: '耗时',
       dataIndex: 'costTimeMs',
       width: 90,
+      search: false,
       render: (_, r) => (r.costTimeMs != null ? `${r.costTimeMs} ms` : '-'),
     },
-    { title: '执行时间', dataIndex: 'createTime', width: 170 },
+    {
+      title: '执行时间',
+      dataIndex: 'createTime',
+      width: 170,
+      valueType: 'dateTimeRange',
+      fieldProps: { placeholder: ['开始时间', '结束时间'] },
+      search: { transform: (value) => ({ createTime: value }) },
+      render: (_, r) => r.createTime || '-',
+    },
     {
       title: '操作',
       valueType: 'option',
-      width: 260,
+      width: canWrite ? 260 : 160,
       fixed: 'right',
-      render: (_, r) => [
-        <Tooltip
-          key="raw"
-          title={
-            r.hasMessageBody === false
-              ? '该条日志未留存原始报文（日志策略关闭、消息体为空，或升级前 ERROR_ONLY 未落库）'
-              : undefined
-          }
-        >
-          <span>
-            <Button
-              type="link"
-              size="small"
-              icon={<FileTextOutlined />}
-              onClick={() => handleViewRawMessage(r)}
-              disabled={r.hasMessageBody === false}
+      render: (_, r) => {
+        const actions = [
+          <Tooltip
+            key="raw"
+            title={
+              r.hasMessageBody === false
+                ? '该条日志未留存原始报文（日志策略关闭、消息体为空，或升级前 ERROR_ONLY 未落库）'
+                : undefined
+            }
+          >
+            <span>
+              <Button
+                type="link"
+                size="small"
+                icon={<FileTextOutlined />}
+                onClick={() => handleViewRawMessage(r)}
+                disabled={r.hasMessageBody === false}
+              >
+                原始报文
+              </Button>
+            </span>
+          </Tooltip>,
+        ];
+        if (canWrite) {
+          actions.push(
+            <Tooltip
+              key="sim"
+              title={
+                r.hasMessageBody === false
+                  ? '无原始报文，无法预填模拟'
+                  : '用此报文按已发布版本模拟触发'
+              }
             >
-              原始报文
-            </Button>
-          </span>
-        </Tooltip>,
-        <Tooltip
-          key="sim"
-          title={
-            r.hasMessageBody === false
-              ? '无原始报文，无法预填模拟'
-              : '用此报文按已发布版本模拟触发'
-          }
-        >
-          <span>
-            <Button
-              type="link"
-              size="small"
-              icon={<PlayCircleOutlined />}
-              onClick={() => handleSimulateFromLog(r)}
-              disabled={r.hasMessageBody === false}
-            >
-              模拟
-            </Button>
-          </span>
-        </Tooltip>,
-        <Button
-          key="view"
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => handleViewTrace(r)}
-          disabled={!r.hasTrace}
-        >
-          查看快照
-        </Button>,
-      ],
+              <span>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<PlayCircleOutlined />}
+                  onClick={() => handleSimulateFromLog(r)}
+                  disabled={r.hasMessageBody === false}
+                >
+                  模拟
+                </Button>
+              </span>
+            </Tooltip>,
+          );
+        }
+        actions.push(
+          <Button
+            key="view"
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => handleViewTrace(r)}
+            disabled={!r.hasTrace}
+          >
+            查看快照
+          </Button>,
+        );
+        return actions;
+      },
     },
   ];
 
@@ -314,32 +296,44 @@ const MqTaskLogPanel: React.FC<{
         headerTitle="执行日志"
         actionRef={actionRef}
         rowKey="id"
-        search={false}
+        search={{ labelWidth: 'auto' }}
         options={{ reload: true, density: false, setting: false }}
         pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-        toolBarRender={() => [
-          <Popconfirm
-            key="clear"
-            title="确定清空该任务的全部执行日志？"
-            onConfirm={async () => {
-              try {
-                await clearMqTaskLog(taskId);
-                message.success('已清空日志');
-                actionRef.current?.reload();
-              } catch (e: any) {
-                message.error(e?.message || '清空失败');
-              }
-            }}
-          >
-            <Button danger icon={<DeleteOutlined />}>
-              清空日志
-            </Button>
-          </Popconfirm>,
-        ]}
+        scroll={{ x: 1060 }}
+        toolBarRender={() =>
+          canWrite
+            ? [
+                <Popconfirm
+                  key="clear"
+                  title="确定清空该任务的全部执行日志？"
+                  onConfirm={async () => {
+                    try {
+                      await clearMqTaskLog(taskId);
+                      message.success('已清空日志');
+                      actionRef.current?.reload();
+                    } catch (e: any) {
+                      message.error(e?.message || '清空失败');
+                    }
+                  }}
+                >
+                  <Button danger icon={<DeleteOutlined />}>
+                    清空日志
+                  </Button>
+                </Popconfirm>,
+              ]
+            : []
+        }
         request={async (params = {}) => {
-          const { current, pageSize } = params as any;
+          const { current, pageSize, createTime, ...rest } = params as any;
+          const [startTime, endTime] = Array.isArray(createTime) ? createTime : [];
           const result = await queryMqTaskLogPage({
             taskId,
+            topic: rest.topic,
+            messageId: rest.messageId,
+            status: rest.status,
+            triggerType: rest.triggerType,
+            startTime,
+            endTime,
             page: (current || 1) - 1,
             size: pageSize || 20,
           });
@@ -452,6 +446,16 @@ const MqTaskLogPanel: React.FC<{
           ) : null}
         </Drawer>
       )}
+
+      <MqSimulateModal
+        open={!!simulateSeed}
+        taskId={taskId}
+        taskName={taskName}
+        defaultBody={simulateSeed?.body}
+        defaultHeaders={simulateSeed?.headers}
+        onClose={() => setSimulateSeed(null)}
+        onDone={() => actionRef.current?.reload()}
+      />
     </div>
   );
 };
@@ -468,10 +472,13 @@ export interface MqTaskFormProps {
   onPublished?: (detail: FlowMqTask) => void;
   /** 打开时默认 Tab（如运行中心深链） */
   initialTab?: string;
+  /** 无写权限时隐藏保存 / 发布 / 下线等写操作（后端 @RequirePerm 兜底） */
+  canWrite?: boolean;
 }
 
 const MqTaskForm: React.FC<MqTaskFormProps> = ({
   visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
+  canWrite = true,
 }) => {
   const [form] = Form.useForm();
   const globalLogMode = useGlobalLogMode();
@@ -509,6 +516,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
   const [debugReplayOpen, setDebugReplayOpen] = useState(false);
   const [debugReplayTrace, setDebugReplayTrace] = useState<any>(null);
   const [debugModalOpen, setDebugModalOpen] = useState(false);
+  const [simulateOpen, setSimulateOpen] = useState(false);
   const [debugTopic, setDebugTopic] = useState('');
   const [debugBody, setDebugBody] = useState('{\n  "demo": true\n}');
   const [debugHeadersJson, setDebugHeadersJson] = useState('{}');
@@ -783,37 +791,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
       message.warning('仅已发布任务可模拟触发');
       return;
     }
-    let simMessage = '{\n  "demo": true\n}';
-    Modal.confirm({
-      title: '模拟触发一条消息',
-      width: 520,
-      content: (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 8 }}>
-            按已发布版本异步执行一次，结果在「执行日志」查看（触发类型 = 手动）。
-          </div>
-          <Input.TextArea
-            rows={6}
-            defaultValue={simMessage}
-            placeholder="模拟消息体（JSON 或纯文本，原样作为 $.mq.message 注入）"
-            style={{ fontFamily: 'monospace', fontSize: 13 }}
-            onChange={(e) => {
-              simMessage = e.target.value;
-            }}
-          />
-        </div>
-      ),
-      okText: '触发',
-      onOk: async () => {
-        try {
-          await simulateMqTask(initialValues.id!, simMessage);
-          message.success('已触发执行，请稍后在执行日志查看');
-        } catch (e: any) {
-          message.error(e?.message || '触发失败');
-          throw e;
-        }
-      },
-    });
+    setSimulateOpen(true);
   }, [initialValues.id, publishStatus]);
 
   const headerTitle = (
@@ -841,7 +819,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
         </Button>
       </Tooltip>
 
-      {isEdit && publishStatus === 1 && (
+      {canWrite && isEdit && publishStatus === 1 && (
         <Tooltip title="按已发布版本模拟一条消息触发（异步，结果在执行日志）">
           <Button icon={<SendOutlined />} onClick={handleSimulate}>
             模拟触发
@@ -849,7 +827,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
         </Tooltip>
       )}
 
-      {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
+      {canWrite && isEdit && publishStatus === 1 && hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
           <Button danger icon={<RollbackOutlined />} onClick={handleRollback}>
             回滚草稿
@@ -857,21 +835,23 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
         </Tooltip>
       )}
 
-      {isEdit && publishStatus === 1 && (
+      {canWrite && isEdit && publishStatus === 1 && (
         <Button danger icon={<CloudDownloadOutlined />} onClick={handleUnpublish}>
           下线
         </Button>
       )}
 
       <Button icon={<CloseOutlined />} onClick={onCancel}>
-        取消
+        {canWrite ? '取消' : '关闭'}
       </Button>
 
-      <Button icon={<SaveOutlined />} onClick={handleSave}>
-        保存草稿
-      </Button>
+      {canWrite && (
+        <Button icon={<SaveOutlined />} onClick={handleSave}>
+          保存草稿
+        </Button>
+      )}
 
-      {isEdit && (
+      {canWrite && isEdit && (
         <Button
           type="primary"
           icon={<CloudUploadOutlined />}
@@ -1166,6 +1146,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
           taskId={initialValues.id!}
           taskName={name || initialValues.name}
           dslContent={dslContent}
+          canWrite={canWrite}
         />
       );
     }
@@ -1264,6 +1245,13 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
           </Form.Item>
         </Form>
       </Modal>
+
+      <MqSimulateModal
+        open={simulateOpen}
+        taskId={initialValues.id}
+        taskName={name || initialValues.name}
+        onClose={() => setSimulateOpen(false)}
+      />
 
       {debugReplayOpen && (
         <Drawer

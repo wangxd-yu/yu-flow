@@ -25,6 +25,8 @@ import java.time.LocalDateTime;
 public class OssObjectDO implements Serializable {
 
     public static final String STATUS_ACTIVE = "ACTIVE";
+    /** 预签名直传已签发、待 complete 确认 */
+    public static final String STATUS_PENDING = "PENDING";
     public static final String STATUS_DELETED = "DELETED";
 
     public static final String VISIBILITY_PUBLIC = "PUBLIC";
@@ -75,6 +77,10 @@ public class OssObjectDO implements Serializable {
     @Column(name = "uploaded_by", length = 64)
     private String uploadedBy;
 
+    /** 与 {@link org.yu.flow.module.host.FlowHostPrincipal#getUserType()} 相同：ADMIN / END_USER / OPEN_APP 等 */
+    @Column(name = "uploaded_by_user_type", length = 32)
+    private String uploadedByUserType;
+
     @Column(name = "uploaded_by_name", length = 128)
     private String uploadedByName;
 
@@ -88,7 +94,7 @@ public class OssObjectDO implements Serializable {
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
-    @Column(name = "object_purged", columnDefinition = "tinyint(1) default 0")
+    @Column(name = "object_purged", nullable = false)
     private Boolean objectPurged;
 
     @Column(name = "thumb_status", length = 16, columnDefinition = "varchar(16) default 'NONE'")

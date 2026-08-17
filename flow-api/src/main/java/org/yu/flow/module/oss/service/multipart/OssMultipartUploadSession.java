@@ -20,7 +20,11 @@ public class OssMultipartUploadSession {
     private String bucket;
     private String objectKey;
     private String profileCode;
+    /** 创建会话的真实主体，与管理员代传的 uploadedBy 分离。 */
+    private String ownerId;
+    private String ownerAuthChannel;
     private String uploadedBy;
+    private String uploadedByUserType;
     private String uploadedByName;
     private String deptId;
     private String contentType;

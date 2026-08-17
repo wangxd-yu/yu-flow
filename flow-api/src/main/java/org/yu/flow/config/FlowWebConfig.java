@@ -46,7 +46,20 @@ public class FlowWebConfig implements WebMvcConfigurer {
         // 拦截所有 /flow-ui/** 路径，FlowUiInterceptor 内部会区分
         // 对外发布页面（preview/designer → 直接放行）和管理页面（检查 UI 开关）
         registry.addInterceptor(flowUiInterceptor)
-                .addPathPatterns("/flow-ui/**");
+                .addPathPatterns("/flow-ui/**")
+                .excludePathPatterns(
+                        "/flow-ui/*.js",
+                        "/flow-ui/*.css",
+                        "/flow-ui/*.map",
+                        "/flow-ui/*.svg",
+                        "/flow-ui/*.png",
+                        "/flow-ui/*.ico",
+                        "/flow-ui/*.woff",
+                        "/flow-ui/*.woff2",
+                        "/flow-ui/**/*.js",
+                        "/flow-ui/**/*.css",
+                        "/flow-ui/**/*.map",
+                        "/flow-ui/static/**");
     }
 
     /**

@@ -2,7 +2,7 @@
 -- 资产运行计量元数据
 CREATE TABLE IF NOT EXISTS `flow_metrics_meta` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `asset_type` varchar(16) NOT NULL COMMENT 'API / TASK / SERVICE / PLATFORM',
+  `asset_type` varchar(16) NOT NULL COMMENT 'API / TASK / MQ_TASK / SERVICE / PLATFORM / SYSTEM',
   `asset_id` varchar(32) NOT NULL COMMENT '资产ID',
   `last_success_at` bigint COMMENT '最近成功 epoch ms',
   `last_fail_at` bigint COMMENT '最近业务失败 epoch ms',

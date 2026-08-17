@@ -14,6 +14,7 @@ import org.yu.flow.module.oss.service.OssObjectService;
 
 import java.lang.reflect.Field;
 import java.util.*;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 /**
  * 全局 Response 切面：在 Controller 返回 JSON 响应之前，自动递归扫描 Response 对象中的
@@ -22,6 +23,7 @@ import java.util.*;
  *
  * <p>使得宿主服务零代码侵入，无需手动调用预热接口，即可天然消除 N+1 数据库查询隐患！
  */
+@ConditionalOnOssEnabled
 @ControllerAdvice
 public class FlowOssBatchPreloadResponseBodyAdvice implements ResponseBodyAdvice<Object> {
 

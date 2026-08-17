@@ -73,6 +73,10 @@ public class SnowIdGenerator implements IdentifierGenerator {
     @SneakyThrows
     @Override
     public Serializable generate(SharedSessionContractImplementor sharedSessionContractImplementor, Object o) {
+        Serializable assigned = readAssignedId(o);
+        if (assigned != null) {
+            return assigned;
+        }
         if (Objects.isNull(snowflake)) {
             synchronized (hostAddress) {
                 if (Objects.isNull(snowflake)) {
@@ -82,6 +86,23 @@ public class SnowIdGenerator implements IdentifierGenerator {
             }
         }
         return snowflake.nextIdStr();
+    }
+
+    /** 引导/种子若已指定主键，不要再覆盖成雪花。 */
+    private static Serializable readAssignedId(Object entity) {
+        if (entity == null) {
+            return null;
+        }
+        try {
+            var method = entity.getClass().getMethod("getId");
+            Object id = method.invoke(entity);
+            if (id instanceof String s && !s.isBlank()) {
+                return s;
+            }
+        } catch (Exception ignored) {
+            // 无 getId 的实体走雪花
+        }
+        return null;
     }
 
     public static String getId() {

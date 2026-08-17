@@ -70,6 +70,11 @@
     border-color: #cbd5e1;
     color: #0f172a;
   }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
 }
 
 /* ===== KPI ===== */
@@ -333,10 +338,9 @@
   background: #f8fafc !important;
 }
 
-.runtime-pane .runtime-table.fh-table .ant-table-body,
-.runtime-pane .runtime-table.fh-table .ant-table-content {
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
+.runtime-pane .runtime-table.fh-table .ant-table-body {
+  overflow-x: auto !important;
+  overflow-y: scroll !important;
 }
 
 .runtime-pane .runtime-table.fh-table .ant-table-header {
@@ -344,7 +348,7 @@
 }
 
 .runtime-pane .runtime-table.fh-table .ant-table {
-  width: 100% !important;
+  min-width: 100% !important;
 }
 
 .runtime-pane .runtime-table.fh-table .ant-table-container::before,

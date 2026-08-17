@@ -2,8 +2,8 @@
 -- 第三方开放平台
 CREATE TABLE IF NOT EXISTS flow_open_platform (
   id varchar(32) NOT NULL,
-  name varchar(128) NOT NULL,
   code varchar(64) NOT NULL,
+  name varchar(128) NOT NULL,
   status smallint NOT NULL DEFAULT 1,
   contact varchar(128),
   remark varchar(512),
@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS flow_open_platform (
 );
 COMMENT ON TABLE flow_open_platform IS '第三方开放平台';
 COMMENT ON COLUMN flow_open_platform.id IS '雪花ID';
-COMMENT ON COLUMN flow_open_platform.name IS '平台名称';
 COMMENT ON COLUMN flow_open_platform.code IS '唯一编码';
+COMMENT ON COLUMN flow_open_platform.name IS '平台名称';
 COMMENT ON COLUMN flow_open_platform.status IS '0停用 1启用';
 COMMENT ON COLUMN flow_open_platform.contact IS '联系人';
 COMMENT ON COLUMN flow_open_platform.remark IS '备注';

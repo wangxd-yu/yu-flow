@@ -6,7 +6,9 @@ trap 'read -p "按任意键退出..."' EXIT
 
 # ==========================================
 # yu-flow 一键打包脚本 (Linux / Mac / Git Bash)
-# 功能：前端 Umi 编译 -> 复制产物到后端 -> 后端 Maven 打包 JAR
+# 功能：前端 Umi 编译 -> 复制产物到后端 -> mvn install 本机
+#       ->（默认）deploy 到本地 Nexus 私服
+# 仅本机安装、不上私服：SKIP_DEPLOY=1 ./build.sh
 # ==========================================
 
 # 切换到脚本所在目录
@@ -14,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="${SCRIPT_DIR}/flow-ui"
 BACKEND_DIR="${SCRIPT_DIR}/flow-api"
 RESOURCE_UI_DIR="${BACKEND_DIR}/src/main/resources/META-INF/resources/flow-ui"
+# build.sh 在 yu-flow/yu-flow/，deploy.sh 在仓库根 脚本/
+DEPLOY_SCRIPT="$(cd "${SCRIPT_DIR}/.." && pwd)/脚本/deploy.sh"
 
 echo -e "\n[1/4] ================== 开始构建前端 =================="
 cd "${FRONTEND_DIR}"
@@ -34,14 +38,40 @@ echo "复制新的前端资源 (dist -> flow-ui)"
 cp -R dist/* "${RESOURCE_UI_DIR}/"
 echo "资源同步完成！"
 
-echo -e "\n[3/4] ================== 开始构建后端 =================="
+echo -e "\n[3/4] ================== 安装到本机 Maven 仓库 =================="
 cd "${BACKEND_DIR}"
 
-echo "执行: mvn clean package -DskipTests"
-mvn clean package -DskipTests
-echo "后端构建成功！"
+echo "执行: mvn clean install -DskipTests -Djacoco.skip=true"
+mvn clean install -DskipTests -Djacoco.skip=true
+echo "本机 install 成功！坐标: org.yu:yu-flow-api-java17-springboot3:1.0-SNAPSHOT"
 
-echo -e "\n[4/4] ================== 打包完成 =================="
-echo "一键打包成功！最终的 JAR 文件位于:"
-echo "${BACKEND_DIR}/target/ 目录下"
+echo -e "\n[4/4] ================== 推送到 Nexus 私服 =================="
+if [ "${SKIP_DEPLOY}" = "1" ]; then
+  echo "已设置 SKIP_DEPLOY=1，跳过私服 deploy。"
+else
+  if [ ! -f "${DEPLOY_SCRIPT}" ]; then
+    echo "[ERROR] 未找到 deploy 脚本: ${DEPLOY_SCRIPT}"
+    exit 1
+  fi
+  echo "执行: ${DEPLOY_SCRIPT}"
+  # 非交互：避免 deploy.sh 末尾二次 read 卡住
+  NONINTERACTIVE=1 bash "${DEPLOY_SCRIPT}"
+  echo "私服 deploy 成功！snapshots: http://192.168.102.20:28080/repository/maven-snapshots/"
+fi
+
+echo ""
+echo "========================================"
+echo "一键构建完成"
+echo "  - 本机 JAR: ${BACKEND_DIR}/target/"
+echo "  - 本机 m2:  org.yu:yu-flow-api-java17-springboot3:1.0-SNAPSHOT"
+if [ "${SKIP_DEPLOY}" = "1" ]; then
+  echo "  - 私服:    已跳过（SKIP_DEPLOY=1）"
+else
+  echo "  - 私服:    已推送 maven-snapshots"
+fi
+echo "用法提示:"
+echo "  - 改完 UI/后端后跑本脚本 → 本机 m2 + 私服同步"
+echo "  - cloud-lowcode 若仍拿旧 SNAPSHOT：mvn -U 或清本地该坐标后再编"
+echo "  - 仅本机调试不上私服：SKIP_DEPLOY=1 ./build.sh"
+echo "========================================"
 echo ""

@@ -46,6 +46,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
 
     private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
+    /** 分页每页上限 */
+    private static final int MAX_PAGE_SIZE = 200;
+
     @Resource
     private FlowServiceFlowRepository flowServiceFlowRepository;
 
@@ -76,12 +79,19 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Override
     @Transactional
     public FlowServiceFlowDO save(FlowServiceFlowDO entity) {
+        // 请求体直接绑定实体，主键与发布态必须由服务端接管：
+        // 客户端自带 id 会让 save() 走 merge 覆盖同 ID 的存量服务（并绕过演示守卫与引用校验）；
+        // 自带 publishStatus/publishedSnapshot 则能跳过发布门禁与入口节点校验，
+        // 让任意 DSL 直接成为可被接口/任务 CALL 的已发布服务。新建一律落为「未发布草稿」。
+        entity.setId(null);
+        entity.setPublishStatus(0);
+        entity.setPublishedSnapshot(null);
+        entity.setPublishTime(null);
+        entity.setDeleted(0);
         flowDirectoryService.assertDirectoryBizType(entity.getDirectoryId(), "service");
         if (entity.getEnabled() == null) entity.setEnabled(true);
         if (entity.getLogEnabled() == null) entity.setLogEnabled(false);
         if (StrUtil.isBlank(entity.getLogMode())) entity.setLogMode("SYSTEM_DEFAULT");
-        if (entity.getPublishStatus() == null) entity.setPublishStatus(0);
-        if (entity.getDeleted() == null) entity.setDeleted(0);
         LocalDateTime now = LocalDateTime.now();
         entity.setCreateTime(now);
         entity.setUpdateTime(now);
@@ -148,10 +158,11 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
 
     @Override
     public PageBean<FlowServiceFlowDTO> findPage(FlowServiceFlowQueryDTO queryDTO) {
-        Pageable pageable = PageRequest.of(
-                queryDTO.getPage(), queryDTO.getSize(),
-                Sort.by(Sort.Direction.DESC, "createTime")
-        );
+        // 分页参数来自 query string：负页码会让 PageRequest 直接抛异常，
+        // 超大 size 会把整表连同 MEDIUMTEXT 的 DSL 一次性拉进内存
+        int pageNo = Math.max(0, queryDTO.getPage());
+        int pageSize = Math.min(Math.max(1, queryDTO.getSize()), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(pageNo, pageSize, Sort.by(Sort.Direction.DESC, "createTime"));
 
         Specification<FlowServiceFlowDO> spec = (root, cq, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -178,6 +189,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         Page<FlowServiceFlowDO> page = flowServiceFlowRepository.findAll(spec, pageable);
         List<FlowServiceFlowDTO> items = page.getContent().stream()
                 .map(FlowServiceFlowDTO::fromDO)
+                .map(FlowServiceFlowDTO::stripHeavyFields)
                 .collect(Collectors.toList());
         enrichDirectoryNames(items);
         return new PageBean<>(items, page.getNumber(), page.getSize(),
@@ -207,6 +219,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Override
     @Transactional
     public FlowServiceFlowDO updateLogEnabled(String id, boolean logEnabled) {
+        demoModeGuard.checkModifyOrDelete(id, "内部服务");
         FlowServiceFlowDO entity = require(id);
         entity.setLogEnabled(logEnabled);
         entity.setUpdateTime(LocalDateTime.now());

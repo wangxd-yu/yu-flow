@@ -26,7 +26,7 @@ import java.time.LocalDateTime;
 public class SysMacroDO {
 
     @Id
-    @Column(name = "id", nullable = false)
+    @Column(name = "id", nullable = false, length = 32)
     @GeneratedValue(generator = "snow_id")
     @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
     private String id;

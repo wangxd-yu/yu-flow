@@ -4,6 +4,18 @@
  * 历史上 `API.PageInfo` 寄生在脚手架 services/demo/typings.d.ts 中，
  * 脚手架清理后迁移至此，供 services/flow 各分页客户端使用。
  */
+
+declare module 'sm-crypto' {
+  export const sm2: {
+    doEncrypt: (msg: string, publicKey: string, cipherMode?: number) => string;
+    doDecrypt: (encryptData: string, privateKey: string, cipherMode?: number) => string;
+  };
+  export const sm4: {
+    encrypt: (msg: string, key: string, options?: Record<string, unknown>) => string;
+    decrypt: (encryptData: string, key: string, options?: Record<string, unknown>) => string;
+  };
+}
+
 declare namespace API {
   interface PageInfo<T = Record<string, any>> {
     /** 当前页码 */

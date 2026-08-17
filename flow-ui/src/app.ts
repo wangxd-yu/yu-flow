@@ -97,6 +97,7 @@ export async function getInitialState(): Promise<{
   roles?: string[];
   permissions?: string[];
   legacyAdmin?: boolean;
+  ossEnabled?: boolean;
 }> {
   if (!mayBeLoggedIn()) {
     return { name: '', isLogin: false, roles: [], permissions: [] };
@@ -114,6 +115,7 @@ export async function getInitialState(): Promise<{
     roles: me.roles,
     permissions: me.permissions,
     legacyAdmin: me.legacyAdmin,
+    ossEnabled: me.ossEnabled !== false,
   };
 }
 

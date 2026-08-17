@@ -2,8 +2,8 @@
 -- 第三方开放平台
 CREATE TABLE IF NOT EXISTS `flow_open_platform` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `name` varchar(128) NOT NULL COMMENT '平台名称',
   `code` varchar(64) NOT NULL COMMENT '唯一编码',
+  `name` varchar(128) NOT NULL COMMENT '平台名称',
   `status` tinyint NOT NULL DEFAULT 1 COMMENT '0停用 1启用',
   `contact` varchar(128) COMMENT '联系人',
   `remark` varchar(512) COMMENT '备注',

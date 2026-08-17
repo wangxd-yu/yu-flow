@@ -1,6 +1,8 @@
 package org.yu.flow.module.oss.client;
 
 import cn.hutool.core.util.StrUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.minio.MinioClient;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -10,17 +12,26 @@ import org.yu.flow.module.oss.domain.OssConnectionDO;
 import org.yu.flow.module.oss.repository.OssConnectionRepository;
 import org.yu.flow.util.AesEncryptUtil;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 /**
  * MinIO 客户端工厂（按连接 code 缓存）。
  */
 @Slf4j
+@ConditionalOnOssEnabled
 @Component
 public class MinioClientFactory {
 
-    private final ConcurrentHashMap<String, MinioClient> cache = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, MinioClient> externalCache = new ConcurrentHashMap<>();
+    /** 本地立即失效 + TTL 兜底，避免集群节点永久持有旧密钥/Endpoint。 */
+    private final Cache<String, MinioClient> cache = Caffeine.newBuilder()
+            .maximumSize(128)
+            .expireAfterWrite(60, TimeUnit.SECONDS)
+            .build();
+    private final Cache<String, MinioClient> externalCache = Caffeine.newBuilder()
+            .maximumSize(128)
+            .expireAfterWrite(60, TimeUnit.SECONDS)
+            .build();
 
     @Resource
     private OssConnectionRepository ossConnectionRepository;
@@ -32,20 +43,20 @@ public class MinioClientFactory {
         if (StrUtil.isBlank(connectionCode)) {
             throw new FlowException("OSS_CONNECTION_REQUIRED", "连接编码不能为空");
         }
-        return cache.computeIfAbsent(connectionCode.trim(), this::buildClient);
+        return cache.get(connectionCode.trim(), this::buildClient);
     }
 
     public MinioClient getExternalClient(String connectionCode) {
         if (StrUtil.isBlank(connectionCode)) {
             throw new FlowException("OSS_CONNECTION_REQUIRED", "连接编码不能为空");
         }
-        return externalCache.computeIfAbsent(connectionCode.trim(), this::buildExternalClient);
+        return externalCache.get(connectionCode.trim(), this::buildExternalClient);
     }
 
     public void invalidate(String connectionCode) {
         if (StrUtil.isNotBlank(connectionCode)) {
-            cache.remove(connectionCode.trim());
-            externalCache.remove(connectionCode.trim());
+            cache.invalidate(connectionCode.trim());
+            externalCache.invalidate(connectionCode.trim());
         }
     }
 

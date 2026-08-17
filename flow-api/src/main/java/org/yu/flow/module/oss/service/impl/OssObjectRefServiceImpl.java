@@ -16,7 +16,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
+@ConditionalOnOssEnabled
 @Service
 public class OssObjectRefServiceImpl implements OssObjectRefService {
 

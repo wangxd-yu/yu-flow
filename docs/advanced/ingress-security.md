@@ -48,6 +48,20 @@ yu:
 - `yu.flow.open.require-host-auth` / `OPEN_REQUIRE_HOST_AUTH`：仅在 **ingress 关闭** 时生效。
 - 打开 ingress 后，以 `EffectiveSecurity.authMode` 为准（`HOST` / `NONE` / `OPEN`）。
 
+## 合并顺序（含目录）
+
+```text
+接口 securityConfig 字段显式值
+  → 所属目录起沿 parent 向上（flow_directory.security_config，字段级）
+  → 全局 yu.flow.ingress / 系统配置
+```
+
+- **接口级**：写入 `flow_api_info.security_config` 并打进 `publishedSnapshot`。**改完需发布才影响线上。**
+- **目录级**：写入 `flow_directory.security_config`。对下属接口「未覆盖」的字段**即时生效**（无需重新发布接口）。存量目录未配置时行为与改前一致。
+- **path_prefix**：仅编辑期默认（新建接口）；不参与运行时入站解析，也不改写历史 path。
+
+DDL：`flow-api/sql/20260811_directory_path_prefix_security.sql`（MySQL）/ `_pg.sql`（PostgreSQL）。
+
 ## 按接口覆盖（`security_config`）
 
 接口「基本信息 → 入站防护」写入 `flow_api_info.security_config`，并打进 `publishedSnapshot`。**改完需发布才影响线上。**
@@ -58,7 +72,16 @@ yu:
   "antiReplay": null,
   "rateLimitEnabled": null,
   "rateLimitQps": null,
-  "ipAllowlist": null
+  "ipAllowlist": null,
+  "callerPolicy": {
+    "enabled": false,
+    "match": "ALL",
+    "userTypes": [],
+    "roles": [],
+    "permissions": [],
+    "deptIds": [],
+    "userIds": []
+  }
 }
 ```
 
@@ -69,6 +92,23 @@ yu:
 | `rateLimitEnabled` | `null` / `true` / `false` | `null` → 全局 |
 | `rateLimitQps` | `null` / number | 启用限流时的秒级 QPS |
 | `ipAllowlist` | `null` / `""` / `"ip,cidr"` | `null` → 全局；`""` → 明确不限制 |
+| `callerPolicy` | 见下 | 调用方策略（用户类型/角色/权限等）；默认关闭 |
+
+### 调用方策略 `callerPolicy`
+
+| 字段 | 含义 |
+|------|------|
+| `enabled` | `false`（默认）= 只做 authMode 门禁 |
+| `match` | `ALL` / `ANY`：已填写维度的组合方式 |
+| `userTypes` / `roles` / `permissions` / `deptIds` / `userIds` | 与 `FlowHostPrincipal` 匹配 |
+
+- 仅对 **HOST**（及未放开匿名时 NONE→HOST）做匹配；**OPEN** 以平台 grant 为准，忽略匹配。
+- `authMode=NONE` 且 `enabled=true` 禁止保存/发布。
+- 主体由 `FlowHostPrincipalProvider` 解析；内置 JWT 固定 `userType=ADMIN`。
+- 通过后注入流程上下文 `@AUTH`（SQL/表达式 `${@AUTH.userId}`，节点 inputs `$['@AUTH'].userId`）；失败 `403 INGRESS_CALLER_DENIED`。
+- 嵌入对接说明见管理端「集成文档 → 核心用户体系与数据隔离」。
+- 管理端用户类型等下拉优先来自可选 SPI `FlowHostIdentityCatalogProvider`；否则读「宿主机配置」里已启用且已发布的保留接口；都未对接时独立运行有前端示例（可手输码）。
+- **OSS 上传场景**复用同一 `CallerPolicy` 模型，写入 `flow_oss_upload_profile.caller_policy`（`upload` / `download` 两段）。失败码 `403 OSS_CALLER_DENIED`；AppKey 开放上传不匹配。见管理台「OSS 文件上传 API → 宿主调用方策略」。
 
 单字段优先级：**接口显式值 > 全局默认**。`ingress.enabled=false` 时强制等效 `NONE` + 无限流 + 无 IP 限制（开放入口除外）。
 
@@ -81,10 +121,11 @@ yu:
   →（可选）allow-direct-path + AppKey → 开放鉴权链路
   → ingress.enabled?
        否 → 可选 require-host-auth → 契约校验 → 执行
-       是 → IP 白名单 → authMode(NONE|HOST|OPEN) → 接口限流 → 契约校验 → 执行
+       是 → IP 白名单 → authMode(NONE|HOST|OPEN)
+            →（HOST）解析 Principal + callerPolicy → 接口限流 → 契约校验 → 执行
 ```
 
-错误响应与开放平台一致：HTTP 状态码 + JSON `errorCode` / `msg`（前缀 `INGRESS_*`，如 `INGRESS_RATE_LIMITED`、`INGRESS_HOST_AUTH_REQUIRED`）。
+错误响应与开放平台一致：HTTP 状态码 + JSON `errorCode` / `msg`（前缀 `INGRESS_*`，如 `INGRESS_RATE_LIMITED`、`INGRESS_HOST_AUTH_REQUIRED`、`INGRESS_CALLER_DENIED`）。
 
 ## 典型组合
 
@@ -101,6 +142,9 @@ yu:
 | 真实发布 path + ingress OPEN | 复用开放凭证验签 + 接口授权；另可叠加接口级 ingress 限流 |
 | 真实发布 path + ingress HOST | `HostAuthenticationProbe`（宿主实现登录探测） |
 
-宿主侧实现 `HostAuthenticationProbe` Bean 即可对接自身 Session / JWT；未实现时默认宽松（视为已登录），生产务必自行实现。
+宿主侧实现 `HostAuthenticationProbe` Bean 即可对接自身 Session / SecurityContext。  
+**默认 Bean** 校验管理端 JWT（见 `HostAuthenticationProbeConfiguration`），并非恒为已登录；嵌入生产务必覆盖为宿主会话探测。
+
+管理端双层鉴权（宿主登录 + Flow JWT）见 [系统深度集成](./embed-integration.md)（`yu.flow.security.management-require-host-auth`）。
 
 与 **宿主 API 托管（REPLACE / WRAP）** 的关系：`authMode=HOST` 只表示「调用方需已过宿主登录」，不是「接口由宿主实现」。WRAP 在 `ingress.enabled=false` 时信任宿主鉴权、不强制管理端 JWT。详见 [宿主 API 托管](./host-api-governance.md)。

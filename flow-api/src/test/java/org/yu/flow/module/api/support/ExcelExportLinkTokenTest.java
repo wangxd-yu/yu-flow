@@ -46,6 +46,14 @@ class ExcelExportLinkTokenTest {
         assertEquals(10, parsed.request().getBodyParams().get("size"));
         // 强制按已发布快照导出，忽略草稿
         assertFalse(Boolean.TRUE.equals(parsed.request().getUseDraft()));
+        assertEquals("MASK", parsed.privacyClass());
+    }
+
+    @Test
+    void issueAndVerify_bindsRevealClass() {
+        String token = ExcelExportLinkToken.issue(props, "api-1", "admin", null, 300, "REVEAL");
+        ExcelExportLinkToken.Parsed parsed = ExcelExportLinkToken.verify(props, token);
+        assertEquals("REVEAL", parsed.privacyClass());
     }
 
     @Test

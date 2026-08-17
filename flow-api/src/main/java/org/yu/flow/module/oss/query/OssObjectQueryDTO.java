@@ -8,6 +8,7 @@ public class OssObjectQueryDTO {
     private String profileCode;
     private String originalName;
     private String uploadedBy;
+    private String uploadedByUserType;
     private String visibility;
     private String status;
     private Boolean expiredOnly;

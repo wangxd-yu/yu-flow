@@ -2,7 +2,7 @@
 -- 资产运行计量分钟汇总
 CREATE TABLE IF NOT EXISTS `flow_metrics_minute` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `asset_type` varchar(16) NOT NULL COMMENT 'API / TASK / SERVICE',
+  `asset_type` varchar(16) NOT NULL COMMENT 'API / TASK / MQ_TASK / SERVICE / PLATFORM / SYSTEM',
   `asset_id` varchar(32) NOT NULL COMMENT '资产ID',
   `trigger_type` varchar(16) NOT NULL DEFAULT '_' COMMENT '触发类型；API 固定为 _',
   `bucket_start` datetime NOT NULL COMMENT '分钟桶起点（整分）',
@@ -17,5 +17,5 @@ CREATE TABLE IF NOT EXISTS `flow_metrics_minute` (
   PRIMARY KEY (`id`),
   KEY `idx_flow_metrics_minute_bucket_start` (`bucket_start`),
   KEY `idx_flow_metrics_minute_asset_type_bucket_start` (`asset_type`, `bucket_start`),
-  UNIQUE KEY `uk_flow_metrics_minute_asset_type_asset_id_trigger_type_buck_967` (`asset_type`, `asset_id`, `trigger_type`, `bucket_start`)
+  UNIQUE KEY `uk_flow_metrics_minute_atype_aid_ttype_bstart` (`asset_type`, `asset_id`, `trigger_type`, `bucket_start`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产运行计量分钟汇总';

@@ -15,8 +15,8 @@ import java.util.regex.Pattern;
  * <h2>使用方式</h2>
  * <pre>{@code
  * // 校验排序字段（来自请求参数）
- * String safeCol = SqlIdentifierSanitizer.requireSafeIdentifier(sortField);
- * String sql = "SELECT * FROM t ORDER BY " + safeCol;
+ * String safeCol = SqlIdentifierSanitizer.requireSafeQualifiedIdentifier(sortField);
+ * String sql = "SELECT * FROM t ORDER BY " + quoteMysql(safeCol);
  *
  * // 带允许列表校验（更严格）
  * String safeCol = SqlIdentifierSanitizer.requireSafeIdentifier(
@@ -37,6 +37,9 @@ public final class SqlIdentifierSanitizer {
      * 最大标识符长度（MySQL/PG 规范上限）。
      */
     private static final int MAX_IDENTIFIER_LENGTH = 128;
+
+    /** 限定名最多段数：db.schema.table 或 alias.column */
+    private static final int MAX_QUALIFIED_PARTS = 3;
 
     private SqlIdentifierSanitizer() {
     }
@@ -64,6 +67,46 @@ public final class SqlIdentifierSanitizer {
                     "SQL 标识符包含非法字符，仅允许字母、数字和下划线：" + sanitizeForLog(identifier));
         }
         return identifier;
+    }
+
+    /**
+     * 校验限定标识符（排序字段等）：支持 {@code col} / {@code alias.col} / {@code a.b.c}。
+     * 每一段均须通过 {@link #requireSafeIdentifier(String)}。
+     */
+    public static String requireSafeQualifiedIdentifier(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            throw new IllegalArgumentException("SQL 标识符不能为空");
+        }
+        if (identifier.startsWith(".") || identifier.endsWith(".") || identifier.contains("..")) {
+            throw new IllegalArgumentException(
+                    "SQL 限定标识符格式非法：" + sanitizeForLog(identifier));
+        }
+        String[] parts = identifier.split("\\.", -1);
+        if (parts.length == 0 || parts.length > MAX_QUALIFIED_PARTS) {
+            throw new IllegalArgumentException(
+                    "SQL 限定标识符段数超限（最多 " + MAX_QUALIFIED_PARTS + " 段）："
+                            + sanitizeForLog(identifier));
+        }
+        for (String part : parts) {
+            requireSafeIdentifier(part);
+        }
+        return identifier;
+    }
+
+    /**
+     * 将已校验的限定标识符按段加 MySQL 反引号，例如 {@code u.name} → {@code `u`.`name`}。
+     */
+    public static String quoteMysql(String qualifiedIdentifier) {
+        String safe = requireSafeQualifiedIdentifier(qualifiedIdentifier);
+        String[] parts = safe.split("\\.");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                sb.append('.');
+            }
+            sb.append('`').append(parts[i]).append('`');
+        }
+        return sb.toString();
     }
 
     /**
@@ -101,6 +144,18 @@ public final class SqlIdentifierSanitizer {
                 && !identifier.isBlank()
                 && identifier.length() <= MAX_IDENTIFIER_LENGTH
                 && SAFE_IDENTIFIER.matcher(identifier).matches();
+    }
+
+    /**
+     * 判断限定标识符是否安全（不抛异常版本）。
+     */
+    public static boolean isSafeQualifiedIdentifier(String identifier) {
+        try {
+            requireSafeQualifiedIdentifier(identifier);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /**

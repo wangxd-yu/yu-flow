@@ -4,7 +4,7 @@
 # 本地快速启动（仍不推荐把真实生产口令写进文件）：
 spring:
   datasource:
-    url: jdbc:highgo://10.211.142.149:5866/flood_assist_decision?useSSL=false&useUnicode=true&characterEncoding=utf-8&serverTimezone=CTT&useOldAliasMetadataBehavior=true&defaultRowFetchSize=1000&useCursorFetch=true
+    url: jdbc:highgo://10.211.142.149:5866/flood_assist_decision?&useSSL=false&useUnicode=true&characterEncoding=utf-8&serverTimezone=CTT&useOldAliasMetadataBehavior=true&defaultRowFetchSize=1000&useCursorFetch=true
     username: sysdba
     password: 4Y#8GE8#xe
     driver-class-name: com.highgo.jdbc.Driver

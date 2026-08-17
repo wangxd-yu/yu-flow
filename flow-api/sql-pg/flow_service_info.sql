@@ -4,8 +4,9 @@ CREATE TABLE IF NOT EXISTS flow_service_info (
   id varchar(32) NOT NULL,
   name varchar(128) NOT NULL,
   directory_id varchar(32),
-  enabled smallint NOT NULL DEFAULT 1,
-  log_enabled smallint NOT NULL DEFAULT 1,
+  enabled boolean NOT NULL DEFAULT true,
+  log_enabled boolean NOT NULL DEFAULT true,
+  log_mode varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT',
   dsl_content text,
   contract text,
   publish_status smallint NOT NULL DEFAULT 0,
@@ -24,6 +25,7 @@ COMMENT ON COLUMN flow_service_info.name IS '服务名称';
 COMMENT ON COLUMN flow_service_info.directory_id IS '关联目录ID（复用全局目录树）';
 COMMENT ON COLUMN flow_service_info.enabled IS '启用状态：0=停用, 1=启用';
 COMMENT ON COLUMN flow_service_info.log_enabled IS '是否记录执行日志';
+COMMENT ON COLUMN flow_service_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT-继承全局，OFF-完全关闭，ERROR_ONLY-仅错误时记录，ALL-全量记录';
 COMMENT ON COLUMN flow_service_info.dsl_content IS '流程定义 DSL JSON（草稿）';
 COMMENT ON COLUMN flow_service_info.contract IS '服务契约 JSON：inputs/outputs/outputDescription';
 COMMENT ON COLUMN flow_service_info.publish_status IS '发布状态：0=未发布, 1=已发布';

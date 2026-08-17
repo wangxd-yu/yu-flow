@@ -1,6 +1,7 @@
 package org.yu.flow.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.ClassUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,13 @@ public class YuFlowProperties {
     private boolean enableUi = false;
 
     /**
+     * 对外公开的 context 前缀（如网关嵌入时的 {@code /ssp}）。
+     * <p>非空时优先于 servlet {@code context-path}，用于 Flow UI HTML 资源路径与前端 API 前缀。
+     * 也可由请求头 {@code X-SSP-Public-Prefix} / {@code X-Forwarded-Prefix} 覆盖。</p>
+     */
+    private String publicContextPath;
+
+    /**
      * 内置管理后台的登录用户名。
      */
     private String username = "admin";
@@ -78,6 +86,11 @@ public class YuFlowProperties {
      * 安全加密相关配置组。
      */
     private Security security = new Security();
+
+    /**
+     * 接口出站隐私拦截（库内密文解密 / 脱敏 / 传输 SM4）。
+     */
+    private Privacy privacy = new Privacy();
 
     /**
      * 演示模式安全限制配置组。
@@ -147,6 +160,14 @@ public class YuFlowProperties {
         this.enableUi = enableUi;
     }
 
+    public String getPublicContextPath() {
+        return publicContextPath;
+    }
+
+    public void setPublicContextPath(String publicContextPath) {
+        this.publicContextPath = publicContextPath;
+    }
+
     public String getUsername() {
         return username;
     }
@@ -177,6 +198,14 @@ public class YuFlowProperties {
 
     public void setSecurity(Security security) {
         this.security = security;
+    }
+
+    public Privacy getPrivacy() {
+        return privacy;
+    }
+
+    public void setPrivacy(Privacy privacy) {
+        this.privacy = privacy;
     }
 
     public Demo getDemo() {
@@ -241,6 +270,16 @@ public class YuFlowProperties {
 
     public void setOss(Oss oss) {
         this.oss = oss;
+    }
+
+    /**
+     * OSS 模块是否实际装配，与 {@code @ConditionalOnOssEnabled} 一致：
+     * {@code yu.flow.oss.enabled=true}（默认）且 classpath 存在 MinIO。
+     * 供 /auth/me 告知前端是否展示 OSS 菜单。
+     */
+    public boolean isOssModuleActive() {
+        return oss != null && oss.isEnabled()
+                && ClassUtils.isPresent("io.minio.MinioClient", YuFlowProperties.class.getClassLoader());
     }
 
     // ==================== 内部配置组：Engine ====================
@@ -567,6 +606,31 @@ public class YuFlowProperties {
          */
         private boolean allowIgnoreSsl = true;
 
+        /**
+         * 管理端 {@code /flow-api/**}（已通过管理端 JWT 后）是否再要求
+         * {@link org.yu.flow.module.open.auth.HostAuthenticationProbe} 通过。
+         * <p>默认 {@code false}；仅需加强防护时开启。开启后嵌入宿主应覆盖 Probe
+         * 读自身 Session/SecurityContext，形成「宿主已登录 + Flow JWT」双层鉴权。</p>
+         * <p>不覆盖 login / captcha / open / 签名下载。不做宿主登录后静默换发 Flow JWT。</p>
+         */
+        private boolean managementRequireHostAuth = false;
+
+        /**
+         * 登录口令 SM2 私钥（hex，D 值）。与 {@link #sm2PublicKey} 成对；
+         * 均留空则进程启动时生成临时密钥（多节点须通过环境变量固定）。
+         */
+        private String sm2PrivateKey = "";
+
+        /**
+         * 登录口令 SM2 公钥（hex，未压缩 {@code 04||X||Y}，130 字符）。
+         */
+        private String sm2PublicKey = "";
+
+        /**
+         * 登录 SM2 密文有效期（秒）。载荷内时间戳超出此窗则拒绝。
+         */
+        private long sm2PasswordTtlSeconds = 300L;
+
         public String getAesSecretKey() {
             return aesSecretKey;
         }
@@ -646,6 +710,38 @@ public class YuFlowProperties {
 
         public void setAllowIgnoreSsl(boolean allowIgnoreSsl) {
             this.allowIgnoreSsl = allowIgnoreSsl;
+        }
+
+        public boolean isManagementRequireHostAuth() {
+            return managementRequireHostAuth;
+        }
+
+        public void setManagementRequireHostAuth(boolean managementRequireHostAuth) {
+            this.managementRequireHostAuth = managementRequireHostAuth;
+        }
+
+        public String getSm2PrivateKey() {
+            return sm2PrivateKey;
+        }
+
+        public void setSm2PrivateKey(String sm2PrivateKey) {
+            this.sm2PrivateKey = sm2PrivateKey;
+        }
+
+        public String getSm2PublicKey() {
+            return sm2PublicKey;
+        }
+
+        public void setSm2PublicKey(String sm2PublicKey) {
+            this.sm2PublicKey = sm2PublicKey;
+        }
+
+        public long getSm2PasswordTtlSeconds() {
+            return sm2PasswordTtlSeconds;
+        }
+
+        public void setSm2PasswordTtlSeconds(long sm2PasswordTtlSeconds) {
+            this.sm2PasswordTtlSeconds = sm2PasswordTtlSeconds;
         }
     }
 
@@ -918,8 +1014,9 @@ public class YuFlowProperties {
         private boolean allowDirectPath = false;
 
         /**
-         * 已发布 API 且无 AppKey 时，是否强制 {@link org.yu.flow.module.open.auth.HostAuthenticationProbe}。
-         * 默认 false（宽松）；宿主误配 permitAll 时可打开并实现 Probe。
+         * 已发布 API 且无 AppKey、且 ingress 关闭时，是否强制
+         * {@link org.yu.flow.module.open.auth.HostAuthenticationProbe}。
+         * 默认 true；独立部署默认 Probe 校验管理端 JWT。
          */
         private boolean requireHostAuth = true;
 
@@ -1001,6 +1098,28 @@ public class YuFlowProperties {
 
         public void setRequireHostAuth(boolean requireHostAuth) {
             this.requireHostAuth = requireHostAuth;
+        }
+    }
+
+    // ==================== 内部配置组：Privacy ====================
+
+    /**
+     * 接口出站隐私拦截。对应 YAML：{@code yu.flow.privacy.*}
+     */
+    public static class Privacy {
+
+        /**
+         * 库内密文字段 SM4 密钥：16 字节明文或 32 位 hex。
+         * 生产通过 {@code YU_FLOW_PRIVACY_AT_REST_SM4_KEY} 注入。
+         */
+        private String atRestSm4Key = "";
+
+        public String getAtRestSm4Key() {
+            return atRestSm4Key;
+        }
+
+        public void setAtRestSm4Key(String atRestSm4Key) {
+            this.atRestSm4Key = atRestSm4Key;
         }
     }
 
@@ -1295,6 +1414,12 @@ public class YuFlowProperties {
      */
     public static class Oss {
 
+        /**
+         * 是否启用 OSS 模块自动装配。
+         * <p>依赖 {@code io.minio:minio}；宿主未引入该依赖或设为 {@code false} 时跳过 OSS Bean。</p>
+         */
+        private boolean enabled = true;
+
         /** 全局单文件上传硬顶（字节），默认 50MB */
         private long maxUploadBytes = 50L * 1024 * 1024;
 
@@ -1316,6 +1441,18 @@ public class YuFlowProperties {
         /** 分片上传会话 TTL（分钟） */
         private int multipartSessionTtlMinutes = 120;
 
+        /** 预签名直传总开关：关闭后所有场景的 presign 接口直接拒绝 */
+        private boolean presignUploadEnabled = true;
+
+        /** 预签名上传 URL 有效期（秒），默认 1 小时 */
+        private int presignPutExpireSeconds = 3600;
+
+        /** 预签名直传单文件硬顶（字节），默认 5GB；直传不经过网关，故不受 max-upload-bytes 约束 */
+        private long presignMaxUploadBytes = 5L * 1024 * 1024 * 1024;
+
+        /** 预签名待确认（PENDING）台账的存活时长（分钟），超时按放弃处理并清理 */
+        private int presignPendingTtlMinutes = 120;
+
         /** 全局用户容量配额（字节），0=关闭 */
         private long userQuotaMaxBytes = 0;
 
@@ -1324,6 +1461,14 @@ public class YuFlowProperties {
 
         /** 缩略图生成配置 */
         private Thumbnail thumbnail = new Thumbnail();
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
 
         public long getMaxUploadBytes() {
             return maxUploadBytes;
@@ -1379,6 +1524,38 @@ public class YuFlowProperties {
 
         public void setMultipartSessionTtlMinutes(int multipartSessionTtlMinutes) {
             this.multipartSessionTtlMinutes = multipartSessionTtlMinutes;
+        }
+
+        public boolean isPresignUploadEnabled() {
+            return presignUploadEnabled;
+        }
+
+        public void setPresignUploadEnabled(boolean presignUploadEnabled) {
+            this.presignUploadEnabled = presignUploadEnabled;
+        }
+
+        public int getPresignPutExpireSeconds() {
+            return presignPutExpireSeconds;
+        }
+
+        public void setPresignPutExpireSeconds(int presignPutExpireSeconds) {
+            this.presignPutExpireSeconds = presignPutExpireSeconds;
+        }
+
+        public long getPresignMaxUploadBytes() {
+            return presignMaxUploadBytes;
+        }
+
+        public void setPresignMaxUploadBytes(long presignMaxUploadBytes) {
+            this.presignMaxUploadBytes = presignMaxUploadBytes;
+        }
+
+        public int getPresignPendingTtlMinutes() {
+            return presignPendingTtlMinutes;
+        }
+
+        public void setPresignPendingTtlMinutes(int presignPendingTtlMinutes) {
+            this.presignPendingTtlMinutes = presignPendingTtlMinutes;
         }
 
         public long getUserQuotaMaxBytes() {

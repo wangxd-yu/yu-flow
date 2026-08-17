@@ -5,11 +5,16 @@ import jakarta.servlet.http.HttpServletRequest;
 /**
  * 宿主登录态探测 SPI（JAR 集成可选）。
  *
- * <p>在「已发布 API 真实 path」且未带开放平台 AppKey 时，若开启
- * {@code yu.flow.open.require-host-auth}，网关会调用本接口确认宿主已鉴权，
- * 防止宿主误将业务 URL 配成 {@code permitAll} 后被匿名访问。</p>
+ * <p>调用场景：</p>
+ * <ul>
+ *   <li>已发布业务 API：{@code yu.flow.open.require-host-auth}（ingress 关闭时）</li>
+ *   <li>管理端 {@code /flow-api/**}：{@code yu.flow.security.management-require-host-auth}
+ *       （默认 false；开启后在管理端 JWT 通过后再校验）</li>
+ * </ul>
  *
- * <p>默认实现恒为 {@code true}（宽松）；宿主可提供自己的 Bean 覆盖。</p>
+ * <p>默认 Bean 校验管理端 JWT（见 {@code HostAuthenticationProbeConfiguration}）；
+ * 嵌入宿主时请覆盖为本系统 Session / SecurityContext 探测，以形成双层鉴权。
+ * 不提供宿主登录后静默换发 Flow JWT。</p>
  */
 @FunctionalInterface
 public interface HostAuthenticationProbe {

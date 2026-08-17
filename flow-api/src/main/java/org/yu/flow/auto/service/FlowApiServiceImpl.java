@@ -161,6 +161,11 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             flowArgs.put("request", requestMap);
             flowArgs.put("pageable", allInputs.get("pageable") != null
                     ? allInputs.get("pageable") : pageable);
+            // 调用方身份：网关注入在 allInputs 上，需显式转发才能被编排读到（${@AUTH.userId}）
+            Object authCtx = allInputs.get("@AUTH");
+            if (authCtx != null) {
+                flowArgs.put("@AUTH", authCtx);
+            }
 
             boolean traceEnabled = "ALL".equals(resolveLogMode(apiDO));
             return flowEngine.execute(content, flowArgs, traceEnabled, "API",

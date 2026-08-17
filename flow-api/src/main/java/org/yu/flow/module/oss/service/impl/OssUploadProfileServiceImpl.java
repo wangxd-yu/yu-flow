@@ -24,7 +24,13 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
+import org.yu.flow.module.oss.support.OssAccessRule;
+import org.yu.flow.module.oss.support.OssAccessRules;
+import org.yu.flow.module.oss.support.OssAccessSupport;
+import org.yu.flow.module.oss.support.OssProfileCallerAuth;
 
+@ConditionalOnOssEnabled
 @Service
 public class OssUploadProfileServiceImpl implements OssUploadProfileService {
 
@@ -36,10 +42,15 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
     @Resource
     private DemoModeGuard demoModeGuard;
 
+    @Resource
+    private OssProfileCallerAuth ossProfileCallerAuth;
+
     @Override
     @Transactional
     public OssUploadProfileDO save(OssUploadProfileDO profileDO) {
         validateBasic(profileDO);
+        profileDO.setId(null);
+        profileDO.setDeleted(0);
         if (ossUploadProfileRepository.existsByCode(profileDO.getCode())) {
             throw new FlowException("OSS_PROFILE_CODE_DUPLICATED", "上传场景编码已存在: " + profileDO.getCode());
         }
@@ -60,10 +71,7 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
             existing.setName(profileDO.getName());
         }
         if (profileDO.getCode() != null && !profileDO.getCode().equals(existing.getCode())) {
-            if (ossUploadProfileRepository.existsByCode(profileDO.getCode())) {
-                throw new FlowException("OSS_PROFILE_CODE_DUPLICATED", "上传场景编码已存在: " + profileDO.getCode());
-            }
-            existing.setCode(profileDO.getCode());
+            throw new FlowException("OSS_PROFILE_CODE_IMMUTABLE", "上传场景编码创建后不可修改");
         }
         if (profileDO.getConnectionCode() != null) {
             existing.setConnectionCode(profileDO.getConnectionCode());
@@ -113,6 +121,9 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         if (profileDO.getRequireAuth() != null) {
             existing.setRequireAuth(profileDO.getRequireAuth());
         }
+        if (profileDO.getPresignUploadEnabled() != null) {
+            existing.setPresignUploadEnabled(profileDO.getPresignUploadEnabled());
+        }
         if (profileDO.getBizFieldsSchema() != null) {
             existing.setBizFieldsSchema(profileDO.getBizFieldsSchema());
         }
@@ -122,6 +133,9 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         if (profileDO.getDownloadPerm() != null) {
             existing.setDownloadPerm(profileDO.getDownloadPerm());
         }
+        if (profileDO.getCallerPolicy() != null) {
+            existing.setCallerPolicy(profileDO.getCallerPolicy());
+        }
         if (profileDO.getEnabled() != null) {
             existing.setEnabled(profileDO.getEnabled());
         }
@@ -129,6 +143,7 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
             existing.setRemark(profileDO.getRemark());
         }
         existing.setUpdateTime(LocalDateTime.now(ZONE_SH));
+        validateBasic(existing);
         return ossUploadProfileRepository.save(existing);
     }
 
@@ -209,10 +224,27 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         if (StrUtil.isBlank(profileDO.getCode())) {
             throw new FlowException("OSS_PROFILE_CODE_REQUIRED", "场景编码 code 不能为空");
         }
+        profileDO.setCode(profileDO.getCode().trim());
+        if (!profileDO.getCode().matches("^[a-z][a-z0-9_]{0,49}$")) {
+            throw new FlowException("OSS_PROFILE_CODE_INVALID",
+                    "场景编码只能包含小写字母、数字和下划线，且不能以数字开头，最长 50 位");
+        }
+        if (StrUtil.isBlank(profileDO.getName())) {
+            throw new FlowException("OSS_PROFILE_NAME_REQUIRED", "场景名称不能为空");
+        }
         if (StrUtil.isBlank(profileDO.getConnectionCode())) {
             throw new FlowException("OSS_CONNECTION_CODE_REQUIRED", "connectionCode 不能为空");
         }
         profileDO.setVisibility(normalizeVisibility(profileDO.getVisibility()));
+        if (profileDO.getMaxFilesPerRequest() != null
+                && (profileDO.getMaxFilesPerRequest() < 1 || profileDO.getMaxFilesPerRequest() > 100)) {
+            throw new FlowException("OSS_PROFILE_LIMIT_INVALID", "单次文件数必须在 1 到 100 之间");
+        }
+        if (negative(profileDO.getMaxSizeBytes()) || negative(profileDO.getQuotaMaxBytes())
+                || negative(profileDO.getQuotaMaxFiles()) || negative(profileDO.getThumbnailMaxSourceBytes())) {
+            throw new FlowException("OSS_PROFILE_LIMIT_INVALID", "容量、数量限制不能为负数");
+        }
+        ossProfileCallerAuth.validateOnSave(profileDO);
     }
 
     private void applyDefaults(OssUploadProfileDO profileDO) {
@@ -221,6 +253,9 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         }
         if (profileDO.getRequireAuth() == null) {
             profileDO.setRequireAuth(true);
+        }
+        if (profileDO.getPresignUploadEnabled() == null) {
+            profileDO.setPresignUploadEnabled(false);
         }
         if (profileDO.getMaxFilesPerRequest() == null) {
             profileDO.setMaxFilesPerRequest(1);
@@ -234,13 +269,35 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         if (StrUtil.isBlank(profileDO.getKeyPattern())) {
             profileDO.setKeyPattern("{profile}/{yyyy}/{MM}/{uuid}_{filename}");
         }
+        if (StrUtil.isBlank(profileDO.getCallerPolicy())
+                && !OssUploadProfileDO.VISIBILITY_PUBLIC.equalsIgnoreCase(
+                        StrUtil.trim(profileDO.getVisibility()))
+                && (profileDO.getRequireAuth() == null || profileDO.getRequireAuth())) {
+            OssAccessRules rules = new OssAccessRules();
+            OssAccessRule rule = new OssAccessRule();
+            rule.setName("已登录用户");
+            rule.setPrincipals(OssAccessRule.PRINCIPALS_ANY);
+            rule.setUpload(true);
+            rule.setDownloadScope(OssAccessRule.SCOPE_SELF);
+            rules.setRules(List.of(rule));
+            profileDO.setCallerPolicy(OssAccessSupport.toJson(rules));
+        }
     }
 
     private static String normalizeVisibility(String visibility) {
         if (StrUtil.isBlank(visibility)) {
             return OssUploadProfileDO.VISIBILITY_PRIVATE;
         }
-        return visibility.trim().toUpperCase();
+        String normalized = visibility.trim().toUpperCase();
+        if (!OssUploadProfileDO.VISIBILITY_PUBLIC.equals(normalized)
+                && !OssUploadProfileDO.VISIBILITY_PRIVATE.equals(normalized)) {
+            throw new FlowException("OSS_VISIBILITY_INVALID", "visibility 仅支持 PUBLIC 或 PRIVATE");
+        }
+        return normalized;
+    }
+
+    private static boolean negative(Number value) {
+        return value != null && value.doubleValue() < 0;
     }
 
     private OssUploadProfileDO requireProfile(String id) {

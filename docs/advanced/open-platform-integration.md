@@ -75,7 +75,7 @@ public interface HostAuthenticationProbe {
 }
 ```
 
-默认 Bean 恒返回 `true`（宽松）。宿主可提供自己的 Bean（例如读 SecurityContext），防止业务 URL 被误配成 `permitAll` 后匿名访问。
+默认 Bean 校验管理端 JWT（独立部署兜底）。嵌入宿主时应覆盖为读宿主 Session / SecurityContext，防止业务 URL 被误配成 `permitAll` 后匿名访问。
 
 ## 6. 文档与联调
 

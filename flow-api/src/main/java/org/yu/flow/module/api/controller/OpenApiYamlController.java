@@ -60,7 +60,9 @@ public class OpenApiYamlController {
             @RequestParam(defaultValue = "1.0.0") String version,
             HttpServletRequest request) {
 
-        List<FlowApiDO> apis = flowApiRepository.findByPublishStatus(1);
+        List<FlowApiDO> apis = flowApiRepository.findByPublishStatus(1).stream()
+                .filter(a -> !org.yu.flow.module.host.HostCatalogReserved.isReservedId(a.getId()))
+                .toList();
         String serverUrl = resolveServerUrl(request);
 
         ObjectNode spec = specBuilder.build(apis, serverUrl, title, version);
@@ -79,7 +81,9 @@ public class OpenApiYamlController {
             HttpServletRequest request,
             HttpServletResponse response) throws IOException {
 
-        List<FlowApiDO> apis = flowApiRepository.findByPublishStatus(1);
+        List<FlowApiDO> apis = flowApiRepository.findByPublishStatus(1).stream()
+                .filter(a -> !org.yu.flow.module.host.HostCatalogReserved.isReservedId(a.getId()))
+                .toList();
         String serverUrl = resolveServerUrl(request);
 
         ObjectNode spec = specBuilder.build(apis, serverUrl, title, version);

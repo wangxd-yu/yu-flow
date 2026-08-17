@@ -15,7 +15,7 @@ import java.util.Set;
 
 /**
  * Cookie 会话的 CSRF 防护（双提交）。
- * <p>若请求已带 {@code Flow-Authorization} 头，则视为头鉴权（抗 CSRF），跳过校验。</p>
+ * <p>若请求已带 {@code Flow-Authorization} 或 {@code Authorization: Bearer} 头，则视为头鉴权（抗 CSRF），跳过校验。</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
@@ -31,9 +31,13 @@ public class CsrfCookieFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        // 头鉴权：不强制 CSRF
+        // 头鉴权：不强制 CSRF（Flow 管理 JWT 或宿主 Authorization Bearer）
         String headerToken = request.getHeader("Flow-Authorization");
         if (headerToken != null && !headerToken.isBlank()) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        if (hasBearerAuthorization(request)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -64,6 +68,16 @@ public class CsrfCookieFilter extends OncePerRequestFilter {
         String ctx = request.getContextPath() == null ? "" : request.getContextPath();
         String path = uri.startsWith(ctx) ? uri.substring(ctx.length()) : uri;
         return "/flow-api/login".equals(path)
-                || "/flow-api/login/captcha".equals(path);
+                || "/flow-api/login/captcha".equals(path)
+                || "/flow-api/login/public-key".equals(path);
+    }
+
+    private static boolean hasBearerAuthorization(HttpServletRequest request) {
+        String authorization = request.getHeader("Authorization");
+        if (authorization == null || authorization.length() <= 7
+                || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            return false;
+        }
+        return !authorization.substring(7).isBlank();
     }
 }

@@ -4,7 +4,7 @@
  * - 草稿 + 发布快照；调度仅跑已发布版本
  * - 支持历史版本回退（同步草稿与线上快照）
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Drawer, message, Button, Form, Input, InputNumber, Switch, Space, Tooltip, Tag, Radio, Row, Col,
 } from 'antd';
@@ -40,6 +40,8 @@ import {
 } from '@/components/flow/ops';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import { useGlobalLogMode, getLogModeLabel } from '@/components/flow/useGlobalLogMode';
+import { confirmPublishWithGate } from '@/components/flow/release/confirmPublishWithGate';
+import { analyzeCron, formatCronTime } from '@/utils/cron';
 
 const DEFAULT_SCHEDULE_DSL = JSON.stringify({
   nodes: [
@@ -76,15 +78,17 @@ export interface TaskFormProps {
   isEdit: boolean;
   initialValues?: Partial<FlowTask>;
   onCancel: () => void;
-  onSubmit: (values: Partial<FlowTask>) => void;
+  onSubmit: (values: Partial<FlowTask>) => void | Promise<void>;
   /** 发布 / 下线 / 回滚 / 版本恢复后通知列表刷新 */
   onPublished?: (detail: FlowTask) => void;
   /** 打开时默认 Tab（如运行中心深链） */
   initialTab?: string;
+  /** 只读：无 flow:task:write 时隐藏保存 / 发布等写操作 */
+  readOnly?: boolean;
 }
 
 const TaskForm: React.FC<TaskFormProps> = ({
-  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
+  visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab, readOnly = false,
 }) => {
   const [form] = Form.useForm();
   const globalLogMode = useGlobalLogMode();
@@ -93,7 +97,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [cron, setCron] = useState<string>(initialValues.cron || '');
   const [directoryId, setDirectoryId] = useState<string | undefined>(initialValues.directoryId);
   const [enabled, setEnabled] = useState<boolean>(initialValues.enabled !== false);
-  const [logEnabled, setLogEnabled] = useState<boolean>(!!initialValues.logEnabled);
   const [logMode, setLogMode] = useState<string>(
     initialValues.logMode || (initialValues.logEnabled === false ? 'OFF' : (initialValues.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
   );
@@ -113,30 +116,40 @@ const TaskForm: React.FC<TaskFormProps> = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [debugReplayOpen, setDebugReplayOpen] = useState(false);
   const [debugReplayTrace, setDebugReplayTrace] = useState<any>(null);
+  const [debugRunning, setDebugRunning] = useState(false);
+  /** 发布 / 下线 / 回滚 / 保存进行中：锁定顶部按钮，避免重复提交 */
+  const [busy, setBusy] = useState<'' | 'save' | 'publish' | 'unpublish' | 'rollback'>('');
+
+  // 发布后壳层会用最新详情替换 initialValues，此处只在「打开」或「切换记录」时重置，
+  // 否则会把用户正在编辑的内容与当前 Tab 冲掉。
+  const initialRef = useRef(initialValues);
+  initialRef.current = initialValues;
+  const recordId = initialValues.id;
 
   useEffect(() => {
-    if (visible) {
-      setName(initialValues.name || '');
-      setCron(initialValues.cron || '');
-      setDirectoryId(initialValues.directoryId);
-      setEnabled(initialValues.enabled !== false);
-      setLogEnabled(!!initialValues.logEnabled);
-      setLogMode(
-        initialValues.logMode || (initialValues.logEnabled === false ? 'OFF' : (initialValues.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
-      );
-      setLogRetentionDays(initialValues.logRetentionDays ?? undefined);
-      setInfo(initialValues.info || '');
-      setDslContent(initialValues.dslContent || '');
-      setPublishStatus(initialValues.publishStatus === 1 ? 1 : 0);
-      setHasUnpublishedChanges(!!initialValues.hasUnpublishedChanges);
-      setSubmitAttempted(false);
-      setActiveTab(
-        initialTab && (initialTab !== 'runtime' || !!initialValues.id)
-          ? initialTab
-          : 'basic',
-      );
-    }
-  }, [visible, initialValues, initialTab]);
+    if (!visible) return;
+    const init = initialRef.current;
+    setName(init.name || '');
+    setCron(init.cron || '');
+    setDirectoryId(init.directoryId);
+    setEnabled(init.enabled !== false);
+    setLogMode(
+      init.logMode || (init.logEnabled === false ? 'OFF' : (init.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT')),
+    );
+    setLogRetentionDays(init.logRetentionDays ?? undefined);
+    setInfo(init.info || '');
+    setDslContent(init.dslContent || '');
+    setPublishStatus(init.publishStatus === 1 ? 1 : 0);
+    setHasUnpublishedChanges(!!init.hasUnpublishedChanges);
+    setSubmitAttempted(false);
+    setBusy('');
+    setActiveTab(
+      initialTab && (initialTab !== 'runtime' || !!init.id) ? initialTab : 'basic',
+    );
+  }, [visible, recordId, initialTab]);
+
+  const cronAnalysis = useMemo(() => analyzeCron(cron), [cron]);
+  const cronInvalid = !!cron.trim() && cronAnalysis.status === 'invalid';
 
   const buildPayload = useCallback((): Partial<FlowTask> | null => {
     setSubmitAttempted(true);
@@ -146,6 +159,11 @@ const TaskForm: React.FC<TaskFormProps> = ({
     }
     if (!cron?.trim()) {
       message.warning('请输入 Cron 表达式');
+      return null;
+    }
+    // 与后端 Spring CronExpression 校验对齐，避免提交后才报错
+    if (cronAnalysis.status === 'invalid') {
+      message.warning(`Cron 表达式不合法：${cronAnalysis.message}`);
       return null;
     }
     return {
@@ -160,12 +178,17 @@ const TaskForm: React.FC<TaskFormProps> = ({
       dslContent: dslContent?.trim() || DEFAULT_SCHEDULE_DSL,
       directoryId: directoryId || '',
     };
-  }, [name, cron, enabled, logEnabled, logMode, logRetentionDays, info, dslContent, directoryId]);
+  }, [name, cron, cronAnalysis, enabled, logMode, logRetentionDays, info, dslContent, directoryId]);
 
   const handleSave = useCallback(async () => {
     const payload = buildPayload();
     if (!payload) return;
-    onSubmit(payload);
+    setBusy('save');
+    try {
+      await onSubmit(payload);
+    } finally {
+      setBusy('');
+    }
   }, [buildPayload, onSubmit]);
 
   const applyDetail = useCallback((detail: FlowTask) => {
@@ -176,7 +199,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
     if (detail.cron != null) setCron(detail.cron);
     if (detail.directoryId !== undefined) setDirectoryId(detail.directoryId || undefined);
     if (detail.enabled != null) setEnabled(!!detail.enabled);
-    if (detail.logEnabled != null) setLogEnabled(!!detail.logEnabled);
+    if (detail.logMode != null) setLogMode(detail.logMode);
     if (detail.logRetentionDays !== undefined) setLogRetentionDays(detail.logRetentionDays ?? undefined);
     if (detail.info != null) setInfo(detail.info);
     onPublished?.(detail);
@@ -190,52 +213,74 @@ const TaskForm: React.FC<TaskFormProps> = ({
     const payload = buildPayload();
     if (!payload) return;
 
+    const taskId = initialValues.id;
     const isRepublish = publishStatus === 1;
-    const hide = message.loading(isRepublish ? '正在发布更新...' : '正在发布...');
+    setBusy('publish');
     try {
-      await updateTask(initialValues.id, payload);
-      if (isRepublish) {
-        await republishTask(initialValues.id);
-      } else {
-        await publishTask(initialValues.id);
+      // 先落草稿，再按所选环境过门禁，与接口管理 / 任务列表的发布口径一致
+      await updateTask(taskId, payload);
+      const envCode = await confirmPublishWithGate({
+        assetType: 'TASK',
+        assetId: taskId,
+        assetName: payload.name || taskId,
+      });
+      if (!envCode) {
+        // 门禁取消：草稿已保存，刷新状态让「待更新发布」标记回到真实值
+        applyDetail(unwrapTask(await getTask(taskId)));
+        message.info('已保存草稿，未发布');
+        return;
       }
-      const detail = unwrapTask(await getTask(initialValues.id));
-      hide();
-      message.success(isRepublish ? '发布更新成功' : '发布成功');
-      applyDetail(detail);
+      const hide = message.loading(isRepublish ? '正在发布更新...' : '正在发布...');
+      try {
+        if (isRepublish) {
+          await republishTask(taskId, envCode);
+        } else {
+          await publishTask(taskId, envCode);
+        }
+        const detail = unwrapTask(await getTask(taskId));
+        message.success(isRepublish ? '发布更新成功' : '发布成功');
+        applyDetail(detail);
+      } finally {
+        hide();
+      }
     } catch (e: any) {
-      hide();
       message.error(e?.message || '发布失败');
+    } finally {
+      setBusy('');
     }
   }, [isEdit, initialValues.id, buildPayload, publishStatus, applyDetail]);
 
   const handleUnpublish = useCallback(async () => {
     if (!initialValues.id) return;
+    setBusy('unpublish');
     const hide = message.loading('正在下线...');
     try {
       await unpublishTask(initialValues.id);
       const detail = unwrapTask(await getTask(initialValues.id));
-      hide();
       message.success('下线成功，调度已停止');
       applyDetail(detail);
     } catch (e: any) {
-      hide();
       message.error(e?.message || '下线失败');
+    } finally {
+      hide();
+      setBusy('');
     }
   }, [initialValues.id, applyDetail]);
 
   const handleRollback = useCallback(async () => {
     if (!initialValues.id) return;
+    setBusy('rollback');
     const hide = message.loading('正在回滚...');
     try {
       await rollbackTask(initialValues.id);
       const detail = unwrapTask(await getTask(initialValues.id));
-      hide();
       message.success('已回滚到线上版本');
       applyDetail(detail);
     } catch (e: any) {
-      hide();
       message.error(e?.message || '回滚失败');
+    } finally {
+      hide();
+      setBusy('');
     }
   }, [initialValues.id, applyDetail]);
 
@@ -244,6 +289,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
       message.warning('请先配置流程');
       return;
     }
+    setDebugRunning(true);
     const hide = message.loading('正在调试运行...');
     try {
       const result = await debugRunTask(dslContent, {
@@ -252,7 +298,6 @@ const TaskForm: React.FC<TaskFormProps> = ({
         cron: cron || undefined,
       });
       const trace = unwrapDebugTrace(result);
-      hide();
       setDebugReplayTrace(trace);
       setDebugReplayOpen(true);
       if (trace?.status === 'error') {
@@ -261,8 +306,10 @@ const TaskForm: React.FC<TaskFormProps> = ({
         message.success('调试运行成功，已打开 Trace');
       }
     } catch (e: any) {
-      hide();
       message.error('调试失败: ' + (e?.message || '未知错误'));
+    } finally {
+      hide();
+      setDebugRunning(false);
     }
   }, [dslContent, initialValues.id, initialValues.name, name, cron]);
 
@@ -280,16 +327,24 @@ const TaskForm: React.FC<TaskFormProps> = ({
       {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
         <Tag color="warning">待更新发布</Tag>
       )}
+      {readOnly && <Tag color="default">只读</Tag>}
     </Space>
   );
 
   const headerExtra = (
     <Space size={8}>
-      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
-        <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
-          调试运行
-        </Button>
-      </Tooltip>
+      {!readOnly && (
+        <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
+          <Button
+            icon={<PlayCircleOutlined />}
+            loading={debugRunning}
+            disabled={!!busy}
+            onClick={handleDebugRun}
+          >
+            调试运行
+          </Button>
+        </Tooltip>
+      )}
 
       {isEdit && (
         <HistoryVersionButton
@@ -298,37 +353,84 @@ const TaskForm: React.FC<TaskFormProps> = ({
         />
       )}
 
-      {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
+      {!readOnly && isEdit && publishStatus === 1 && hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
-          <Button danger icon={<RollbackOutlined />} onClick={handleRollback}>
+          <Button
+            danger
+            icon={<RollbackOutlined />}
+            loading={busy === 'rollback'}
+            disabled={!!busy && busy !== 'rollback'}
+            onClick={handleRollback}
+          >
             回滚草稿
           </Button>
         </Tooltip>
       )}
 
-      {isEdit && (
+      {!readOnly && isEdit && (
         <Button
           type="primary"
           style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
           icon={<CloudUploadOutlined />}
+          loading={busy === 'publish'}
+          disabled={!!busy && busy !== 'publish'}
           onClick={handlePublish}
         >
           {publishStatus === 1 ? '保存并发布' : '发布上线'}
         </Button>
       )}
 
-      {isEdit && publishStatus === 1 && (
-        <Button danger icon={<CloudDownloadOutlined />} onClick={handleUnpublish}>
+      {!readOnly && isEdit && publishStatus === 1 && (
+        <Button
+          danger
+          icon={<CloudDownloadOutlined />}
+          loading={busy === 'unpublish'}
+          disabled={!!busy && busy !== 'unpublish'}
+          onClick={handleUnpublish}
+        >
           下线
         </Button>
       )}
 
-      <Button icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
-        保存草稿
+      <Button icon={<CloseOutlined />} onClick={onCancel}>
+        {readOnly ? '关闭' : '取消'}
       </Button>
+      {!readOnly && (
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          loading={busy === 'save'}
+          disabled={!!busy && busy !== 'save'}
+          onClick={handleSave}
+        >
+          保存草稿
+        </Button>
+      )}
     </Space>
   );
+
+  const cronHelp = (() => {
+    if (submitAttempted && !cron.trim()) return '请输入 Cron 表达式';
+    const hintStyle: React.CSSProperties = { fontSize: 12, color: '#8c8c8c' };
+    if (!cron.trim()) {
+      return (
+        <span style={hintStyle}>
+          Spring 6 字段：秒 分 时 日 月 周，如 <code>0 0/5 * * * ?</code>
+        </span>
+      );
+    }
+    if (cronAnalysis.status === 'invalid') {
+      return <span>{cronAnalysis.message}</span>;
+    }
+    if (cronAnalysis.status === 'unsupported') {
+      return <span style={hintStyle}>{cronAnalysis.message}</span>;
+    }
+    return (
+      <span style={hintStyle}>
+        下次执行：{cronAnalysis.nextRuns.map(formatCronTime).join(' → ')}
+      </span>
+    );
+  })();
 
   const basicInfoContent = (
     <div className={ASSET_FORM_SCROLL_CLASS}>
@@ -349,6 +451,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="请输入任务名称"
+                disabled={readOnly}
               />
             </Form.Item>
           </Col>
@@ -362,6 +465,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 showSearch: true,
                 treeDefaultExpandAll: true,
                 allowClear: true,
+                disabled: readOnly,
                 value: directoryId,
                 onChange: (v: string | undefined) => setDirectoryId(v || undefined),
                 style: { width: '100%' },
@@ -372,22 +476,17 @@ const TaskForm: React.FC<TaskFormProps> = ({
             <Form.Item
               label="Cron 表达式"
               required
-              validateStatus={submitAttempted && !cron?.trim() ? 'error' : ''}
-              help={
-                submitAttempted && !cron?.trim()
-                  ? '请输入 Cron 表达式'
-                  : (
-                    <span style={{ fontSize: 12, color: '#8c8c8c' }}>
-                      Spring 6 字段：秒 分 时 日 月 周，如 <code>0 0/5 * * * ?</code>
-                    </span>
-                  )
+              validateStatus={
+                (submitAttempted && !cron?.trim()) || cronInvalid ? 'error' : ''
               }
+              help={cronHelp}
             >
               <Input
                 value={cron}
                 onChange={(e) => setCron(e.target.value)}
                 placeholder="例如：0 0 2 * * ?"
                 style={{ fontFamily: 'monospace' }}
+                disabled={readOnly}
               />
             </Form.Item>
           </Col>
@@ -405,6 +504,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 onChange={setEnabled}
                 checkedChildren="启用"
                 unCheckedChildren="停用"
+                disabled={readOnly}
               />
             </Form.Item>
           </Col>
@@ -418,6 +518,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 onChange={(e) => setLogMode(e.target.value)}
                 optionType="button"
                 buttonStyle="solid"
+                disabled={readOnly}
               >
                 <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
                   <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
@@ -456,6 +557,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 precision={0}
                 style={{ width: '100%' }}
                 placeholder="留空跟随系统配置"
+                disabled={readOnly}
               />
             </Form.Item>
           </Col>
@@ -466,6 +568,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
                 onChange={(e) => setInfo(e.target.value)}
                 rows={3}
                 placeholder="可选：任务的功能说明"
+                disabled={readOnly}
               />
             </Form.Item>
           </Col>
@@ -490,16 +593,16 @@ const TaskForm: React.FC<TaskFormProps> = ({
       <div className={ASSET_FORM_FILL_CLASS}>
         <FlowEditor
           value={dslContent}
-          onChange={setDslContent}
-          onSave={handleSave}
+          onChange={readOnly ? undefined : setDslContent}
+          onSave={readOnly ? undefined : handleSave}
           onCancel={onCancel}
-          isEdit={isEdit}
+          isEdit={readOnly ? false : isEdit}
           height={400}
           defaultEntryNode="schedule"
           editorContext="task"
           apiId={initialValues.id}
           apiName={name}
-          debugAdapters={{
+          debugAdapters={readOnly ? undefined : {
             onRun: async (payload) => {
               const result = await debugRunTask(payload.dslContent, {
                 sourceRef: initialValues.id,
@@ -540,6 +643,7 @@ const TaskForm: React.FC<TaskFormProps> = ({
         <AssetVersionHistoryDrawer
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
+          readOnly={readOnly}
           title={name || initialValues.name}
           loadVersions={async () => {
             const res = await listTaskVersions(initialValues.id!);

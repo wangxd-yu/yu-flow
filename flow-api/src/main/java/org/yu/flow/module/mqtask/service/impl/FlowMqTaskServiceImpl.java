@@ -52,6 +52,9 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
 
     private static final String DEMO_TARGET = "MQ 任务";
 
+    /** 分页每页上限 */
+    private static final int MAX_PAGE_SIZE = 200;
+
     @Resource
     private FlowMqTaskRepository flowMqTaskRepository;
 
@@ -74,6 +77,14 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
     @Override
     @Transactional
     public FlowMqTaskDO save(FlowMqTaskDO taskDO) {
+        // 请求体直接绑定实体，发布态与主键必须由服务端接管：
+        // 客户端自带 id 会让 save() 走 merge 覆盖同 ID 的存量任务；自带 publishStatus/publishedSnapshot
+        // 则能跳过发布闸门直接让任意 DSL 上线消费。新建一律落为「未发布草稿」。
+        taskDO.setId(null);
+        taskDO.setPublishStatus(0);
+        taskDO.setPublishedSnapshot(null);
+        taskDO.setPublishTime(null);
+        taskDO.setDeleted(0);
         validateSubscribeConfig(taskDO.getConnectionCode(), taskDO.getTopic());
         flowDirectoryService.assertDirectoryBizType(taskDO.getDirectoryId(), DIR_BIZ_TYPE);
         if (taskDO.getConcurrency() == null || taskDO.getConcurrency() < 1) taskDO.setConcurrency(1);
@@ -85,17 +96,11 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         if (taskDO.getRetryBackoffMs() == null) taskDO.setRetryBackoffMs(1000);
         // 保留天数 <0 视为未配置（跟随系统）
         if (taskDO.getLogRetentionDays() != null && taskDO.getLogRetentionDays() < 0) taskDO.setLogRetentionDays(null);
-        if (taskDO.getPublishStatus() == null) taskDO.setPublishStatus(0);
-        if (taskDO.getDeleted() == null) taskDO.setDeleted(0);
         LocalDateTime now = LocalDateTime.now();
         taskDO.setCreateTime(now);
         taskDO.setUpdateTime(now);
-        FlowMqTaskDO saved = flowMqTaskRepository.save(taskDO);
-        // 仅「已启用且已发布」才注册订阅（新建通常未发布，此处兜底）
-        if (isSubscribable(saved)) {
-            mqConsumerManager.subscribe(saved);
-        }
-        return saved;
+        // 新建恒为未发布草稿，不注册订阅；订阅由 publish / rollback 负责
+        return flowMqTaskRepository.save(taskDO);
     }
 
     @Override
@@ -176,10 +181,11 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
 
     @Override
     public PageBean<FlowMqTaskDTO> findPage(FlowMqTaskQueryDTO queryDTO) {
-        Pageable pageable = PageRequest.of(
-                queryDTO.getPage(), queryDTO.getSize(),
-                Sort.by(Sort.Direction.DESC, "createTime")
-        );
+        // 分页参数来自 query string，需夹取到合法区间：负页码会让 PageRequest 直接抛异常，
+        // 超大 size 则会把整表连同 MEDIUMTEXT 的 DSL 一次性拉进内存
+        int pageNo = Math.max(0, queryDTO.getPage());
+        int pageSize = Math.min(Math.max(1, queryDTO.getSize()), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(pageNo, pageSize, Sort.by(Sort.Direction.DESC, "createTime"));
 
         Specification<FlowMqTaskDO> spec = (root, cq, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -209,6 +215,7 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         Page<FlowMqTaskDO> page = flowMqTaskRepository.findAll(spec, pageable);
         List<FlowMqTaskDTO> items = page.getContent().stream()
                 .map(FlowMqTaskDTO::fromDO)
+                .map(FlowMqTaskDTO::stripHeavyFields)
                 .collect(Collectors.toList());
         enrichDirectoryNames(items);
         return new PageBean<>(items, page.getNumber(), page.getSize(),
@@ -250,6 +257,7 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
     @Override
     @Transactional
     public FlowMqTaskDO updateLogEnabled(String id, boolean logEnabled) {
+        demoModeGuard.checkModifyOrDelete(id, DEMO_TARGET);
         FlowMqTaskDO task = requireTask(id);
         task.setLogEnabled(logEnabled);
         task.setUpdateTime(LocalDateTime.now());

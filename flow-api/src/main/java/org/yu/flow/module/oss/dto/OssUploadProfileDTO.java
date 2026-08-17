@@ -29,9 +29,12 @@ public class OssUploadProfileDTO {
     private Long thumbnailMaxSourceBytes;
     private Double thumbnailJpegQuality;
     private Boolean requireAuth;
+    private Boolean presignUploadEnabled;
     private String bizFieldsSchema;
     private String uploadPerm;
     private String downloadPerm;
+    /** 访问规则 JSON：{"rules":[...]} */
+    private String callerPolicy;
     private Boolean enabled;
     private String remark;
 
@@ -64,9 +67,11 @@ public class OssUploadProfileDTO {
                 .setThumbnailMaxSourceBytes(entity.getThumbnailMaxSourceBytes())
                 .setThumbnailJpegQuality(entity.getThumbnailJpegQuality())
                 .setRequireAuth(entity.getRequireAuth())
+                .setPresignUploadEnabled(entity.getPresignUploadEnabled())
                 .setBizFieldsSchema(entity.getBizFieldsSchema())
                 .setUploadPerm(entity.getUploadPerm())
                 .setDownloadPerm(entity.getDownloadPerm())
+                .setCallerPolicy(entity.getCallerPolicy())
                 .setEnabled(entity.getEnabled())
                 .setRemark(entity.getRemark())
                 .setCreateTime(entity.getCreateTime())

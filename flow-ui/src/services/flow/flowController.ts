@@ -32,6 +32,10 @@ export interface FlowController {
    * { enabled, ttlSeconds, keyParams:[{source,name}], includePageable }
    */
   cacheConfig?: string;
+  /** 入站防护 JSON */
+  securityConfig?: string;
+  /** 出站隐私拦截 JSON */
+  privacyConfig?: string;
   level?: number;
   rule?: string;
   tags?: string[]; // 标签字段，支持数组格式
@@ -47,10 +51,6 @@ export interface FlowController {
   publishTime?: string;
   /** 是否存在未发布的草稿变更 */
   hasUnpublishedChanges?: boolean;
-  /**
-   * 入站防护 JSON：authMode/antiReplay/rateLimit/ipAllowlist/timeoutMs
-   */
-  securityConfig?: string;
   /** 数据查看 / Excel 导出配置 JSON */
   viewExportConfig?: string;
   responseType?: string;
@@ -124,6 +124,9 @@ export interface ApiDataPreviewResult {
   page?: number;
   size?: number;
   pages?: number;
+  privacyEnabled?: boolean;
+  /** MASK / REVEAL */
+  privacyClass?: string;
 }
 
 /** 管理端「数据查看 / Excel 导出」仅支持 DB 查询类结果集 */
@@ -161,6 +164,32 @@ export async function updateAutoApiConfig(id: string, data: Partial<FlowControll
     method: 'PUT',
     data,
   });
+}
+
+export interface CopyApiPayload {
+  /** 新接口名称 */
+  name: string;
+  /** 新接口完整 path */
+  url: string;
+  /** 目标目录，缺省沿用源接口目录 */
+  directoryId?: string;
+}
+
+/** 复制接口：整条配置克隆为新的未发布草稿 */
+export async function copyAutoApiConfig(id: string, data: CopyApiPayload) {
+  return request<FlowController>(`/flow-api/api/${id}/copy`, {
+    method: 'POST',
+    data,
+  });
+}
+
+/** 校验 method + path 是否与已发布接口冲突 */
+export async function checkApiPathTaken(method: string, url: string, excludeId?: string) {
+  const res: any = await request('/flow-api/api/check-exact', {
+    method: 'GET',
+    params: { method, url, excludeId },
+  });
+  return res?.data === true || res === true;
 }
 
 export async function updateAutoApiLogEnabled(id: string, enabled: boolean) {
@@ -239,6 +268,30 @@ export async function batchMoveAutoApiConfig(ids: string[], targetDirectoryId?: 
   return request('/flow-api/api/batch/moveToDir', {
     method: 'PUT',
     data: { ids, targetDirectoryId },
+  });
+}
+
+/** 批量按目录有效前缀重写草稿 path */
+export type BatchApplyDirPrefixResult = {
+  updated: number;
+  skipped: number;
+  failed: number;
+  publishedTouched: number;
+  oldPrefixUsed?: string;
+  items?: Array<{
+    id: string;
+    name?: string;
+    from?: string;
+    to?: string;
+    status: 'updated' | 'skipped' | 'failed' | string;
+    message?: string;
+  }>;
+};
+
+export async function batchApplyDirPrefix(ids: string[], oldPrefix?: string) {
+  return request<BatchApplyDirPrefixResult>('/flow-api/api/batch/apply-dir-prefix', {
+    method: 'PUT',
+    data: { ids, oldPrefix: oldPrefix || undefined },
   });
 }
 

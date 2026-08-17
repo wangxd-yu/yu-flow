@@ -19,6 +19,8 @@ public interface OssObjectRepository extends JpaRepository<OssObjectDO, String>,
 
     List<OssObjectDO> findTop100ByStatusAndExpiresAtBefore(String status, LocalDateTime expiresAt);
 
+    List<OssObjectDO> findTop100ByStatusAndCreateTimeBefore(String status, LocalDateTime createTime);
+
     List<OssObjectDO> findByProfileCodeAndStatus(String profileCode, String status);
 
     @Query("SELECT COALESCE(SUM(o.sizeBytes), 0) FROM OssObjectDO o "
@@ -30,10 +32,17 @@ public interface OssObjectRepository extends JpaRepository<OssObjectDO, String>,
     long countByProfileCodeAndStatus(@Param("profileCode") String profileCode, @Param("status") String status);
 
     @Query("SELECT COALESCE(SUM(o.sizeBytes), 0) FROM OssObjectDO o "
-            + "WHERE o.uploadedBy = :uploadedBy AND o.status = :status")
-    long sumSizeBytesByUploadedByAndStatus(@Param("uploadedBy") String uploadedBy,
-                                           @Param("status") String status);
+            + "WHERE o.uploadedBy = :uploadedBy AND o.uploadedByUserType = :uploadedByUserType "
+            + "AND o.status = :status")
+    long sumSizeBytesByUploadedByAndUploadedByUserTypeAndStatus(
+            @Param("uploadedBy") String uploadedBy,
+            @Param("uploadedByUserType") String uploadedByUserType,
+            @Param("status") String status);
 
-    @Query("SELECT COUNT(o) FROM OssObjectDO o WHERE o.uploadedBy = :uploadedBy AND o.status = :status")
-    long countByUploadedByAndStatus(@Param("uploadedBy") String uploadedBy, @Param("status") String status);
+    @Query("SELECT COUNT(o) FROM OssObjectDO o WHERE o.uploadedBy = :uploadedBy "
+            + "AND o.uploadedByUserType = :uploadedByUserType AND o.status = :status")
+    long countByUploadedByAndUploadedByUserTypeAndStatus(
+            @Param("uploadedBy") String uploadedBy,
+            @Param("uploadedByUserType") String uploadedByUserType,
+            @Param("status") String status);
 }

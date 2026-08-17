@@ -19,6 +19,13 @@ public class IngressException extends RuntimeException {
         return new IngressException(401, "INGRESS_HOST_AUTH_REQUIRED", "需要宿主登录后访问该接口");
     }
 
+    public static IngressException callerDenied(String detail) {
+        String msg = detail == null || detail.isBlank()
+                ? "调用方不满足接口访问策略"
+                : detail;
+        return new IngressException(403, "INGRESS_CALLER_DENIED", msg);
+    }
+
     public static IngressException ipDenied() {
         return new IngressException(403, "INGRESS_IP_DENIED", "IP 不在白名单内");
     }

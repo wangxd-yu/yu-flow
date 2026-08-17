@@ -42,6 +42,8 @@ public class FlowApiDTO {
     private String cacheConfig;
     /** 入站防护配置 JSON（草稿；线上以发布快照为准） */
     private String securityConfig;
+    /** 出站隐私拦截 JSON */
+    private String privacyConfig;
     /** 数据查看 / Excel 导出配置 JSON */
     private String viewExportConfig;
     private Integer level;
@@ -57,6 +59,9 @@ public class FlowApiDTO {
 
     /** 是否存在未发布的草稿变更（前端展示用） */
     private Boolean hasUnpublishedChanges;
+
+    /** 系统保留接口（宿主身份目录），接口管理列表不展示 */
+    private Boolean systemReserved;
 
     private Integer deleted = 0;
 
@@ -93,6 +98,7 @@ public class FlowApiDTO {
         dto.setLogRetentionDays(configDO.getLogRetentionDays());
         dto.setCacheConfig(configDO.getCacheConfig());
         dto.setSecurityConfig(configDO.getSecurityConfig());
+        dto.setPrivacyConfig(configDO.getPrivacyConfig());
         dto.setViewExportConfig(configDO.getViewExportConfig());
         dto.setLevel(configDO.getLevel());
         dto.setContract(configDO.getContract());
@@ -106,6 +112,7 @@ public class FlowApiDTO {
         dto.setCreateTime(configDO.getCreateTime());
         dto.setUpdateTime(configDO.getUpdateTime());
         dto.setHasUnpublishedChanges(UnpublishedChangeDetector.apiHasUnpublishedChanges(configDO));
+        dto.setSystemReserved(org.yu.flow.module.host.HostCatalogReserved.isReservedId(configDO.getId()));
         return dto;
     }
 
@@ -133,6 +140,7 @@ public class FlowApiDTO {
         configDO.setLogRetentionDays(this.getLogRetentionDays());
         configDO.setCacheConfig(this.getCacheConfig());
         configDO.setSecurityConfig(this.getSecurityConfig());
+        configDO.setPrivacyConfig(this.getPrivacyConfig());
         configDO.setViewExportConfig(this.getViewExportConfig());
         configDO.setLevel(this.getLevel());
         configDO.setContract(this.getContract());

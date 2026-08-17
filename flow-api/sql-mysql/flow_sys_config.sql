@@ -1,7 +1,7 @@
 -- Table: flow_sys_config
 -- 系统配置表 (System Configuration)
 CREATE TABLE IF NOT EXISTS `flow_sys_config` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
   `config_key` varchar(100) NOT NULL COMMENT '配置键 (唯一标识，如: SYSTEM_PREFIX, TOKEN_EXPIRE)',
   `config_value` text COMMENT '配置值 (支持字符串、数字、JSON 等格式)',
   `value_type` varchar(20) NOT NULL DEFAULT 'STRING' COMMENT '值类型 (STRING / NUMBER / BOOLEAN / JSON)',

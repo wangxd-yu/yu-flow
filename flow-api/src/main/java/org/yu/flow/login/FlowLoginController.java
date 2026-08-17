@@ -7,6 +7,7 @@ import org.yu.flow.log.login.domain.LoginLogDO;
 import org.yu.flow.log.login.service.LoginLogService;
 import org.yu.flow.login.captcha.LoginCaptchaService;
 import org.yu.flow.login.dto.LoginDto;
+import org.yu.flow.login.sm2.LoginSm2CryptoService;
 import org.yu.flow.security.AuthCookieSupport;
 import org.yu.flow.auto.util.JwtTokenUtil;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +20,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import net.dreamlu.mica.ip2region.core.Ip2regionSearcher;
@@ -43,6 +45,9 @@ public class FlowLoginController {
     private LoginCaptchaService loginCaptchaService;
 
     @Resource
+    private LoginSm2CryptoService loginSm2CryptoService;
+
+    @Resource
     private Ip2regionSearcher ip2regionSearcher;
 
     /**
@@ -57,6 +62,19 @@ public class FlowLoginController {
         }
     }
 
+    /**
+     * 获取登录口令 SM2 公钥（无需鉴权）。前端 sm-crypto 使用 cipherMode=1（C1C3C2）。
+     */
+    @GetMapping("/login/public-key")
+    public R<Map<String, Object>> publicKey() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("algorithm", "SM2");
+        body.put("publicKey", loginSm2CryptoService.getPublicKeyHex());
+        body.put("cipherMode", loginSm2CryptoService.getCipherMode());
+        body.put("ttlSeconds", loginSm2CryptoService.getPasswordTtlSeconds());
+        return R.ok(body, "ok");
+    }
+
     @PostMapping("/login")
     public R<Map<String, Object>> login(@RequestBody LoginDto loginDto,
                                         HttpServletRequest request,
@@ -65,11 +83,24 @@ public class FlowLoginController {
         String ip = getClientIp(request);
         String userAgent = request.getHeader("User-Agent");
 
+        // SM2 解密口令（拒绝明文 password）
+        try {
+            if (loginDto == null) {
+                throw new IllegalArgumentException("请求体不能为空");
+            }
+            String plainPassword = loginSm2CryptoService.decryptLoginPassword(loginDto.getPasswordCipher());
+            loginDto.setPassword(plainPassword);
+        } catch (IllegalArgumentException e) {
+            saveFailLog(loginDto, ip, userAgent, System.currentTimeMillis() - startTime, e.getMessage());
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return R.fail(400, e.getMessage());
+        }
+
         // 先校验验证码（一次性消费），再验账号密码；参数类失败用 HTTP 400（勿 200+业务 500）
         try {
             loginCaptchaService.verifyAndConsume(
-                    loginDto != null ? loginDto.getCaptchaId() : null,
-                    loginDto != null ? loginDto.getCaptchaCode() : null);
+                    loginDto.getCaptchaId(),
+                    loginDto.getCaptchaCode());
         } catch (IllegalArgumentException | IllegalStateException e) {
             saveFailLog(loginDto, ip, userAgent, System.currentTimeMillis() - startTime, e.getMessage());
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);

@@ -173,6 +173,50 @@ public final class JwtTokenUtil {
     }
 
     /**
+     * 从 JWT 解析 roles（不校验签名；调用方应先 validateToken）。
+     * 支持 JSON 数组或逗号分隔字符串。
+     */
+    @SuppressWarnings("unchecked")
+    public static java.util.List<String> getRoles(String token) {
+        if (token == null || token.isBlank()) {
+            return java.util.List.of();
+        }
+        try {
+            Object roles = JWT.of(token).getPayload("roles");
+            if (roles == null) {
+                return java.util.List.of();
+            }
+            if (roles instanceof java.util.Collection<?> col) {
+                java.util.List<String> out = new java.util.ArrayList<>();
+                for (Object o : col) {
+                    if (o != null && !o.toString().isBlank()) {
+                        out.add(o.toString().trim());
+                    }
+                }
+                return out;
+            }
+            String raw = roles.toString().trim();
+            if (raw.isEmpty()) {
+                return java.util.List.of();
+            }
+            if (raw.startsWith("[")) {
+                // hutool 可能已解析为 Collection；此处兜底字符串
+                return java.util.Arrays.stream(raw.replace("[", "").replace("]", "").split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(s -> s.replace("\"", ""))
+                        .toList();
+            }
+            return java.util.Arrays.stream(raw.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .toList();
+        } catch (Exception e) {
+            return java.util.List.of();
+        }
+    }
+
+    /**
      * 从当前请求解析登录用户名；无请求 / 无 Token / 解析失败时返回 null。
      */
     public static String currentUsername() {

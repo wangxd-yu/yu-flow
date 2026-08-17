@@ -53,7 +53,7 @@ public class YuFlowExceptionHandler {
 
     private HttpStatus resolveHttpStatus(FlowException ex) {
         String code = ex.getErrorCode();
-        if ("RBAC_FORBIDDEN".equals(code)) {
+        if ("RBAC_FORBIDDEN".equals(code) || "OSS_CALLER_DENIED".equals(code)) {
             return HttpStatus.FORBIDDEN;
         }
         if ("RBAC_UNAUTHORIZED".equals(code)) {

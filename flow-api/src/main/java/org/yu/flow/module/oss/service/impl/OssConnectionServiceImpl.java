@@ -30,8 +30,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @Slf4j
+@ConditionalOnOssEnabled
 @Service
 public class OssConnectionServiceImpl implements OssConnectionService {
 

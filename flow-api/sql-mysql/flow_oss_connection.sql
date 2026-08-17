@@ -2,8 +2,8 @@
 -- MinIO / S3 兼容对象存储连接配置
 CREATE TABLE IF NOT EXISTS `flow_oss_connection` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `name` varchar(128) NOT NULL COMMENT '连接名称',
   `code` varchar(64) NOT NULL COMMENT '连接编码（未删除记录内唯一）',
+  `name` varchar(128) NOT NULL COMMENT '连接名称',
   `endpoint` varchar(512) NOT NULL COMMENT 'MinIO endpoint，如 http://minio:9000',
   `access_key` varchar(128) COMMENT 'Access Key',
   `secret_key` varchar(512) COMMENT 'Secret Key（AES 密文）',

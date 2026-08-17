@@ -21,11 +21,13 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 /**
  * OSS 软删对象与过期文件异步物理清理。
  */
 @Slf4j
+@ConditionalOnOssEnabled
 @Component
 public class OssObjectCleanupJob {
 
@@ -83,6 +85,7 @@ public class OssObjectCleanupJob {
         }
         try {
             purgeExpiredActive();
+            purgeStalePending();
             purgeSoftDeleted();
         } catch (Exception e) {
             log.error("[OssObjectCleanupJob] 清理异常", e);
@@ -100,6 +103,31 @@ public class OssObjectCleanupJob {
                 transactionTemplate.executeWithoutResult(status -> purgeOne(object, true));
             } catch (Exception e) {
                 log.warn("[OssObjectCleanupJob] 过期清理失败 id={}: {}", object.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 预签名直传开票后长时间未 confirm 的台账视为放弃：转软删后由 purgeSoftDeleted 清掉可能已上传的对象。
+     */
+    private void purgeStalePending() {
+        int ttlMinutes = yuFlowProperties.getOss().getPresignPendingTtlMinutes();
+        if (ttlMinutes <= 0) {
+            return;
+        }
+        LocalDateTime threshold = LocalDateTime.now(ZONE_SH).minusMinutes(ttlMinutes);
+        List<OssObjectDO> stale = ossObjectRepository.findTop100ByStatusAndCreateTimeBefore(
+                OssObjectDO.STATUS_PENDING, threshold);
+        for (OssObjectDO object : stale) {
+            try {
+                transactionTemplate.executeWithoutResult(status -> {
+                    object.setStatus(OssObjectDO.STATUS_DELETED);
+                    object.setObjectPurged(false);
+                    object.setUpdateTime(LocalDateTime.now(ZONE_SH));
+                    ossObjectRepository.save(object);
+                });
+            } catch (Exception e) {
+                log.warn("[OssObjectCleanupJob] 预签名待确认台账过期处理失败 id={}: {}", object.getId(), e.getMessage());
             }
         }
     }

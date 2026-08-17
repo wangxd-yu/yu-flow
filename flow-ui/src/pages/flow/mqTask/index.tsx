@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useAccess } from '@umijs/max';
 import { ProColumns } from '@ant-design/pro-components';
-import { Divider, message, Popconfirm, Switch, Tooltip, Tag, Modal, Input } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
+import { Divider, Dropdown, message, Popconfirm, Switch, Tooltip, Tag, Modal } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   queryMqTaskPage,
   createMqTask,
@@ -8,16 +11,17 @@ import {
   batchDeleteMqTask,
   enableMqTask,
   disableMqTask,
-  updateMqTaskLogEnabled,
-  simulateMqTask,
   getMqTask,
   publishMqTask,
   unpublishMqTask,
+  republishMqTask,
   getRunningMqTaskIds,
   getMqTaskBacklog,
   FlowMqTask,
 } from '@/services/flow/mqTask';
+import { queryMqConnectionOptions } from '@/services/flow/mqConnection';
 import MqTaskForm from './components/MqTaskForm';
+import MqSimulateModal from './components/MqSimulateModal';
 import AssetDirectoryListShell, {
   type AssetListShellContext,
 } from '@/components/flow/AssetDirectoryListShell';
@@ -68,40 +72,22 @@ const handleRemove = async (selectedRows: FlowMqTask[]) => {
   }
 };
 
-/** 模拟触发：弹窗输入模拟消息体后调用 simulate */
-const openSimulateModal = (record: FlowMqTask) => {
-  let simMessage = '{"demo":true}';
-  Modal.confirm({
-    title: `模拟触发 - ${record.name}`,
-    width: 520,
-    content: (
-      <div style={{ marginTop: 12 }}>
-        <div style={{ marginBottom: 8, color: 'rgba(0,0,0,0.65)' }}>
-          将以线上已发布版本执行一次，结果可在「查看日志」中回放。
-        </div>
-        <Input.TextArea
-          rows={4}
-          defaultValue={simMessage}
-          placeholder="模拟消息体（原样作为 $.mq.message 注入）"
-          onChange={(e) => {
-            simMessage = e.target.value;
-          }}
-        />
-      </div>
-    ),
-    okText: '触发',
-    onOk: async () => {
-      try {
-        await simulateMqTask(record.id, simMessage);
-        message.success('已触发模拟消息，请稍后在执行日志查看结果');
-      } catch (e: any) {
-        message.error(e?.message || '模拟触发失败');
-      }
-    },
-  });
+// ── 列定义 ──
+
+/** 日志策略：老数据只有 logEnabled 布尔值，按其真假映射到四态枚举 */
+const resolveLogMode = (record: FlowMqTask) => {
+  if (record.logMode) return record.logMode;
+  if (record.logEnabled === false) return 'OFF';
+  if (record.logEnabled === true) return 'ALL';
+  return 'SYSTEM_DEFAULT';
 };
 
-// ── 列定义 ──
+const LOG_MODE_TAGS: Record<string, { color: string; text: string }> = {
+  ALL: { color: 'blue', text: '全量记录' },
+  ERROR_ONLY: { color: 'warning', text: '仅错误' },
+  OFF: { color: 'default', text: '完全关闭' },
+  SYSTEM_DEFAULT: { color: 'cyan', text: '继承全局' },
+};
 
 /**
  * 消费状态：区分「本来就不该跑」与「应该跑却没跑」。
@@ -128,8 +114,15 @@ const renderConsumerStatus = (record: FlowMqTask, extra?: { running?: boolean })
   );
 };
 
+interface ColumnDeps {
+  canWrite: boolean;
+  connectionOptions: { label: string; value: string }[];
+  onSimulate: (record: FlowMqTask) => void;
+}
+
 const buildColumns = (
   ctx: AssetListShellContext<FlowMqTask>,
+  deps: ColumnDeps,
 ): ProColumns<FlowMqTask>[] => [
   {
     title: '任务名称',
@@ -156,7 +149,14 @@ const buildColumns = (
     dataIndex: 'connectionCode',
     width: 130,
     ellipsis: true,
-    hideInSearch: true,
+    valueType: 'select',
+    fieldProps: {
+      options: deps.connectionOptions,
+      showSearch: true,
+      optionFilterProp: 'label',
+      allowClear: true,
+      placeholder: '全部连接',
+    },
     render: (_, record) =>
       record.connectionCode ? (
         <Tag color="cyan" style={{ margin: 0 }}>
@@ -182,11 +182,16 @@ const buildColumns = (
     title: '启用状态',
     dataIndex: 'enabled',
     width: 90,
-    hideInSearch: true,
+    valueType: 'select',
+    valueEnum: {
+      true: { text: '已启用', status: 'Success' },
+      false: { text: '已停用', status: 'Default' },
+    },
     render: (_, record) => (
       <Switch
         size="small"
         checked={!!record.enabled}
+        disabled={!deps.canWrite}
         onChange={async (checked) => {
           try {
             if (checked) {
@@ -196,8 +201,8 @@ const buildColumns = (
             }
             message.success(checked ? '已启用' : '已停用，消费订阅将停止');
             ctx.reload();
-          } catch {
-            message.error('操作失败');
+          } catch (e: any) {
+            message.error(e?.message || '操作失败');
           }
         }}
       />
@@ -287,18 +292,8 @@ const buildColumns = (
     width: 100,
     hideInSearch: true,
     render: (_, record) => {
-      const mode = record.logMode || (record.logEnabled === false ? 'OFF' : (record.logEnabled === true ? 'ALL' : 'SYSTEM_DEFAULT'));
-      switch (mode) {
-        case 'ALL':
-          return <Tag color="blue">全量记录</Tag>;
-        case 'ERROR_ONLY':
-          return <Tag color="warning">仅错误</Tag>;
-        case 'OFF':
-          return <Tag color="default">完全关闭</Tag>;
-        case 'SYSTEM_DEFAULT':
-        default:
-          return <Tag color="cyan">继承全局</Tag>;
-      }
+      const tag = LOG_MODE_TAGS[resolveLogMode(record)] || LOG_MODE_TAGS.SYSTEM_DEFAULT;
+      return <Tag color={tag.color}>{tag.text}</Tag>;
     },
   },
   {
@@ -311,144 +306,253 @@ const buildColumns = (
     title: '操作',
     dataIndex: 'option',
     valueType: 'option',
-    width: 380,
-    render: (_, record) => [
-      <a key="edit" onClick={() => ctx.openEdit(record)}>
-        编辑
-      </a>,
-      <Divider key="d1" type="vertical" />,
-      record.publishStatus === 1 ? (
-        <Popconfirm
-          key="unpublish"
-          title="确认下线该任务？下线后消费订阅将停止。"
-          onConfirm={async () => {
-            try {
-              await unpublishMqTask(record.id);
-              message.success('已下线');
-              ctx.reload();
-            } catch (e: any) {
-              message.error(e?.message || '下线失败');
-            }
-          }}
-        >
-          <a>下线</a>
-        </Popconfirm>
-      ) : (
-        <Popconfirm
-          key="publish"
-          title="确认发布该任务？发布后将以当前草稿快照启动消费订阅。"
-          onConfirm={async () => {
-            try {
-              await publishMqTask(record.id);
-              message.success('发布成功');
-              ctx.reload();
-            } catch (e: any) {
-              message.error(e?.message || '发布失败');
-            }
-          }}
-        >
-          <a>发布</a>
-        </Popconfirm>
-      ),
-      <Divider key="d2" type="vertical" />,
-      record.publishStatus === 1 ? (
-        <a key="simulate" onClick={() => openSimulateModal(record)}>
-          模拟触发
+    width: deps.canWrite ? 220 : 140,
+    fixed: 'right',
+    render: (_, record) => {
+      const logs = (
+        <a key="logs" onClick={() => ctx.openEdit(record, 'logs')}>
+          查看日志
         </a>
-      ) : (
-        <Tooltip key="simulate" title="请先发布后再模拟触发；草稿可用「调试运行」验证">
-          <span style={{ color: 'rgba(0,0,0,0.25)', cursor: 'not-allowed' }}>模拟触发</span>
-        </Tooltip>
-      ),
-      <Divider key="d3" type="vertical" />,
-      <a
-        key="logs"
-        onClick={() => ctx.openEdit(record, 'logs')}
-      >
-        查看日志
-      </a>,
-      <Divider key="d4" type="vertical" />,
-      <Popconfirm
-        key="delete"
-        title="确定删除该任务？"
-        onConfirm={() => ctx.removeAndReload([record])}
-      >
-        <a style={{ color: '#ff4d4f' }}>删除</a>
-      </Popconfirm>,
-    ],
+      );
+      if (!deps.canWrite) {
+        return [
+          <a key="detail" onClick={() => ctx.openEdit(record)}>
+            查看
+          </a>,
+          <Divider key="d0" type="vertical" />,
+          logs,
+        ];
+      }
+
+      const moreItems: MenuProps['items'] = [
+        {
+          key: 'simulate',
+          label: '模拟触发',
+          disabled: record.publishStatus !== 1,
+          title: record.publishStatus !== 1
+            ? '请先发布后再模拟触发；草稿可用「调试运行」验证'
+            : undefined,
+        },
+        {
+          key: 'republish',
+          label: '重新发布',
+          disabled: record.publishStatus !== 1,
+          title: record.publishStatus !== 1
+            ? '仅已发布任务可重新发布'
+            : '订阅中断时重建消费订阅',
+        },
+        { key: 'logs', label: '查看日志' },
+        { type: 'divider' },
+        { key: 'delete', label: '删除', danger: true },
+      ];
+
+      const onMoreClick: MenuProps['onClick'] = ({ key }) => {
+        if (key === 'simulate') {
+          deps.onSimulate(record);
+        } else if (key === 'republish') {
+          Modal.confirm({
+            title: `重新发布「${record.name}」？`,
+            content: record.hasUnpublishedChanges
+              ? '会按当前草稿重新生成发布快照并重建消费订阅，草稿上的改动将同时上线。'
+              : '会按当前草稿重新生成发布快照并重建消费订阅，常用于修复「已中断」的订阅。',
+            okText: '重新发布',
+            onOk: async () => {
+              try {
+                await republishMqTask(record.id);
+                message.success('已重新发布，消费订阅已重建');
+                ctx.reload();
+              } catch (e: any) {
+                message.error(e?.message || '重新发布失败');
+                throw e;
+              }
+            },
+          });
+        } else if (key === 'logs') {
+          ctx.openEdit(record, 'logs');
+        } else if (key === 'delete') {
+          Modal.confirm({
+            title: `确定删除「${record.name}」？`,
+            content: record.publishStatus === 1
+              ? '任务已发布，删除后线上消费订阅一并移除。'
+              : undefined,
+            okText: '删除',
+            okButtonProps: { danger: true },
+            onOk: () => ctx.removeAndReload([record]),
+          });
+        }
+      };
+
+      return [
+        <a key="edit" onClick={() => ctx.openEdit(record)}>
+          编辑
+        </a>,
+        <Divider key="d1" type="vertical" />,
+        record.publishStatus === 1 ? (
+          <Popconfirm
+            key="unpublish"
+            title="确认下线该任务？下线后消费订阅将停止。"
+            onConfirm={async () => {
+              try {
+                await unpublishMqTask(record.id);
+                message.success('已下线');
+                ctx.reload();
+              } catch (e: any) {
+                message.error(e?.message || '下线失败');
+              }
+            }}
+          >
+            <a>下线</a>
+          </Popconfirm>
+        ) : (
+          <Popconfirm
+            key="publish"
+            title="确认发布该任务？发布后将以当前草稿快照启动消费订阅。"
+            onConfirm={async () => {
+              try {
+                await publishMqTask(record.id);
+                message.success('发布成功');
+                ctx.reload();
+              } catch (e: any) {
+                message.error(e?.message || '发布失败');
+              }
+            }}
+          >
+            <a>发布</a>
+          </Popconfirm>
+        ),
+        <Divider key="d2" type="vertical" />,
+        <Dropdown key="more" menu={{ items: moreItems, onClick: onMoreClick }} trigger={['click']}>
+          <a onClick={(e) => e.preventDefault()}>
+            更多 <DownOutlined style={{ fontSize: 10 }} />
+          </a>
+        </Dropdown>,
+      ];
+    },
   },
 ];
 
 // ── 主组件 ──
 
-const MqTaskManagement: React.FC = () => (
-  <AssetDirectoryListShell<FlowMqTask>
-    bizType="mqtask"
-    pageTitle="MQ 任务管理"
-    entityLabel="MQ 任务"
-    listTitle="MQ 任务列表"
-    emptyHint="订阅消息队列 Topic 触发编排流程，支持模拟触发与执行日志回放"
-    metricsAssetType="MQ_TASK"
-    deepLinkParam="mqTaskId"
-    fetchDetail={getMqTask}
-    isFiltered={({ directoryId, name, publishStatus }) =>
-      !!directoryId || !!name || publishStatus !== undefined
-    }
-    fetchPage={async (params) => {
-      const { current, pageSize, directoryId, name, publishStatus } = params;
-      const publishParam =
-        publishStatus === 0 || publishStatus === '0'
-          ? 0
-          : publishStatus === 1 || publishStatus === '1'
-            ? 1
-            : undefined;
-      const result = await queryMqTaskPage({
-        directoryId,
-        name,
-        publishStatus: publishParam,
-        page: (current || 1) - 1,
-        size: pageSize || 20,
-      });
-      const data = (result as any)?.data || result;
-      return { items: data?.items || [], total: data?.total || 0 };
-    }}
-    submitCreate={handleAdd}
-    submitUpdate={handleUpdate}
-    removeRows={handleRemove}
-    buildColumns={buildColumns}
-    scrollX={1880}
-    fetchRowExtra={async () => {
-      const [runningRes, backlogRes]: any[] = await Promise.all([
-        getRunningMqTaskIds(),
-        getMqTaskBacklog(),
-      ]);
-      const runningIds = runningRes?.data ?? runningRes;
-      const backlogMap = backlogRes?.data ?? backlogRes ?? {};
-      const map: Record<string, { running: boolean; backlog: number | null }> = {};
-      const allIds = new Set<string>([
-        ...(Array.isArray(runningIds) ? runningIds : []),
-        ...Object.keys(backlogMap || {}),
-      ]);
-      allIds.forEach((id) => {
-        map[id] = {
-          running: Array.isArray(runningIds) && runningIds.includes(id),
-          backlog: backlogMap[id] ?? null,
-        };
-      });
-      return map;
-    }}
-    renderForm={(form) => (
-      <MqTaskForm
-        visible={form.visible}
-        isEdit={form.isEdit}
-        initialValues={form.currentRow}
-        initialTab={form.initialTab}
-        onCancel={form.close}
-        onSubmit={form.submit}
-        onPublished={form.onPublished}
+const MqTaskManagement: React.FC = () => {
+  const access = useAccess();
+  const canWrite = !!access.canMqWrite;
+  const [connectionOptions, setConnectionOptions] = useState<{ label: string; value: string }[]>([]);
+  const [simulateTarget, setSimulateTarget] = useState<FlowMqTask | null>(null);
+
+  // 连接候选用于搜索栏下拉，拉不到就退化成无选项（不影响列表）
+  useEffect(() => {
+    let cancelled = false;
+    queryMqConnectionOptions()
+      .then((res: any) => {
+        if (cancelled) return;
+        const list = res?.data ?? res;
+        setConnectionOptions(
+          (Array.isArray(list) ? list : []).map((c: any) => ({
+            label: `${c.name} (${c.code})`,
+            value: c.code,
+          })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const columnsBuilder = useCallback(
+    (ctx: AssetListShellContext<FlowMqTask>) =>
+      buildColumns(ctx, { canWrite, connectionOptions, onSimulate: setSimulateTarget }),
+    [canWrite, connectionOptions],
+  );
+
+  return (
+    <AssetDirectoryListShell<FlowMqTask>
+      bizType="mqtask"
+      pageTitle="MQ 任务管理"
+      entityLabel="MQ 任务"
+      listTitle="MQ 任务列表"
+      emptyHint="订阅消息队列 Topic 触发编排流程，支持模拟触发与执行日志回放"
+      metricsAssetType="MQ_TASK"
+      deepLinkParam="mqTaskId"
+      canWrite={canWrite}
+      fetchDetail={getMqTask}
+      isFiltered={({ directoryId, name, publishStatus, connectionCode, enabled }) =>
+        !!directoryId || !!name || publishStatus !== undefined
+        || !!connectionCode || enabled !== undefined
+      }
+      fetchPage={async (params) => {
+        const { current, pageSize, directoryId, name, publishStatus, connectionCode, enabled } = params;
+        const publishParam =
+          publishStatus === 0 || publishStatus === '0'
+            ? 0
+            : publishStatus === 1 || publishStatus === '1'
+              ? 1
+              : undefined;
+        const enabledParam =
+          enabled === true || enabled === 'true'
+            ? true
+            : enabled === false || enabled === 'false'
+              ? false
+              : undefined;
+        const result = await queryMqTaskPage({
+          directoryId,
+          name,
+          connectionCode,
+          enabled: enabledParam,
+          publishStatus: publishParam,
+          page: (current || 1) - 1,
+          size: pageSize || 20,
+        });
+        const data = (result as any)?.data || result;
+        return { items: data?.items || [], total: data?.total || 0 };
+      }}
+      submitCreate={handleAdd}
+      submitUpdate={handleUpdate}
+      removeRows={handleRemove}
+      buildColumns={columnsBuilder}
+      fitColumns={false}
+      scrollX={1800}
+      fetchRowExtra={async () => {
+        const [runningRes, backlogRes]: any[] = await Promise.all([
+          getRunningMqTaskIds(),
+          getMqTaskBacklog(),
+        ]);
+        const runningIds = runningRes?.data ?? runningRes;
+        const backlogMap = backlogRes?.data ?? backlogRes ?? {};
+        const map: Record<string, { running: boolean; backlog: number | null }> = {};
+        const allIds = new Set<string>([
+          ...(Array.isArray(runningIds) ? runningIds : []),
+          ...Object.keys(backlogMap || {}),
+        ]);
+        allIds.forEach((id) => {
+          map[id] = {
+            running: Array.isArray(runningIds) && runningIds.includes(id),
+            backlog: backlogMap[id] ?? null,
+          };
+        });
+        return map;
+      }}
+      renderForm={(form) => (
+        <MqTaskForm
+          visible={form.visible}
+          isEdit={form.isEdit}
+          initialValues={form.currentRow}
+          initialTab={form.initialTab}
+          canWrite={canWrite}
+          onCancel={form.close}
+          onSubmit={form.submit}
+          onPublished={form.onPublished}
+        />
+      )}
+    >
+      <MqSimulateModal
+        open={!!simulateTarget}
+        taskId={simulateTarget?.id}
+        taskName={simulateTarget?.name}
+        onClose={() => setSimulateTarget(null)}
       />
-    )}
-  />
-);
+    </AssetDirectoryListShell>
+  );
+};
 
 export default MqTaskManagement;

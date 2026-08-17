@@ -15,6 +15,7 @@ import {
   ToolOutlined, DownOutlined,
 } from '@ant-design/icons';
 import { message } from 'antd';
+import { useAccess } from '@umijs/max';
 import ApiPathInput from './ApiPathInput';
 import { buildApiCurl, copyText, openPublishedApiDocCenter } from '@/utils/apiDocsActions';
 import { supportsApiDataView } from '@/services/flow/flowController';
@@ -39,9 +40,15 @@ export interface ControllerFormHeaderProps {
   /** 当前 HTTP 方法 */
   method: string;
   onMethodChange: (method: string) => void;
-  /** 当前 URL / 业务路径 */
+  /** 当前 URL / 相对业务路径（REPLACE 模式，不含目录前缀） */
   url: string;
   onUrlChange: (url: string) => void;
+  /** 目录有效 pathPrefix（根→叶叠加）；仅 REPLACE 模式展示在输入框前缀 */
+  directoryPathPrefix?: string;
+  /** 完整业务 path（含目录前缀），用于复制 cURL 等 */
+  fullUrl?: string;
+  /** 系统保留接口：锁定 method / path */
+  pathLocked?: boolean;
   /** 接口名称 */
   name: string;
   onNameChange: (name: string) => void;
@@ -87,6 +94,9 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
     onMethodChange,
     url,
     onUrlChange,
+    directoryPathPrefix,
+    pathLocked,
+    fullUrl,
     name,
     onNameChange,
     submitAttempted,
@@ -109,6 +119,9 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
     onOpenCurlImport,
     onSubmitSuccess,
   } = props;
+
+  const access = useAccess();
+  const canWrite = !!(access as any)?.canApiWrite;
 
   const headerCtrlSize = 'middle' as const;
   const headerCtrlHeight = 32;
@@ -160,7 +173,34 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
       style={{ display: 'flex', width: '100%', height: headerCtrlHeight }}
       size={headerCtrlSize}
     >
-      {interceptMode === 'WRAP' ? (
+      {pathLocked ? (
+        <Tooltip title="系统保留路径，进程内调用，不挂网关，不可修改">
+          <div
+            className="yf-header-path-wrap"
+            style={{
+              flex: 1,
+              minWidth: 360,
+              height: headerCtrlHeight,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0 12px',
+              border: '1px solid #d9d9d9',
+              borderRadius: 6,
+              background: '#fafafa',
+            }}
+          >
+            <span style={{ color: METHOD_COLORS.GET, fontWeight: 700, fontFamily: 'monospace' }}>GET</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fullUrl || url}</span>
+            <Tag style={{ margin: 0 }}>系统保留</Tag>
+            {name ? (
+              <span style={{ color: '#595959', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </span>
+            ) : null}
+          </div>
+        </Tooltip>
+      ) : interceptMode === 'WRAP' ? (
         <Tooltip title="包裹模式请从宿主已有接口中选择路径（方法随选项带入）">
           <div className="yf-header-path-wrap" style={{ flex: 1, minWidth: 360, width: '100%' }}>
             <Select
@@ -232,6 +272,7 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
                 size={headerCtrlSize}
                 value={url}
                 onChange={onUrlChange}
+                directoryPrefix={directoryPathPrefix}
                 status={submitAttempted && !url?.trim() ? 'error' : (urlConflictMsg ? 'error' : undefined)}
                 style={{ flex: 1, width: '100%', height: headerCtrlHeight, minWidth: 0 }}
               />
@@ -239,14 +280,16 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
           </Popover>
         </>
       )}
-      <Input
-        size={headerCtrlSize}
-        value={name}
-        onChange={(e) => onNameChange(e.target.value)}
-        placeholder="接口名称"
-        style={{ width: 280, height: headerCtrlHeight, flexShrink: 0 }}
-        status={submitAttempted && !name?.trim() ? 'error' : undefined}
-      />
+      {pathLocked ? null : (
+        <Input
+          size={headerCtrlSize}
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          placeholder="接口名称"
+          style={{ width: 280, height: headerCtrlHeight, flexShrink: 0 }}
+          status={submitAttempted && !name?.trim() ? 'error' : undefined}
+        />
+      )}
     </Space.Compact>
   );
 
@@ -280,18 +323,22 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
         }
       },
     },
-    {
-      key: 'curl-import',
-      icon: <ImportOutlined />,
-      label: '从 cURL 导入',
-      onClick: () => onOpenCurlImport(),
-    },
+    ...(canWrite
+      ? [
+          {
+            key: 'curl-import',
+            icon: <ImportOutlined />,
+            label: '从 cURL 导入',
+            onClick: () => onOpenCurlImport(),
+          },
+        ]
+      : []),
     {
       key: 'curl',
       icon: <CodeOutlined />,
       label: '复制 cURL',
       onClick: async () => {
-        const curl = buildApiCurl(method, url);
+        const curl = buildApiCurl(method, fullUrl || url);
         const ok = await copyText(curl);
         if (ok) message.success('cURL 已复制');
         else message.error('复制失败');
@@ -318,7 +365,7 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
           },
         ]
       : []),
-    ...(isEdit && publishStatus === 1 && hasUnpublishedChanges
+    ...(canWrite && isEdit && publishStatus === 1 && hasUnpublishedChanges
       ? [
           { type: 'divider' as const },
           {
@@ -341,7 +388,7 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
           },
         ]
       : []),
-    ...(isEdit && publishStatus === 1
+    ...(canWrite && isEdit && publishStatus === 1
       ? [
           { type: 'divider' as const },
           {
@@ -397,19 +444,21 @@ const ControllerFormHeader: React.FC<ControllerFormHeaderProps> = (props) => {
         </Button>
       </Dropdown>
 
-      <Tooltip title={staticJsonError || undefined}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', height: headerCtrlHeight }}>
-          <Button
-            size={headerCtrlSize}
-            icon={<SaveOutlined />}
-            disabled={!!staticJsonError}
-            onClick={onSubmit}
-          >
-            保存草稿
-          </Button>
-        </span>
-      </Tooltip>
-      {(publishStatus === 0 || isEdit) && (
+      {canWrite && (
+        <Tooltip title={staticJsonError || undefined}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', height: headerCtrlHeight }}>
+            <Button
+              size={headerCtrlSize}
+              icon={<SaveOutlined />}
+              disabled={!!staticJsonError}
+              onClick={onSubmit}
+            >
+              保存草稿
+            </Button>
+          </span>
+        </Tooltip>
+      )}
+      {canWrite && (publishStatus === 0 || isEdit) && (
         <Tooltip title={staticJsonError || undefined}>
           <span style={{ display: 'inline-flex', alignItems: 'center', height: headerCtrlHeight }}>
             <Button

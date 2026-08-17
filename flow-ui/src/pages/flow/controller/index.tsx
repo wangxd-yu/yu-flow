@@ -4,23 +4,20 @@ import {
   FooterToolbar,
   PageContainer,
   ProColumns,
-  ProDescriptions,
-  ProDescriptionsItemProps,
   ProTable,
   ModalForm,
 } from '@ant-design/pro-components';
-import { Button, Divider, Drawer, Modal, message, Tag, Popconfirm, Space, Switch, Tooltip, Table, Spin } from 'antd';
-import { CloudServerOutlined, PlusOutlined } from '@ant-design/icons';
-import { history, useLocation } from '@umijs/max';
+import { Button, Divider, Dropdown, Drawer, Form, Input, Modal, message, Tag, Popconfirm, Space, Tooltip, Table, Spin } from 'antd';
+import type { MenuProps } from 'antd';
+import { CloudServerOutlined, DownOutlined, PlusOutlined } from '@ant-design/icons';
+import { history, useAccess, useLocation } from '@umijs/max';
 import {
   queryAutoApiConfigDetail,
   queryAutoApiConfigList,
-  addAutoApiConfig,
-  updateAutoApiConfig,
   deleteAutoApiConfig,
   batchDeleteAutoApiConfig,
   batchMoveAutoApiConfig,
-  updateAutoApiLogEnabled,
+  batchApplyDirPrefix,
   listApiCacheEntries,
   getApiCacheEntryContent,
   clearApiCache,
@@ -35,6 +32,9 @@ import {
   HostApiProbeResult,
 } from '@/services/flow/flowController';
 import ApiConfigForm from './components/ControllerForm';
+import ApiCopyModal from './components/ApiCopyModal';
+import AssetExportModal from '@/components/flow/transfer/AssetExportModal';
+import AssetImportModal from '@/components/flow/transfer/AssetImportModal';
 import ApiDataViewDrawer from './components/ApiDataViewDrawer';
 import HostApiImportModal from './components/HostApiImportModal';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
@@ -43,6 +43,11 @@ import TableEmpty from '@/components/TableEmpty';
 import CodeEditor from '@/components/flow/flow-editor/components/CodeEditor';
 import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
 import { renderHealthTag } from '@/components/flow/AssetHealthTag';
+import {
+  fetchStackedDirectoryPathPrefix,
+  longestCommonPathPrefix,
+  rewritePathWithPrefix,
+} from '@/utils/apiPathPrefix';
 
 import '@/styles/fullHeightTable.css';
 
@@ -74,14 +79,28 @@ function renderIngressSummary(securityConfig?: string) {
     toText = cfg.timeoutMs <= 0 ? '超时·不限' : `超时·${cfg.timeoutMs}ms`;
   }
 
+  const callerOn = !!cfg?.callerPolicy?.enabled;
+  const types = Array.isArray(cfg?.callerPolicy?.userTypes)
+    ? cfg.callerPolicy.userTypes.filter(Boolean)
+    : [];
+  const callerText = callerOn
+    ? (types.length ? `调用方·${types.slice(0, 2).join('/')}` : '调用方·开')
+    : null;
+
   return (
     <Space size={4} wrap>
       <Tag color={modeColor} style={{ margin: 0 }}>{modeLabel}</Tag>
       <Tag color={rlColor} style={{ margin: 0 }}>{rlText}</Tag>
       <Tag style={{ margin: 0 }}>{toText}</Tag>
+      {callerText ? (
+        <Tag color="cyan" style={{ margin: 0 }}>{callerText}</Tag>
+      ) : null}
     </Space>
   );
 }
+/** 单次批量发布的接口数上限，与批量回归保持一致 */
+const BATCH_PUBLISH_LIMIT = 20;
+
 /** 超过该字符数关闭自动换行，减轻大 JSON 渲染压力 */
 const CACHE_VIEW_WORDWRAP_LIMIT = 200_000;
 /** 超过该字符数跳过 pretty-print，避免主线程卡顿 */
@@ -110,44 +129,6 @@ const isCacheEnabled = (cacheConfig?: string): boolean => {
 };
 
 /**
- * 添加配置
- */
-const handleAdd = async (fields: Partial<FlowController>) => {
-  const hide = message.loading('正在添加');
-  try {
-    await addAutoApiConfig(fields);
-    hide();
-    message.success('添加成功');
-    return true;
-  } catch (error: any) {
-    hide();
-    if (!error?.message?.includes('DEMO_RESTRICTED')) {
-      message.error('添加失败请重试！');
-    }
-    return false;
-  }
-};
-
-/**
- * 更新配置
- */
-const handleUpdate = async (id: string, fields: Partial<FlowController>) => {
-  const hide = message.loading('正在更新');
-  try {
-    await updateAutoApiConfig(id, fields);
-    hide();
-    message.success('更新成功');
-    return true;
-  } catch (error: any) {
-    hide();
-    if (!error?.message?.includes('DEMO_RESTRICTED')) {
-      message.error('更新失败请重试！');
-    }
-    return false;
-  }
-};
-
-/**
  * 删除配置
  */
 const handleRemove = async (selectedRows: FlowController[]) => {
@@ -170,15 +151,96 @@ const handleRemove = async (selectedRows: FlowController[]) => {
 
 const AutoApiConfigList: React.FC = () => {
   const location = useLocation();
-  const [createModalVisible, handleModalVisible] = useState<boolean>(false);
+  const access = useAccess();
+  const canWrite = !!(access as any)?.canApiWrite;
   const [hostImportOpen, setHostImportOpen] = useState(false);
   const [hostImportDirectoryId, setHostImportDirectoryId] = useState<string | undefined>();
   const actionRef = useRef<ActionType>();
-  const [row, setRow] = useState<FlowController>();
   const [selectedRowsState, setSelectedRows] = useState<FlowController[]>([]);
   const [batchMoveModalVisible, setBatchMoveModalVisible] = useState<boolean>(false);
+  const [batchPrefixOpen, setBatchPrefixOpen] = useState(false);
+  const [batchOldPrefix, setBatchOldPrefix] = useState('');
+  const [batchPrefixSubmitting, setBatchPrefixSubmitting] = useState(false);
+  const [batchPrefixPreview, setBatchPrefixPreview] = useState<
+    Array<{ id: string; name?: string; from: string; to: string; note?: string }>
+  >([]);
+  const [batchPrefixPreviewLoading, setBatchPrefixPreviewLoading] = useState(false);
   // 空态区分：是否处于筛选（目录 / 搜索条件）
   const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
+
+  const rebuildBatchPrefixPreview = async (rows: FlowController[], oldPrefix: string) => {
+    setBatchPrefixPreviewLoading(true);
+    try {
+      const dirIds = Array.from(
+        new Set(rows.map((r) => r.directoryId).filter(Boolean) as string[]),
+      );
+      const prefixMap: Record<string, string> = {};
+      await Promise.all(
+        dirIds.map(async (dirId) => {
+          prefixMap[dirId] = await fetchStackedDirectoryPathPrefix(dirId);
+        }),
+      );
+      const preview = rows.map((r) => {
+        const from = r.url || '';
+        const method = (r.method || 'GET').toUpperCase();
+        if (r.interceptMode === 'WRAP' || r.serviceType === 'HOST') {
+          return { id: r.id, name: r.name, from, to: from, method, note: '包裹模式，将跳过', willUpdate: false };
+        }
+        if (!r.directoryId) {
+          return { id: r.id, name: r.name, from, to: from, method, note: '未归属目录，将跳过', willUpdate: false };
+        }
+        const newPrefix = prefixMap[r.directoryId] || '';
+        if (!newPrefix) {
+          return { id: r.id, name: r.name, from, to: from, method, note: '目录无有效前缀，将跳过', willUpdate: false };
+        }
+        const to = rewritePathWithPrefix(from, oldPrefix, newPrefix);
+        if (to == null) {
+          return { id: r.id, name: r.name, from, to: from, method, note: '旧前缀不匹配，将跳过', willUpdate: false };
+        }
+        if (to === from) {
+          return { id: r.id, name: r.name, from, to, method, note: '无需变更', willUpdate: false };
+        }
+        return { id: r.id, name: r.name, from, to, method, note: undefined as string | undefined, willUpdate: true };
+      });
+      // 勾选内：目标 path 与「保留不动」的 path、或其它将更新目标 冲突时标红
+      const occupied = new Map<string, string>();
+      preview.forEach((p) => {
+        if (!p.willUpdate) {
+          occupied.set(`${p.method} ${p.to}`, p.name || p.id);
+        }
+      });
+      preview.forEach((p) => {
+        if (!p.willUpdate) return;
+        const key = `${p.method} ${p.to}`;
+        const other = occupied.get(key);
+        if (other) {
+          p.note = `冲突：与「${other}」同为 ${key}`;
+        } else {
+          occupied.set(key, p.name || p.id);
+        }
+      });
+      setBatchPrefixPreview(
+        preview.map(({ id, name, from, to, note }) => ({ id, name, from, to, note })),
+      );
+    } finally {
+      setBatchPrefixPreviewLoading(false);
+    }
+  };
+
+  const openBatchApplyDirPrefix = async () => {
+    if (!selectedRowsState.length) {
+      message.warning('请先勾选接口');
+      return;
+    }
+    const lcp = longestCommonPathPrefix(
+      selectedRowsState
+        .filter((r) => r.interceptMode !== 'WRAP' && r.serviceType !== 'HOST')
+        .map((r) => r.url),
+    );
+    setBatchOldPrefix(lcp);
+    setBatchPrefixOpen(true);
+    await rebuildBatchPrefixPreview(selectedRowsState, lcp);
+  };
 
   // 状态定义
   const [formVisible, setFormVisible] = useState<boolean>(false);
@@ -189,6 +251,10 @@ const AutoApiConfigList: React.FC = () => {
   >();
   const [dataViewOpen, setDataViewOpen] = useState(false);
   const [dataViewApi, setDataViewApi] = useState<{ id: string; name?: string } | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copySource, setCopySource] = useState<FlowController | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -233,8 +299,12 @@ const AutoApiConfigList: React.FC = () => {
   const [healthMap, setHealthMap] = useState<Record<string, AssetHealth>>({});
   const [probeMap, setProbeMap] = useState<Record<string, HostApiProbeResult>>({});
 
-  /** 新建直进表单，模式在页内选择（默认替换） */
+  /** 新建直进表单；路径前缀由表单 addonBefore 展示，输入框只填相对段 */
   const openCreateForm = (directoryId?: string) => {
+    if (!directoryId) {
+      message.warning('请先选择目录，或在目录上右键「新建接口」');
+      return;
+    }
     setCurrentRow({
       directoryId,
       interceptMode: 'REPLACE',
@@ -244,6 +314,15 @@ const AutoApiConfigList: React.FC = () => {
     setIsEditMode(false);
     setFormInitialTab(undefined);
     setFormVisible(true);
+  };
+
+  const openHostImport = (directoryId?: string) => {
+    if (!directoryId) {
+      message.warning('请先选择目录，或在目录上右键「从宿主导入」');
+      return;
+    }
+    setHostImportDirectoryId(directoryId);
+    setHostImportOpen(true);
   };
 
   // 编辑配置
@@ -262,16 +341,147 @@ const AutoApiConfigList: React.FC = () => {
     }
   };
 
-  const handleLogEnabledChange = async (record: FlowController, checked: boolean) => {
+  /** 分页后补齐运行健康 / 宿主探活；失败降级为空，不影响列表 */
+  const loadRowExtras = async (items: FlowController[]) => {
+    const ids = items.filter((i) => i.id).map((i) => i.id);
+    const wrapIds = items
+      .filter((i) => i.id && (i.interceptMode === 'WRAP' || i.serviceType === 'HOST'))
+      .map((i) => i.id);
+
+    const healthTask = ids.length
+      ? batchAssetHealth(ids.map((id) => ({ assetType: 'API' as const, assetId: id })))
+          .then((health) => {
+            const map: Record<string, AssetHealth> = {};
+            (health || []).forEach((h) => {
+              map[h.assetId] = h;
+            });
+            setHealthMap(map);
+          })
+          .catch(() => setHealthMap({}))
+      : Promise.resolve(setHealthMap({}));
+
+    const probeTask = wrapIds.length
+      ? batchHostApiProbe(wrapIds)
+          .then((probes: any) => {
+            const list = Array.isArray(probes) ? probes : (probes?.data ?? []);
+            const pmap: Record<string, HostApiProbeResult> = {};
+            list.forEach((p: HostApiProbeResult) => {
+              if (p?.apiId) pmap[p.apiId] = p;
+            });
+            setProbeMap(pmap);
+          })
+          .catch(() => setProbeMap({}))
+      : Promise.resolve(setProbeMap({}));
+
+    await Promise.all([healthTask, probeTask]);
+  };
+
+  /** REPLACE 模式发布前提示宿主同名路由会被接管 */
+  const confirmHostTakeover = async (record: FlowController) => {
+    const isWrap = record.interceptMode === 'WRAP' || record.serviceType === 'HOST';
+    if (isWrap || !record.method || !record.url) return true;
+    let hostExists = false;
     try {
-      await updateAutoApiLogEnabled(record.id, checked);
-      message.success(checked ? '已开启执行日志' : '已关闭执行日志');
+      const existsRes: any = await checkHostApiRouteExists(record.method, record.url);
+      hostExists = existsRes?.exists === true || existsRes?.data?.exists === true;
+    } catch {
+      hostExists = false;
+    }
+    if (!hostExists) return true;
+    return new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        title: '确认发布「同名替换」？',
+        content: `检测到宿主已注册 ${record.method} ${record.url}。发布后将接管该路径，宿主同名接口不再被调用。`,
+        okText: '确认替换并发布',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  };
+
+  const handlePublish = async (record: FlowController) => {
+    try {
+      if (!(await confirmHostTakeover(record))) return;
+      const { confirmPublishWithGate } = await import(
+        '@/components/flow/release/confirmPublishWithGate'
+      );
+      const envCode = await confirmPublishWithGate({
+        assetType: 'API',
+        assetId: record.id,
+        assetName: record.name,
+      });
+      if (!envCode) return;
+      await publishApi(record.id, envCode);
+      message.success('发布成功');
       actionRef.current?.reload();
-    } catch (error: any) {
-      if (!error?.message?.includes('DEMO_RESTRICTED')) {
-        message.error('更新执行日志开关失败');
+    } catch {
+      /* 拦截器已提示 */
+    }
+  };
+
+  /**
+   * 批量发布：与单条发布一致地走环境选择，逐个发布并汇总失败原因。
+   * 逐条串行是为了避免每次发布触发的路由缓存刷新事件在集群里扎堆广播。
+   */
+  const handleBatchPublish = async () => {
+    const rows = selectedRowsState;
+    if (!rows.length) return;
+    if (rows.length > BATCH_PUBLISH_LIMIT) {
+      message.warning(`单次批量发布最多 ${BATCH_PUBLISH_LIMIT} 个接口，请减少选择`);
+      return;
+    }
+    const { confirmBatchPublish } = await import(
+      '@/components/flow/release/confirmBatchPublish'
+    );
+    const envCode = await confirmBatchPublish({ count: rows.length, assetLabel: '接口' });
+    if (!envCode) return;
+
+    const hide = message.loading(`正在发布 ${rows.length} 个接口（${envCode}）…`, 0);
+    const failures: Array<{ name: string; reason: string }> = [];
+    let ok = 0;
+    for (const row of rows) {
+      try {
+        await publishApi(row.id, envCode);
+        ok += 1;
+      } catch (e: any) {
+        failures.push({ name: row.name || row.id, reason: e?.message || '未知错误' });
       }
+    }
+    hide();
+    if (!failures.length) {
+      message.success(`已发布 ${ok} 个接口（${envCode}）`);
+    } else {
+      Modal.warning({
+        title: `批量发布完成（${envCode}）`,
+        width: 640,
+        content: (
+          <div>
+            <p>成功 {ok} / 失败 {failures.length}</p>
+            <ul style={{ maxHeight: 280, overflow: 'auto', paddingLeft: 18 }}>
+              {failures.map((f) => (
+                <li key={f.name}>
+                  <b>{f.name}</b>：{f.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ),
+      });
+    }
+    setSelectedRows([]);
+    actionRef.current?.clearSelected?.();
+    actionRef.current?.reloadAndRest?.();
+  };
+
+  const handleUnpublish = async (record: FlowController) => {
+    try {
+      await unpublishApi(record.id);
+      message.success('已下线');
       actionRef.current?.reload();
+    } catch {
+      /* 拦截器已提示 */
     }
   };
 
@@ -555,117 +765,91 @@ const AutoApiConfigList: React.FC = () => {
       title: '操作',
       dataIndex: 'option',
       valueType: 'option',
-      width: 420,
+      width: 200,
       fixed: 'right',
-      render: (_, record) => (
-        <span style={{ whiteSpace: 'nowrap' }}>
-          <a onClick={() => handleEdit(record)}>编辑</a>
-          <Divider type="vertical" />
-          {supportsApiDataView(record) ? (
-            <a
-              onClick={() => {
-                setDataViewApi({ id: record.id, name: record.name });
-                setDataViewOpen(true);
-              }}
-            >
-              数据查看
-            </a>
-          ) : (
-            <Tooltip title="仅 DB 模式且响应类型为 PAGE / LIST / OBJECT 的查询接口可用">
-              <span style={{ color: 'rgba(0,0,0,0.25)', cursor: 'not-allowed' }}>数据查看</span>
-            </Tooltip>
-          )}
-          <Divider type="vertical" />
-          {record.publishStatus === 1 ? (
-            <a
-              onClick={async () => {
-                try {
-                  await unpublishApi(record.id);
-                  message.success('已下线');
-                  actionRef.current?.reload();
-                } catch {
-                  /* 拦截器已提示 */
-                }
-              }}
-            >
-              下线
-            </a>
-          ) : (
-            <a
-              onClick={async () => {
-                try {
-                  const isWrap = record.interceptMode === 'WRAP' || record.serviceType === 'HOST';
-                  if (!isWrap && record.method && record.url) {
-                    let hostExists = false;
-                    try {
-                      const existsRes: any = await checkHostApiRouteExists(record.method, record.url);
-                      hostExists = existsRes?.exists === true || existsRes?.data?.exists === true;
-                    } catch {
-                      hostExists = false;
-                    }
-                    if (hostExists) {
-                      const ok = await new Promise<boolean>((resolve) => {
-                        Modal.confirm({
-                          title: '确认发布「同名替换」？',
-                          content: `检测到宿主已注册 ${record.method} ${record.url}。发布后将接管该路径，宿主同名接口不再被调用。`,
-                          okText: '确认替换并发布',
-                          okButtonProps: { danger: true },
-                          cancelText: '取消',
-                          onOk: () => resolve(true),
-                          onCancel: () => resolve(false),
-                        });
-                      });
-                      if (!ok) return;
-                    }
-                  }
-                  const { confirmPublishWithGate } = await import(
-                    '@/components/flow/release/confirmPublishWithGate'
-                  );
-                  const envCode = await confirmPublishWithGate({
-                    assetType: 'API',
-                    assetId: record.id,
-                    assetName: record.name,
-                  });
-                  if (!envCode) return;
-                  await publishApi(record.id, envCode);
-                  message.success('发布成功');
-                  actionRef.current?.reload();
-                } catch {
-                  /* 拦截器已提示 */
-                }
-              }}
-            >
-              发布
-            </a>
-          )}
-          <Divider type="vertical" />
-          <a onClick={() => history.push(`/log/execution?apiId=${record.id}`)}>
-            查看日志
-          </a>
-          <Divider type="vertical" />
-          {isCacheEnabled(record.cacheConfig) ? (
-            <a onClick={() => handleViewCache(record)}>查看缓存</a>
-          ) : (
-            <Tooltip title="未开启响应缓存">
-              <span style={{ color: 'rgba(0,0,0,0.25)', cursor: 'not-allowed' }}>查看缓存</span>
-            </Tooltip>
-          )}
-          <Divider type="vertical" />
-          <Popconfirm
-            title="确认删除该接口吗？"
-            onConfirm={async () => {
-              try {
+      render: (_, record) => {
+        const dataViewable = supportsApiDataView(record);
+        const cacheOn = isCacheEnabled(record.cacheConfig);
+        const moreItems: MenuProps['items'] = [
+          ...(canWrite ? [{ key: 'copy', label: '复制' }] : []),
+          {
+            key: 'dataView',
+            label: dataViewable ? '数据查看' : (
+              <Tooltip title="仅 DB 模式且响应类型为 PAGE / LIST / OBJECT 的查询接口可用">
+                <span>数据查看</span>
+              </Tooltip>
+            ),
+            disabled: !dataViewable,
+          },
+          { key: 'logs', label: '查看日志' },
+          {
+            key: 'cache',
+            label: cacheOn ? '查看缓存' : (
+              <Tooltip title="未开启响应缓存">
+                <span>查看缓存</span>
+              </Tooltip>
+            ),
+            disabled: !cacheOn,
+          },
+          ...(canWrite
+            ? [{ type: 'divider' as const }, { key: 'delete', label: '删除', danger: true }]
+            : []),
+        ];
+
+        const onMenuClick: MenuProps['onClick'] = ({ key }) => {
+          if (key === 'copy') {
+            setCopySource(record);
+            setCopyOpen(true);
+            return;
+          }
+          if (key === 'dataView') {
+            setDataViewApi({ id: record.id, name: record.name });
+            setDataViewOpen(true);
+            return;
+          }
+          if (key === 'logs') {
+            history.push(`/log/execution?apiId=${record.id}`);
+            return;
+          }
+          if (key === 'cache') {
+            handleViewCache(record);
+            return;
+          }
+          if (key === 'delete') {
+            Modal.confirm({
+              title: '确认删除该接口吗？',
+              content: `接口「${record.name}」删除后不可恢复；若仍被其他资产引用会被拦截。`,
+              okType: 'danger',
+              onOk: async () => {
                 await deleteAutoApiConfig(record.id);
                 actionRef.current?.reload();
-              } catch (error) {
-                // 已通过全局拦截器展示
-              }
-            }}
-          >
-            <a>删除</a>
-          </Popconfirm>
-        </span>
-      ),
+              },
+            });
+          }
+        };
+
+        return (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            <a onClick={() => handleEdit(record)}>{canWrite ? '编辑' : '查看'}</a>
+            {canWrite && (
+              <>
+                <Divider type="vertical" />
+                {record.publishStatus === 1 ? (
+                  <a onClick={() => handleUnpublish(record)}>下线</a>
+                ) : (
+                  <a onClick={() => handlePublish(record)}>发布</a>
+                )}
+              </>
+            )}
+            <Divider type="vertical" />
+            <Dropdown menu={{ items: moreItems, onClick: onMenuClick }}>
+              <a>
+                更多 <DownOutlined style={{ fontSize: 10 }} />
+              </a>
+            </Dropdown>
+          </span>
+        );
+      },
     },
   ];
 
@@ -680,15 +864,22 @@ const AutoApiConfigList: React.FC = () => {
         overflow: 'hidden',
       }}
     >
-      <DirectoryTreeLayout bizType="api" height="calc(100vh - 90px)">
+      <DirectoryTreeLayout
+        bizType="api"
+        height="calc(100vh - 90px)"
+        onCreateApi={(directoryId) => openCreateForm(directoryId)}
+        onHostImport={(directoryId) => openHostImport(directoryId)}
+      >
         {(selectedDirectoryId, selectedDirectoryName) => (
           <>
 
             <ProTable<FlowController>
-              className="fh-table fh-table-fit"
+              // 操作列 fixed: 'right'，不能叠加 fh-table-fit：后者把表格压到容器宽度，
+              // sticky 偏移量测量失真会导致表头与表体错位
+              className="fh-table"
               headerTitle={`接口列表 (${selectedDirectoryName || '全部'})`}
               tableLayout="fixed"
-              scroll={{ x: 2240, y: 100000 }}
+              scroll={{ x: 2150, y: 100000 }}
               pagination={{
                 defaultPageSize: 20,
                 showSizeChanger: true,
@@ -700,26 +891,30 @@ const AutoApiConfigList: React.FC = () => {
             search={{
               labelWidth: 120,
             }}
-            toolBarRender={() => [
-              <Button
-                key="create"
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => openCreateForm(selectedDirectoryId)}
-              >
-                新建接口
-              </Button>,
-              <Button
-                key="host-import"
-                icon={<CloudServerOutlined />}
-                onClick={() => {
-                  setHostImportDirectoryId(selectedDirectoryId);
-                  setHostImportOpen(true);
-                }}
-              >
-                从宿主导入
-              </Button>,
-            ]}
+            toolBarRender={() =>
+              canWrite
+                ? [
+                    <Button
+                      key="create"
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => openCreateForm(selectedDirectoryId)}
+                    >
+                      新建接口
+                    </Button>,
+                    <Button
+                      key="host-import"
+                      icon={<CloudServerOutlined />}
+                      onClick={() => openHostImport(selectedDirectoryId)}
+                    >
+                      从宿主导入
+                    </Button>,
+                    <Button key="bundle-import" onClick={() => setImportOpen(true)}>
+                      导入资产包
+                    </Button>,
+                  ]
+                : []
+            }
             params={{ directoryId: selectedDirectoryId }}
             request={async (params = {}, sort, filter) => {
               const { current, pageSize, directoryId, ...restParams } = params as any;
@@ -736,36 +931,9 @@ const AutoApiConfigList: React.FC = () => {
                 size: pageSize || 20,
               });
               const items: FlowController[] = data?.items || [];
-              try {
-                const health = await batchAssetHealth(
-                  items.filter((i) => i.id).map((i) => ({ assetType: 'API' as const, assetId: i.id })),
-                );
-                const map: Record<string, AssetHealth> = {};
-                (health || []).forEach((h) => {
-                  map[h.assetId] = h;
-                });
-                setHealthMap(map);
-              } catch {
-                setHealthMap({});
-              }
-              try {
-                const wrapIds = items
-                  .filter((i) => i.id && (i.interceptMode === 'WRAP' || i.serviceType === 'HOST'))
-                  .map((i) => i.id);
-                if (wrapIds.length) {
-                  const probes: any = await batchHostApiProbe(wrapIds);
-                  const list = Array.isArray(probes) ? probes : (probes?.data ?? []);
-                  const pmap: Record<string, HostApiProbeResult> = {};
-                  list.forEach((p: HostApiProbeResult) => {
-                    if (p?.apiId) pmap[p.apiId] = p;
-                  });
-                  setProbeMap(pmap);
-                } else {
-                  setProbeMap({});
-                }
-              } catch {
-                setProbeMap({});
-              }
+              // 健康度与宿主探活只影响两列的标签，异步补齐即可；
+              // 串行 await 会让整张表等两次额外请求才渲染
+              void loadRowExtras(items);
               return {
                 data: items,
                 success: true,
@@ -779,17 +947,16 @@ const AutoApiConfigList: React.FC = () => {
                   entityName="接口"
                   filtered={emptyFiltered}
                   hint="支持 SQL 一键成接口、可视化编排，或从 cURL / 宿主路由导入"
-                  onCreate={() => openCreateForm(selectedDirectoryId)}
+                  onCreate={canWrite ? () => openCreateForm(selectedDirectoryId) : undefined}
                   extraActions={
-                    <Button
-                      icon={<CloudServerOutlined />}
-                      onClick={() => {
-                        setHostImportDirectoryId(selectedDirectoryId);
-                        setHostImportOpen(true);
-                      }}
-                    >
-                      从宿主导入
-                    </Button>
+                    canWrite ? (
+                      <Button
+                        icon={<CloudServerOutlined />}
+                        onClick={() => openHostImport(selectedDirectoryId)}
+                      >
+                        从宿主导入
+                      </Button>
+                    ) : undefined
                   }
                 />
               ),
@@ -800,13 +967,17 @@ const AutoApiConfigList: React.FC = () => {
             tableAlertOptionRender={() => {
               return (
                 <Space size={16}>
-                  <a
-                    onClick={() => {
-                      setBatchMoveModalVisible(true);
-                    }}
-                  >
-                    批量移动
-                  </a>
+                  {canWrite && (
+                    <a
+                      onClick={() => {
+                        setBatchMoveModalVisible(true);
+                      }}
+                    >
+                      批量移动
+                    </a>
+                  )}
+                  {canWrite && <a onClick={() => openBatchApplyDirPrefix()}>按目录前缀重写</a>}
+                  <a onClick={() => setExportOpen(true)}>批量导出</a>
                 </Space>
               );
             }}
@@ -815,7 +986,7 @@ const AutoApiConfigList: React.FC = () => {
         )}
       </DirectoryTreeLayout>
 
-      {selectedRowsState?.length > 0 && (
+      {canWrite && selectedRowsState?.length > 0 && (
         <FooterToolbar
           extra={
             <div>
@@ -825,6 +996,7 @@ const AutoApiConfigList: React.FC = () => {
             </div>
           }
         >
+          <Button onClick={() => openBatchApplyDirPrefix()}>按目录前缀重写</Button>
           <Button
             onClick={async () => {
               try {
@@ -895,34 +1067,7 @@ const AutoApiConfigList: React.FC = () => {
           >
             批量回归
           </Button>
-          <Button
-            type="primary"
-            onClick={async () => {
-              const hide = message.loading(`正在发布 ${selectedRowsState.length} 个接口...`);
-              try {
-                let ok = 0;
-                let fail = 0;
-                for (const row of selectedRowsState) {
-                  try {
-                    await publishApi(row.id);
-                    ok += 1;
-                  } catch {
-                    fail += 1;
-                  }
-                }
-                hide();
-                if (fail === 0) {
-                  message.success(`已发布 ${ok} 个接口`);
-                } else {
-                  message.warning(`发布完成：成功 ${ok}，失败 ${fail}`);
-                }
-                setSelectedRows([]);
-                actionRef.current?.reloadAndRest?.();
-              } catch {
-                hide();
-              }
-            }}
-          >
+          <Button type="primary" onClick={handleBatchPublish}>
             批量发布
           </Button>
         </FooterToolbar>
@@ -935,6 +1080,30 @@ const AutoApiConfigList: React.FC = () => {
           setHostImportOpen(false);
           actionRef.current?.reload();
         }}
+      />
+      <ApiCopyModal
+        open={copyOpen}
+        source={copySource}
+        onCancel={() => {
+          setCopyOpen(false);
+          setCopySource(null);
+        }}
+        onSuccess={() => {
+          setCopyOpen(false);
+          setCopySource(null);
+          actionRef.current?.reload();
+        }}
+      />
+      <AssetExportModal
+        open={exportOpen}
+        assetType="API"
+        ids={selectedRowsState.map((r) => r.id).filter(Boolean)}
+        onCancel={() => setExportOpen(false)}
+      />
+      <AssetImportModal
+        open={importOpen}
+        onCancel={() => setImportOpen(false)}
+        onSuccess={() => actionRef.current?.reload()}
       />
       <ApiConfigForm
         isEdit={isEditMode}
@@ -953,29 +1122,6 @@ const AutoApiConfigList: React.FC = () => {
         }}
         values={currentRow}
       />
-      <Drawer
-        width={600}
-        open={!!row}
-        onClose={() => {
-          setRow(undefined);
-        }}
-        closable={false}
-      >
-        {row?.name && (
-          <ProDescriptions<FlowController>
-            column={2}
-            title={row?.name}
-            request={async () => ({
-              data: row || {},
-            })}
-            params={{
-              id: row?.id,
-            }}
-            columns={columns.filter((item) => item.dataIndex !== 'option') as ProDescriptionsItemProps<FlowController>[]}
-          />
-        )}
-      </Drawer>
-
       <ModalForm
         title="批量移动至"
         width="400px"
@@ -1005,6 +1151,118 @@ const AutoApiConfigList: React.FC = () => {
       >
         <DirectoryTreeSelect bizType="api" />
       </ModalForm>
+
+      <Modal
+        title="按目录前缀重写"
+        open={batchPrefixOpen}
+        width={720}
+        destroyOnClose
+        okText="确认重写"
+        confirmLoading={batchPrefixSubmitting}
+        onCancel={() => setBatchPrefixOpen(false)}
+        onOk={async () => {
+          setBatchPrefixSubmitting(true);
+          try {
+            const res: any = await batchApplyDirPrefix(
+              selectedRowsState.map((r) => r.id),
+              batchOldPrefix.trim() || undefined,
+            );
+            const data = res?.data ?? res;
+            const updated = data?.updated ?? 0;
+            const skipped = data?.skipped ?? 0;
+            const failed = data?.failed ?? 0;
+            const publishedTouched = data?.publishedTouched ?? 0;
+            const summary = `更新 ${updated} / 跳过 ${skipped} / 失败 ${failed}`;
+            if (failed > 0) {
+              Modal.warning({
+                title: '批量重写完成（含失败）',
+                width: 640,
+                content: (
+                  <div>
+                    <p>{summary}</p>
+                    {publishedTouched > 0 && (
+                      <p>其中 {publishedTouched} 条已发布，仅改草稿，需重新发布后线上路由才变。</p>
+                    )}
+                    <ul style={{ maxHeight: 280, overflow: 'auto', paddingLeft: 18 }}>
+                      {(data?.items || [])
+                        .filter((i: any) => i.status !== 'updated')
+                        .map((i: any) => (
+                          <li key={i.id}>
+                            <b>{i.name || i.id}</b>：{i.status} — {i.message}
+                            {i.from && i.to && i.from !== i.to ? `（${i.from} → ${i.to}）` : ''}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ),
+              });
+            } else {
+              message.success(
+                publishedTouched > 0
+                  ? `${summary}；其中 ${publishedTouched} 条已发布需再发布才上线`
+                  : summary,
+              );
+            }
+            setBatchPrefixOpen(false);
+            actionRef.current?.clearSelected?.();
+            setSelectedRows([]);
+            actionRef.current?.reload();
+          } catch (e: any) {
+            if (!e?.message?.includes('DEMO_RESTRICTED')) {
+              message.error(e?.message || '批量重写失败');
+            }
+          } finally {
+            setBatchPrefixSubmitting(false);
+          }
+        }}
+      >
+        <p style={{ marginBottom: 12, color: 'rgba(0,0,0,0.65)' }}>
+          用各接口所属目录的当前有效前缀（根→叶叠加）重写草稿 path；相对段保留。已发布接口只改草稿，需再发布才上线。
+        </p>
+        <Form layout="vertical">
+          <Form.Item
+            label="旧前缀（从现有 path 剥离）"
+            extra="默认取勾选接口 URL 的最长公共前缀，可按需修改"
+          >
+            <Input
+              value={batchOldPrefix}
+              placeholder="例如 /api/public"
+              allowClear
+              onChange={(e) => setBatchOldPrefix(e.target.value)}
+              onBlur={() => rebuildBatchPrefixPreview(selectedRowsState, batchOldPrefix)}
+              onPressEnter={() => rebuildBatchPrefixPreview(selectedRowsState, batchOldPrefix)}
+            />
+          </Form.Item>
+        </Form>
+        <div style={{ marginBottom: 8 }}>
+          <Button
+            size="small"
+            loading={batchPrefixPreviewLoading}
+            onClick={() => rebuildBatchPrefixPreview(selectedRowsState, batchOldPrefix)}
+          >
+            刷新预览
+          </Button>
+        </div>
+        <Table
+          size="small"
+          loading={batchPrefixPreviewLoading}
+          rowKey="id"
+          pagination={false}
+          scroll={{ y: 280 }}
+          dataSource={batchPrefixPreview}
+          columns={[
+            { title: '名称', dataIndex: 'name', width: 140, ellipsis: true },
+            { title: '原 path', dataIndex: 'from', ellipsis: true },
+            { title: '新 path', dataIndex: 'to', ellipsis: true },
+            {
+              title: '说明',
+              dataIndex: 'note',
+              width: 140,
+              render: (v?: string) => v || '将更新',
+            },
+          ]}
+        />
+      </Modal>
 
       <Drawer
         title={`响应缓存 — ${cacheDrawerApi?.name || ''}`}

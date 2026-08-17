@@ -6,6 +6,7 @@
 import { useEffect } from 'react';
 import type { FormInstance } from 'antd/es/form';
 import { parseSecurityConfigToForm } from './securityConfig';
+import { parsePrivacyConfigToForm } from './privacyConfig';
 import { parseHostBinding } from './panels/HostWrapConfig';
 import type { EngineMode } from './panels/ImplementationPanel';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
@@ -96,6 +97,7 @@ export function useControllerFormInit(options: UseControllerFormInitOptions) {
     }
 
     const secFields = parseSecurityConfigToForm(processedValues.securityConfig);
+    const privacyFields = parsePrivacyConfigToForm(processedValues.privacyConfig);
 
     form.setFieldsValue({
       ...processedValues,
@@ -108,6 +110,7 @@ export function useControllerFormInit(options: UseControllerFormInitOptions) {
       cacheIncludePageable,
       cacheKeyParams,
       ...secFields,
+      ...privacyFields,
     });
 
     setMethod(processedValues.method || 'GET');

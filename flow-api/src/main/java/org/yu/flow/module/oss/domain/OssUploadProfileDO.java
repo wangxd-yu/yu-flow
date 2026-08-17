@@ -70,7 +70,7 @@ public class OssUploadProfileDO implements Serializable {
     @Column(name = "quota_max_files")
     private Integer quotaMaxFiles;
 
-    @Column(name = "thumbnail_enabled", columnDefinition = "tinyint(1) default 0")
+    @Column(name = "thumbnail_enabled", nullable = false)
     private Boolean thumbnailEnabled;
 
     /** 缩略图最长边（像素），空=用全局 yu.flow.oss.thumbnail.max-edge */
@@ -85,8 +85,12 @@ public class OssUploadProfileDO implements Serializable {
     @Column(name = "thumbnail_jpeg_quality")
     private Double thumbnailJpegQuality;
 
-    @Column(name = "require_auth", columnDefinition = "tinyint(1) default 1")
+    @Column(name = "require_auth", nullable = false)
     private Boolean requireAuth;
+
+    /** 是否开放预签名直传（客户端 PUT 直达 OSS）；空/false=仅允许网关代理上传 */
+    @Column(name = "presign_upload_enabled", nullable = false)
+    private Boolean presignUploadEnabled;
 
     @Column(name = "biz_fields_schema", columnDefinition = "text")
     private String bizFieldsSchema;
@@ -99,7 +103,13 @@ public class OssUploadProfileDO implements Serializable {
     @Column(name = "download_perm", length = 128)
     private String downloadPerm;
 
-    @Column(columnDefinition = "tinyint(1) default 1")
+    /**
+     * 访问规则 JSON：{@code {"rules":[{...}]}}。
+     */
+    @Column(name = "caller_policy", columnDefinition = "text")
+    private String callerPolicy;
+
+    @Column(nullable = false)
     private Boolean enabled;
 
     private String remark;

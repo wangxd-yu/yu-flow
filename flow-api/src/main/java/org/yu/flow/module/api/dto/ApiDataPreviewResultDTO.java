@@ -30,4 +30,8 @@ public class ApiDataPreviewResultDTO {
     private Integer page;
     private Integer size;
     private Integer pages;
+    /** 出站隐私是否对本接口生效 */
+    private Boolean privacyEnabled;
+    /** MASK / REVEAL；未启用时为 null */
+    private String privacyClass;
 }

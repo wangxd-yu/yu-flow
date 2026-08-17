@@ -5,6 +5,7 @@ import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 import org.yu.flow.module.sysmacro.cache.SysMacroMessageListener;
+import org.yu.flow.module.host.FlowHostIdentityCatalogService;
 
 import jakarta.annotation.Resource;
 
@@ -34,6 +35,9 @@ public class FlowApiMessageListener implements MessageListener {
     @Resource
     private FlowApiCacheManager flowApiCacheManager;
 
+    @Resource
+    private FlowHostIdentityCatalogService hostIdentityCatalogService;
+
     /**
      * 接收 Redis 频道消息回调。
      *
@@ -49,6 +53,8 @@ public class FlowApiMessageListener implements MessageListener {
 
         try {
             flowApiCacheManager.refreshCache();
+            // 保留身份目录 API 的发布快照可能已变化。
+            hostIdentityCatalogService.invalidateRuntimeCache();
             log.info("[FlowApiMessageListener] 本地路由缓存重载完成。精确路由={}, 模式路由={}",
                     flowApiCacheManager.getExactCacheSize(),
                     flowApiCacheManager.getPatternCacheSize());

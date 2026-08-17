@@ -83,4 +83,16 @@ public class FlowMqTaskDTO {
         dto.setHasUnpublishedChanges(UnpublishedChangeDetector.mqTaskHasUnpublishedChanges(entity));
         return dto;
     }
+
+    /**
+     * 列表投影：清掉 DSL 与发布快照两个大文本字段。
+     *
+     * <p>草稿是否有未发布变更已在 {@link #fromDO} 里比对完成，列表页只用元信息；
+     * 详情仍走 {@code GET /{id}}。</p>
+     */
+    public FlowMqTaskDTO stripHeavyFields() {
+        this.dslContent = null;
+        this.publishedSnapshot = null;
+        return this;
+    }
 }

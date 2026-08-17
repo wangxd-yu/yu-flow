@@ -17,8 +17,10 @@ import org.yu.flow.module.oss.service.multipart.OssMultipartUploadService;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss/multipart")
 public class OssMultipartUploadController {
@@ -53,9 +55,10 @@ public class OssMultipartUploadController {
                               @PathVariable int partNumber,
                               @RequestParam(value = "file", required = false) MultipartFile file,
                               HttpServletRequest request) throws Exception {
+        FlowHostPrincipal principal = flowHostAuthSupport.getPrincipalProvider().resolve(request).orElse(null);
         if (file != null && !file.isEmpty()) {
             try (InputStream stream = file.getInputStream()) {
-                ossMultipartUploadService.uploadPart(uploadId, partNumber, stream, file.getSize());
+                ossMultipartUploadService.uploadPart(uploadId, partNumber, stream, file.getSize(), principal);
             }
         } else {
             try (InputStream stream = request.getInputStream()) {
@@ -63,7 +66,7 @@ public class OssMultipartUploadController {
                 if (size < 0) {
                     size = stream.available();
                 }
-                ossMultipartUploadService.uploadPart(uploadId, partNumber, stream, size);
+                ossMultipartUploadService.uploadPart(uploadId, partNumber, stream, size, principal);
             }
         }
         return R.ok();
@@ -76,8 +79,9 @@ public class OssMultipartUploadController {
     }
 
     @DeleteMapping("/{uploadId}")
-    public R<Void> abort(@PathVariable String uploadId) {
-        ossMultipartUploadService.abort(uploadId);
+    public R<Void> abort(@PathVariable String uploadId, HttpServletRequest request) {
+        FlowHostPrincipal principal = flowHostAuthSupport.getPrincipalProvider().resolve(request).orElse(null);
+        ossMultipartUploadService.abort(uploadId, principal);
         return R.ok();
     }
 
@@ -98,7 +102,8 @@ public class OssMultipartUploadController {
         request.getParameterMap().forEach((key, values) -> {
             if ("profile".equals(key) || "originalName".equals(key) || "contentType".equals(key)
                     || "bizFields".equals(key) || "expiresAt".equals(key) || "expiresInSeconds".equals(key)
-                    || "overwrite".equals(key) || "uploadedBy".equals(key) || "uploadedByName".equals(key)) {
+                    || "overwrite".equals(key) || "uploadedBy".equals(key)
+                    || "uploadedByName".equals(key) || "uploadedByUserType".equals(key)) {
                 return;
             }
             if (values != null && values.length > 0) {

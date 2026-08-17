@@ -7,15 +7,22 @@ import {
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
-import { AutoComplete, Button, Card, Col, Form, Row, Space, Tag, message } from 'antd';
-import React, { useEffect, useMemo, useState } from 'react';
+import { AutoComplete, Button, Card, Col, Collapse, Form, Row, Space, Tag, message } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
+import OssAccessRulesFields from '@/pages/flow/ossProfile/components/OssAccessRulesFields';
 import { queryOssConnectionOptions, queryOssConnectionBuckets, OssConnection } from '@/services/flow/ossConnection';
 import {
   createOssUploadProfile,
   OssUploadProfile,
   updateOssUploadProfile,
 } from '@/services/flow/ossUploadProfile';
+import {
+  buildOssAccessRulesJson,
+  parseOssAccessRules,
+  personalFilesPreset,
+} from '@/utils/ossAccessRules';
+import './OssUploadProfileForm.less';
 
 const MB = 1024 * 1024;
 
@@ -69,20 +76,30 @@ const MIME_OPTIONS = [
   { label: 'image/bmp', value: 'image/bmp' },
   { label: 'image/svg+xml', value: 'image/svg+xml' },
   { label: 'application/pdf', value: 'application/pdf' },
-  { label: 'application/zip', value: 'application/zip' },
-  { label: 'application/json', value: 'application/json' },
-  { label: 'text/plain', value: 'text/plain' },
-  { label: 'text/csv', value: 'text/csv' },
+  { label: 'application/msword (doc)', value: 'application/msword' },
+  { label: 'application/vnd.ms-excel (xls)', value: 'application/vnd.ms-excel' },
+  { label: 'application/vnd.ms-powerpoint (ppt)', value: 'application/vnd.ms-powerpoint' },
+  {
+    label: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document (docx)',
+    value: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  },
   {
     label: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (xlsx)',
     value: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   },
   {
-    label: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document (docx)',
-    value: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    label: 'application/vnd.openxmlformats-officedocument.presentationml.presentation (pptx)',
+    value: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   },
+  { label: 'application/zip', value: 'application/zip' },
+  { label: 'application/x-rar-compressed', value: 'application/x-rar-compressed' },
+  { label: 'application/x-7z-compressed', value: 'application/x-7z-compressed' },
+  { label: 'application/json', value: 'application/json' },
+  { label: 'text/plain', value: 'text/plain' },
+  { label: 'text/csv', value: 'text/csv' },
   { label: 'video/mp4', value: 'video/mp4' },
   { label: 'audio/mpeg', value: 'audio/mpeg' },
+  { label: 'audio/wav', value: 'audio/wav' },
 ];
 
 const EXT_OPTIONS = [
@@ -91,6 +108,65 @@ const EXT_OPTIONS = [
   'txt', 'csv', 'json', 'zip', 'rar', '7z',
   'mp4', 'mp3', 'wav',
 ].map((ext) => ({ label: ext, value: ext }));
+
+/** 扩展名 → 常见 MIME。选扩展名时带出；去掉扩展名时只收回它带出的项。 */
+const EXT_TO_MIMES: Record<string, string[]> = {
+  jpg: ['image/jpeg'],
+  jpeg: ['image/jpeg'],
+  png: ['image/png'],
+  gif: ['image/gif'],
+  webp: ['image/webp'],
+  bmp: ['image/bmp'],
+  svg: ['image/svg+xml'],
+  pdf: ['application/pdf'],
+  doc: ['application/msword'],
+  docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  xls: ['application/vnd.ms-excel'],
+  xlsx: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  ppt: ['application/vnd.ms-powerpoint'],
+  pptx: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  txt: ['text/plain'],
+  csv: ['text/csv'],
+  json: ['application/json'],
+  zip: ['application/zip'],
+  rar: ['application/x-rar-compressed'],
+  '7z': ['application/x-7z-compressed'],
+  tar: ['application/x-tar'],
+  gz: ['application/gzip'],
+  mp4: ['video/mp4'],
+  mp3: ['audio/mpeg'],
+  wav: ['audio/wav'],
+  avi: ['video/x-msvideo'],
+};
+
+function normalizeExt(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase();
+}
+
+function uniqueStrings(list: string[]): string[] {
+  return Array.from(new Set(list.map((s) => String(s).trim()).filter(Boolean)));
+}
+
+function mimesForExts(exts: string[]): string[] {
+  const out: string[] = [];
+  for (const ext of exts) {
+    const mapped = EXT_TO_MIMES[normalizeExt(ext)];
+    if (mapped) {
+      out.push(...mapped);
+    }
+  }
+  return uniqueStrings(out);
+}
+
+/** MIME = 当前扩展名推导值 + 用户额外手填（去掉扩展名时不误删手填项）。 */
+function mergeMimesFromExts(currentMimes: string[], prevExts: string[], nextExts: string[]): string[] {
+  const impliedBefore = new Set(mimesForExts(prevExts));
+  const extras = (currentMimes || []).filter((m) => m && !impliedBefore.has(m));
+  return uniqueStrings([...extras, ...mimesForExts(nextExts)]);
+}
 
 /** 逗号串 → 多选数组 */
 function splitCsv(raw?: string | null): string[] | undefined {
@@ -151,6 +227,8 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
   const [minioBucketsMap, setMinioBucketsMap] = useState<Record<string, string[]>>({});
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({});
   const fetchedCodesRef = React.useRef<Set<string>>(new Set());
+  const connectionsRequestRef = useRef(0);
+  const prevExtsRef = useRef<string[]>([]);
 
   const loadMinioBuckets = React.useCallback(async (code: string) => {
     if (!code || fetchedCodesRef.current.has(code)) return;
@@ -172,12 +250,15 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
 
   useEffect(() => {
     if (!modalVisible) {
+      connectionsRequestRef.current += 1;
       fetchedCodesRef.current.clear();
       return;
     }
+    const requestId = ++connectionsRequestRef.current;
     (async () => {
       try {
         const list = await queryOssConnectionOptions();
+        if (requestId !== connectionsRequestRef.current) return;
         const items = Array.isArray(list) ? list : [];
         setRawConnections(items);
         setConnectionOptions(
@@ -190,23 +271,33 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
           loadMinioBuckets(values.connectionCode);
         }
       } catch {
+        if (requestId !== connectionsRequestRef.current) return;
         setRawConnections([]);
         setConnectionOptions([]);
       }
     })();
-  }, [modalVisible]);
+  }, [modalVisible, values.connectionCode, loadMinioBuckets]);
 
   const initialValues = useMemo(
-    () => ({
+    () => {
+      const parsed = parseOssAccessRules(values.callerPolicy);
+      const accessRules =
+        parsed.length > 0
+          ? parsed
+          : isEdit
+            ? []
+            : personalFilesPreset();
+      return {
       visibility: 'PRIVATE',
-      requireAuth: true,
-      enabled: true,
       maxFilesPerRequest: 1,
-      thumbnailEnabled: false,
       ...values,
       enabled: values.enabled === undefined ? true : Boolean(Number(values.enabled)),
       requireAuth:
         values.requireAuth === undefined ? true : Boolean(Number(values.requireAuth)),
+      presignUploadEnabled:
+        values.presignUploadEnabled === undefined
+          ? false
+          : Boolean(Number(values.presignUploadEnabled)),
       thumbnailEnabled:
         values.thumbnailEnabled === undefined
           ? false
@@ -216,9 +307,17 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
       thumbnailMaxSourceMb: bytesToMb(values.thumbnailMaxSourceBytes),
       allowedContentTypes: splitCsv(values.allowedContentTypes),
       allowedExtensions: splitCsv(values.allowedExtensions),
-    }),
-    [values],
+      accessRules,
+    };
+    },
+    [values, isEdit],
   );
+
+  useEffect(() => {
+    if (modalVisible) {
+      prevExtsRef.current = splitCsv(values.allowedExtensions) || [];
+    }
+  }, [modalVisible, values.allowedExtensions]);
 
   const handleSubmit = async (formValues: any) => {
     const hide = message.loading(isEdit ? '正在更新...' : '正在添加...');
@@ -233,9 +332,29 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         maxSizeBytes: _dropMax,
         quotaMaxBytes: _dropQuota,
         thumbnailMaxSourceBytes: _dropThumbSrc,
+        accessRules,
         ...rest
       } = formValues;
-      // 空值用 0 表示「不限 / 回退全局」，便于编辑时清空
+      if (!formValues.requireAuth && String(formValues.uploadPerm || '').trim()) {
+        hide();
+        message.error('匿名上传时不能配置上传权限码');
+        return false;
+      }
+      const rules = Array.isArray(accessRules) ? accessRules : [];
+      if (formValues.visibility === 'PRIVATE' && formValues.requireAuth && rules.length === 0) {
+        hide();
+        message.error('私有且要求登录时请至少配置一条访问规则');
+        return false;
+      }
+      if (
+        formValues.visibility === 'PRIVATE'
+        && rules.length > 0
+        && rules.every((rule: any) => !rule?.downloadScope || rule.downloadScope === 'OFF')
+      ) {
+        hide();
+        message.error('私有场景请至少给一行配置下载范围');
+        return false;
+      }
       const payload = {
         ...rest,
         allowedContentTypes: joinCsv(formValues.allowedContentTypes),
@@ -251,6 +370,11 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
           formValues.thumbnailJpegQuality == null || formValues.thumbnailJpegQuality === ''
             ? 0
             : formValues.thumbnailJpegQuality,
+        callerPolicy: buildOssAccessRulesJson(
+          formValues.visibility === 'PUBLIC'
+            ? rules.map((rule: any) => ({ ...rule, downloadScope: 'OFF' }))
+            : rules,
+        ),
       };
       if (isEdit) {
         await updateOssUploadProfile(values.id!, payload);
@@ -278,7 +402,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
     <DrawerForm
       form={form}
       title={isEdit ? '编辑上传配置' : '新建上传配置'}
-      width="60%"
+      width="min(1440px, 94vw)"
       layout="horizontal"
       open={modalVisible}
       onOpenChange={(visible) => {
@@ -290,11 +414,13 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
       onFinish={handleSubmit}
       drawerProps={{
         destroyOnClose: true,
+        className: 'oss-upload-profile-drawer',
+        styles: { body: { padding: '10px 16px 0' } },
       }}
-      labelCol={{ style: { width: '130px' } }}
+      labelCol={{ style: { width: 118 } }}
       grid={true}
       rowProps={{
-        gutter: [16, 4],
+        gutter: [12, 0],
       }}
       submitter={{
         searchConfig: {
@@ -314,10 +440,10 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
             </Space>
           }
           bordered
-          style={{ borderRadius: 6, marginBottom: 8 }}
-          styles={{ body: { padding: '8px 14px 0 14px' } }}
+          style={{ borderRadius: 6, marginBottom: 6 }}
+          styles={{ body: { padding: '6px 12px 0 12px' } }}
         >
-          <Row gutter={[16, 0]}>
+          <Row gutter={[12, 0]}>
             <ProFormText
               name="name"
               label="场景名称"
@@ -361,6 +487,17 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
               }}
               rules={[{ required: true, message: '请选择可见性!' }]}
               colProps={{ span: 12 }}
+              fieldProps={{
+                onChange: (nextVisibility: string) => {
+                  if (nextVisibility === 'PUBLIC') {
+                    const rules = form.getFieldValue('accessRules') || [];
+                    form.setFieldValue(
+                      'accessRules',
+                      rules.map((rule: any) => ({ ...rule, downloadScope: 'OFF' })),
+                    );
+                  }
+                },
+              }}
             />
             <ProFormDependency name={['connectionCode']}>
               {({ connectionCode }) => {
@@ -370,10 +507,16 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                 if (connectionCode) {
                   const selectedConn = rawConnections.find((c) => c.code === connectionCode);
                   if (selectedConn?.publicBucket?.trim()) {
-                    added.add(selectedConn.publicBucket.trim());
+                    const val = selectedConn.publicBucket.trim();
+                    added.add(val);
+                    bucketOptions.push({ label: `${val}（公有桶）`, value: val });
                   }
                   if (selectedConn?.privateBucket?.trim()) {
-                    added.add(selectedConn.privateBucket.trim());
+                    const val = selectedConn.privateBucket.trim();
+                    if (!added.has(val)) {
+                      added.add(val);
+                      bucketOptions.push({ label: `${val}（私有桶）`, value: val });
+                    }
                   }
 
                   const remoteList = minioBucketsMap[connectionCode];
@@ -456,31 +599,19 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
             </Space>
           }
           bordered
-          style={{ borderRadius: 6, marginBottom: 8 }}
-          styles={{ body: { padding: '8px 14px 0 14px' } }}
+          style={{ borderRadius: 6, marginBottom: 6 }}
+          styles={{ body: { padding: '6px 12px 0 12px' } }}
         >
-          <Row gutter={[16, 0]}>
+          <Row gutter={[12, 0]}>
             <ProFormText
               name="keyPattern"
               label="Key 模式"
               placeholder="{profile}/{yyyy}/{MM}/{uuid}_{filename}"
               colProps={{ span: 24 }}
-              tooltip="对象键模板；连接上的 Key 前缀会再拼在最前面"
+              tooltip="对象键模板；连接上的 Key 前缀会再拼在最前面。占位符：{profile} 场景编码、{yyyy}/{MM}/{dd} 年月日、{HH}/{mm}/{ss} 时分秒、{uuid}、{filename} 完整文件名、{name} 不含扩展名、{ext} 扩展名(小写无点)。默认 {profile}/{yyyy}/{MM}/{uuid}_{filename}"
               extra={
                 <span style={{ fontSize: 12, color: '#8c8c8c' }}>
-                  可用占位符：
-                  <code>{'{profile}'}</code> 场景编码、
-                  <code>{'{yyyy}'}</code> 年、
-                  <code>{'{MM}'}</code> 月、
-                  <code>{'{dd}'}</code> 日、
-                  <code>{'{HH}'}</code> 时、
-                  <code>{'{mm}'}</code> 分、
-                  <code>{'{ss}'}</code> 秒、
-                  <code>{'{uuid}'}</code>、
-                  <code>{'{filename}'}</code> 完整文件名、
-                  <code>{'{name}'}</code> 不含扩展名、
-                  <code>{'{ext}'}</code> 扩展名(小写无点)。
-                  默认：<code>{'{profile}/{yyyy}/{MM}/{uuid}_{filename}'}</code>
+                  默认 <code>{'{profile}/{yyyy}/{MM}/{uuid}_{filename}'}</code>，占位符见问号
                 </span>
               }
             />
@@ -488,21 +619,109 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         </Card>
       </Col>
 
-      {/* ── 3. 上传限制与格式校验 ── */}
+      {/* ── 3. 上传与访问权限（策略前置） ── */}
       <Col span={24}>
         <Card
           size="small"
           title={
             <Space size={6}>
-              <Tag color="green" style={{ margin: 0 }}>3</Tag>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>🛡️ 上传限制与格式校验</span>
+              <Tag color="purple" style={{ margin: 0 }}>3</Tag>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>🔐 上传与访问权限</span>
             </Space>
           }
           bordered
-          style={{ borderRadius: 6, marginBottom: 8 }}
-          styles={{ body: { padding: '8px 14px 0 14px' } }}
+          style={{ borderRadius: 6, marginBottom: 6 }}
+          styles={{ body: { padding: '6px 12px 0 12px' } }}
         >
-          <Row gutter={[16, 0]}>
+          <Row gutter={[12, 0]}>
+            <ProFormSwitch
+              name="requireAuth"
+              label="上传要求登录"
+              tooltip="开启后，调用上传 API 必须携带登录凭证；关闭后允许游客匿名上传。"
+              colProps={{ span: 12 }}
+              fieldProps={{
+                onChange: (checked: boolean) => {
+                  if (!checked && form.getFieldValue('uploadPerm')) {
+                    form.setFieldValue('uploadPerm', '');
+                  }
+                },
+              }}
+            />
+            <ProFormSwitch
+              name="presignUploadEnabled"
+              label="开放预签名直传"
+              tooltip="开启后可调用 /oss/presign/init 换取预签名 PUT 地址，由客户端直传 OSS（不经过网关，不受 multipart 50MB 限制），适合大文件；仍受本场景单文件上限与扩展名/MIME 白名单约束。需在桶上放通跨域 PUT。"
+              colProps={{ span: 12 }}
+            />
+            <ProFormDependency name={['visibility', 'requireAuth']}>
+              {({ visibility, requireAuth }) => (
+                <OssAccessRulesFields visibility={visibility} requireAuth={requireAuth} />
+              )}
+            </ProFormDependency>
+            <Col span={24}>
+              <Collapse
+                ghost
+                size="small"
+                items={[
+                  {
+                    key: 'console',
+                    label: '高级：Flow 管理端权限码（宿主用户看不到这层）',
+                    children: (
+                      <Row gutter={[12, 0]}>
+                        <ProFormDependency name={['visibility', 'requireAuth']}>
+                          {({ visibility, requireAuth }) => (
+                            <ProFormText
+                              name="uploadPerm"
+                              label="上传权限码"
+                              placeholder="可选，如 flow:oss:upload；留空=不校验 Flow 权限"
+                              colProps={{ span: visibility === 'PRIVATE' ? 12 : 24 }}
+                              disabled={!requireAuth}
+                              tooltip={
+                                requireAuth
+                                  ? '仅约束带着 Flow JWT 的管理端账号。宿主用户只走上面的访问规则。'
+                                  : '匿名上传没有可校验的 Flow 用户身份，不能配置权限码'
+                              }
+                            />
+                          )}
+                        </ProFormDependency>
+                        <ProFormDependency name={['visibility']}>
+                          {({ visibility }) =>
+                            visibility === 'PRIVATE' ? (
+                              <ProFormText
+                                name="downloadPerm"
+                                label="下载权限码"
+                                placeholder="可选，如 flow:oss:download:all"
+                                colProps={{ span: 12 }}
+                                tooltip="访问规则不通过时，拥有此权限码的 Flow 管理端用户可跨范围查看/下载；宿主用户无效"
+                              />
+                            ) : null
+                          }
+                        </ProFormDependency>
+                      </Row>
+                    ),
+                  },
+                ]}
+              />
+            </Col>
+          </Row>
+        </Card>
+      </Col>
+
+      {/* ── 4. 格式校验、容量与缩略图 ── */}
+      <Col span={24}>
+        <Card
+          size="small"
+          title={
+            <Space size={6}>
+              <Tag color="green" style={{ margin: 0 }}>4</Tag>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>🛡️ 格式校验与缩略图</span>
+            </Space>
+          }
+          bordered
+          style={{ borderRadius: 6, marginBottom: 6 }}
+          styles={{ body: { padding: '6px 12px 0 12px' } }}
+        >
+          <Row gutter={[12, 0]}>
             <Col span={24}>
               <div
                 style={{
@@ -534,6 +753,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                           allowedContentTypes: newMimes,
                           allowedExtensions: newExts,
                         });
+                        prevExtsRef.current = newExts;
                         message.success(`已追加「${p.label}」格式校验规则`);
                       }}
                     >
@@ -549,6 +769,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                         allowedContentTypes: [],
                         allowedExtensions: [],
                       });
+                      prevExtsRef.current = [];
                       message.info('已清空格式限制');
                     }}
                   >
@@ -557,19 +778,6 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                 </Space>
               </div>
             </Col>
-            <ProFormSelect
-              name="allowedContentTypes"
-              label="允许 MIME"
-              mode="tags"
-              options={MIME_OPTIONS}
-              placeholder="下拉多选，也可输入自定义后回车"
-              colProps={{ span: 12 }}
-              fieldProps={{
-                tokenSeparators: [',', '，', ' '],
-                maxTagCount: 'responsive',
-              }}
-              tooltip="空=不限制；提交时按逗号写入后端"
-            />
             <ProFormSelect
               name="allowedExtensions"
               label="允许扩展名"
@@ -580,8 +788,31 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
               fieldProps={{
                 tokenSeparators: [',', '，', ' '],
                 maxTagCount: 'responsive',
+                onChange: (exts: string[]) => {
+                  const nextExts = uniqueStrings((exts || []).map(normalizeExt));
+                  const currentMimes: string[] = form.getFieldValue('allowedContentTypes') || [];
+                  const nextMimes = mergeMimesFromExts(currentMimes, prevExtsRef.current, nextExts);
+                  prevExtsRef.current = nextExts;
+                  form.setFieldsValue({
+                    allowedExtensions: nextExts,
+                    allowedContentTypes: nextMimes,
+                  });
+                },
               }}
-              tooltip="不含点，如 png；空=不限制"
+              tooltip="不含点，如 png；空=不限制。选中后自动带出对应 MIME，可再手改"
+            />
+            <ProFormSelect
+              name="allowedContentTypes"
+              label="允许 MIME"
+              mode="tags"
+              options={MIME_OPTIONS}
+              placeholder="由扩展名带出，也可再选或手输"
+              colProps={{ span: 12 }}
+              fieldProps={{
+                tokenSeparators: [',', '，', ' '],
+                maxTagCount: 'responsive',
+              }}
+              tooltip="空=不限制。选扩展名会自动带出；也可单独增删，提交时按逗号写入后端"
             />
             <ProFormDigit
               name="maxSizeMb"
@@ -615,55 +846,6 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
               fieldProps={{ precision: 0 }}
               colProps={{ span: 12 }}
             />
-          </Row>
-        </Card>
-      </Col>
-
-      {/* ── 4. 访问权限与缩略图策略 ── */}
-      <Col span={24}>
-        <Card
-          size="small"
-          title={
-            <Space size={6}>
-              <Tag color="purple" style={{ margin: 0 }}>4</Tag>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>🖼️ 访问权限与缩略图策略</span>
-            </Space>
-          }
-          bordered
-          style={{ borderRadius: 6, marginBottom: 8 }}
-          styles={{ body: { padding: '8px 14px 0 14px' } }}
-        >
-          <Row gutter={[16, 0]}>
-            <ProFormSwitch
-              name="requireAuth"
-              label="上传要求登录"
-              tooltip="开启后，调用上传 API 必须携带登录凭证；关闭后允许游客匿名上传。私有文件的下载鉴权由可见性 (PRIVATE) 及数据范围决定。"
-              colProps={{ span: 24 }}
-            />
-            <ProFormDependency name={['visibility']}>
-              {({ visibility }) => (
-                <ProFormText
-                  name="uploadPerm"
-                  label="上传权限码"
-                  placeholder="可选，如 flow:oss:upload；留空=仅要求登录控制"
-                  colProps={{ span: visibility === 'PRIVATE' ? 12 : 12 }}
-                  tooltip="填写后，拥有该 RBAC 权限码的用户才能上传文件；多个权限码以英文逗号分隔"
-                />
-              )}
-            </ProFormDependency>
-            <ProFormDependency name={['visibility']}>
-              {({ visibility }) =>
-                visibility === 'PRIVATE' ? (
-                  <ProFormText
-                    name="downloadPerm"
-                    label="下载权限码"
-                    placeholder="可选，如 flow:oss:download:all；留空=仅 DataScope 控制"
-                    colProps={{ span: 12 }}
-                    tooltip="私有文件下载：DataScope 不通过时，拥有此权限码的用户可跨范围访问（适合管理员/客服角色）；留空=不开启权限码兜底"
-                  />
-                ) : null
-              }
-            </ProFormDependency>
             <ProFormSwitch
               name="thumbnailEnabled"
               label="生成缩略图"
@@ -683,7 +865,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                         marginBottom: 8,
                       }}
                     >
-                      <Row gutter={[16, 0]}>
+                      <Row gutter={[12, 0]}>
                         <ProFormDigit
                           name="thumbnailMaxEdge"
                           label="缩略图最长边"
@@ -733,10 +915,10 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
             </Space>
           }
           bordered
-          style={{ borderRadius: 6, marginBottom: 8 }}
-          styles={{ body: { padding: '8px 14px 0 14px' } }}
+          style={{ borderRadius: 6, marginBottom: 6 }}
+          styles={{ body: { padding: '6px 12px 0 12px' } }}
         >
-          <Row gutter={[16, 0]}>
+          <Row gutter={[12, 0]}>
             <ProFormTextArea
               name="bizFieldsSchema"
               label="业务字段 Schema"

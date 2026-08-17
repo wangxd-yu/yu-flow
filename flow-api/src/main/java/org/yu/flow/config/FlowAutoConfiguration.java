@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.Ordered;
@@ -35,7 +36,13 @@ import org.yu.flow.module.api.cache.ApiResponseCacheService;
  */
 @AutoConfiguration
 @ConditionalOnProperty(prefix = "yu.flow", name = "enabled", havingValue = "true", matchIfMissing = true)
-@ComponentScan(basePackages = "org.yu.flow")
+@ComponentScan(
+        basePackages = "org.yu.flow",
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.REGEX,
+                pattern = "org\\.yu\\.flow\\.module\\.oss\\..*"
+        )
+)
 @EnableConfigurationProperties(YuFlowProperties.class)
 @EnableJpaRepositories(basePackages = {"org.yu.flow"})
 @EntityScan(basePackages = "org.yu.flow")
@@ -90,13 +97,14 @@ public class FlowAutoConfiguration {
             org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings yuFlowRuntimeSettings,
             org.yu.flow.module.api.service.ApiDataViewService apiDataViewService,
             org.yu.flow.module.rbac.service.RbacService rbacService,
-            org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService) {
+            org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService,
+            org.yu.flow.module.api.privacy.PrivacyFieldInterceptor privacyFieldInterceptor) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,
                 schemaValidatorService, contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
                 ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings, apiDataViewService,
-                rbacService, flowExecutionLogService);
+                rbacService, flowExecutionLogService, privacyFieldInterceptor);
 
         FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/*");

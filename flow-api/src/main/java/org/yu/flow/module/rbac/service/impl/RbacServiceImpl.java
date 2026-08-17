@@ -103,6 +103,7 @@ public class RbacServiceImpl implements RbacService {
                     .roles(roles)
                     .permissions(new ArrayList<>(perms))
                     .legacyAdmin(false)
+                    .ossEnabled(yuFlowProperties.isOssModuleActive())
                     .build();
         }
         // yml 兜底账号：仅 allow-yml-admin-fallback=true 时视为 ADMIN
@@ -116,6 +117,7 @@ public class RbacServiceImpl implements RbacService {
                     .roles(List.of("ADMIN"))
                     .permissions(List.of("*"))
                     .legacyAdmin(true)
+                    .ossEnabled(yuFlowProperties.isOssModuleActive())
                     .build();
         }
         // 未知用户名：不颁发空权限主体（避免幽灵 JWT 通过网关）

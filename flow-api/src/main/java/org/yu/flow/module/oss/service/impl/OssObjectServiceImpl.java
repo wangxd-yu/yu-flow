@@ -48,9 +48,11 @@ import org.yu.flow.module.oss.service.OssThumbnailService;
 import org.yu.flow.module.oss.service.OssUploadProfileService;
 import org.yu.flow.module.oss.spi.FlowOssObjectAccessVoter;
 import org.yu.flow.module.oss.support.OssAccessEvaluator;
+import org.yu.flow.module.oss.support.OssAccessRulesEngine;
 import org.yu.flow.module.oss.support.OssBizFieldValidator;
-import org.yu.flow.module.oss.support.OssDataScopeSpecification;
 import org.yu.flow.module.oss.support.OssKeyPatternResolver;
+import org.yu.flow.module.oss.support.OssProfileCallerAuth;
+import org.yu.flow.module.oss.support.OssUploaderIdentity;
 import org.yu.flow.module.oss.support.OssUploadRequestParser;
 import org.yu.flow.module.oss.support.OssZipEntryNameSanitizer;
 import org.yu.flow.module.rbac.service.RbacService;
@@ -75,8 +77,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @Slf4j
+@ConditionalOnOssEnabled
 @Service
 public class OssObjectServiceImpl implements OssObjectService {
 
@@ -123,6 +127,12 @@ public class OssObjectServiceImpl implements OssObjectService {
     private OssAccessEvaluator ossAccessEvaluator;
 
     @Resource
+    private OssAccessRulesEngine ossAccessRulesEngine;
+
+    @Resource
+    private OssProfileCallerAuth ossProfileCallerAuth;
+
+    @Resource
     private OssQuotaService ossQuotaService;
 
     @Resource
@@ -141,7 +151,7 @@ public class OssObjectServiceImpl implements OssObjectService {
                 queryDTO.getPage(), queryDTO.getSize(),
                 Sort.by(Sort.Direction.DESC, "createTime")
         );
-        Specification<OssObjectDO> scopeSpec = OssDataScopeSpecification.withScope(scope, principal);
+        Specification<OssObjectDO> scopeSpec = ossAccessRulesEngine.listSpec(scope, principal);
         LocalDateTime now = LocalDateTime.now(ZONE_SH);
         Specification<OssObjectDO> querySpec = (root, cq, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -153,6 +163,10 @@ public class OssObjectServiceImpl implements OssObjectService {
             }
             if (StrUtil.isNotBlank(queryDTO.getUploadedBy())) {
                 predicates.add(cb.equal(root.get("uploadedBy"), queryDTO.getUploadedBy()));
+            }
+            if (StrUtil.isNotBlank(queryDTO.getUploadedByUserType())) {
+                predicates.add(cb.equal(root.get("uploadedByUserType"),
+                        OssUploaderIdentity.normalizeUserType(queryDTO.getUploadedByUserType())));
             }
             if (StrUtil.isNotBlank(queryDTO.getVisibility())) {
                 predicates.add(cb.equal(root.get("visibility"), queryDTO.getVisibility().trim().toUpperCase()));
@@ -181,6 +195,7 @@ public class OssObjectServiceImpl implements OssObjectService {
         if (object == null || !OssObjectDO.STATUS_ACTIVE.equals(object.getStatus())) {
             return null;
         }
+        ossProfileCallerAuth.assertDownload(object, principal);
         if (!ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_VIEW)) {
             throw new FlowException("RBAC_FORBIDDEN", "无权查看该文件");
         }
@@ -215,19 +230,7 @@ public class OssObjectServiceImpl implements OssObjectService {
                                            FlowHostPrincipal principal, HttpServletRequest request,
                                            OssUploadOptions options) {
         OssUploadProfileDO profile = ossUploadProfileService.requireByCode(profileCode);
-        if (profile.getEnabled() == null || !profile.getEnabled()) {
-            throw new FlowException("OSS_PROFILE_DISABLED", "上传场景已停用: " + profileCode);
-        }
-        boolean requireAuth = profile.getRequireAuth() == null || profile.getRequireAuth();
-        if (requireAuth && principal == null) {
-            throw new FlowException("RBAC_UNAUTHORIZED", "未登录或凭证无效");
-        }
-        if (principal != null && StrUtil.isNotBlank(profile.getUploadPerm())
-                && !isOpenPrincipal(principal)) {
-            if (!rbacService.hasAnyPerm(principal.getUsername(), profile.getUploadPerm(), "*")) {
-                throw new FlowException("RBAC_FORBIDDEN", "无上传权限: " + profile.getUploadPerm());
-            }
-        }
+        ossProfileCallerAuth.assertUpload(profile, principal);
 
         if (files == null || files.length == 0) {
             throw new FlowException("OSS_FILE_REQUIRED", "请选择上传文件");
@@ -258,8 +261,9 @@ public class OssObjectServiceImpl implements OssObjectService {
         }
 
         LocalDateTime expiresAt = OssUploadRequestParser.resolveExpiresAt(options);
-        String uploadedBy = principal != null ? principal.getUserId() : null;
-        ossQuotaService.checkBeforeUpload(profile, uploadedBy, 0, files.length);
+        OssUploaderIdentity.Snapshot uploader = OssUploaderIdentity.from(principal, options);
+        ossQuotaService.checkBeforeUpload(profile, uploader.getUploadedBy(), uploader.getUploadedByUserType(),
+                0, files.length);
         List<OssUploadResultDTO> results = new ArrayList<>();
         for (MultipartFile file : files) {
             results.add(doUploadOne(file, profile, connection, bucket, bizMeta, principal, options, expiresAt));
@@ -330,6 +334,7 @@ public class OssObjectServiceImpl implements OssObjectService {
             if (!OssObjectDO.VISIBILITY_PRIVATE.equals(object.getVisibility())) {
                 throw new FlowException("OSS_PACK_PRIVATE_ONLY", "打包下载仅支持私有文件: " + id);
             }
+            ossProfileCallerAuth.assertDownload(object, principal);
             if (!ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DOWNLOAD)) {
                 throw new FlowException("RBAC_FORBIDDEN", "无权下载文件: " + id);
             }
@@ -376,22 +381,18 @@ public class OssObjectServiceImpl implements OssObjectService {
                     OssDownloadLogDO.RESULT_NOT_FOUND, "文件不存在", System.currentTimeMillis() - start);
             throw new FlowException("OSS_OBJECT_NOT_FOUND", "文件不存在: " + id);
         }
-        // 公有文件无访问限制，直接通过；私有文件才需要检查 DataScope / downloadPerm
-        if (!OssObjectDO.VISIBILITY_PUBLIC.equals(object.getVisibility())) {
-            if (!ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DOWNLOAD)) {
-                // DataScope 不通过时，尝试用 downloadPerm 权限码二次放行（适合管理员/客服角色跨范围访问）
-                OssUploadProfileDO profile = ossUploadProfileRepository.findByCode(object.getProfileCode()).orElse(null);
-                boolean grantedByPerm = profile != null
-                        && StrUtil.isNotBlank(profile.getDownloadPerm())
-                        && principal != null
-                        && !isOpenPrincipal(principal)
-                        && rbacService.hasAnyPerm(principal.getUsername(), profile.getDownloadPerm(), "*");
-                if (!grantedByPerm) {
-                    ossDownloadLogService.writeLog(id, principal, request, object.getVisibility(),
-                            OssDownloadLogDO.RESULT_DENIED, "数据权限不足", System.currentTimeMillis() - start);
-                    throw new FlowException("RBAC_FORBIDDEN", "无权下载该文件");
-                }
-            }
+        try {
+            ossProfileCallerAuth.assertDownload(object, principal);
+        } catch (FlowException e) {
+            ossDownloadLogService.writeLog(id, principal, request, object.getVisibility(),
+                    OssDownloadLogDO.RESULT_DENIED, e.getMessage(), System.currentTimeMillis() - start);
+            throw e;
+        }
+        if (!OssObjectDO.VISIBILITY_PUBLIC.equals(object.getVisibility())
+                && !ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DOWNLOAD)) {
+            ossDownloadLogService.writeLog(id, principal, request, object.getVisibility(),
+                    OssDownloadLogDO.RESULT_DENIED, "数据权限不足", System.currentTimeMillis() - start);
+            throw new FlowException("RBAC_FORBIDDEN", "无权下载该文件");
         }
         return object;
     }
@@ -485,14 +486,12 @@ public class OssObjectServiceImpl implements OssObjectService {
             throw new FlowException("OSS_FILE_TOO_LARGE", "文件大小超出场景上限 " + profile.getMaxSizeBytes() + " 字节");
         }
 
-        String uploadedBy = principal != null ? principal.getUserId() : null;
-        String uploadedByName = principal != null ? principal.getUsername() : null;
-        String deptId = principal != null ? principal.getDeptId() : null;
-        if (options != null && StrUtil.isNotBlank(options.getUploadedByOverride())) {
-            uploadedBy = options.getUploadedByOverride();
-            uploadedByName = StrUtil.blankToDefault(options.getUploadedByNameOverride(), uploadedBy);
-        }
-        ossQuotaService.checkBeforeUpload(profile, uploadedBy, size, 1);
+        OssUploaderIdentity.Snapshot uploader = OssUploaderIdentity.from(principal, options);
+        String uploadedBy = uploader.getUploadedBy();
+        String uploadedByUserType = uploader.getUploadedByUserType();
+        String uploadedByName = uploader.getUploadedByName();
+        String deptId = uploader.getDeptId();
+        ossQuotaService.checkBeforeUpload(profile, uploadedBy, uploadedByUserType, size, 1);
 
         String objectKey;
         try {
@@ -534,6 +533,7 @@ public class OssObjectServiceImpl implements OssObjectService {
                 .checksumSha256(checksum)
                 .bizMeta(bizMeta)
                 .uploadedBy(uploadedBy)
+                .uploadedByUserType(uploadedByUserType)
                 .uploadedByName(uploadedByName)
                 .deptId(deptId)
                 .status(OssObjectDO.STATUS_ACTIVE)
@@ -666,11 +666,6 @@ public class OssObjectServiceImpl implements OssObjectService {
 
     private boolean canDelete(OssObjectDO object, FlowHostDataScope scope, FlowHostPrincipal principal) {
         return ossAccessEvaluator.canAccess(object, scope, principal, FlowOssObjectAccessVoter.ACTION_DELETE);
-    }
-
-    private static boolean isOpenPrincipal(FlowHostPrincipal principal) {
-        return principal != null && StrUtil.isNotBlank(principal.getUserId())
-                && principal.getUserId().startsWith("open:");
     }
 
     // ── 注解解析与 Caffeine 本地缓存（支持带/不带 IP:Port 全路径或相对路径） ──

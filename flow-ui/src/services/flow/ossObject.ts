@@ -18,6 +18,7 @@ export interface OssObject {
   checksumSha256?: string;
   bizMeta?: string;
   uploadedBy?: string;
+  uploadedByUserType?: string;
   uploadedByName?: string;
   deptId?: string;
   status?: OssObjectStatus;
@@ -210,3 +211,109 @@ export async function uploadOssByProfile(
   );
   return (result as any)?.data ?? result;
 }
+
+// ── 预签名直传（单 PUT）──
+
+export interface OssPresignInitResult {
+  /** PENDING 台账 ID，confirm / abort 都用它 */
+  objectId: string;
+  /** 客户端直传地址（含签名参数） */
+  uploadUrl: string;
+  /** 固定 PUT */
+  method: string;
+  bucket: string;
+  objectKey: string;
+  expireSeconds?: number;
+  urlExpiresAt?: string;
+}
+
+/** 开票：POST /flow-api/oss/presign/init?profile=xxx */
+export async function initOssPresignUpload(
+  profileCode: string,
+  file: File,
+  bizFields?: Record<string, string>,
+): Promise<OssPresignInitResult> {
+  const params = new URLSearchParams({
+    profile: profileCode,
+    originalName: file.name,
+    sizeBytes: String(file.size),
+  });
+  if (file.type) {
+    params.set('contentType', file.type);
+  }
+  const result = await request<OssPresignInitResult>(
+    `/flow-api/oss/presign/init?${params.toString()}`,
+    {
+      method: 'POST',
+      data: bizFields ?? {},
+      headers: csrfHeaders(),
+    },
+  );
+  return (result as any)?.data ?? result;
+}
+
+/**
+ * 直传：PUT 文件体到 uploadUrl。
+ * 不带任何业务凭证（签名已在 URL 上），也不能走 request()，否则会附加 baseURL 与 CSRF 头导致签名不匹配。
+ * 需要在桶上放通跨域 PUT 与 Content-Type 请求头。
+ */
+export async function putOssPresignedFile(
+  uploadUrl: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl, true);
+    if (file.type) {
+      xhr.setRequestHeader('Content-Type', file.type);
+    }
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+    }
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`直传失败 (${xhr.status})：${xhr.responseText || '请检查签名有效期与桶 CORS 配置'}`));
+    xhr.onerror = () => reject(new Error('直传失败：网络异常或桶未放通跨域 PUT'));
+    xhr.send(file);
+  });
+}
+
+/** 复核转正：POST /flow-api/oss/presign/{objectId}/confirm */
+export async function confirmOssPresignUpload(objectId: string): Promise<OssUploadResult> {
+  const result = await request<OssUploadResult>(
+    `/flow-api/oss/presign/${encodeURIComponent(objectId)}/confirm`,
+    { method: 'POST', headers: csrfHeaders() },
+  );
+  return (result as any)?.data ?? result;
+}
+
+/** 放弃：DELETE /flow-api/oss/presign/{objectId} */
+export async function abortOssPresignUpload(objectId: string) {
+  return request(`/flow-api/oss/presign/${encodeURIComponent(objectId)}`, {
+    method: 'DELETE',
+    headers: csrfHeaders(),
+  });
+}
+
+/** 端到端直传：init → PUT → confirm；PUT 失败自动 abort 回收 PENDING 台账 */
+export async function uploadOssByPresign(
+  profileCode: string,
+  file: File,
+  options?: { bizFields?: Record<string, string>; onProgress?: (percent: number) => void },
+): Promise<OssUploadResult> {
+  const ticket = await initOssPresignUpload(profileCode, file, options?.bizFields);
+  try {
+    await putOssPresignedFile(ticket.uploadUrl, file, options?.onProgress);
+  } catch (e) {
+    await abortOssPresignUpload(ticket.objectId).catch(() => undefined);
+    throw e;
+  }
+  return confirmOssPresignUpload(ticket.objectId);
+}
+

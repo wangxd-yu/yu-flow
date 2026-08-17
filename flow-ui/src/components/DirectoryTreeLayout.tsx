@@ -1,14 +1,16 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
+  Dropdown,
   Input,
   message,
-  Popconfirm,
+  Modal,
   Space,
   Tree,
   Tooltip,
   Typography,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
@@ -18,9 +20,12 @@ import {
   FileOutlined,
   LeftOutlined,
   RightOutlined,
+  ApiOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons';
 import { request } from '@umijs/max';
 import type { DataNode, TreeProps } from 'antd/es/tree';
+import DirectoryFormModal, { type DirectoryFormMode } from './DirectoryFormModal';
 
 /** 目录业务域 */
 export type DirectoryBizType = 'api' | 'task' | 'service' | 'model' | 'page' | 'mqtask';
@@ -34,19 +39,6 @@ async function getDirectoryTree(bizType?: DirectoryBizType) {
     method: 'GET',
     params: bizType ? { bizType } : undefined,
   });
-}
-
-async function addDirectory(data: {
-  parentId?: string;
-  name: string;
-  sort?: number;
-  bizType?: DirectoryBizType;
-}) {
-  return request('/flow-api/directories', { method: 'POST', data });
-}
-
-async function updateDirectory(id: string, data: { name?: string; sort?: number }) {
-  return request(`/flow-api/directories/${id}`, { method: 'PUT', data });
 }
 
 async function deleteDirectory(id: string) {
@@ -78,105 +70,166 @@ function collectAllKeys(dirs: any[]): string[] {
 }
 
 // ================================================================
-// 目录树节点 — 悬浮操作按钮
+// 目录树节点 — 悬浮操作 + 右键菜单
 // ================================================================
 const TreeNodeTitle: React.FC<{
   nodeData: DataNode;
   onAdd?: (key: string) => void;
   onRename?: (key: string) => void;
   onDelete?: (key: string) => void;
-}> = ({ nodeData, onAdd, onRename, onDelete }) => {
+  onCreateApi?: (directoryId: string) => void;
+  onHostImport?: (directoryId: string) => void;
+}> = ({ nodeData, onAdd, onRename, onDelete, onCreateApi, onHostImport }) => {
   const isRoot = nodeData.key === 'root';
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const dirId = nodeData.key as string;
+
+  const menuItems: MenuProps['items'] = [
+    onCreateApi
+      ? {
+          key: 'create-api',
+          icon: <ApiOutlined />,
+          label: '新建接口',
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onCreateApi(dirId);
+          },
+        }
+      : null,
+    onHostImport
+      ? {
+          key: 'host-import',
+          icon: <CloudServerOutlined />,
+          label: '从宿主导入',
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onHostImport(dirId);
+          },
+        }
+      : null,
+    onCreateApi || onHostImport ? { type: 'divider' as const } : null,
+    !nodeData.isLeaf
+      ? {
+          key: 'add-dir',
+          icon: <PlusOutlined />,
+          label: '新建子目录',
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onAdd?.(dirId);
+          },
+        }
+      : null,
+    !isRoot
+      ? {
+          key: 'edit-dir',
+          icon: <EditOutlined />,
+          label: '编辑目录',
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onRename?.(dirId);
+          },
+        }
+      : null,
+    !isRoot
+      ? {
+          key: 'delete-dir',
+          icon: <DeleteOutlined />,
+          danger: true,
+          label: '删除目录',
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            Modal.confirm({
+              title: '确认删除该目录？',
+              content: '删除后无法恢复，请谨慎操作。',
+              okText: '删除',
+              okButtonProps: { danger: true },
+              cancelText: '取消',
+              onOk: () => onDelete?.(dirId),
+            });
+          },
+        }
+      : null,
+  ].filter(Boolean);
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        paddingRight: 4,
-      }}
-      className="tree-node-title"
-    >
-      <Typography.Text
-        ellipsis={{ tooltip: nodeData.title as string }}
-        style={{ flex: 1, minWidth: 0 }}
-      >
-        {nodeData.title as string}
-      </Typography.Text>
-
-      <Space
-        size={2}
-        className="tree-node-actions"
+    <Dropdown menu={{ items: menuItems }} trigger={['contextMenu']}>
+      <div
         style={{
-          marginLeft: 8,
-          flexShrink: 0,
-          opacity: deleteConfirmOpen ? 1 : undefined,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          paddingRight: 4,
         }}
+        className="tree-node-title"
       >
-        {!nodeData.isLeaf && (
-          <Tooltip title="新建子目录" mouseEnterDelay={0.5}>
-            <Button
-              type="text"
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd?.(nodeData.key as string);
-              }}
-              style={{ width: 20, height: 20, fontSize: 12 }}
-            />
-          </Tooltip>
-        )}
-        {!isRoot && (
-          <>
-            <Tooltip title="重命名" mouseEnterDelay={0.5}>
+        <Typography.Text
+          ellipsis={{ tooltip: nodeData.title as string }}
+          style={{ flex: 1, minWidth: 0 }}
+        >
+          {nodeData.title as string}
+        </Typography.Text>
+
+        <Space
+          size={2}
+          className="tree-node-actions"
+          style={{
+            marginLeft: 8,
+            flexShrink: 0,
+          }}
+        >
+          {!nodeData.isLeaf && (
+            <Tooltip title="新建子目录" mouseEnterDelay={0.5}>
               <Button
                 type="text"
                 size="small"
-                icon={<EditOutlined />}
+                icon={<PlusOutlined />}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onRename?.(nodeData.key as string);
+                  onAdd?.(dirId);
                 }}
                 style={{ width: 20, height: 20, fontSize: 12 }}
               />
             </Tooltip>
-            <Popconfirm
-              open={deleteConfirmOpen}
-              onOpenChange={setDeleteConfirmOpen}
-              title="确认删除该目录？"
-              description="删除后无法恢复，请谨慎操作。"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={(e) => {
-                e?.stopPropagation();
-                setDeleteConfirmOpen(false);
-                onDelete?.(nodeData.key as string);
-              }}
-              onCancel={(e) => {
-                e?.stopPropagation();
-                setDeleteConfirmOpen(false);
-              }}
-            >
+          )}
+          {!isRoot && (
+            <>
+              <Tooltip title="编辑目录" mouseEnterDelay={0.5}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRename?.(dirId);
+                  }}
+                  style={{ width: 20, height: 20, fontSize: 12 }}
+                />
+              </Tooltip>
               <Tooltip title="删除" mouseEnterDelay={0.5}>
                 <Button
                   type="text"
                   size="small"
                   danger
                   icon={<DeleteOutlined />}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    Modal.confirm({
+                      title: '确认删除该目录？',
+                      content: '删除后无法恢复，请谨慎操作。',
+                      okText: '删除',
+                      okButtonProps: { danger: true },
+                      cancelText: '取消',
+                      onOk: () => onDelete?.(dirId),
+                    });
+                  }}
                   style={{ width: 20, height: 20, fontSize: 12 }}
                 />
               </Tooltip>
-            </Popconfirm>
-          </>
-        )}
-      </Space>
-    </div>
+            </>
+          )}
+        </Space>
+      </div>
+    </Dropdown>
   );
 };
 
@@ -238,6 +291,10 @@ export interface DirectoryTreeLayoutProps {
   resizable?: boolean;
   /** 容器高度，默认 100% */
   height?: string | number;
+  /** 右键：在该目录下新建接口（仅 api 等业务需要时传入） */
+  onCreateApi?: (directoryId: string) => void;
+  /** 右键：从宿主导入到该目录 */
+  onHostImport?: (directoryId: string) => void;
 }
 
 // ================================================================
@@ -251,6 +308,8 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   maxTreeWidth = 480,
   resizable = true,
   height = '100%',
+  onCreateApi,
+  onHostImport,
 }) => {
   // ---- 目录树状态 ----
   const [selectedDirKey, setSelectedDirKey] = useState<string>();
@@ -266,6 +325,10 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   );
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef({ pointerX: 0, width: currentTreeWidth });
+  const [dirModalOpen, setDirModalOpen] = useState(false);
+  const [dirModalMode, setDirModalMode] = useState<DirectoryFormMode>('create');
+  const [dirModalParentId, setDirModalParentId] = useState<string | undefined>();
+  const [dirModalDirectoryId, setDirModalDirectoryId] = useState<string | undefined>();
 
   useEffect(() => {
     setCurrentTreeWidth(Math.min(maxTreeWidth, Math.max(minTreeWidth, initialTreeWidth)));
@@ -353,41 +416,26 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
     setSelectedDirName(key ? (info.node.title as string) : undefined);
   };
 
-  // ---- 目录 CRUD ----
-  const handleAddRootDir = async () => {
-    const name = window.prompt('请输入根目录名称');
-    if (!name) return;
-    try {
-      await addDirectory({ name, bizType });
-      message.success('目录创建成功');
-      loadTree();
-    } catch {
-      // 错误提示已由 request 拦截器统一处理
-    }
+  // ---- 目录 CRUD（弹框）----
+  const openCreateRoot = () => {
+    setDirModalMode('create');
+    setDirModalParentId(undefined);
+    setDirModalDirectoryId(undefined);
+    setDirModalOpen(true);
   };
 
-  const handleAddDir = async (parentKey: string) => {
-    const name = window.prompt('请输入子目录名称');
-    if (!name) return;
-    try {
-      await addDirectory({ parentId: parentKey, name, bizType });
-      message.success('目录创建成功');
-      loadTree();
-    } catch {
-      // 错误提示已由 request 拦截器统一处理
-    }
+  const handleAddDir = (parentKey: string) => {
+    setDirModalMode('create');
+    setDirModalParentId(parentKey);
+    setDirModalDirectoryId(undefined);
+    setDirModalOpen(true);
   };
 
-  const handleRenameDir = async (key: string) => {
-    const name = window.prompt('请输入新的目录名称');
-    if (!name) return;
-    try {
-      await updateDirectory(key, { name });
-      message.success('重命名成功');
-      loadTree();
-    } catch {
-      // 错误提示已由 request 拦截器统一处理
-    }
+  const handleEditDir = (key: string) => {
+    setDirModalMode('edit');
+    setDirModalParentId(undefined);
+    setDirModalDirectoryId(key);
+    setDirModalOpen(true);
   };
 
   const handleDeleteDir = async (key: string) => {
@@ -403,6 +451,22 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
       // 错误提示已由 request 拦截器统一处理，避免出现 Request failed with status code 500 双重弹窗
     }
   };
+
+  const findNodeTitle = useCallback((nodes: DataNode[], key: string): string | undefined => {
+    for (const n of nodes) {
+      if (n.key === key) return n.title as string;
+      if (n.children?.length) {
+        const found = findNodeTitle(n.children, key);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }, []);
+
+  const selectDirectory = useCallback((directoryId: string) => {
+    setSelectedDirKey(directoryId);
+    setSelectedDirName(findNodeTitle(treeData, directoryId));
+  }, [findNodeTitle, treeData]);
 
   // ---- 渲染 ----
   const treeWidthPx = `${currentTreeWidth}px`;
@@ -455,7 +519,7 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
                   size="small"
                   type="text"
                   icon={<PlusOutlined />}
-                  onClick={handleAddRootDir}
+                  onClick={openCreateRoot}
                 />
               </Tooltip>
             </div>
@@ -478,14 +542,39 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
                   <TreeNodeTitle
                     nodeData={nodeData}
                     onAdd={handleAddDir}
-                    onRename={handleRenameDir}
+                    onRename={handleEditDir}
                     onDelete={handleDeleteDir}
+                    onCreateApi={onCreateApi
+                      ? (id) => {
+                          selectDirectory(id);
+                          onCreateApi(id);
+                        }
+                      : undefined}
+                    onHostImport={onHostImport
+                      ? (id) => {
+                          selectDirectory(id);
+                          onHostImport(id);
+                        }
+                      : undefined}
                   />
                 )}
               />
             </div>
           </div>
         </div>
+
+        <DirectoryFormModal
+          open={dirModalOpen}
+          mode={dirModalMode}
+          bizType={bizType}
+          parentId={dirModalParentId}
+          directoryId={dirModalDirectoryId}
+          onCancel={() => setDirModalOpen(false)}
+          onSuccess={() => {
+            setDirModalOpen(false);
+            loadTree();
+          }}
+        />
 
         {/* ========== 分隔线 + 收缩/展开按钮 ========== */}
         <div

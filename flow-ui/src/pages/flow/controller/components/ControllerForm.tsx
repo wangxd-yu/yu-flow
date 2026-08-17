@@ -31,6 +31,7 @@ import {
 } from '@/components/flow/ops';
 import CurlImportModal, { type CurlImportApplyPayload } from './CurlImportModal';
 import { parseSecurityConfigToForm } from './securityConfig';
+import { parsePrivacyConfigToForm } from './privacyConfig';
 
 // ── Panel 子组件 ──
 import { getStaticJsonError, type EngineMode } from './panels/ImplementationPanel';
@@ -46,6 +47,13 @@ import ControllerFormHeader from './ControllerFormHeader';
 import ControllerFormTabs, { type TabKey as ControllerFormTabKey } from './ControllerFormTabs';
 import type { SchemaNode, BodyType } from '@/components/flow/ApiContractDesigner/types';
 import { buildApiTriggerPrefillFromContract } from '@/components/flow/debugger/apiTriggerPrefill';
+import {
+  ensureRelativePath,
+  fetchStackedDirectoryPathPrefix,
+  joinPathSegments,
+  normalizePathPrefix,
+  stripPathPrefix,
+} from '@/utils/apiPathPrefix';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -98,20 +106,99 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     return processed;
   }, [values]);
 
-  // ─── 地址栏状态 ────────────────────────────────────────────────────
+  // ─── 地址栏状态（REPLACE：url=相对段；提交/查重用 fullUrl）────────
   const [method, setMethod] = useState<string>('GET');
   const [url, setUrl] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState<boolean>(false);
   const [urlConflictMsg, setUrlConflictMsg] = useState<string | null>(null);
+  const [directoryPathPrefix, setDirectoryPathPrefix] = useState('');
+  const [directoryPrefixReady, setDirectoryPrefixReady] = useState(false);
+
+  const watchedDirectoryId = Form.useWatch('directoryId', form);
+  const directoryId = watchedDirectoryId || processedValues?.directoryId;
+
+  // ─── 服务实现: 引擎模式 / 同名拦截（提前声明，供 fullUrl）────────
+  const [engineMode, setEngineMode] = useState<EngineMode>('FLOW');
+  const [interceptMode, setInterceptMode] = useState<'REPLACE' | 'WRAP'>('REPLACE');
+  const [hostBinding, setHostBinding] = useState<HostWrapBinding>(() => parseHostBinding());
+  const [probing, setProbing] = useState(false);
+  /** 宿主 MVC 是否存在同 method+path（决定是否展示「同名拦截」提示） */
+  const [hostRouteExists, setHostRouteExists] = useState(false);
+  /** WRAP：宿主路由列表，供路径下拉选择 */
+  const [hostRoutes, setHostRoutes] = useState<HostApiRoute[]>([]);
+  const [hostRoutesLoading, setHostRoutesLoading] = useState(false);
+
+  const pathLocked = !!(values as any)?.systemReserved || !!(processedValues as any)?.systemReserved;
+
+  /** REPLACE：相对段 + 目录前缀 → 入库完整 path；WRAP：url 即完整宿主 path */
+  const fullUrl = useMemo(() => {
+    if (pathLocked || interceptMode === 'WRAP') {
+      return (url || processedValues?.url || '').trim();
+    }
+    const joined = joinPathSegments(directoryPathPrefix, url);
+    return joined || ensureRelativePath(url);
+  }, [pathLocked, interceptMode, directoryPathPrefix, url, processedValues?.url]);
 
   useEffect(() => {
-    if (!url || !method) {
+    if (!modalVisible) {
+      setDirectoryPathPrefix('');
+      setDirectoryPrefixReady(false);
+      return;
+    }
+    if (interceptMode === 'WRAP') {
+      setDirectoryPathPrefix('');
+      setDirectoryPrefixReady(true);
+      return;
+    }
+    if (!directoryId) {
+      setDirectoryPathPrefix('');
+      setDirectoryPrefixReady(true);
+      return;
+    }
+    setDirectoryPrefixReady(false);
+    let cancelled = false;
+    (async () => {
+      try {
+        // 前端沿父链叠加 pathPrefix（不依赖后端 effective 接口，避免旧包就近覆盖）
+        const stacked = await fetchStackedDirectoryPathPrefix(directoryId);
+        if (cancelled) return;
+        setDirectoryPathPrefix(stacked);
+        setDirectoryPrefixReady(true);
+      } catch {
+        if (!cancelled) {
+          setDirectoryPathPrefix('');
+          setDirectoryPrefixReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modalVisible, directoryId, interceptMode]);
+
+  // init / 回填写入完整 path 后，剥成相对段（若 url 仍等于库中完整 path）
+  useEffect(() => {
+    if (!modalVisible || !directoryPrefixReady || interceptMode === 'WRAP' || pathLocked) return;
+    const full = processedValues?.url;
+    if (!full || !directoryPathPrefix) return;
+    if (normalizePathPrefix(url) !== normalizePathPrefix(full)) return;
+    setUrl(stripPathPrefix(url, directoryPathPrefix));
+  }, [
+    modalVisible,
+    directoryPrefixReady,
+    directoryPathPrefix,
+    interceptMode,
+    processedValues?.url,
+    url,
+  ]);
+
+  useEffect(() => {
+    if (pathLocked || !fullUrl || !method) {
       setUrlConflictMsg(null);
       return;
     }
-    // 编辑状态下未修改则跳过查重
-    if (isEdit && url === processedValues?.url && method === processedValues?.method) {
+    if (isEdit && fullUrl === processedValues?.url && method === processedValues?.method) {
       setUrlConflictMsg(null);
       return;
     }
@@ -122,7 +209,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
           method: 'GET',
           params: {
             method,
-            url,
+            url: fullUrl,
             excludeId: isEdit ? values?.id : undefined,
           },
         });
@@ -131,24 +218,24 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         } else {
           setUrlConflictMsg(null);
         }
-      } catch (e: any) {
+      } catch {
         setUrlConflictMsg('接口路径查重失败');
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [method, url, isEdit, processedValues, values?.id]);
+  }, [pathLocked, method, fullUrl, isEdit, processedValues?.url, processedValues?.method, values?.id]);
 
   // 宿主是否存在同 method + path（决定「同名拦截」大提示是否展示）
   useEffect(() => {
-    if (!modalVisible || !url?.trim() || !method) {
+    if (pathLocked || !modalVisible || !fullUrl?.trim() || !method) {
       setHostRouteExists(false);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const res: any = await checkHostApiRouteExists(method, url.trim());
+        const res: any = await checkHostApiRouteExists(method, fullUrl.trim());
         const exists = res?.exists === true || res?.data?.exists === true;
         if (!cancelled) setHostRouteExists(!!exists);
       } catch {
@@ -159,7 +246,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [modalVisible, method, url]);
+  }, [pathLocked, modalVisible, method, fullUrl]);
 
   // ─── 从 URL 自动提取 Path 参数 ─────────────────────────────
   useEffect(() => {
@@ -200,22 +287,11 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   useEffect(() => {
     form.setFieldsValue({
       name,
-      url,
+      url: fullUrl || url,
       method,
       publishStatus,
     });
-  }, [name, url, method, publishStatus, form]);
-
-  // ─── 服务实现: 引擎模式 / 同名拦截 ─────────────────────────────────
-  const [engineMode, setEngineMode] = useState<EngineMode>('FLOW');
-  const [interceptMode, setInterceptMode] = useState<'REPLACE' | 'WRAP'>('REPLACE');
-  const [hostBinding, setHostBinding] = useState<HostWrapBinding>(() => parseHostBinding());
-  const [probing, setProbing] = useState(false);
-  /** 宿主 MVC 是否存在同 method+path（决定是否展示「同名拦截」提示） */
-  const [hostRouteExists, setHostRouteExists] = useState(false);
-  /** WRAP：宿主路由列表，供路径下拉选择 */
-  const [hostRoutes, setHostRoutes] = useState<HostApiRoute[]>([]);
-  const [hostRoutesLoading, setHostRoutesLoading] = useState(false);
+  }, [name, url, fullUrl, method, publishStatus, form]);
 
   // WRAP：加载宿主路由供地址下拉
   useEffect(() => {
@@ -337,7 +413,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
   const handleSubmit = useControllerFormSubmit({
     form,
     name,
-    url,
+    url: fullUrl,
     method,
     publishStatus,
     responseType,
@@ -393,7 +469,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
     interceptMode,
     engineMode,
     method,
-    url,
+    url: fullUrl,
     hostRouteExists,
     onSubmit,
     handleSubmit,
@@ -442,6 +518,9 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
         onMethodChange={setMethod}
         url={url}
         onUrlChange={setUrl}
+        directoryPathPrefix={interceptMode === 'WRAP' ? undefined : directoryPathPrefix}
+        pathLocked={pathLocked}
+        fullUrl={fullUrl}
         name={name}
         onNameChange={setName}
         submitAttempted={submitAttempted}
@@ -548,7 +627,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               isEdit={isEdit}
               onSave={handleSubmit}
               onCancel={onCancel}
-              apiUrl={url}
+              apiUrl={fullUrl}
               apiMethod={method}
               apiId={values?.id}
               apiName={name}
@@ -556,7 +635,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               defaultTriggerQueryParams={triggerPrefill.queryParams}
               defaultTriggerBody={triggerPrefill.body}
               contractJson={draftContractJson}
-              url={url}
+              url={fullUrl}
               method={method}
               queryParams={queryParams}
               onQueryParamsChange={setQueryParams}
@@ -611,12 +690,17 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 setInterceptMode(im);
                 setEngineMode(im === 'WRAP' ? 'HOST' : (st === 'HOST' ? 'FLOW' : st));
                 setHostBinding(parseHostBinding(detail.hostBinding));
+                if (detail.url) {
+                  const nextUrl = directoryPathPrefix && im !== 'WRAP'
+                    ? stripPathPrefix(detail.url, directoryPathPrefix)
+                    : detail.url;
+                  setUrl(nextUrl);
+                }
               }
               setDbDatasource(detail.datasource);
               setResponseType(detail.responseType);
               setPublishStatus(detail.publishStatus === 1 ? 1 : 0);
               if (detail.name) setName(detail.name);
-              if (detail.url) setUrl(detail.url);
               if (detail.method) setMethod(detail.method);
 
               let cacheEnabled = false;
@@ -636,6 +720,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
               }
 
               const secFields = parseSecurityConfigToForm(detail.securityConfig);
+              const privacyFields = parsePrivacyConfigToForm(detail.privacyConfig);
 
               form.setFieldsValue({
                 ...form.getFieldsValue(),
@@ -665,6 +750,7 @@ const ControllerFormV2: React.FC<ControllerFormV2Props> = ({
                 cacheIncludePageable,
                 cacheKeyParams,
                 ...secFields,
+                ...privacyFields,
                 responseType: detail.responseType,
                 datasource: detail.datasource,
                 serviceType: detail.serviceType,

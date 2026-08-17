@@ -27,8 +27,9 @@ import org.yu.flow.module.oss.service.OssThumbnailService;
 import org.yu.flow.module.oss.service.OssUploadProfileService;
 import org.yu.flow.module.oss.support.OssBizFieldValidator;
 import org.yu.flow.module.oss.support.OssKeyPatternResolver;
+import org.yu.flow.module.oss.support.OssProfileCallerAuth;
+import org.yu.flow.module.oss.support.OssUploaderIdentity;
 import org.yu.flow.module.oss.support.OssUploadRequestParser;
-import org.yu.flow.module.rbac.service.RbacService;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -50,11 +51,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 /**
  * 网关侧分片上传：分片落盘 → complete 合并 putObject（MinIO SDK 对大文件自动 multipart）。
  */
 @Slf4j
+@ConditionalOnOssEnabled
 @Service
 public class OssMultipartUploadService {
 
@@ -81,7 +84,7 @@ public class OssMultipartUploadService {
     private YuFlowProperties yuFlowProperties;
 
     @Resource
-    private RbacService rbacService;
+    private OssProfileCallerAuth ossProfileCallerAuth;
 
     @Resource
     private OssQuotaService ossQuotaService;
@@ -146,12 +149,8 @@ public class OssMultipartUploadService {
         String bizMeta = OssBizFieldValidator.validateAndSerialize(profile.getBizFieldsSchema(), bizFields);
         OssUploadOptions options = OssUploadRequestParser.parseOptions(request, bizFields);
         LocalDateTime expiresAt = OssUploadRequestParser.resolveExpiresAt(options);
-
-        String uploadedBy = principal != null ? principal.getUserId() : null;
-        if (options != null && StrUtil.isNotBlank(options.getUploadedByOverride())) {
-            uploadedBy = options.getUploadedByOverride();
-        }
-        ossQuotaService.checkBeforeUpload(profile, uploadedBy, 0, 1);
+        OssUploaderIdentity.Snapshot uploader = OssUploaderIdentity.from(principal, options);
+        ossQuotaService.checkBeforeUpload(profile, uploader.getUploadedBy(), uploader.getUploadedByUserType(), 0, 1);
 
         String sessionId = IdUtil.fastSimpleUUID();
         Path workDir;
@@ -168,6 +167,8 @@ public class OssMultipartUploadService {
         session.setBucket(bucket);
         session.setObjectKey(objectKey);
         session.setProfileCode(profile.getCode());
+        session.setOwnerId(principal != null ? principal.getUserId() : null);
+        session.setOwnerAuthChannel(principal != null ? principal.getAuthChannel() : null);
         session.setContentType(ct);
         session.setOriginalName(originalName);
         session.setBizMeta(bizMeta);
@@ -183,11 +184,13 @@ public class OssMultipartUploadService {
                 .setObjectKey(objectKey);
     }
 
-    public void uploadPart(String sessionId, int partNumber, InputStream body, long size) {
+    public void uploadPart(String sessionId, int partNumber, InputStream body, long size,
+                           FlowHostPrincipal principal) {
         if (partNumber < 1 || partNumber > 10000) {
             throw new FlowException("OSS_MULTIPART_PART_INVALID", "partNumber 非法: " + partNumber);
         }
         OssMultipartUploadSession session = requireSession(sessionId);
+        assertSessionOwner(session, principal);
         demoModeGuard.checkOssWrite(session.getBucket());
 
         long globalMax = yuFlowProperties.getOss().getMaxUploadBytes();
@@ -237,6 +240,7 @@ public class OssMultipartUploadService {
     @Transactional
     public OssUploadResultDTO complete(String sessionId, FlowHostPrincipal principal, HttpServletRequest request) {
         OssMultipartUploadSession session = requireSession(sessionId);
+        assertSessionOwner(session, principal);
         demoModeGuard.checkOssWrite(session.getBucket());
 
         if (session.getParts().isEmpty()) {
@@ -244,6 +248,12 @@ public class OssMultipartUploadService {
         }
 
         OssUploadProfileDO profile = ossUploadProfileService.requireByCode(session.getProfileCode());
+        validateUploadAuth(profile, principal);
+        OssConnectionDO connection = ossConnectionRepository.findByCode(session.getConnectionCode())
+                .orElseThrow(() -> new FlowException("OSS_CONNECTION_NOT_FOUND", "连接不存在"));
+        if (!Boolean.TRUE.equals(connection.getEnabled())) {
+            throw new FlowException("OSS_CONNECTION_DISABLED", "OSS 连接已停用");
+        }
         long totalSize = session.getTotalSizeBytes();
         if (profile.getMaxSizeBytes() != null && profile.getMaxSizeBytes() > 0 && totalSize > profile.getMaxSizeBytes()) {
             throw new FlowException("OSS_FILE_TOO_LARGE", "文件大小超出场景上限");
@@ -254,7 +264,7 @@ public class OssMultipartUploadService {
         }
 
         String uploadedBy = session.getUploadedBy();
-        ossQuotaService.checkBeforeUpload(profile, uploadedBy, totalSize, 1);
+        ossQuotaService.checkBeforeUpload(profile, uploadedBy, session.getUploadedByUserType(), totalSize, 1);
 
         List<OssMultipartUploadSession.PartRecord> ordered = session.getParts().stream()
                 .sorted(Comparator.comparingInt(OssMultipartUploadSession.PartRecord::getPartNumber))
@@ -289,9 +299,6 @@ public class OssMultipartUploadService {
             throw new FlowException("OSS_MULTIPART_COMPLETE_FAILED", "完成分片上传失败: " + e.getMessage(), e);
         }
 
-        OssConnectionDO connection = ossConnectionRepository.findByCode(session.getConnectionCode())
-                .orElseThrow(() -> new FlowException("OSS_CONNECTION_NOT_FOUND", "连接不存在"));
-
         String visibility = profile.getVisibility();
         String publicPath = OssObjectDO.VISIBILITY_PUBLIC.equals(visibility)
                 ? OssKeyPatternResolver.buildPublicPath(session.getObjectKey()) : null;
@@ -310,6 +317,7 @@ public class OssMultipartUploadService {
                 .sizeBytes(totalSize)
                 .bizMeta(session.getBizMeta())
                 .uploadedBy(session.getUploadedBy())
+                .uploadedByUserType(session.getUploadedByUserType())
                 .uploadedByName(session.getUploadedByName())
                 .deptId(session.getDeptId())
                 .status(OssObjectDO.STATUS_ACTIVE)
@@ -342,7 +350,13 @@ public class OssMultipartUploadService {
         return dto;
     }
 
-    public void abort(String sessionId) {
+    public void abort(String sessionId, FlowHostPrincipal principal) {
+        OssMultipartUploadSession session = requireSession(sessionId);
+        assertSessionOwner(session, principal);
+        removeSession(sessionId);
+    }
+
+    private void removeSession(String sessionId) {
         OssMultipartUploadSession session = sessions.remove(sessionId);
         if (session == null) {
             return;
@@ -352,7 +366,7 @@ public class OssMultipartUploadService {
 
     private void abortQuietly(String sessionId) {
         try {
-            abort(sessionId);
+            removeSession(sessionId);
         } catch (Exception e) {
             log.debug("[OSS] abortQuietly {}: {}", sessionId, e.getMessage());
         }
@@ -409,31 +423,37 @@ public class OssMultipartUploadService {
     }
 
     private void validateUploadAuth(OssUploadProfileDO profile, FlowHostPrincipal principal) {
-        if (profile.getEnabled() == null || !profile.getEnabled()) {
-            throw new FlowException("OSS_PROFILE_DISABLED", "上传场景已停用: " + profile.getCode());
-        }
-        boolean requireAuth = profile.getRequireAuth() == null || profile.getRequireAuth();
-        if (requireAuth && principal == null) {
-            throw new FlowException("RBAC_UNAUTHORIZED", "未登录或凭证无效");
-        }
-        if (principal != null && StrUtil.isNotBlank(profile.getUploadPerm())) {
-            if (!rbacService.hasAnyPerm(principal.getUsername(), profile.getUploadPerm(), "*")) {
-                throw new FlowException("RBAC_FORBIDDEN", "无上传权限: " + profile.getUploadPerm());
-            }
-        }
+        ossProfileCallerAuth.assertUpload(profile, principal);
     }
 
     private void applyPrincipal(OssMultipartUploadSession session, FlowHostPrincipal principal,
                                 OssUploadOptions options) {
         if (options != null && StrUtil.isNotBlank(options.getUploadedByOverride())) {
-            session.setUploadedBy(options.getUploadedByOverride());
-            session.setUploadedByName(StrUtil.blankToDefault(options.getUploadedByNameOverride(),
-                    options.getUploadedByOverride()));
-        } else if (principal != null) {
-            session.setUploadedBy(principal.getUserId());
-            session.setUploadedByName(principal.getUsername());
-            session.setDeptId(principal.getDeptId());
+            if (!ossProfileCallerAuth.hasFlowPermission(principal, "flow:oss:admin")) {
+                throw new FlowException("RBAC_FORBIDDEN", "代传 uploadedBy 需要 flow:oss:admin 权限");
+            }
         }
+        OssUploaderIdentity.Snapshot uploader = OssUploaderIdentity.from(principal, options);
+        session.setUploadedBy(uploader.getUploadedBy());
+        session.setUploadedByUserType(uploader.getUploadedByUserType());
+        session.setUploadedByName(uploader.getUploadedByName());
+        if (principal != null && (options == null || StrUtil.isBlank(options.getUploadedByOverride()))) {
+            session.setDeptId(uploader.getDeptId());
+        }
+    }
+
+    private void assertSessionOwner(OssMultipartUploadSession session, FlowHostPrincipal principal) {
+        if (session == null || StrUtil.isBlank(session.getOwnerId())) {
+            // 匿名场景当前以高熵 uploadId 作为 capability；后续可升级为独立签名 token。
+            return;
+        }
+        if (principal != null && session.getOwnerId().equals(principal.getUserId())) {
+            return;
+        }
+        if (ossProfileCallerAuth.hasFlowPermission(principal, "flow:oss:admin")) {
+            return;
+        }
+        throw new FlowException("OSS_MULTIPART_FORBIDDEN", "无权操作该分片上传会话");
     }
 
     private static String resolveBucket(OssUploadProfileDO profile, OssConnectionDO connection) {

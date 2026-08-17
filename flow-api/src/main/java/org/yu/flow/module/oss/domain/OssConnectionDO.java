@@ -60,7 +60,7 @@ public class OssConnectionDO implements Serializable {
     @Column(length = 64)
     private String region;
 
-    @Column(name = "path_style", columnDefinition = "tinyint(1) default 1")
+    @Column(name = "path_style", nullable = false)
     private Boolean pathStyle;
 
     @Column(name = "public_bucket", length = 128)
@@ -84,7 +84,7 @@ public class OssConnectionDO implements Serializable {
     @Column(name = "presign_expire_seconds")
     private Integer presignExpireSeconds;
 
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean enabled;
 
     @Column(name = "health_status", length = 32)

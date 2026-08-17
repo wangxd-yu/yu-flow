@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS flow_metrics_meta (
 );
 COMMENT ON TABLE flow_metrics_meta IS '资产运行计量元数据';
 COMMENT ON COLUMN flow_metrics_meta.id IS '雪花ID';
-COMMENT ON COLUMN flow_metrics_meta.asset_type IS 'API / TASK / SERVICE / PLATFORM';
+COMMENT ON COLUMN flow_metrics_meta.asset_type IS 'API / TASK / MQ_TASK / SERVICE / PLATFORM / SYSTEM';
 COMMENT ON COLUMN flow_metrics_meta.asset_id IS '资产ID';
 COMMENT ON COLUMN flow_metrics_meta.last_success_at IS '最近成功 epoch ms';
 COMMENT ON COLUMN flow_metrics_meta.last_fail_at IS '最近业务失败 epoch ms';

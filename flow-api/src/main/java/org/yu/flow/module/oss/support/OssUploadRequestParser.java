@@ -49,6 +49,10 @@ public final class OssUploadRequestParser {
         if (StrUtil.isNotBlank(uploadedBy)) {
             options.setUploadedByOverride(uploadedBy.trim());
         }
+        String uploadedByUserType = request.getParameter("uploadedByUserType");
+        if (StrUtil.isNotBlank(uploadedByUserType)) {
+            options.setUploadedByUserTypeOverride(uploadedByUserType.trim());
+        }
         String uploadedByName = request.getParameter("uploadedByName");
         if (StrUtil.isNotBlank(uploadedByName)) {
             options.setUploadedByNameOverride(uploadedByName.trim());

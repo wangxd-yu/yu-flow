@@ -123,15 +123,20 @@ public class MqConsumerManager {
             log.info("[MqConsumerManager] yu-flow.mq.consumer-enabled=false，跳过消费者启动");
             return;
         }
-        List<FlowMqTaskDO> enabledTasks = flowMqTaskRepository.findByEnabled(true);
-        log.info("[MqConsumerManager] 启动加载 MQ 任务，共 {} 个", enabledTasks.size());
-        for (FlowMqTaskDO task : enabledTasks) {
-            try {
-                subscribe(task);
-            } catch (Exception e) {
-                log.error("[MqConsumerManager] 任务订阅失败，taskId={}, name={}, error={}",
-                        task.getId(), task.getName(), e.getMessage());
+        // 与 FlowTaskScheduler 同逻辑；整段吞掉异常，避免未使用的 MQ 拖垮宿主启动
+        try {
+            List<FlowMqTaskDO> enabledTasks = flowMqTaskRepository.findByEnabled(true);
+            log.info("[MqConsumerManager] 启动加载 MQ 任务，共 {} 个", enabledTasks.size());
+            for (FlowMqTaskDO task : enabledTasks) {
+                try {
+                    subscribe(task);
+                } catch (Exception e) {
+                    log.error("[MqConsumerManager] 任务订阅失败，taskId={}, name={}, error={}",
+                            task.getId(), task.getName(), e.getMessage());
+                }
             }
+        } catch (Exception e) {
+            log.error("[MqConsumerManager] 启动加载 MQ 任务失败（不影响应用启动）: {}", e.getMessage(), e);
         }
     }
 

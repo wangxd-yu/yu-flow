@@ -1,8 +1,8 @@
 -- Table: flow_page_info
 -- 页面信息表
 CREATE TABLE IF NOT EXISTS `flow_page_info` (
-  `id` varchar(64) NOT NULL COMMENT '主键（雪花ID）',
-  `directory_id` varchar(64) COMMENT '关联全局目录树',
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `directory_id` varchar(32) COMMENT '关联全局目录树',
   `name` varchar(256) NOT NULL COMMENT '页面名称',
   `route_path` varchar(512) NOT NULL COMMENT '访问路径（唯一）',
   `json` longtext COMMENT '页面配置 JSON Schema（Amis）',

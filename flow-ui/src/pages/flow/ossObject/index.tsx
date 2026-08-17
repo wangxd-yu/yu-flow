@@ -118,9 +118,17 @@ const OssObjectList: React.FC = () => {
     {
       title: '上传人',
       dataIndex: 'uploadedByName',
-      width: 120,
+      width: 160,
       ellipsis: true,
       search: false,
+      render: (_, record) => (
+        <span>
+          {record.uploadedByName || record.uploadedBy || '-'}
+          {record.uploadedByUserType ? (
+            <Tag style={{ marginLeft: 6 }}>{record.uploadedByUserType}</Tag>
+          ) : null}
+        </span>
+      ),
     },
     {
       title: '状态',

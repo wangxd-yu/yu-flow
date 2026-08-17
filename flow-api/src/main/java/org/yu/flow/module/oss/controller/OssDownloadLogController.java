@@ -11,8 +11,10 @@ import org.yu.flow.module.oss.dto.OssDownloadLogDTO;
 import org.yu.flow.module.oss.query.OssDownloadLogQueryDTO;
 import org.yu.flow.module.oss.service.OssDownloadLogService;
 import org.yu.flow.module.rbac.support.RequirePerm;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss/download-logs")
 @RequirePerm({"flow:oss:audit", "flow:oss:admin"})

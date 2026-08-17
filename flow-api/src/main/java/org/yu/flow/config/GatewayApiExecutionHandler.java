@@ -17,10 +17,16 @@ import org.yu.flow.module.api.cache.ApiCacheConfig;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.ApiDataExportRequestDTO;
+import org.yu.flow.module.api.privacy.EffectivePrivacy;
+import org.yu.flow.module.api.privacy.PrivacyClass;
+import org.yu.flow.module.api.privacy.PrivacyCryptoService;
+import org.yu.flow.module.api.privacy.PrivacyFieldInterceptor;
 import org.yu.flow.module.api.security.IngressException;
 import org.yu.flow.module.api.security.IngressSecurityResolver;
 import org.yu.flow.module.api.service.ApiDataViewService;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
+import org.yu.flow.module.host.FlowHostPrincipal;
+import org.yu.flow.module.host.FlowHostRequestAttrs;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
 import org.yu.flow.module.metrics.MetricsKeys;
@@ -72,6 +78,7 @@ class GatewayApiExecutionHandler {
     private final AssetMetricsRecorder assetMetricsRecorder;
     private final ApiDataViewService apiDataViewService;
     private final IngressSecurityResolver ingressSecurityResolver;
+    private final PrivacyFieldInterceptor privacyFieldInterceptor;
     private final GatewayIo io;
     private final ObjectMapper objectMapper;
 
@@ -86,6 +93,23 @@ class GatewayApiExecutionHandler {
                                IngressSecurityResolver ingressSecurityResolver,
                                GatewayIo io,
                                ObjectMapper objectMapper) {
+        this(flowApiService, schemaValidatorService, contractParamTypeConverter, responseStrategyResolver,
+                responseTransformer, apiResponseCacheService, assetMetricsRecorder, apiDataViewService,
+                ingressSecurityResolver, null, io, objectMapper);
+    }
+
+    GatewayApiExecutionHandler(FlowApiExecutionService flowApiService,
+                               SchemaValidatorService schemaValidatorService,
+                               ContractParamTypeConverter contractParamTypeConverter,
+                               ResponseStrategyResolver responseStrategyResolver,
+                               ResponseTransformer responseTransformer,
+                               ApiResponseCacheService apiResponseCacheService,
+                               AssetMetricsRecorder assetMetricsRecorder,
+                               ApiDataViewService apiDataViewService,
+                               IngressSecurityResolver ingressSecurityResolver,
+                               PrivacyFieldInterceptor privacyFieldInterceptor,
+                               GatewayIo io,
+                               ObjectMapper objectMapper) {
         this.flowApiService = flowApiService;
         this.schemaValidatorService = schemaValidatorService;
         this.contractParamTypeConverter = contractParamTypeConverter;
@@ -95,6 +119,7 @@ class GatewayApiExecutionHandler {
         this.assetMetricsRecorder = assetMetricsRecorder;
         this.apiDataViewService = apiDataViewService;
         this.ingressSecurityResolver = ingressSecurityResolver;
+        this.privacyFieldInterceptor = privacyFieldInterceptor;
         this.io = io;
         this.objectMapper = objectMapper;
     }
@@ -149,15 +174,32 @@ class GatewayApiExecutionHandler {
         inputParamsMap.put("headers", typedHeaders);
         inputParamsMap.put("params", typedQueryParams);
         inputParamsMap.put("body", typedBodyParams);
+        // 入站解析的调用方身份（HOST / OPEN 合成主体）
+        FlowHostPrincipal hostPrincipal = FlowHostRequestAttrs.getPrincipal(request);
+        if (hostPrincipal != null) {
+            inputParamsMap.put("@AUTH", FlowHostRequestAttrs.toAuthContext(hostPrincipal));
+        }
 
         // 4. 响应缓存：命中则跳过执行
         ApiCacheConfig cacheConfig = apiResponseCacheService.parseConfig(flowApiDO.getCacheConfig());
         String cacheKey = null;
         boolean cacheEnabled = apiResponseCacheService.isEnabled(cacheConfig);
+        EffectivePrivacy privacy = privacyFieldInterceptor == null
+                ? EffectivePrivacy.disabled()
+                : privacyFieldInterceptor.resolveConfig(flowApiDO, false);
+        PrivacyClass privacyClass = privacyFieldInterceptor == null
+                ? PrivacyClass.MASK
+                : privacyFieldInterceptor.resolveClass(hostPrincipal);
+        if (privacy.isEnabled() && privacyClass == PrivacyClass.REVEAL) {
+            cacheEnabled = false;
+        }
         if (cacheEnabled) {
             cacheKey = apiResponseCacheService.buildCacheKey(
                     flowApiDO.getId(), cacheConfig,
                     typedQueryParams, typedBodyParams, typedPathParams, typedHeaders, pageable);
+            if (privacy.isEnabled() && privacyClass == PrivacyClass.MASK) {
+                cacheKey = cacheKey + ":pMASK";
+            }
             String cachedJson = apiResponseCacheService.get(cacheKey);
             if (cachedJson != null) {
                 response.setContentType(GatewayIo.JSON_CONTENT_TYPE);
@@ -205,6 +247,15 @@ class GatewayApiExecutionHandler {
                 templateToUse = context.getPageWrapper();
             } else {
                 templateToUse = context.getSuccessWrapper();
+            }
+
+            if (privacyFieldInterceptor != null && privacy.isEnabled() && !businessFail) {
+                byte[] transportKey = null;
+                if (privacyClass == PrivacyClass.REVEAL) {
+                    transportKey = privacyFieldInterceptor.unwrapTransportKey(
+                            request.getHeader(PrivacyCryptoService.HEADER_PRIVACY_KEY));
+                }
+                result = privacyFieldInterceptor.apply(result, privacy, privacyClass, transportKey, true);
             }
 
             Object finalResult = responseTransformer.transform(result, templateToUse);

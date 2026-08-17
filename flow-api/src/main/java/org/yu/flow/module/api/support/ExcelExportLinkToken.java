@@ -29,6 +29,11 @@ public final class ExcelExportLinkToken {
 
     public static String issue(YuFlowProperties props, String apiId, String uid,
                                ApiDataExportRequestDTO params, int ttlSeconds) {
+        return issue(props, apiId, uid, params, ttlSeconds, "MASK");
+    }
+
+    public static String issue(YuFlowProperties props, String apiId, String uid,
+                               ApiDataExportRequestDTO params, int ttlSeconds, String privacyClass) {
         long now = Instant.now().getEpochSecond();
         long exp = now + Math.max(1, ttlSeconds);
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -36,6 +41,7 @@ public final class ExcelExportLinkToken {
         payload.put("uid", StrUtil.blankToDefault(uid, ""));
         payload.put("iat", now);
         payload.put("exp", exp);
+        payload.put("pc", normalizePrivacyClass(privacyClass));
         payload.put("q", params == null || params.getQueryParams() == null ? Map.of() : params.getQueryParams());
         payload.put("b", params == null || params.getBodyParams() == null ? Map.of() : params.getBodyParams());
         payload.put("p", params == null || params.getPathParams() == null ? Map.of() : params.getPathParams());
@@ -80,7 +86,8 @@ public final class ExcelExportLinkToken {
             req.setQueryParams(toStringMap(payload.get("q")));
             req.setPathParams(toStringMap(payload.get("p")));
             req.setBodyParams(toObjectMap(payload.get("b")));
-            return new Parsed(apiId, req, exp);
+            String privacyClass = normalizePrivacyClass(payload.get("pc") == null ? null : String.valueOf(payload.get("pc")));
+            return new Parsed(apiId, req, exp, privacyClass);
         } catch (ValidationException ve) {
             throw ve;
         } catch (Exception e) {
@@ -136,6 +143,13 @@ public final class ExcelExportLinkToken {
         return out;
     }
 
-    public record Parsed(String apiId, ApiDataExportRequestDTO request, long expEpochSec) {
+    public static String normalizePrivacyClass(String raw) {
+        if (raw != null && "REVEAL".equalsIgnoreCase(raw.trim())) {
+            return "REVEAL";
+        }
+        return "MASK";
+    }
+
+    public record Parsed(String apiId, ApiDataExportRequestDTO request, long expEpochSec, String privacyClass) {
     }
 }

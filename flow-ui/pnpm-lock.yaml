@@ -158,6 +158,9 @@ importers:
       lodash:
         specifier: '>=4.18.0'
         version: 4.18.1
+      sm-crypto:
+        specifier: ^0.5.5
+        version: 0.5.5
       sql-formatter:
         specifier: ^15.7.3
         version: 15.7.3
@@ -5168,6 +5171,9 @@ packages:
   jsbarcode@3.12.3:
     resolution: {integrity: sha512-CuHU9hC6dPsHF5oVFMo8NW76uQVjH4L22CsP4hW+dNnGywJHC/B0ThA1CTDVLnxKLrrpYdicBLnd2xsgTfRnvg==}
 
+  jsbn@1.1.0:
+    resolution: {integrity: sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A==}
+
   jsesc@2.5.2:
     resolution: {integrity: sha512-OYu7XEzjkCQ3C5Ps3QIZsQfNpqoJyZZA99wd9aWd05NCtC5pWOkShK2mkL6HXQR6/Cy2lbNdPlZBpuQHXE63gA==}
     engines: {node: '>=4'}
@@ -7566,6 +7572,9 @@ packages:
   slice-ansi@5.0.0:
     resolution: {integrity: sha512-FC+lgizVPfie0kkhqUScwRu1O/lF6NOgJmlCgK+/LYxDCTk8sGelYaHDhFcDN+Sn3Cv+3VSa4Byeo+IMCzpMgQ==}
     engines: {node: '>=12'}
+
+  sm-crypto@0.5.5:
+    resolution: {integrity: sha512-C9KG6UgKPvMjd3YwDNsj3Aj9XincYfQ445vPaDHBXpp+lGklm3bUbqz/rVp78UaIyt/4uMXrkYM3MskRNHKrJQ==}
 
   smooth-signature@1.1.0:
     resolution: {integrity: sha512-wXBsbWmGxtNPftE7RoCWl5VrFkTT2hxT6/rJHQLOMviVeHB3B38+rh7F41Vd1Zwy9P+568ZDyutN/GWk1VfD+w==}
@@ -15190,6 +15199,8 @@ snapshots:
 
   jsbarcode@3.12.3: {}
 
+  jsbn@1.1.0: {}
+
   jsesc@2.5.2: {}
 
   jsesc@3.1.0: {}
@@ -17897,6 +17908,10 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 4.0.0
+
+  sm-crypto@0.5.5:
+    dependencies:
+      jsbn: 1.1.0
 
   smooth-signature@1.1.0: {}
 

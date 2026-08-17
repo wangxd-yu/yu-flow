@@ -176,6 +176,9 @@ public class FlowApiCacheManager {
             int patternCount = 0;
 
             for (FlowApiDO api : publishedApis) {
+                if (org.yu.flow.module.host.HostCatalogReserved.isReservedId(api.getId())) {
+                    continue;
+                }
                 // 路由键取发布快照，避免草稿改 URL 污染线上匹配
                 String originalUrl = PublishedApiSnapshot.resolveUrl(api);
                 String method = PublishedApiSnapshot.resolveMethod(api);
@@ -253,6 +256,9 @@ public class FlowApiCacheManager {
      * @return 匹配到的 FlowApiDO 对象；未命中返回 null
      */
     public FlowApiDO getExactMatch(String method, String requestPath) {
+        if (method == null) {
+            return null;
+        }
         if (requestPath != null && !requestPath.startsWith("/")) {
             requestPath = "/" + requestPath;
         }
@@ -282,6 +288,9 @@ public class FlowApiCacheManager {
         List<FlowApiDO> snapshot = this.patternCache;
 
         for (FlowApiDO api : snapshot) {
+            if (api == null || api.getMethod() == null || method == null) {
+                continue;
+            }
             // 方法不匹配则跳过
             if (!method.equalsIgnoreCase(api.getMethod())) {
                 continue;

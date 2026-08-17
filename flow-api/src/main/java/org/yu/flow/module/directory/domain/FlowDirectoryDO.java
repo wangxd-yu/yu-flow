@@ -51,6 +51,30 @@ public class FlowDirectoryDO {
     @Column(columnDefinition = "INT DEFAULT 0")
     private Integer sort;
 
+    /**
+     * URL 路径前缀（可选）。如 {@code /api/v1}。
+     * <p>仅作编辑期默认值与分组约定；运行时以接口自身 path 为准。</p>
+     */
+    @Column(length = 256)
+    private String pathPrefix;
+
+    /**
+     * 目录级入站防护 JSON（结构同接口 {@code ApiSecurityConfig}）。
+     * <p>{@code null}/空白 = 本目录不覆盖，继续向上继承；字段级 null = 继承上级。</p>
+     */
+    @Column(columnDefinition = "TEXT")
+    private String securityConfig;
+
+    /**
+     * 目录级出站隐私 JSON（结构同 {@code ApiPrivacyConfig}）。
+     */
+    @Column(columnDefinition = "TEXT")
+    private String privacyConfig;
+
+    /** 备注 */
+    @Column(length = 512)
+    private String remark;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
 

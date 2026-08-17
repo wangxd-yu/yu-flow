@@ -505,6 +505,13 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onP
       }}
       extra={
         <Space>
+          {result?.privacyEnabled ? (
+            result.privacyClass === 'REVEAL' ? (
+              <Tag color="red">明文</Tag>
+            ) : (
+              <Tag>脱敏</Tag>
+            )
+          ) : null}
           <span>
             使用草稿{' '}
             <Switch
@@ -567,6 +574,15 @@ const ApiDataViewDrawer: React.FC<Props> = ({ open, onClose, apiId, apiName, onP
         业务发布 URL 仍只返回 JSON；此处为管理端旁路。列中文名优先读响应契约「中文名」；公司表头请用「导出模板」上传
         .xlsx（无需安装 Office）。
       </Typography.Paragraph>
+      {result?.privacyEnabled && result.privacyClass !== 'REVEAL' ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 8, flexShrink: 0 }}
+          message="当前按脱敏展示"
+          description="明文需命中宿主机配置的隐私角色，或授予 Flow 权限 flow:privacy:reveal。管理端 JWT 若未映射宿主角色，默认脱敏。"
+        />
+      ) : null}
 
       <Tabs
         activeKey={activeTab}

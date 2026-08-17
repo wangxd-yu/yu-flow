@@ -1,8 +1,8 @@
 -- Table: flow_page_directory
 -- 页面目录表
 CREATE TABLE IF NOT EXISTS flow_page_directory (
-  id varchar(64) NOT NULL,
-  parent_id varchar(64),
+  id varchar(32) NOT NULL,
+  parent_id varchar(32),
   name varchar(128) NOT NULL,
   sort integer DEFAULT 0,
   create_time timestamp DEFAULT CURRENT_TIMESTAMP,

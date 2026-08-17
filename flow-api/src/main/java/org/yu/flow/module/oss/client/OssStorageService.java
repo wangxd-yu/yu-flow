@@ -10,6 +10,8 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import io.minio.Result;
+import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import io.minio.messages.Item;
@@ -17,11 +19,13 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.yu.flow.exception.FlowException;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 import java.io.InputStream;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
+@ConditionalOnOssEnabled
 @Service
 public class OssStorageService {
 
@@ -108,6 +112,56 @@ public class OssStorageService {
         } catch (Exception e) {
             log.warn("[OSS] presignGetUrl failed bucket={} key={}: {}", bucket, key, e.getMessage());
             throw new FlowException("OSS_PRESIGN_FAILED", "生成预签名 URL 失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 生成用于客户端直传的预签名 PUT URL。
+     * <p>URL 只对 bucket/key 与有效期签名，不约束 Content-Type，因此客户端上传完成后
+     * 必须由服务端通过 {@link #statObjectOrNull} 复核真实大小与类型。</p>
+     */
+    public String presignPutUrl(String connectionCode, String bucket, String key, int expireSeconds) {
+        if (expireSeconds <= 0) {
+            expireSeconds = 300;
+        }
+        try {
+            MinioClient client = minioClientFactory.getExternalClient(connectionCode);
+            return client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+                    .method(Method.PUT)
+                    .bucket(bucket)
+                    .object(key)
+                    .expiry(expireSeconds, TimeUnit.SECONDS)
+                    .build());
+        } catch (FlowException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[OSS] presignPutUrl failed bucket={} key={}: {}", bucket, key, e.getMessage());
+            throw new FlowException("OSS_PRESIGN_FAILED", "生成预签名上传 URL 失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 读取对象元信息；对象不存在时返回 null，其余异常统一抛 FlowException。
+     */
+    public StatObjectResponse statObjectOrNull(String connectionCode, String bucket, String key) {
+        try {
+            MinioClient client = minioClientFactory.getClient(connectionCode);
+            return client.statObject(StatObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(key)
+                    .build());
+        } catch (ErrorResponseException e) {
+            String code = e.errorResponse() != null ? e.errorResponse().code() : null;
+            if ("NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "ResourceNotFound".equals(code)) {
+                return null;
+            }
+            log.warn("[OSS] statObject failed bucket={} key={}: {}", bucket, key, e.getMessage());
+            throw new FlowException("OSS_STAT_FAILED", "读取对象元信息失败: " + e.getMessage(), e);
+        } catch (FlowException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[OSS] statObject failed bucket={} key={}: {}", bucket, key, e.getMessage());
+            throw new FlowException("OSS_STAT_FAILED", "读取对象元信息失败: " + e.getMessage(), e);
         }
     }
 

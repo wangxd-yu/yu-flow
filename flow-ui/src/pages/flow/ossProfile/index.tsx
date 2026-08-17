@@ -5,8 +5,9 @@ import {
   ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import { Button, Divider, message, Popconfirm, Tag } from 'antd';
-import React, { useRef, useState } from 'react';
+import { Button, Divider, message, Popconfirm, Space, Tag, Tooltip } from 'antd';
+import { useAccess } from '@umijs/max';
+import React, { useMemo, useRef, useState } from 'react';
 import OssIntegrationAlert from '@/components/flow/OssIntegrationAlert';
 import OssSimulateUploadModal from './components/OssSimulateUploadModal';
 import OssUploadProfileForm from './components/OssUploadProfileForm';
@@ -16,12 +17,13 @@ import {
   OssUploadProfile,
   queryOssUploadProfilePage,
 } from '@/services/flow/ossUploadProfile';
+import { parseOssAccessRules } from '@/utils/ossAccessRules';
 
 import '@/styles/fullHeightTable.css';
 
 const handleRemove = async (selectedRows: OssUploadProfile[]) => {
-  const hide = message.loading('正在删除');
   if (!selectedRows?.length) return true;
+  const hide = message.loading('正在删除');
   try {
     await batchDeleteOssUploadProfile(selectedRows.map((row) => row.id));
     hide();
@@ -37,6 +39,8 @@ const handleRemove = async (selectedRows: OssUploadProfile[]) => {
 };
 
 const OssProfileList: React.FC = () => {
+  const access = useAccess();
+  const canWrite = !!access.canOssWrite;
   const [createModalVisible, handleModalVisible] = useState<boolean>(false);
   const [updateModalVisible, handleUpdateModalVisible] = useState<boolean>(false);
   const [stepFormValues, setStepFormValues] = useState<Partial<OssUploadProfile>>();
@@ -44,11 +48,11 @@ const OssProfileList: React.FC = () => {
   const actionRef = useRef<ActionType>();
   const [selectedRowsState, setSelectedRows] = useState<OssUploadProfile[]>([]);
 
-  const columns: ProColumns<OssUploadProfile>[] = [
+  const columns: ProColumns<OssUploadProfile>[] = useMemo(() => [
     {
       title: '场景名称',
       dataIndex: 'name',
-      width: 180,
+      width: canWrite ? 180 : 80,
       ellipsis: true,
     },
     {
@@ -86,6 +90,59 @@ const OssProfileList: React.FC = () => {
       render: (_, record) => (record.requireAuth ? '是' : '否'),
     },
     {
+      title: '访问规则',
+      dataIndex: 'callerPolicy',
+      width: 140,
+      search: false,
+      render: (_, record) => {
+        const rules = parseOssAccessRules(record.callerPolicy);
+        if (!rules.length) return <span style={{ color: '#bfbfbf' }}>—</span>;
+        const upload = rules.filter((rule) => rule.upload).length;
+        const download = rules.filter((rule) => rule.downloadScope !== 'OFF').length;
+        return (
+          <Tooltip
+            title={rules
+              .map((rule) => {
+                const who =
+                  rule.principals === 'ANY_AUTHENTICATED'
+                    ? '已登录'
+                    : rule.principals === 'OPEN_APP'
+                      ? '开放应用'
+                      : rule.userTypes.join('/') || rule.roles.join('/') || rule.name || '指定身份';
+                const down =
+                  rule.downloadScope === 'ALL'
+                    ? '全部'
+                    : rule.downloadScope === 'DEPT'
+                      ? '部门'
+                      : rule.downloadScope === 'SELF'
+                        ? '本人'
+                        : '不下';
+                return `${who} · ${rule.upload ? '传' : '不传'} · ${down}`;
+              })
+              .join('；')}
+          >
+            <Tag color="purple" style={{ margin: 0 }}>
+              {rules.length} 条 · 传{upload}/下{download}
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: '预签名直传',
+      dataIndex: 'presignUploadEnabled',
+      width: 100,
+      search: false,
+      render: (_, record) =>
+        record.presignUploadEnabled ? (
+          <Tag color="cyan" style={{ margin: 0 }}>
+            已开放
+          </Tag>
+        ) : (
+          <span style={{ color: '#bfbfbf' }}>—</span>
+        ),
+    },
+    {
       title: '状态',
       dataIndex: 'enabled',
       width: 80,
@@ -109,38 +166,52 @@ const OssProfileList: React.FC = () => {
       fixed: 'right',
       render: (_, record) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-          <a key="simulate" onClick={() => setSimulateProfile(record)}>
+          <Button
+            key="simulate"
+            type="link"
+            size="small"
+            disabled={!record.enabled}
+            style={{ padding: 0, height: 'auto' }}
+            onClick={() => setSimulateProfile(record)}
+          >
             试上传
-          </a>
-          <Divider type="vertical" key="d0" />
-          <a
-            key="edit"
-            onClick={() => {
-              handleUpdateModalVisible(true);
-              setStepFormValues(record);
-            }}
-          >
-            编辑
-          </a>
-          <Divider type="vertical" key="d1" />
-          <Popconfirm
-            key="delete"
-            title="确定要删除该上传配置吗？"
-            onConfirm={async () => {
-              try {
-                await deleteOssUploadProfile(record.id);
-                actionRef.current?.reload();
-              } catch {
-                /* ignore */
-              }
-            }}
-          >
-            <a>删除</a>
-          </Popconfirm>
+          </Button>
+          {canWrite ? (
+            <>
+              <Divider type="vertical" key="d0" />
+              <a
+                key="edit"
+                onClick={() => {
+                  handleUpdateModalVisible(true);
+                  setStepFormValues(record);
+                }}
+              >
+                编辑
+              </a>
+              <Divider type="vertical" key="d1" />
+              <Popconfirm
+                key="delete"
+                title="确定要删除该上传配置吗？"
+                onConfirm={async () => {
+                  try {
+                    await deleteOssUploadProfile(record.id);
+                    message.success('删除成功');
+                    actionRef.current?.reload();
+                  } catch (error: any) {
+                    if (!error?.message?.includes('DEMO_RESTRICTED')) {
+                      message.error(error?.message || '删除失败');
+                    }
+                  }
+                }}
+              >
+                <a>删除</a>
+              </Popconfirm>
+            </>
+          ) : null}
         </span>
       ),
     },
-  ];
+  ], [canWrite]);
 
   return (
     <PageContainer
@@ -153,15 +224,15 @@ const OssProfileList: React.FC = () => {
       <OssIntegrationAlert />
       <ProTable<OssUploadProfile>
         className="fh-table"
-        headerTitle="上传配置列表"
+        headerTitle="OSS 上传配置列表"
         actionRef={actionRef}
         rowKey="id"
         tableLayout="fixed"
-        scroll={{ x: 1200, y: 100000 }}
+        scroll={{ x: 1300, y: 100000 }}
         search={{
           labelWidth: 120,
         }}
-        toolBarRender={() => [
+        toolBarRender={() => canWrite ? [
           <Button
             key="1"
             type="primary"
@@ -172,7 +243,7 @@ const OssProfileList: React.FC = () => {
           >
             新建场景
           </Button>,
-        ]}
+        ] : []}
         request={async (params = {}) => {
           const { current, pageSize, ...restParams } = params as any;
           const result = await queryOssUploadProfilePage({
@@ -188,11 +259,11 @@ const OssProfileList: React.FC = () => {
           };
         }}
         columns={columns}
-        rowSelection={{
+        rowSelection={canWrite ? {
           onChange: (_, selectedRows) => setSelectedRows(selectedRows),
-        }}
+        } : undefined}
       />
-      {selectedRowsState?.length > 0 && (
+      {canWrite && selectedRowsState?.length > 0 && (
         <FooterToolbar
           extra={
             <div>
@@ -202,9 +273,11 @@ const OssProfileList: React.FC = () => {
         >
           <Button
             onClick={async () => {
-              await handleRemove(selectedRowsState);
-              setSelectedRows([]);
-              actionRef.current?.reloadAndRest?.();
+              const removed = await handleRemove(selectedRowsState);
+              if (removed) {
+                setSelectedRows([]);
+                actionRef.current?.reloadAndRest?.();
+              }
             }}
           >
             批量删除

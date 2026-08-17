@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS flow_api_info (
   id bigint NOT NULL,
   name varchar(20),
-  directory_id varchar(64),
+  directory_id varchar(32),
   url varchar(100),
   datasource varchar(20),
   module varchar(20),
@@ -23,20 +23,22 @@ CREATE TABLE IF NOT EXISTS flow_api_info (
   custom_page_wrapper text,
   custom_fail_wrapper text,
   info text,
-  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
-  update_time timestamp,
-  deleted integer DEFAULT 0,
   dsl_content text,
   sql_content text,
   json_content text,
   text_content text,
   published_snapshot text,
   publish_time timestamp,
-  log_enabled smallint NOT NULL DEFAULT 1,
+  log_enabled boolean NOT NULL DEFAULT true,
+  log_mode varchar(16) NOT NULL DEFAULT 'SYSTEM_DEFAULT',
   log_retention_days integer,
   cache_config text,
   security_config text,
+  privacy_config text,
   view_export_config text,
+  deleted integer DEFAULT 0,
+  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
+  update_time timestamp,
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE flow_api_info IS '接口配置类';
@@ -61,8 +63,6 @@ COMMENT ON COLUMN flow_api_info.custom_success_wrapper IS '自定义成功返回
 COMMENT ON COLUMN flow_api_info.custom_page_wrapper IS '自定义分页返回包装';
 COMMENT ON COLUMN flow_api_info.custom_fail_wrapper IS '自定义失败返回包装';
 COMMENT ON COLUMN flow_api_info.info IS 'API配置的详细描述';
-COMMENT ON COLUMN flow_api_info.create_time IS '创建时间，自动记录为当前时间';
-COMMENT ON COLUMN flow_api_info.update_time IS '更新时间';
 COMMENT ON COLUMN flow_api_info.dsl_content IS '逻辑编排 (FLOW) — Flow DSL JSON';
 COMMENT ON COLUMN flow_api_info.sql_content IS '数据库 (DB) — SQL 脚本';
 COMMENT ON COLUMN flow_api_info.json_content IS '静态 JSON (JSON) — JSON 内容';
@@ -70,8 +70,12 @@ COMMENT ON COLUMN flow_api_info.text_content IS '静态文本 (STRING) — 纯�
 COMMENT ON COLUMN flow_api_info.published_snapshot IS '发布时的完整内容快照 (JSON)，运行时引擎从此字段读取';
 COMMENT ON COLUMN flow_api_info.publish_time IS '最近一次发布时间';
 COMMENT ON COLUMN flow_api_info.log_enabled IS '是否记录执行日志：1-开启，0-关闭';
+COMMENT ON COLUMN flow_api_info.log_mode IS '日志策略模式：SYSTEM_DEFAULT-继承全局，OFF-完全关闭，ERROR_ONLY-仅错误时记录，ALL-全量记录';
 COMMENT ON COLUMN flow_api_info.log_retention_days IS '日志保留天数：NULL=跟随系统配置，0=永久保留，>0=自定义天数';
 COMMENT ON COLUMN flow_api_info.cache_config IS '响应缓存配置 JSON：enabled/ttlSeconds/keyParams/includePageable';
 COMMENT ON COLUMN flow_api_info.security_config IS '入站防护 JSON：authMode/antiReplay/rateLimit/ipAllowlist';
+COMMENT ON COLUMN flow_api_info.privacy_config IS '出站隐私拦截 JSON：enabled/fieldSuffix/extraFields/mask';
 COMMENT ON COLUMN flow_api_info.view_export_config IS '数据查看与导出 JSON：columns/sheetName/maxExportRows';
+COMMENT ON COLUMN flow_api_info.create_time IS '创建时间，自动记录为当前时间';
+COMMENT ON COLUMN flow_api_info.update_time IS '更新时间';
 CREATE INDEX IF NOT EXISTS idx_flow_api_info_directory_id ON flow_api_info (directory_id);

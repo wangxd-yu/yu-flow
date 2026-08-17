@@ -10,6 +10,9 @@ import org.yu.flow.module.api.cache.ApiCacheContentDTO;
 import org.yu.flow.module.api.cache.ApiCacheEntryDTO;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.dto.BatchApplyDirPrefixDTO;
+import org.yu.flow.module.api.dto.BatchApplyDirPrefixResult;
+import org.yu.flow.module.api.dto.FlowApiCopyDTO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
 import org.yu.flow.engine.evaluator.FlowEngine;
@@ -66,6 +69,9 @@ public class FlowApiController {
 
     @Resource
     private FlowApiCrudService flowApiCrudService;
+
+    @Resource
+    private org.yu.flow.module.host.HostCatalogApiBootstrap hostCatalogApiBootstrap;
 
     @Resource
     private ApiDataViewService apiDataViewService;
@@ -199,6 +205,17 @@ public class FlowApiController {
     }
 
     /**
+     * 按各接口所属目录的当前有效 pathPrefix 重写草稿 path。
+     */
+    @PutMapping("/batch/apply-dir-prefix")
+    @RequirePerm("flow:api:write")
+    public R<BatchApplyDirPrefixResult> batchApplyDirPrefix(@RequestBody BatchApplyDirPrefixDTO body) {
+        return R.ok(flowApiCrudService.batchApplyDirPrefix(
+                body != null ? body.getIds() : null,
+                body != null ? body.getOldPrefix() : null));
+    }
+
+    /**
      * 校验 API 是否已被占用 (精确匹配 URL 和 Method)
      *
      * @param url    API 路径
@@ -218,6 +235,16 @@ public class FlowApiController {
     public R<FlowApiDO> update(@PathVariable String id, @RequestBody FlowApiDO flowApiDO) {
         flowApiDO.setId(id);
         return R.ok(flowApiCrudService.update(flowApiDO));
+    }
+
+    /**
+     * 复制接口：整条配置克隆为新的未发布草稿
+     */
+    @PostMapping("/{id}/copy")
+    @RequirePerm("flow:api:write")
+    public R<FlowApiDO> copy(@PathVariable String id,
+                             @RequestBody(required = false) FlowApiCopyDTO body) {
+        return R.ok(flowApiCrudService.copy(id, body));
     }
 
     @PutMapping("/{id}/log-enabled")
@@ -311,6 +338,10 @@ public class FlowApiController {
     @GetMapping("/{id}")
     public R<FlowApiDTO> getById(@PathVariable String id) {
         FlowApiDO configDO = flowApiCrudService.findById(id);
+        if (configDO == null && org.yu.flow.module.host.HostCatalogReserved.isReservedId(id)) {
+            hostCatalogApiBootstrap.ensureReservedApi(id);
+            configDO = flowApiCrudService.findById(id);
+        }
         return R.ok(configDO != null ? FlowApiDTO.fromDO(configDO) : null);
     }
 

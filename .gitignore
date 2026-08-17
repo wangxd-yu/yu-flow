@@ -106,6 +106,8 @@ startup-failure.txt
 # Local secrets
 **/application-local.yml
 application-local.yml
+**/application-dev.yml
+application-dev.yml
 .env
 .env.*
 !.env.example

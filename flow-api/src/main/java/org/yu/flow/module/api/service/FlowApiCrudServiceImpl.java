@@ -9,9 +9,13 @@ import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.config.FlowApiCacheManager;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.module.api.domain.FlowApiExcelTemplateDO;
+import org.yu.flow.module.api.dto.BatchApplyDirPrefixResult;
+import org.yu.flow.module.api.dto.FlowApiCopyDTO;
 import org.yu.flow.module.api.dto.FlowApiDTO;
 import org.yu.flow.module.api.dto.FlowApiListProjection;
 import org.yu.flow.module.api.query.FlowApiQueryDTO;
+import org.yu.flow.module.api.repository.FlowApiExcelTemplateRepository;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.api.support.ApiExportPathSupport;
 import org.yu.flow.module.api.support.ApiInterceptMode;
@@ -22,6 +26,7 @@ import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
 import org.yu.flow.module.assetref.FlowReferenceIndex;
 import org.yu.flow.module.open.cache.OpenPlatformCache;
+import org.yu.flow.module.open.domain.FlowOpenApiGrantDO;
 import org.yu.flow.module.open.repository.FlowOpenApiGrantRepository;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
@@ -48,11 +53,20 @@ import java.util.stream.Collectors;
 @Service
 public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
+    /** 分页每页上限 */
+    private static final int MAX_PAGE_SIZE = 200;
+
     @Resource
     private FlowApiReferenceChecker flowApiReferenceChecker;
 
     @Resource
     private FlowApiRepository flowApiRepository;
+
+    @Resource
+    private org.yu.flow.module.host.HostCatalogApiBootstrap hostCatalogApiBootstrap;
+
+    @Resource
+    private org.yu.flow.module.host.HostReservedApiWriteGuard hostReservedApiWriteGuard;
 
     @Resource
     private FlowDirectoryRepository flowDirectoryRepository;
@@ -79,6 +93,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private FlowOpenApiGrantRepository flowOpenApiGrantRepository;
 
     @Resource
+    private FlowApiExcelTemplateRepository flowApiExcelTemplateRepository;
+
+    @Resource
     private org.yu.flow.module.release.service.PublishGateService publishGateService;
 
     @Resource
@@ -95,6 +112,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
                 && yuFlowProperties.getSecurity().isAllowIngressAuthNone();
         org.yu.flow.module.api.security.ApiSecurityConfigGuard.assertAuthModeAllowed(
                 securityConfigJson, allowNone);
+        org.yu.flow.module.api.security.ApiSecurityConfigGuard.assertCallerPolicyAllowed(securityConfigJson);
     }
 
     /**
@@ -149,9 +167,19 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO save(FlowApiDO flowApiDO) {
+        // 请求体直接绑定实体，主键与发布态必须由服务端接管：
+        // 自带 id 会让 save() 走 merge 覆盖同 ID 的存量接口（绕过宿主保留守卫、演示守卫与目录锁）；
+        // 自带 publishStatus=1 + publishedSnapshot 则能跳过发布门禁与 URL 冲突校验直接上线，
+        // 甚至顶掉已发布接口的路由。新建一律落为「未发布草稿」。
+        flowApiDO.setId(null);
+        flowApiDO.setPublishStatus(0);
+        flowApiDO.setPublishedSnapshot(null);
+        flowApiDO.setPublishTime(null);
+        flowApiDO.setDeleted(0);
         // [Demo 模式] 禁止新建写入类 DB API
         demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
         flowDirectoryService.assertDirectoryBizType(flowApiDO.getDirectoryId(), "api");
+        org.yu.flow.module.host.HostCatalogLocks.assertCreateAllowed(flowApiDO);
 
         normalizeAndAssertInterceptMode(flowApiDO);
         if (flowApiDO.getLogEnabled() == null) {
@@ -169,10 +197,6 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         assertSecurityConfigAllowed(flowApiDO.getSecurityConfig());
         flowApiDO.setCreateTime(LocalDateTime.now());
         flowApiDO = flowApiRepository.save(flowApiDO);
-
-        if (flowApiDO.getPublishStatus() != null && flowApiDO.getPublishStatus().equals(1)) {
-            flowApiCacheManager.publishRefreshEvent();
-        }
         notifyRefIndex();
         return flowApiDO;
     }
@@ -188,9 +212,13 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         boolean needRefreshCache = false;
 
         for (FlowApiDO api : flowApiDOList) {
-            if (StrUtil.isNotBlank(api.getId())) {
-                demoModeGuard.checkModifyOrDelete(api.getId(), "API 接口");
-            }
+            // 批量新增同样只接受新记录：带 id 会走 merge 覆盖存量接口，
+            // 带 publishedSnapshot 则可伪造线上快照。发布态保留给低代码建模的「生成即上线」。
+            api.setId(null);
+            api.setPublishedSnapshot(null);
+            api.setPublishTime(null);
+            api.setDeleted(0);
+            org.yu.flow.module.host.HostCatalogLocks.assertCreateAllowed(api);
             demoModeGuard.checkApiResponseType(api.getResponseType());
             normalizeAndAssertInterceptMode(api);
             if (api.getLogEnabled() == null) {
@@ -225,16 +253,22 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional
     public FlowApiDO update(FlowApiDO flowApiDO) {
+        hostReservedApiWriteGuard.assertAllowed(flowApiDO.getId());
         // [Demo 模式] 系统预置 API 不可修改；禁止改为写入类 API
         demoModeGuard.checkModifyOrDelete(flowApiDO.getId(), "API 接口");
         demoModeGuard.checkApiResponseType(flowApiDO.getResponseType());
         flowDirectoryService.assertDirectoryBizType(flowApiDO.getDirectoryId(), "api");
 
         Optional<FlowApiDO> existing = flowApiRepository.findById(flowApiDO.getId());
+        if (!existing.isPresent() && org.yu.flow.module.host.HostCatalogReserved.isReservedId(flowApiDO.getId())) {
+            hostCatalogApiBootstrap.ensureReservedApi(flowApiDO.getId());
+            existing = flowApiRepository.findById(flowApiDO.getId());
+        }
         if (!existing.isPresent()) {
             throw new RuntimeException("配置不存在，id: " + flowApiDO.getId());
         }
         FlowApiDO dbRecord = existing.get();
+        org.yu.flow.module.host.HostCatalogLocks.assertUpdateAllowed(flowApiDO, dbRecord);
         flowApiDO.setCreateTime(dbRecord.getCreateTime());
         flowApiDO.setUpdateTime(LocalDateTime.now());
 
@@ -296,7 +330,112 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public FlowApiDO copy(String id, FlowApiCopyDTO copyDTO) {
+        FlowApiDO source = flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+
+        String name = StrUtil.blankToDefault(
+                copyDTO != null ? StrUtil.trim(copyDTO.getName()) : null,
+                StrUtil.nullToEmpty(source.getName()) + "_副本");
+        String url = normalizeApiUrl(StrUtil.blankToDefault(
+                copyDTO != null ? StrUtil.trim(copyDTO.getUrl()) : null,
+                source.getUrl()));
+        if (StrUtil.isBlank(url)) {
+            throw new RuntimeException("复制失败：接口 path 不能为空");
+        }
+        String directoryId = StrUtil.blankToDefault(
+                copyDTO != null ? StrUtil.trim(copyDTO.getDirectoryId()) : null,
+                source.getDirectoryId());
+
+        FlowApiDO copy = FlowApiDO.builder()
+                .name(name)
+                .url(url)
+                .directoryId(directoryId)
+                .responseType(source.getResponseType())
+                .version(source.getVersion())
+                .method(source.getMethod())
+                .serviceType(source.getServiceType())
+                .interceptMode(source.getInterceptMode())
+                .hostBinding(source.getHostBinding())
+                .dslContent(source.getDslContent())
+                .sqlContent(source.getSqlContent())
+                .jsonContent(source.getJsonContent())
+                .textContent(source.getTextContent())
+                .datasource(source.getDatasource())
+                .logEnabled(source.getLogEnabled())
+                .logMode(source.getLogMode())
+                .logRetentionDays(source.getLogRetentionDays())
+                .cacheConfig(source.getCacheConfig())
+                .securityConfig(source.getSecurityConfig())
+                .privacyConfig(source.getPrivacyConfig())
+                .viewExportConfig(source.getViewExportConfig())
+                .level(source.getLevel())
+                .templateId(source.getTemplateId())
+                .customSuccessWrapper(source.getCustomSuccessWrapper())
+                .customPageWrapper(source.getCustomPageWrapper())
+                .customFailWrapper(source.getCustomFailWrapper())
+                .info(source.getInfo())
+                .tags(source.getTags())
+                .contract(source.getContract())
+                // 副本一律为未发布草稿，不继承线上快照
+                .publishStatus(0)
+                .publishedSnapshot(null)
+                .publishTime(null)
+                .deleted(0)
+                .build();
+
+        FlowApiDO saved = save(copy);
+        copyExcelTemplate(source.getId(), saved.getId());
+        copyOpenGrants(source.getId(), saved.getId());
+
+        auditLogService.record("API_COPY", "API", saved.getId(),
+                "{\"sourceId\":\"" + StrUtil.nullToEmpty(source.getId())
+                        + "\",\"method\":\"" + StrUtil.nullToEmpty(saved.getMethod())
+                        + "\",\"url\":\"" + StrUtil.nullToEmpty(saved.getUrl())
+                        + "\",\"name\":\"" + StrUtil.nullToEmpty(saved.getName()) + "\"}");
+        return saved;
+    }
+
+    /** 复制已上传的 Excel 导出模板（表内 api_id 唯一，副本单独存一份） */
+    private void copyExcelTemplate(String sourceApiId, String targetApiId) {
+        flowApiExcelTemplateRepository.findByApiId(sourceApiId).ifPresent(template -> {
+            LocalDateTime now = LocalDateTime.now();
+            flowApiExcelTemplateRepository.save(FlowApiExcelTemplateDO.builder()
+                    .apiId(targetApiId)
+                    .fileName(template.getFileName())
+                    .contentType(template.getContentType())
+                    .content(template.getContent())
+                    .fileSize(template.getFileSize())
+                    .createTime(now)
+                    .updateTime(now)
+                    .build());
+        });
+    }
+
+    /** 复制开放平台授权关系；副本未发布，授权在发布后才实际生效 */
+    private void copyOpenGrants(String sourceApiId, String targetApiId) {
+        try {
+            List<FlowOpenApiGrantDO> grants = flowOpenApiGrantRepository.findByApiId(sourceApiId);
+            if (grants.isEmpty()) {
+                return;
+            }
+            List<FlowOpenApiGrantDO> copies = grants.stream()
+                    .map(g -> new FlowOpenApiGrantDO()
+                            .setPlatformId(g.getPlatformId())
+                            .setApiId(targetApiId)
+                            .setAllowMethods(g.getAllowMethods()))
+                    .collect(Collectors.toList());
+            flowOpenApiGrantRepository.saveAll(copies);
+            openPlatformCache.publishRefresh();
+        } catch (Exception e) {
+            // 表未迁移时不阻断接口复制
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void delete(String id) {
+        org.yu.flow.module.host.HostCatalogLocks.assertNotDeleted(id);
         // [Demo 模式] 系统预置 API 不可删除
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         flowApiReferenceChecker.assertDeletable(id);
@@ -311,6 +450,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Transactional(rollbackFor = Exception.class)
     public void batchDelete(List<String> ids) {
         if (ids != null && !ids.isEmpty()) {
+            org.yu.flow.module.host.HostCatalogLocks.assertNotDeleted(ids);
             // [Demo 模式] 逐一检查，只要有一个受保护的 ID 就整体拒绝
             ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
             ids.forEach(flowApiReferenceChecker::assertDeletable);
@@ -328,6 +468,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         if (ids == null || ids.isEmpty()) {
             return;
         }
+        org.yu.flow.module.host.HostCatalogLocks.assertNotMoved(ids);
+        ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
         if ("0".equals(targetDirectoryId) || StrUtil.isBlank(targetDirectoryId)) {
             targetDirectoryId = null;
         }
@@ -337,7 +479,243 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public BatchApplyDirPrefixResult batchApplyDirPrefix(List<String> ids, String oldPrefix) {
+        BatchApplyDirPrefixResult result = new BatchApplyDirPrefixResult();
+        if (ids == null || ids.isEmpty()) {
+            return result;
+        }
+        hostReservedApiWriteGuard.assertAllowed(ids);
+        ids.forEach(id -> demoModeGuard.checkModifyOrDelete(id, "API 接口"));
+        List<FlowApiDO> apis = flowApiRepository.findAllById(ids);
+        Map<String, FlowApiDO> byId = apis.stream()
+                .collect(Collectors.toMap(FlowApiDO::getId, a -> a, (a, b) -> a));
+
+        List<String> urlsForLcp = new ArrayList<>();
+        for (String id : ids) {
+            FlowApiDO api = byId.get(id);
+            if (api == null || StrUtil.isBlank(api.getUrl())) {
+                continue;
+            }
+            if (ApiInterceptMode.isWrap(api.getInterceptMode())) {
+                continue;
+            }
+            urlsForLcp.add(api.getUrl());
+        }
+        String oldUsed = StrUtil.isNotBlank(oldPrefix)
+                ? normalizePathPrefixSegment(oldPrefix)
+                : longestCommonPathPrefix(urlsForLcp);
+        result.setOldPrefixUsed(oldUsed);
+
+        // 批内已占用的新 method+url，避免互相冲突
+        Set<String> claimed = new HashSet<>();
+        boolean needDraftCacheRefresh = false;
+
+        for (String id : ids) {
+            FlowApiDO api = byId.get(id);
+            BatchApplyDirPrefixResult.Item item = new BatchApplyDirPrefixResult.Item();
+            item.setId(id);
+            if (api == null) {
+                item.setStatus("failed");
+                item.setMessage("接口不存在");
+                result.setFailed(result.getFailed() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            item.setName(api.getName());
+            item.setFrom(api.getUrl());
+            try {
+                demoModeGuard.checkModifyOrDelete(id, "API 接口");
+            } catch (RuntimeException e) {
+                item.setStatus("failed");
+                item.setMessage(e.getMessage());
+                result.setFailed(result.getFailed() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            if (ApiInterceptMode.isWrap(api.getInterceptMode())) {
+                item.setStatus("skipped");
+                item.setMessage("包裹模式接口跳过");
+                item.setTo(api.getUrl());
+                result.setSkipped(result.getSkipped() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            if (StrUtil.isBlank(api.getDirectoryId())) {
+                item.setStatus("skipped");
+                item.setMessage("未归属目录");
+                item.setTo(api.getUrl());
+                result.setSkipped(result.getSkipped() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            String newPrefix = flowDirectoryService.resolveEffectivePathPrefix(api.getDirectoryId());
+            newPrefix = normalizePathPrefixSegment(newPrefix);
+            if (StrUtil.isBlank(newPrefix)) {
+                item.setStatus("skipped");
+                item.setMessage("目录无有效 pathPrefix");
+                item.setTo(api.getUrl());
+                result.setSkipped(result.getSkipped() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            String fromUrl = normalizeApiUrl(api.getUrl());
+            if (StrUtil.isBlank(fromUrl)) {
+                item.setStatus("skipped");
+                item.setMessage("接口 path 为空");
+                item.setTo(api.getUrl());
+                result.setSkipped(result.getSkipped() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            String relative;
+            if (StrUtil.isBlank(oldUsed)) {
+                relative = fromUrl;
+            } else if (fromUrl.equals(oldUsed) || fromUrl.startsWith(oldUsed + "/")) {
+                relative = fromUrl.equals(oldUsed) ? "/" : fromUrl.substring(oldUsed.length());
+                if (relative.isEmpty()) {
+                    relative = "/";
+                } else if (!relative.startsWith("/")) {
+                    relative = "/" + relative;
+                }
+            } else {
+                item.setStatus("skipped");
+                item.setMessage("path 不以旧前缀开头：" + oldUsed);
+                item.setTo(fromUrl);
+                result.setSkipped(result.getSkipped() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            String toUrl = joinPathPrefixes(newPrefix, relative);
+            item.setTo(toUrl);
+            if (fromUrl.equals(toUrl)) {
+                item.setStatus("skipped");
+                item.setMessage("无需变更");
+                result.setSkipped(result.getSkipped() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            try {
+                assertUrlNotReserved(toUrl);
+            } catch (RuntimeException e) {
+                item.setStatus("failed");
+                item.setMessage(e.getMessage());
+                result.setFailed(result.getFailed() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            String method = StrUtil.blankToDefault(api.getMethod(), "GET").trim().toUpperCase();
+            String claimKey = method + " " + toUrl;
+            // 本批占用 / 其它接口草稿 url / 已发布快照 任一冲突则拒绝
+            if (claimed.contains(claimKey)
+                    || flowApiRepository.existsDraftByUrlAndMethod(toUrl, method, id)
+                    || existsByUrlAndMethod(toUrl, method, id)) {
+                item.setStatus("failed");
+                item.setMessage("与其它接口路径冲突（含未发布草稿）: " + method + " " + toUrl);
+                result.setFailed(result.getFailed() + 1);
+                result.getItems().add(item);
+                continue;
+            }
+            claimed.add(claimKey);
+            api.setUrl(toUrl);
+            api.setUpdateTime(LocalDateTime.now());
+            flowApiRepository.save(api);
+            item.setStatus("updated");
+            item.setMessage("已更新草稿");
+            result.setUpdated(result.getUpdated() + 1);
+            if (api.getPublishStatus() != null && api.getPublishStatus() == 1) {
+                result.setPublishedTouched(result.getPublishedTouched() + 1);
+                item.setMessage("已更新草稿（已发布，需重新发布后线上生效）");
+            } else {
+                needDraftCacheRefresh = true;
+            }
+            result.getItems().add(item);
+        }
+        if (needDraftCacheRefresh) {
+            flowApiCacheManager.publishRefreshEvent();
+        }
+        if (result.getUpdated() > 0) {
+            notifyRefIndex();
+        }
+        return result;
+    }
+
+    /** 规范化路径前缀：保证以 / 开头、无尾 / */
+    private static String normalizePathPrefixSegment(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String v = raw.trim();
+        if (v.isEmpty()) {
+            return null;
+        }
+        if (!v.startsWith("/")) {
+            v = "/" + v;
+        }
+        while (v.length() > 1 && v.endsWith("/")) {
+            v = v.substring(0, v.length() - 1);
+        }
+        return v;
+    }
+
+    private static String joinPathPrefixes(String prefix, String relative) {
+        String p = normalizePathPrefixSegment(prefix);
+        String r = normalizeApiUrl(relative);
+        if (StrUtil.isBlank(p)) {
+            return r;
+        }
+        if (StrUtil.isBlank(r) || "/".equals(r)) {
+            return p;
+        }
+        return p + r;
+    }
+
+    /** 按 / 分段的最长公共前缀；无公共段返回 null */
+    static String longestCommonPathPrefix(List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return null;
+        }
+        List<String[]> partsList = new ArrayList<>();
+        for (String u : urls) {
+            String n = normalizeApiUrl(u);
+            if (StrUtil.isBlank(n) || "/".equals(n)) {
+                return null;
+            }
+            String trimmed = n.startsWith("/") ? n.substring(1) : n;
+            String[] parts = trimmed.split("/");
+            if (parts.length == 0 || (parts.length == 1 && parts[0].isEmpty())) {
+                return null;
+            }
+            partsList.add(parts);
+        }
+        String[] first = partsList.get(0);
+        int common = first.length;
+        for (int i = 1; i < partsList.size(); i++) {
+            String[] cur = partsList.get(i);
+            int m = Math.min(common, cur.length);
+            int j = 0;
+            while (j < m && Objects.equals(first[j], cur[j])) {
+                j++;
+            }
+            common = j;
+            if (common == 0) {
+                return null;
+            }
+        }
+        // 至少保留一段；若公共等于某条完整 path，仍可作为旧前缀
+        if (common <= 0) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < common; i++) {
+            sb.append('/').append(first[i]);
+        }
+        return sb.toString();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public FlowApiDO updateLogEnabled(String id, boolean enabled) {
+        hostReservedApiWriteGuard.assertAllowed(id);
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
@@ -365,6 +743,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO updateCacheConfig(String id, String cacheConfig) {
+        hostReservedApiWriteGuard.assertAllowed(id);
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
@@ -403,6 +782,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     public List<String> findAllUrls() {
         return flowApiRepository.findByPublishStatus(1).stream()
+                .filter(a -> !org.yu.flow.module.host.HostCatalogReserved.isReservedId(a.getId()))
                 .map(FlowApiDO::getUrl)
                 .collect(Collectors.toList());
     }
@@ -410,6 +790,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     public List<FlowApiDTO> findAll() {
         return flowApiRepository.findAll().stream()
+                .filter(a -> !org.yu.flow.module.host.HostCatalogReserved.isReservedId(a.getId()))
                 .map(FlowApiDTO::fromDO)
                 .collect(Collectors.toList());
     }
@@ -417,7 +798,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     public Page<FlowApiDTO> findAll(Pageable pageableIn) {
         Pageable pageable = PageRequest.of(Math.max(pageableIn.getPageNumber() - 1, 0), pageableIn.getPageSize(), Sort.by(Sort.Direction.DESC, "createTime"));
-        Page<FlowApiListProjection> page = flowApiRepository.findPageWithoutLargeFields(pageable);
+        Page<FlowApiListProjection> page = flowApiRepository.findPageWithoutLargeFields(
+                org.yu.flow.module.host.HostCatalogReserved.ids(), pageable);
         List<FlowApiDTO> dtoList = page.getContent().stream()
                 .map(this::toListDTO)
                 .collect(Collectors.toList());
@@ -470,7 +852,10 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Override
     public PageBean<FlowApiDTO> findPage(FlowApiQueryDTO queryDTO) {
-        Pageable pageable = PageRequest.of(queryDTO.getPage(), queryDTO.getSize(), Sort.by(Sort.Direction.DESC, "createTime"));
+        // 分页参数来自 query string：负页码会让 PageRequest 直接抛异常，超大 size 则整表拉进内存
+        int pageNo = Math.max(0, queryDTO.getPage());
+        int pageSize = Math.min(Math.max(1, queryDTO.getSize()), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(pageNo, pageSize, Sort.by(Sort.Direction.DESC, "createTime"));
 
         List<String> directoryIds = Collections.singletonList("");
         boolean directoryIdsEmpty = true;
@@ -500,6 +885,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
                 publishStatus == null,
                 publishStatus == null ? -1 : publishStatus,
                 serviceType,
+                org.yu.flow.module.host.HostCatalogReserved.ids(),
                 pageable);
 
         List<FlowApiDTO> content = result.getContent().stream()
@@ -521,13 +907,16 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     public List<FlowApiDTO> findByPublishStatus(Integer publishStatus) {
         return flowApiRepository.findByPublishStatus(publishStatus).stream()
+                .filter(a -> !org.yu.flow.module.host.HostCatalogReserved.isReservedId(a.getId()))
                 .map(FlowApiDTO::fromDO)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<FlowApiDO> findPublishApi() {
-        return new ArrayList<>(flowApiRepository.findByPublishStatus(1));
+        return flowApiRepository.findByPublishStatus(1).stream()
+                .filter(a -> !org.yu.flow.module.host.HostCatalogReserved.isReservedId(a.getId()))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
@@ -591,6 +980,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO publish(String id, String envCode) {
+        hostReservedApiWriteGuard.assertAllowed(id);
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         publishGateService.assertCanPublish("API", id, envCode);
         FlowApiDO api = flowApiRepository.findById(id)
@@ -631,6 +1021,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO unpublish(String id) {
+        hostReservedApiWriteGuard.assertAllowed(id);
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
@@ -656,6 +1047,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO rollbackToPublished(String id) {
+        hostReservedApiWriteGuard.assertAllowed(id);
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
@@ -691,6 +1083,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowApiDO restoreVersion(String id, String versionId) {
+        hostReservedApiWriteGuard.assertAllowed(id);
         demoModeGuard.checkModifyOrDelete(id, "API 接口");
         FlowApiDO api = flowApiRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
@@ -737,6 +1130,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             applyText(snap, "contract", api::setContract);
             applyText(snap, "cacheConfig", api::setCacheConfig);
             applyText(snap, "securityConfig", api::setSecurityConfig);
+            applyText(snap, "privacyConfig", api::setPrivacyConfig);
             applyText(snap, "viewExportConfig", api::setViewExportConfig);
             applyText(snap, "templateId", api::setTemplateId);
             applyText(snap, "customSuccessWrapper", api::setCustomSuccessWrapper);
@@ -779,6 +1173,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             snap.put("contract", api.getContract());
             snap.put("cacheConfig", api.getCacheConfig());
             snap.put("securityConfig", api.getSecurityConfig());
+            snap.put("privacyConfig", api.getPrivacyConfig());
+            snap.put("directoryId", api.getDirectoryId());
             snap.put("viewExportConfig", api.getViewExportConfig());
             snap.put("templateId", api.getTemplateId());
             snap.put("customSuccessWrapper", api.getCustomSuccessWrapper());

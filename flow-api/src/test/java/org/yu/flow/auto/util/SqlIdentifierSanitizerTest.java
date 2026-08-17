@@ -112,4 +112,35 @@ class SqlIdentifierSanitizerTest {
         // 错误消息因为标识符过长触发长度校验，不应包含完整 payload
         assertFalse(ex.getMessage().contains("DROP TABLE"));
     }
+
+    // ========== 限定标识符 / ORDER BY ==========
+
+    @ParameterizedTest(name = "合法限定标识符应通过: [{0}]")
+    @ValueSource(strings = {"create_time", "u.name", "db.schema.table"})
+    void qualifiedIdentifier_passes(String identifier) {
+        assertEquals(identifier, SqlIdentifierSanitizer.requireSafeQualifiedIdentifier(identifier));
+        assertTrue(SqlIdentifierSanitizer.isSafeQualifiedIdentifier(identifier));
+    }
+
+    @ParameterizedTest(name = "非法限定标识符应拒绝: [{0}]")
+    @ValueSource(strings = {
+            "u.name; DROP",
+            ".name",
+            "u.",
+            "u..name",
+            "a.b.c.d",
+            "1col",
+            "u.name OR 1=1"
+    })
+    void qualifiedIdentifier_rejected(String identifier) {
+        assertThrows(IllegalArgumentException.class,
+                () -> SqlIdentifierSanitizer.requireSafeQualifiedIdentifier(identifier));
+        assertFalse(SqlIdentifierSanitizer.isSafeQualifiedIdentifier(identifier));
+    }
+
+    @Test
+    void quoteMysql_quotesEachSegment() {
+        assertEquals("`create_time`", SqlIdentifierSanitizer.quoteMysql("create_time"));
+        assertEquals("`u`.`name`", SqlIdentifierSanitizer.quoteMysql("u.name"));
+    }
 }

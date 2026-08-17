@@ -36,12 +36,12 @@ public class FlowServiceFlowDO implements Serializable {
 
     private String directoryId;
 
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean enabled;
 
     /** 是否记录执行日志
      * @deprecated 请使用 {@link #logMode} 替代 */
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean logEnabled;
 
     /**

@@ -85,7 +85,7 @@ public class FlowApiDO implements Serializable {
      * 是否记录执行日志。null 兼容历史数据，运行时按开启处理。
      * @deprecated 请使用 {@link #logMode} 替代
      */
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean logEnabled;
 
     /**
@@ -113,6 +113,13 @@ public class FlowApiDO implements Serializable {
      */
     @Column(columnDefinition = "TEXT")
     private String securityConfig;
+
+    /**
+     * 出站隐私拦截 JSON（{@code ApiPrivacyConfig}）。
+     * <p>已发布接口以 publishedSnapshot 为准；目录未覆盖字段即时继承。</p>
+     */
+    @Column(name = "privacy_config", columnDefinition = "TEXT")
+    private String privacyConfig;
 
     /**
      * 数据查看 / Excel 导出配置（JSON）。

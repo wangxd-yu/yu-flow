@@ -8,6 +8,7 @@ import org.yu.flow.cache.FlowRedisUtil;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.metrics.*;
+import org.yu.flow.module.host.HostCatalogReserved;
 import org.yu.flow.module.metrics.domain.FlowMetricsMetaDO;
 import org.yu.flow.module.metrics.domain.FlowMetricsMinuteDO;
 import org.yu.flow.module.metrics.dto.*;
@@ -345,6 +346,10 @@ public class MetricsQueryService {
         String order = orderBy == null ? "errorRate" : orderBy.trim();
         List<AssetMetricsRankItemDTO> list = new ArrayList<>();
         for (Map.Entry<String, MetricsBucketAgg> e : byAsset.entrySet()) {
+            // 兼容升级前仍归在 API 下的历史热层/分钟桶，系统目录不进入业务排行。
+            if (type == MetricsAssetType.API && HostCatalogReserved.isReservedId(e.getKey())) {
+                continue;
+            }
             MetricsBucketAgg agg = e.getValue();
             if (agg.totalCalls() <= 0) {
                 continue;
@@ -389,6 +394,9 @@ public class MetricsQueryService {
     public List<AssetMetricsRankItemDTO> anomalies(MetricsWindow window, int limit) {
         List<AssetMetricsRankItemDTO> all = new ArrayList<>();
         for (MetricsAssetType type : MetricsAssetType.values()) {
+            if (type == MetricsAssetType.SYSTEM) {
+                continue;
+            }
             all.addAll(rank(type, window, "errorRate", 50));
         }
         all.removeIf(x -> !"error".equals(x.getHealth()) && !"warn".equals(x.getHealth()));
@@ -689,6 +697,10 @@ public class MetricsQueryService {
                         .map(org.yu.flow.module.mqtask.domain.FlowMqTaskDO::getName).orElse(id);
                 case SERVICE -> flowServiceFlowRepository.findById(id).map(FlowServiceFlowDO::getName).orElse(id);
                 case PLATFORM -> flowOpenPlatformRepository.findById(id).map(FlowOpenPlatformDO::getName).orElse(id);
+                case SYSTEM -> {
+                    HostCatalogReserved.Spec spec = HostCatalogReserved.specOfId(id);
+                    yield spec != null ? spec.name() : id;
+                }
             };
         } catch (Exception e) {
             return id;

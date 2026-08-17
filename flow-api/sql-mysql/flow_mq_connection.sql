@@ -2,8 +2,8 @@
 -- MQ 连接配置（RabbitMQ / Kafka）
 CREATE TABLE IF NOT EXISTS `flow_mq_connection` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `name` varchar(128) NOT NULL COMMENT '连接名称',
   `code` varchar(64) NOT NULL COMMENT '连接编码（未删除记录内唯一），流程 DSL / MQ 任务通过 code 引用',
+  `name` varchar(128) NOT NULL COMMENT '连接名称',
   `mq_type` varchar(32) NOT NULL COMMENT 'MQ 类型：RABBITMQ / KAFKA',
   `servers` varchar(512) NOT NULL COMMENT '服务器地址 host:port，多个逗号分隔（Kafka 即 bootstrap.servers）',
   `virtual_host` varchar(128) COMMENT '虚拟主机（仅 RabbitMQ，默认 /）',

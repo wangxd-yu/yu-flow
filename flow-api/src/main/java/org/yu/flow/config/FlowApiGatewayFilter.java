@@ -15,6 +15,7 @@ import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.security.IngressException;
 import org.yu.flow.module.api.security.IngressSecurityGuard;
+import org.yu.flow.module.api.privacy.PrivacyFieldInterceptor;
 import org.yu.flow.module.api.security.IngressSecurityResolver;
 import org.yu.flow.module.api.security.IngressAuthMode;
 import org.yu.flow.module.api.security.EffectiveSecurity;
@@ -101,7 +102,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                 contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
                 ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings,
-                apiDataViewService, rbacService, null);
+                apiDataViewService, rbacService, null, null);
     }
 
     public FlowApiGatewayFilter(YuFlowProperties flowProperties,
@@ -121,6 +122,31 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 ApiDataViewService apiDataViewService,
                                 RbacService rbacService,
                                 org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService) {
+        this(flowProperties, flowApiService, flowApiCacheManager, schemaValidatorService,
+                contractParamTypeConverter, responseStrategyResolver, responseTransformer,
+                apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
+                ingressSecurityResolver, ingressSecurityGuard, yuFlowRuntimeSettings,
+                apiDataViewService, rbacService, flowExecutionLogService, null);
+    }
+
+    public FlowApiGatewayFilter(YuFlowProperties flowProperties,
+                                FlowApiExecutionService flowApiService,
+                                FlowApiCacheManager flowApiCacheManager,
+                                SchemaValidatorService schemaValidatorService,
+                                ContractParamTypeConverter contractParamTypeConverter,
+                                ResponseStrategyResolver responseStrategyResolver,
+                                ResponseTransformer responseTransformer,
+                                ApiResponseCacheService apiResponseCacheService,
+                                OpenAuthService openAuthService,
+                                AssetMetricsRecorder assetMetricsRecorder,
+                                HostAuthenticationProbe hostAuthenticationProbe,
+                                IngressSecurityResolver ingressSecurityResolver,
+                                IngressSecurityGuard ingressSecurityGuard,
+                                YuFlowRuntimeSettings yuFlowRuntimeSettings,
+                                ApiDataViewService apiDataViewService,
+                                RbacService rbacService,
+                                org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService,
+                                PrivacyFieldInterceptor privacyFieldInterceptor) {
         this.flowProperties = flowProperties;
         this.flowApiCacheManager = flowApiCacheManager;
         this.assetMetricsRecorder = assetMetricsRecorder;
@@ -136,7 +162,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         this.executionHandler = new GatewayApiExecutionHandler(flowApiService, schemaValidatorService,
                 contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, assetMetricsRecorder, apiDataViewService,
-                ingressSecurityResolver, io, objectMapper);
+                ingressSecurityResolver, privacyFieldInterceptor, io, objectMapper);
         this.openEntryHandler = new GatewayOpenEntryHandler(flowProperties, yuFlowRuntimeSettings,
                 openAuthService, flowApiCacheManager, assetMetricsRecorder,
                 executionHandler, wrapForwardHandler, io);
@@ -166,9 +192,12 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         }
 
         String requestPath = urlPathHelper.getPathWithinApplication(request);
+        if (requestPath == null) {
+            requestPath = "";
+        }
 
-        // 2. 排除无需过滤的静态页面及 UI 路由路径
-        if (requestPath.startsWith("/flow-ui/") || requestPath.equals("/flow-ui.html")) {
+        // 2. 静态页 / SPA：按应用内路径或原始 URI 识别，避免 context-path 未剥离时误入动态路由（会变成 500）
+        if (isFlowUiRequest(request, requestPath)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -194,13 +223,17 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         }
 
         // 3. 管理端鉴权（含 /flow-api/v3/api-docs* OpenAPI 契约）
+        //    双层：① Flow JWT + RBAC；② 可选 HostAuthenticationProbe（嵌入时读宿主 Session）
+        //    login / OSS 原生接口跳过本段：OSS 由场景访问规则 + @RequirePerm 在 MVC 内控制
         if (requestPath.startsWith("/flow-api")) {
-            if (requestPath.startsWith("/flow-api/login")
-                    || requestPath.startsWith("/flow-api/login/captcha")) {
+            if (isFlowManagementAuthExempt(requestPath)) {
                 filterChain.doFilter(request, response);
                 return;
             }
             if (!authHandler.assertManagementJwtOnPrefix(request, response)) {
+                return;
+            }
+            if (!authHandler.assertManagementHostAuthIfRequired(request, response)) {
                 return;
             }
         }
@@ -355,6 +388,33 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
             io.writeJsonResponse(response, HttpStatus.INTERNAL_SERVER_ERROR.value(),
                     R.fail(500, "网关内部系统错误：" + fatalEx.getMessage()));
         }
+    }
+
+    /**
+     * 不走管理端 JWT / 宿主 Probe：登录口与 OSS 原生接口。
+     * OSS 细控在 MVC（场景访问规则、{@code @RequirePerm}）。
+     */
+    static boolean isFlowManagementAuthExempt(String path) {
+        return path.startsWith("/flow-api/login")
+                || "/flow-api/oss".equals(path)
+                || path.startsWith("/flow-api/oss/");
+    }
+
+    static boolean isFlowUiRequest(HttpServletRequest request, String pathWithinApp) {
+        if (pathWithinApp != null && (pathWithinApp.equals("/flow-ui")
+                || pathWithinApp.equals("/flow-ui.html")
+                || pathWithinApp.startsWith("/flow-ui/"))) {
+            return true;
+        }
+        String uri = request == null ? null : request.getRequestURI();
+        if (uri == null || uri.isEmpty()) {
+            return false;
+        }
+        int q = uri.indexOf('?');
+        if (q >= 0) {
+            uri = uri.substring(0, q);
+        }
+        return uri.contains("/flow-ui/") || uri.endsWith("/flow-ui");
     }
 
     private boolean isIngressEnabled() {

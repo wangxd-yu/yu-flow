@@ -3,6 +3,7 @@ import { message } from 'antd';
 import { useNavigate, useModel, request } from '@umijs/max';
 import { fetchAuthMe } from '@/services/auth';
 import { clearAuthHint, setAuthHint } from '@/utils/session';
+import { encryptLoginPassword } from '@/utils/sm2Login';
 import styles from './index.module.css';
 import logo from '@/assets/logo1.svg';
 
@@ -145,11 +146,12 @@ const Login: React.FC = () => {
 
     setLoading(true);
     try {
+      const passwordCipher = await encryptLoginPassword(formData.password);
       await request('/flow-api/login', {
         method: 'POST',
         data: {
           username: formData.username,
-          password: formData.password,
+          passwordCipher,
           captchaId: captcha?.captchaId,
           captchaCode: formData.captchaCode.trim(),
         },
@@ -172,11 +174,16 @@ const Login: React.FC = () => {
         roles: me.roles || [],
         permissions: me.permissions,
         legacyAdmin: me.legacyAdmin,
+        ossEnabled: me.ossEnabled !== false,
       }));
       message.success('登录成功');
       navigate('/home');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      const msg = error?.message || error?.data?.msg;
+      if (typeof msg === 'string' && msg.includes('公钥')) {
+        message.error(msg);
+      }
       // 失败后刷新验证码（已消费或错误）
       refreshCaptcha();
     } finally {

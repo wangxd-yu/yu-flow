@@ -91,10 +91,13 @@ export interface ServiceFlowFormProps {
   onPublished?: (detail: FlowServiceFlow) => void;
   /** 打开时默认 Tab（如运行中心深链） */
   initialTab?: string;
+  /** 无写权限时隐藏保存 / 发布 / 下线等写操作（后端 @RequirePerm 兜底） */
+  canWrite?: boolean;
 }
 
 const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
   visible, isEdit, initialValues = {}, onCancel, onSubmit, onPublished, initialTab,
+  canWrite = true,
 }) => {
   const [form] = Form.useForm();
   const globalLogMode = useGlobalLogMode();
@@ -317,13 +320,16 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
 
   const headerExtra = (
     <Space size={8}>
-      <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
-        <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
-          调试运行
-        </Button>
-      </Tooltip>
+      {/* 调试 / 手动调用均为 POST，权限切面按 HTTP 方法要求 flow:service:write */}
+      {canWrite && (
+        <Tooltip title="调试：立即运行一次当前草稿流程（不依赖发布状态），返回 FlowTrace">
+          <Button icon={<PlayCircleOutlined />} onClick={handleDebugRun}>
+            调试运行
+          </Button>
+        </Tooltip>
+      )}
 
-      {isEdit && initialValues.id && (
+      {canWrite && isEdit && initialValues.id && (
         <Tooltip title="手动调用：执行服务端已保存草稿，返回业务输出（非 Trace）">
           <Button
             icon={<ThunderboltOutlined />}
@@ -341,7 +347,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
         />
       )}
 
-      {isEdit && publishStatus === 1 && hasUnpublishedChanges && (
+      {canWrite && isEdit && publishStatus === 1 && hasUnpublishedChanges && (
         <Tooltip title="将草稿回滚到已发布的线上版本">
           <Button danger icon={<RollbackOutlined />} onClick={handleRollback}>
             回滚草稿
@@ -349,7 +355,7 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
         </Tooltip>
       )}
 
-      {isEdit && (
+      {canWrite && isEdit && (
         <Button
           type="primary"
           style={{ backgroundColor: publishStatus === 1 ? '#faad14' : '#52c41a' }}
@@ -360,16 +366,18 @@ const ServiceFlowForm: React.FC<ServiceFlowFormProps> = ({
         </Button>
       )}
 
-      {isEdit && publishStatus === 1 && (
+      {canWrite && isEdit && publishStatus === 1 && (
         <Button danger icon={<CloudDownloadOutlined />} onClick={handleUnpublish}>
           下线
         </Button>
       )}
 
-      <Button icon={<CloseOutlined />} onClick={onCancel}>取消</Button>
-      <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
-        保存草稿
-      </Button>
+      <Button icon={<CloseOutlined />} onClick={onCancel}>{canWrite ? '取消' : '关闭'}</Button>
+      {canWrite && (
+        <Button type="primary" icon={<SaveOutlined />} onClick={handleSave}>
+          保存草稿
+        </Button>
+      )}
     </Space>
   );
 

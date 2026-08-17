@@ -12,8 +12,10 @@ import org.yu.flow.module.oss.service.OssUploadProfileService;
 import org.yu.flow.module.rbac.support.RequirePerm;
 
 import java.util.List;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 
 @YuFlowApi
+@ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss/profiles")
 @RequirePerm({"flow:oss:view", "flow:oss:write"})

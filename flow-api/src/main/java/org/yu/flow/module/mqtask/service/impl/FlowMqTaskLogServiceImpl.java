@@ -67,6 +67,12 @@ public class FlowMqTaskLogServiceImpl
         return pageQuery(query, query.getPage(), query.getSize());
     }
 
+    /** 日志行含 errorMsg 等长文本，限制单页体量避免一次拉爆内存 */
+    @Override
+    protected int maxPageSize() {
+        return 100;
+    }
+
     @Override
     protected Class<FlowMqTaskLogDO> entityClass() {
         return FlowMqTaskLogDO.class;

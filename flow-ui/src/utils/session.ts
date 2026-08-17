@@ -52,3 +52,44 @@ export function csrfHeaders(): Record<string, string> {
   const csrf = readCookie(CSRF_COOKIE);
   return csrf ? { [CSRF_HEADER]: csrf } : {};
 }
+
+/** 运营中心宿主 JWT Cookie（历史拼写） */
+export const HOST_TOKEN_COOKIE = 'SDSES-TOEKN';
+const HOST_TOKEN_SESSION_KEY = 'ssp_host_token';
+
+/**
+ * 嵌入运营中心时的宿主 Token：优先 session 缓存，其次 URL ?token=，再读 Cookie。
+ * 用于 Authorization（OPCENTER）；与 Flow 自身 YU_FLOW_TOKEN Cookie 分离。
+ */
+export function resolveHostToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = sessionStorage.getItem(HOST_TOKEN_SESSION_KEY);
+    if (cached) return cached;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const q = new URLSearchParams(window.location.search).get('token');
+    if (q && q.trim()) {
+      const t = q.trim();
+      try {
+        sessionStorage.setItem(HOST_TOKEN_SESSION_KEY, t);
+      } catch {
+        /* ignore */
+      }
+      return t;
+    }
+  } catch {
+    /* ignore */
+  }
+  return readCookie(HOST_TOKEN_COOKIE);
+}
+
+/** 管理 API 附加宿主 Authorization（Flow JWT 仍走 Cookie） */
+export function hostAuthHeaders(): Record<string, string> {
+  const token = resolveHostToken();
+  if (!token) return {};
+  const value = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  return { Authorization: value };
+}

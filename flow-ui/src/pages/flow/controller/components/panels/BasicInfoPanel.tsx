@@ -13,12 +13,13 @@ import type { FormInstance } from 'antd';
 import {
   ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea, ProFormRadio,
 } from '@ant-design/pro-components';
-import { DatabaseOutlined, GiftOutlined, InfoCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { SafetyCertificateOutlined, LockOutlined, DatabaseOutlined, GiftOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
 import { useGlobalLogMode, getLogModeLabel } from '@/components/flow/useGlobalLogMode';
 import ResponseWrapperSection from './ResponseWrapperSection';
 import CacheConfigSection from './CacheConfigSection';
 import IngressSecuritySection from './IngressSecuritySection';
+import PrivacySection from './PrivacySection';
 import SectionCard from './SectionCard';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -36,6 +37,7 @@ export interface BasicInfoPanelProps {
 const ALL_NAV_ITEMS = [
   { key: 'meta', label: '接口元信息', icon: <InfoCircleOutlined /> },
   { key: 'ingress', label: '入站防护', icon: <SafetyCertificateOutlined /> },
+  { key: 'privacy', label: '出站隐私', icon: <LockOutlined /> },
   { key: 'cache', label: '查询响应缓存', icon: <DatabaseOutlined /> },
   { key: 'wrapper', label: '返回包装配置', icon: <GiftOutlined /> },
 ] as const;
@@ -322,6 +324,15 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
             description="鉴权 / 防重放 / 限流 / IP；继承全局或按接口覆盖，需发布后生效"
           >
             <IngressSecuritySection />
+          </SectionCard>
+
+          <SectionCard
+            id="basic-info-privacy"
+            icon={<LockOutlined />}
+            title="出站隐私拦截"
+            description="库内密文识别后按宿主角色脱敏或明文；接口级需发布后生效"
+          >
+            <PrivacySection />
           </SectionCard>
 
           {isWrap ? (

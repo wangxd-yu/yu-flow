@@ -69,7 +69,7 @@ public class MqConnectionDO implements Serializable {
     private String password;
 
     /** 启用状态：0=停用，1=启用 */
-    @Column(columnDefinition = "tinyint(1) default 1")
+    @Column(nullable = false)
     private Boolean enabled;
 
     /** 健康状态：HEALTHY / UNHEALTHY / UNKNOWN */

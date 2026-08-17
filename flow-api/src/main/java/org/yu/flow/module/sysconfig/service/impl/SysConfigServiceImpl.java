@@ -32,6 +32,12 @@ import java.util.stream.Collectors;
 @Service
 public class SysConfigServiceImpl implements SysConfigService {
 
+    /** 由「宿主机配置」独占维护的键，不在通用配置页出现，也不允许从这里增删改 */
+    private static final List<String> HOST_MANAGED_KEYS = List.of(
+            org.yu.flow.module.host.HostCatalogReserved.SETTINGS_KEY,
+            org.yu.flow.module.host.HostPrincipalSettings.SETTINGS_KEY,
+            org.yu.flow.module.host.HostPrivacyProfiles.SETTINGS_KEY);
+
     @Resource
     private SysConfigRepository sysConfigRepository;
 
@@ -63,6 +69,7 @@ public class SysConfigServiceImpl implements SysConfigService {
             if (queryDTO.getStatus() != null) {
                 predicates.add(cb.equal(root.get("status"), queryDTO.getStatus()));
             }
+            predicates.add(cb.not(root.get("configKey").in(HOST_MANAGED_KEYS)));
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -92,6 +99,7 @@ public class SysConfigServiceImpl implements SysConfigService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SysConfigDO create(SaveSysConfigDTO dto) {
+        assertNotHostManaged(dto.getConfigKey());
         if (sysConfigRepository.existsByConfigKey(dto.getConfigKey())) {
             throw new RuntimeException("配置键已存在: " + dto.getConfigKey());
         }
@@ -122,6 +130,7 @@ public class SysConfigServiceImpl implements SysConfigService {
 
         SysConfigDO existing = sysConfigRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("配置不存在，id: " + id));
+        assertNotHostManaged(existing.getConfigKey());
 
         String oldValue = existing.getConfigValue();
         String configKey = existing.getConfigKey();
@@ -195,6 +204,15 @@ public class SysConfigServiceImpl implements SysConfigService {
                         + "\",\"new\":\"" + nv.replace("\"", "'") + "\"}");
     }
 
+    /**
+     * 这些键有自己的表单校验（如请求头模式的部署前提确认），从通用配置页改会绕过校验。
+     */
+    private static void assertNotHostManaged(String configKey) {
+        if (StrUtil.isNotBlank(configKey) && HOST_MANAGED_KEYS.contains(configKey)) {
+            throw new RuntimeException("请从「平台设置 → 宿主机配置」维护该配置");
+        }
+    }
+
     /** 读接口脱敏后的 *** 回写时不得覆盖真实密钥 */
     private static boolean isMaskedSecretUpdate(String configKey, String value) {
         return SysConfigDTO.isSecretConfigKey(configKey)
@@ -209,6 +227,7 @@ public class SysConfigServiceImpl implements SysConfigService {
 
         SysConfigDO existing = sysConfigRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("配置不存在，id: " + id));
+        assertNotHostManaged(existing.getConfigKey());
 
         if (existing.getIsBuiltin() != null && existing.getIsBuiltin() == 1) {
             throw new RuntimeException("系统内置配置不允许删除: " + existing.getConfigKey());

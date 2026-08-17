@@ -1,8 +1,8 @@
 -- Table: flow_page_info
 -- 页面信息表
 CREATE TABLE IF NOT EXISTS flow_page_info (
-  id varchar(64) NOT NULL,
-  directory_id varchar(64),
+  id varchar(32) NOT NULL,
+  directory_id varchar(32),
   name varchar(256) NOT NULL,
   route_path varchar(512) NOT NULL,
   json text,

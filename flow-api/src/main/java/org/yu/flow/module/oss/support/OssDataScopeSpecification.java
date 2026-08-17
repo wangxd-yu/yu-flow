@@ -32,10 +32,7 @@ public final class OssDataScopeSpecification {
                     // no extra filter
                 }
                 case SELF -> {
-                    if (principal == null || StrUtil.isBlank(principal.getUserId())) {
-                        return cb.disjunction();
-                    }
-                    predicates.add(cb.equal(root.get("uploadedBy"), principal.getUserId()));
+                    predicates.add(OssUploaderIdentity.selfPredicate(root, cb, principal));
                 }
                 case DEPT_LIST -> {
                     if (scope.getDeptIds() == null || scope.getDeptIds().isEmpty()) {
@@ -69,9 +66,7 @@ public final class OssDataScopeSpecification {
         }
         return switch (scope.getType()) {
             case ALL -> true;
-            case SELF -> principal != null
-                    && StrUtil.isNotBlank(principal.getUserId())
-                    && principal.getUserId().equals(object.getUploadedBy());
+            case SELF -> OssUploaderIdentity.isSelf(object, principal);
             case DEPT_LIST -> object.getDeptId() != null
                     && scope.getDeptIds() != null
                     && scope.getDeptIds().contains(object.getDeptId());

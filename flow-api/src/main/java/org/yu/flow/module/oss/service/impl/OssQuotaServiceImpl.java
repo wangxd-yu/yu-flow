@@ -9,7 +9,10 @@ import org.yu.flow.module.oss.domain.OssObjectDO;
 import org.yu.flow.module.oss.domain.OssUploadProfileDO;
 import org.yu.flow.module.oss.repository.OssObjectRepository;
 import org.yu.flow.module.oss.service.OssQuotaService;
+import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
+import org.yu.flow.module.oss.support.OssUploaderIdentity;
 
+@ConditionalOnOssEnabled
 @Service
 public class OssQuotaServiceImpl implements OssQuotaService {
 
@@ -20,7 +23,7 @@ public class OssQuotaServiceImpl implements OssQuotaService {
     private YuFlowProperties yuFlowProperties;
 
     @Override
-    public void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy,
+    public void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy, String uploadedByUserType,
                                   long additionalBytes, int additionalFiles) {
         if (profile == null) {
             return;
@@ -45,18 +48,21 @@ public class OssQuotaServiceImpl implements OssQuotaService {
 
         long userMaxFiles = yuFlowProperties.getOss().getUserQuotaMaxFiles();
         long userMaxBytes = yuFlowProperties.getOss().getUserQuotaMaxBytes();
-        if ((userMaxFiles <= 0 && userMaxBytes <= 0) || StrUtil.isBlank(uploadedBy)) {
+        String userType = OssUploaderIdentity.normalizeUserType(uploadedByUserType);
+        if ((userMaxFiles <= 0 && userMaxBytes <= 0) || StrUtil.isBlank(uploadedBy) || StrUtil.isBlank(userType)) {
             return;
         }
         if (userMaxFiles > 0) {
-            long currentFiles = ossObjectRepository.countByUploadedByAndStatus(uploadedBy, status);
+            long currentFiles = ossObjectRepository.countByUploadedByAndUploadedByUserTypeAndStatus(
+                    uploadedBy, userType, status);
             if (currentFiles + additionalFiles > userMaxFiles) {
                 throw new FlowException("OSS_QUOTA_EXCEEDED",
                         "用户文件数已达配额上限 " + userMaxFiles);
             }
         }
         if (userMaxBytes > 0) {
-            long currentBytes = ossObjectRepository.sumSizeBytesByUploadedByAndStatus(uploadedBy, status);
+            long currentBytes = ossObjectRepository.sumSizeBytesByUploadedByAndUploadedByUserTypeAndStatus(
+                    uploadedBy, userType, status);
             if (currentBytes + additionalBytes > userMaxBytes) {
                 throw new FlowException("OSS_QUOTA_EXCEEDED",
                         "用户容量已达配额上限 " + userMaxBytes + " 字节");

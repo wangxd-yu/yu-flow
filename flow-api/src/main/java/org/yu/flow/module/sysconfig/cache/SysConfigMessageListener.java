@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
+import org.yu.flow.module.host.FlowHostIdentityCatalogService;
 
 import jakarta.annotation.Resource;
 
@@ -20,6 +21,9 @@ public class SysConfigMessageListener implements MessageListener {
     @Resource
     private SysConfigCacheManager sysConfigCacheManager;
 
+    @Resource
+    private FlowHostIdentityCatalogService hostIdentityCatalogService;
+
     @Override
     public void onMessage(Message message, byte[] pattern) {
         String body = new String(message.getBody());
@@ -29,6 +33,7 @@ public class SysConfigMessageListener implements MessageListener {
 
         try {
             sysConfigCacheManager.reloadAll();
+            hostIdentityCatalogService.invalidateRuntimeCache();
             log.info("[SysConfigMessageListener] 本地缓存重载完成。当前缓存大小={}",
                     sysConfigCacheManager.getCacheSize());
         } catch (Exception e) {
