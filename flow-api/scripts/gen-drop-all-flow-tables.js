@@ -13,16 +13,18 @@ function gen(dir, dialect) {
     .sort()
     .reverse(); // 逆序降低偶发依赖顺序问题；PG 另用 CASCADE
 
+  // 已改名、Flyway 故意保留的旧表；仅清空重装时删，现网迁移不 DROP
+  const legacyDrops = ['flow_datasource'];
+
   const header =
     '-- Yu Flow 全量删表（验证初始化前清空用）\n' +
     '-- 由 scripts/gen-drop-all-flow-tables.js 生成，勿手工维护表清单\n' +
     '-- 用法：本文件 → 00_all_flow_tables.sql → 00_system_init.sql\n' +
     '-- 警告：删除全部 flow_* 业务表及数据，不可恢复\n\n';
 
-  const body =
-    dialect === 'pg'
-      ? tables.map((t) => `DROP TABLE IF EXISTS ${t} CASCADE;`).join('\n') + '\n'
-      : tables.map((t) => `DROP TABLE IF EXISTS \`${t}\`;`).join('\n') + '\n';
+  const dropLine = (t) =>
+    dialect === 'pg' ? `DROP TABLE IF EXISTS ${t} CASCADE;` : `DROP TABLE IF EXISTS \`${t}\`;`;
+  const body = tables.concat(legacyDrops).map(dropLine).join('\n') + '\n';
 
   const out = path.join(dir, '00_drop_all_flow_tables.sql');
   fs.writeFileSync(out, header + body, 'utf8');

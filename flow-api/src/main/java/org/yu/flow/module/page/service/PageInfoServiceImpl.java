@@ -137,6 +137,7 @@ public class PageInfoServiceImpl implements PageInfoService {
         if (pageInfoRepository.existsByRoutePath(pageInfo.getRoutePath())) {
             throw new RuntimeException("访问路径已存在: " + pageInfo.getRoutePath());
         }
+        flowDirectoryService.assertDirectoryBizType(pageInfo.getDirectoryId(), "page");
 
         pageInfo.setStatus(pageInfo.getStatus() == null ? 0 : pageInfo.getStatus());
         pageInfo.setCreateTime(LocalDateTime.now());
@@ -170,6 +171,7 @@ public class PageInfoServiceImpl implements PageInfoService {
             existing.setRoutePath(pageInfo.getRoutePath());
         }
         if (pageInfo.getDirectoryId() != null) {
+            flowDirectoryService.assertDirectoryBizType(pageInfo.getDirectoryId(), "page");
             existing.setDirectoryId(pageInfo.getDirectoryId());
         }
         existing.setUpdateTime(LocalDateTime.now());
@@ -265,6 +267,8 @@ public class PageInfoServiceImpl implements PageInfoService {
 
         if ("0".equals(targetDirectoryId) || StrUtil.isBlank(targetDirectoryId)) {
             targetDirectoryId = null;
+        } else {
+            flowDirectoryService.assertDirectoryBizType(targetDirectoryId, "page");
         }
         pageInfoRepository.updateDirectoryIdByIds(targetDirectoryId, ids);
     }

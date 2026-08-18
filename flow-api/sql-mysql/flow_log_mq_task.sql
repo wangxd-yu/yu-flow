@@ -1,6 +1,6 @@
--- Table: flow_mq_task_log
+-- Table: flow_log_mq_task
 -- MQ 任务执行日志
-CREATE TABLE IF NOT EXISTS `flow_mq_task_log` (
+CREATE TABLE IF NOT EXISTS `flow_log_mq_task` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
   `task_id` varchar(32) NOT NULL COMMENT '关联 MQ 任务ID',
   `task_name` varchar(128) COMMENT '任务名称（冗余）',
@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS `flow_mq_task_log` (
   `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logMode=ALL 时记录）',
   `create_time` datetime COMMENT '执行开始时间',
   PRIMARY KEY (`id`),
-  KEY `idx_flow_mq_task_log_create_time` (`create_time`),
-  KEY `idx_flow_mq_task_log_status` (`status`),
-  KEY `idx_flow_mq_task_log_task_id` (`task_id`),
-  KEY `idx_flow_mq_task_log_message_id` (`message_id`)
+  KEY `idx_flow_log_mq_task_create_time` (`create_time`),
+  KEY `idx_flow_log_mq_task_status` (`status`),
+  KEY `idx_flow_log_mq_task_task_id` (`task_id`),
+  KEY `idx_flow_log_mq_task_message_id` (`message_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务执行日志';

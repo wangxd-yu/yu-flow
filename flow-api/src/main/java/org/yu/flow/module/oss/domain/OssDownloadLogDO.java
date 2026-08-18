@@ -13,7 +13,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * OSS 隐私下载审计（flow_oss_download_log）
+ * OSS 隐私下载审计（flow_log_oss_download）
  */
 @Data
 @Builder
@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Entity
 @Accessors(chain = true)
-@Table(name = "flow_oss_download_log")
+@Table(name = "flow_log_oss_download")
 public class OssDownloadLogDO implements Serializable {
 
     public static final String RESULT_SUCCESS = "SUCCESS";

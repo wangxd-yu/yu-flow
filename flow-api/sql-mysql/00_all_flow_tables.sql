@@ -1,5 +1,5 @@
 -- Yu Flow MySQL 全量建表（由 sql-mysql/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-08-17T10:24:37.964Z
+-- 生成时间: 2026-08-18T02:10:42.995Z
 -- 用法: 先执行本文件，再执行 00_system_init.sql
 
 -- >>> flow_alert_channel.sql
@@ -16,33 +16,6 @@ CREATE TABLE IF NOT EXISTS `flow_alert_channel` (
   PRIMARY KEY (`id`),
   KEY `idx_flow_alert_channel_type` (`type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警通道';
-
--- >>> flow_alert_event.sql
--- Table: flow_alert_event
--- 告警事件历史
-CREATE TABLE IF NOT EXISTS `flow_alert_event` (
-  `id` varchar(64) NOT NULL COMMENT '主键',
-  `rule_id` varchar(64) COMMENT '规则 ID，SysConfig 兜底为空',
-  `rule_name` varchar(100),
-  `fingerprint` varchar(200) COMMENT '去重指纹',
-  `asset_type` varchar(32),
-  `asset_id` varchar(64),
-  `asset_name` varchar(200),
-  `health` varchar(20),
-  `error_rate` double,
-  `fail_count` bigint,
-  `window` varchar(20),
-  `channel_type` varchar(20),
-  `channel_id` varchar(64),
-  `status` varchar(20) NOT NULL COMMENT 'SUCCESS|FAIL|SUPPRESSED',
-  `payload_json` text,
-  `error_msg` varchar(500),
-  `fired_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_flow_alert_event_fired_at` (`fired_at`),
-  KEY `idx_flow_alert_event_rule_id` (`rule_id`),
-  KEY `idx_flow_alert_event_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警事件历史';
 
 -- >>> flow_alert_rule.sql
 -- Table: flow_alert_rule
@@ -145,13 +118,13 @@ CREATE TABLE IF NOT EXISTS `flow_asset_version` (
   UNIQUE KEY `uk_flow_asset_version_biz_type_asset_id_version_no` (`biz_type`, `asset_id`, `version_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产发布历史版本';
 
--- >>> flow_datasource.sql
--- Table: flow_datasource
--- 动态数据源配置表
-CREATE TABLE IF NOT EXISTS `flow_datasource` (
+-- >>> flow_db_connection.sql
+-- Table: flow_db_connection
+-- JDBC 数据库连接配置（原 flow_datasource）
+CREATE TABLE IF NOT EXISTS `flow_db_connection` (
   `id` varchar(64) NOT NULL COMMENT '主键ID',
-  `code` varchar(50) COMMENT '数据源全局唯一编码，用于跨环境关联',
-  `name` varchar(100) NOT NULL COMMENT '数据源名称',
+  `code` varchar(50) COMMENT '连接全局唯一编码，用于跨环境关联',
+  `name` varchar(100) NOT NULL COMMENT '连接名称',
   `db_type` varchar(20) NOT NULL COMMENT '数据库类型(mysql/postgresql/highgo)',
   `driver_class_name` varchar(200) NOT NULL COMMENT '驱动类名',
   `url` varchar(500) NOT NULL COMMENT 'JDBC URL',
@@ -162,16 +135,16 @@ CREATE TABLE IF NOT EXISTS `flow_datasource` (
   `max_active` int DEFAULT 20 COMMENT '最大活动连接',
   `status` tinyint DEFAULT 1 COMMENT '状态(0-停用,1-启用)',
   `wall_config` text COMMENT 'SQL安全墙JSON(DataSourceWallConfig)',
-  `is_system` tinyint NOT NULL DEFAULT 0 COMMENT '系统数据源(1=不可删改连接，如[DEFAULT])',
+  `is_system` tinyint NOT NULL DEFAULT 0 COMMENT '系统连接(1=不可删改连接，如[DEFAULT])',
   `health_status` varchar(20) NOT NULL DEFAULT 'UNKNOWN' COMMENT '连接健康度：HEALTHY-健康, UNHEALTHY-异常, UNKNOWN-未知',
   `error_count` int NOT NULL DEFAULT 0 COMMENT '连续连接失败次数',
   `last_error_msg` text COMMENT '最后一次连接失败的异常堆栈/简述',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_flow_datasource_name` (`name`),
-  UNIQUE KEY `uk_flow_datasource_code` (`code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='动态数据源配置表';
+  UNIQUE KEY `uk_flow_db_connection_name` (`name`),
+  UNIQUE KEY `uk_flow_db_connection_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='JDBC 数据库连接配置';
 
 -- >>> flow_directory.sql
 -- Table: flow_directory
@@ -180,7 +153,7 @@ CREATE TABLE IF NOT EXISTS `flow_directory` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
   `parent_id` varchar(32) COMMENT '父节点ID，NULL 表示根节点',
   `name` varchar(128) NOT NULL COMMENT '目录名称',
-  `biz_type` varchar(32) COMMENT '业务域：api/task/service/model/page，空=共用',
+  `biz_type` varchar(32) COMMENT '业务域：api/task/service/model/page/mqtask，空=共用',
   `sort` int DEFAULT 0 COMMENT '排序（升序）',
   `path_prefix` varchar(256) DEFAULT NULL COMMENT 'URL路径前缀，可空；新建接口默认继承',
   `security_config` text COMMENT '目录级入站防护JSON，结构同ApiSecurityConfig',
@@ -210,6 +183,33 @@ CREATE TABLE IF NOT EXISTS `flow_env` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_flow_env_code` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布逻辑环境';
+
+-- >>> flow_log_alert.sql
+-- Table: flow_log_alert
+-- 告警事件历史
+CREATE TABLE IF NOT EXISTS `flow_log_alert` (
+  `id` varchar(64) NOT NULL COMMENT '主键',
+  `rule_id` varchar(64) COMMENT '规则 ID，SysConfig 兜底为空',
+  `rule_name` varchar(100),
+  `fingerprint` varchar(200) COMMENT '去重指纹',
+  `asset_type` varchar(32),
+  `asset_id` varchar(64),
+  `asset_name` varchar(200),
+  `health` varchar(20),
+  `error_rate` double,
+  `fail_count` bigint,
+  `window` varchar(20),
+  `channel_type` varchar(20),
+  `channel_id` varchar(64),
+  `status` varchar(20) NOT NULL COMMENT 'SUCCESS|FAIL|SUPPRESSED',
+  `payload_json` text,
+  `error_msg` varchar(500),
+  `fired_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_log_alert_fired_at` (`fired_at`),
+  KEY `idx_flow_log_alert_rule_id` (`rule_id`),
+  KEY `idx_flow_log_alert_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警事件历史';
 
 -- >>> flow_log_audit.sql
 -- Table: flow_log_audit
@@ -267,6 +267,30 @@ CREATE TABLE IF NOT EXISTS `flow_log_login` (
   KEY `idx_flow_log_login_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录日志表';
 
+-- >>> flow_log_mq_task.sql
+-- Table: flow_log_mq_task
+-- MQ 任务执行日志
+CREATE TABLE IF NOT EXISTS `flow_log_mq_task` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `task_id` varchar(32) NOT NULL COMMENT '关联 MQ 任务ID',
+  `task_name` varchar(128) COMMENT '任务名称（冗余）',
+  `topic` varchar(255) COMMENT '消息 topic / 队列名',
+  `message_id` varchar(255) COMMENT '消息ID（幂等去重键）',
+  `trigger_type` varchar(16) NOT NULL DEFAULT 'MQ' COMMENT '触发类型：MQ=消息触发, MANUAL=手动',
+  `status` varchar(16) NOT NULL COMMENT '执行状态：SUCCESS / FAILED / SKIPPED / RUNNING',
+  `cost_time_ms` bigint COMMENT '耗时（毫秒）',
+  `error_msg` text COMMENT '失败信息',
+  `message_body` longtext COMMENT '原始消息体（JSON 解析前的字符串，支持超限截断）',
+  `message_headers` text COMMENT '消息头 JSON 字典',
+  `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logMode=ALL 时记录）',
+  `create_time` datetime COMMENT '执行开始时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_log_mq_task_create_time` (`create_time`),
+  KEY `idx_flow_log_mq_task_status` (`status`),
+  KEY `idx_flow_log_mq_task_task_id` (`task_id`),
+  KEY `idx_flow_log_mq_task_message_id` (`message_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务执行日志';
+
 -- >>> flow_log_open_call.sql
 -- Table: flow_log_open_call
 -- 开放平台入站调用摘要
@@ -287,6 +311,26 @@ CREATE TABLE IF NOT EXISTS `flow_log_open_call` (
   KEY `idx_flow_log_open_call_create_time` (`create_time`),
   KEY `idx_flow_log_open_call_platform_id_create_time` (`platform_id`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='开放平台入站调用摘要';
+
+-- >>> flow_log_oss_download.sql
+-- Table: flow_log_oss_download
+-- OSS 隐私下载审计
+CREATE TABLE IF NOT EXISTS `flow_log_oss_download` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `object_id` varchar(32) COMMENT '台账 ID',
+  `downloaded_by` varchar(64) COMMENT '下载人 userId',
+  `downloaded_by_name` varchar(128) COMMENT '下载人展示名',
+  `client_ip` varchar(64) COMMENT '客户端 IP',
+  `user_agent` varchar(512) COMMENT 'User-Agent',
+  `result` varchar(16) COMMENT 'SUCCESS / DENIED / NOT_FOUND / ERROR',
+  `deny_reason` varchar(512) COMMENT '拒绝原因',
+  `time_ms` bigint COMMENT '耗时毫秒',
+  `create_time` datetime COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_log_oss_download_object_id` (`object_id`),
+  KEY `idx_flow_log_oss_download_create_time` (`create_time`),
+  KEY `idx_flow_log_oss_download_result` (`result`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 隐私下载审计';
 
 -- >>> flow_log_service.sql
 -- Table: flow_log_service
@@ -391,20 +435,6 @@ CREATE TABLE IF NOT EXISTS `flow_metrics_minute` (
   UNIQUE KEY `uk_flow_metrics_minute_atype_aid_ttype_bstart` (`asset_type`, `asset_id`, `trigger_type`, `bucket_start`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产运行计量分钟汇总';
 
--- >>> flow_model_directory.sql
--- Table: flow_model_directory
--- 数据模型目录表
-CREATE TABLE IF NOT EXISTS `flow_model_directory` (
-  `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `parent_id` varchar(32) COMMENT '父节点ID，NULL 表示根节点',
-  `name` varchar(128) NOT NULL COMMENT '目录名称',
-  `sort` int DEFAULT 0 COMMENT '排序（升序）',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_flow_model_directory_parent_id` (`parent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据模型目录表';
-
 -- >>> flow_model_info.sql
 -- Table: flow_model_info
 -- 数据模型信息表
@@ -485,30 +515,6 @@ CREATE TABLE IF NOT EXISTS `flow_mq_task_info` (
   KEY `idx_flow_mq_task_info_publish_status` (`publish_status`),
   KEY `idx_flow_mq_task_info_connection_code` (`connection_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务定义';
-
--- >>> flow_mq_task_log.sql
--- Table: flow_mq_task_log
--- MQ 任务执行日志
-CREATE TABLE IF NOT EXISTS `flow_mq_task_log` (
-  `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `task_id` varchar(32) NOT NULL COMMENT '关联 MQ 任务ID',
-  `task_name` varchar(128) COMMENT '任务名称（冗余）',
-  `topic` varchar(255) COMMENT '消息 topic / 队列名',
-  `message_id` varchar(255) COMMENT '消息ID（幂等去重键）',
-  `trigger_type` varchar(16) NOT NULL DEFAULT 'MQ' COMMENT '触发类型：MQ=消息触发, MANUAL=手动',
-  `status` varchar(16) NOT NULL COMMENT '执行状态：SUCCESS / FAILED / SKIPPED / RUNNING',
-  `cost_time_ms` bigint COMMENT '耗时（毫秒）',
-  `error_msg` text COMMENT '失败信息',
-  `message_body` longtext COMMENT '原始消息体（JSON 解析前的字符串，支持超限截断）',
-  `message_headers` text COMMENT '消息头 JSON 字典',
-  `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logMode=ALL 时记录）',
-  `create_time` datetime COMMENT '执行开始时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_flow_mq_task_log_create_time` (`create_time`),
-  KEY `idx_flow_mq_task_log_status` (`status`),
-  KEY `idx_flow_mq_task_log_task_id` (`task_id`),
-  KEY `idx_flow_mq_task_log_message_id` (`message_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务执行日志';
 
 -- >>> flow_open_api_grant.sql
 -- Table: flow_open_api_grant
@@ -595,26 +601,6 @@ CREATE TABLE IF NOT EXISTS `flow_oss_connection` (
   KEY `idx_flow_oss_connection_enabled` (`enabled`),
   KEY `idx_flow_oss_connection_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 连接配置';
-
--- >>> flow_oss_download_log.sql
--- Table: flow_oss_download_log
--- OSS 隐私下载审计
-CREATE TABLE IF NOT EXISTS `flow_oss_download_log` (
-  `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `object_id` varchar(32) COMMENT '台账 ID',
-  `downloaded_by` varchar(64) COMMENT '下载人 userId',
-  `downloaded_by_name` varchar(128) COMMENT '下载人展示名',
-  `client_ip` varchar(64) COMMENT '客户端 IP',
-  `user_agent` varchar(512) COMMENT 'User-Agent',
-  `result` varchar(16) COMMENT 'SUCCESS / DENIED / NOT_FOUND / ERROR',
-  `deny_reason` varchar(512) COMMENT '拒绝原因',
-  `time_ms` bigint COMMENT '耗时毫秒',
-  `create_time` datetime COMMENT '创建时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_flow_oss_download_log_object_id` (`object_id`),
-  KEY `idx_flow_oss_download_log_create_time` (`create_time`),
-  KEY `idx_flow_oss_download_log_result` (`result`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 隐私下载审计';
 
 -- >>> flow_oss_object_ref.sql
 -- Table: flow_oss_object_ref
@@ -711,20 +697,6 @@ CREATE TABLE IF NOT EXISTS `flow_oss_upload_profile` (
   KEY `idx_flow_oss_upload_profile_connection_code` (`connection_code`),
   KEY `idx_flow_oss_upload_profile_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 上传场景';
-
--- >>> flow_page_directory.sql
--- Table: flow_page_directory
--- 页面目录表
-CREATE TABLE IF NOT EXISTS `flow_page_directory` (
-  `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `parent_id` varchar(32) COMMENT '父节点ID，NULL 表示根节点',
-  `name` varchar(128) NOT NULL COMMENT '目录名称',
-  `sort` int DEFAULT 0 COMMENT '排序（升序）',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_flow_page_directory_parent_id` (`parent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='页面目录表';
 
 -- >>> flow_page_info.sql
 -- Table: flow_page_info

@@ -26,11 +26,11 @@
 | FlowApiController | `/flow-api/api` | `flow:api:view` / `flow:api:write`（调试执行显式要求 write） |
 | HostApiController | `/flow-api/api/host` | `flow:api:view` / `flow:api:write` |
 | DebugController | `/flow-api/debug` | `flow:api:view` / `flow:api:write` |
-| FlowDirectoryController | `/flow-api/directories` | `flow:api:view` / `flow:api:write` |
+| FlowDirectoryController | `/flow-api/directories` | 各资产域 `view`/`write`（api/task/service/model/page/mq），按 HTTP 方法分流 |
 | FlowServiceFlowController | `/flow-api/service-flow` | `flow:service:view` / `flow:service:write` |
 | FlowTaskController | `/flow-api/task` | `flow:task:view` / `flow:task:write` |
 | FlowModelInfoController | `/flow-api/models` | `flow:model:view` / `flow:model:write` |
-| PageInfoController / PageDirectoryController | `/flow-api/pages`、`/flow-api/page-directories` | `flow:page:view` / `flow:page:write` |
+| PageInfoController | `/flow-api/pages` | `flow:page:view` / `flow:page:write` |
 | DynamicDataSourceController | `/flow-api/dataSource` | `flow:ds:view` / `flow:ds:write` |
 | FlowOpenPlatformController | `/flow-api/open-platforms` | `flow:open:view` / `flow:open:write` |
 | ResponseTemplateController | `/flow-api/response-templates` | `sys:template:view` / `sys:template:write` |

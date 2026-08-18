@@ -4,7 +4,7 @@
 -- 用法：先执行 00_all_flow_tables.sql，再执行本文件
 -- 取代：flow_sys_config_init.sql / flow_sys_macro_init.sql（可保留作参考）
 -- 管理员账号：不写用户表，启动时由 RbacAdminBootstrap + yu.flow.* 引导
--- 注意：flow_datasource 含本机 JDBC URL，部署时请按环境修改或删掉该段
+-- 注意：flow_db_connection 含本机 JDBC URL，部署时请按环境修改或删掉该段
 -- ============================================================================
 
 -- ===== flow_sys_role (3) =====
@@ -175,7 +175,7 @@ INSERT INTO `flow_sys_config` (`id`, `config_key`, `config_value`, `value_type`,
 ('48', 'LOG_THIRD_RETENTION_DAYS', '30', 'NUMBER', 'LOG', '第三方调用日志保留天数（flow_log_third；0 = 不清理）', 1, 1, 50, NULL, '2026-07-23 10:12:58', NULL, '2026-07-23 10:12:58'),
 ('49', 'LOG_OPEN_CALL_RETENTION_DAYS', '30', 'NUMBER', 'LOG', '开放平台调用日志保留天数（flow_log_open_call；0 = 不清理）', 1, 1, 60, NULL, '2026-07-23 10:12:58', NULL, '2026-07-23 10:12:58'),
 ('50', 'LOG_AUDIT_RETENTION_DAYS', '180', 'NUMBER', 'LOG', '配置变更审计日志保留天数（flow_log_audit；0 = 不清理）', 1, 1, 70, NULL, '2026-07-23 10:12:58', NULL, '2026-07-23 10:12:58'),
-('51', 'LOG_ALERT_EVENT_RETENTION_DAYS', '90', 'NUMBER', 'LOG', '告警历史事件保留天数（flow_alert_event；0 = 不清理）', 1, 1, 80, NULL, '2026-07-23 10:12:58', NULL, '2026-07-23 10:12:58'),
+('51', 'LOG_ALERT_EVENT_RETENTION_DAYS', '90', 'NUMBER', 'LOG', '告警历史事件保留天数（flow_log_alert；0 = 不清理）', 1, 1, 80, NULL, '2026-07-23 10:12:58', NULL, '2026-07-23 10:12:58'),
 ('52', 'SCRIPT_ALLOWED_LANGUAGES', 'aviator,spel,javascript,groovy', 'STRING', 'SECURITY', 'Evaluate/Switch 等节点允许的脚本语言白名单（逗号分隔）。空=不限制；未在白名单的语言将不可用。', 1, 1, 100, NULL, '2026-07-27 20:25:31', NULL, '2026-07-27 20:25:31'),
 ('53', 'ENGINE_DEFAULT_LOG_MODE', 'ERROR_ONLY', 'ENUM', 'LOG', '[ERROR_ONLY:仅错误|ALL:全量记录|OFF:完全关闭] 全局默认日志策略。当接口、任务、消息队列或服务编排设置为「继承全局」时，默认生效的日志落库策略。', 1, 1, 15, NULL, '2026-08-01 19:30:35', NULL, '2026-08-01 19:35:51'),
 ('54', 'MQ_LOG_PAYLOAD_MODE', 'FULL', 'ENUM', 'LOG', '[FULL:明文|MASK:脱敏占位|OFF:不存报文] MQ 消费日志原始报文全局默认策略。任务设为「继承全局」时生效。', 1, 1, 16, NULL, '2026-08-03 19:35:29', NULL, '2026-08-03 19:35:29')
@@ -217,9 +217,9 @@ INSERT INTO `flow_response_template` (`id`, `template_name`, `success_wrapper`, 
 ON DUPLICATE KEY UPDATE id = VALUES(id);
 
 
--- ===== flow_datasource (1) =====
+-- ===== flow_db_connection (1) =====
 
-INSERT INTO `flow_datasource` (`id`, `code`, `name`, `db_type`, `driver_class_name`, `url`, `username`, `password`, `initial_size`, `min_idle`, `max_active`, `status`, `wall_config`, `is_system`, `health_status`, `error_count`, `last_error_msg`, `create_time`, `update_time`) VALUES
+INSERT INTO `flow_db_connection` (`id`, `code`, `name`, `db_type`, `driver_class_name`, `url`, `username`, `password`, `initial_size`, `min_idle`, `max_active`, `status`, `wall_config`, `is_system`, `health_status`, `error_count`, `last_error_msg`, `create_time`, `update_time`) VALUES
 ('2080671779158224896', '[DEFAULT]', '系统默认数据源', 'mysql', 'com.mysql.cj.jdbc.Driver', 'jdbc:mysql://127.0.0.1:3306/flow?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true', 'root', '', 5, 5, 20, 1, '{"enabled":true,"multiStatementAllow":false,"commentAllow":false,"noneBaseStatementAllow":false,"selectAllow":true,"insertAllow":true,"updateAllow":true,"deleteAllow":true,"tableCheck":true,"tableWhiteList":[],"tableBlackList":[],"tableReadOnlyList":[],"functionBlackList":["sleep","benchmark","load_file","updatexml","extractvalue","pg_sleep"],"variantCheck":true}', 1, 'UNKNOWN', 0, NULL, '2026-07-24 23:09:43', '2026-07-24 23:09:43')
 ON DUPLICATE KEY UPDATE id = VALUES(id);
 

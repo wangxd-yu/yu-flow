@@ -1,5 +1,5 @@
 -- Yu Flow PostgreSQL / 瀚高 全量建表（由 sql-pg/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-08-17T10:24:37.976Z
+-- 生成时间: 2026-08-18T02:10:43.007Z
 -- 用法: 空库执行本文件 → 再执行 00_system_init.sql
 -- Boolean 映射列必须用 boolean，勿写成 smallint
 --
@@ -26,39 +26,6 @@ COMMENT ON COLUMN flow_alert_channel.type IS 'WEBHOOK | EMAIL';
 COMMENT ON COLUMN flow_alert_channel.config_json IS '通道配置 JSON';
 COMMENT ON COLUMN flow_alert_channel.enabled IS '1启用 0停用';
 CREATE INDEX IF NOT EXISTS idx_flow_alert_channel_type ON flow_alert_channel (type);
-
--- >>> flow_alert_event.sql
--- Table: flow_alert_event
--- 告警事件历史
-CREATE TABLE IF NOT EXISTS flow_alert_event (
-  id varchar(64) NOT NULL,
-  rule_id varchar(64),
-  rule_name varchar(100),
-  fingerprint varchar(200),
-  asset_type varchar(32),
-  asset_id varchar(64),
-  asset_name varchar(200),
-  health varchar(20),
-  error_rate double precision,
-  fail_count bigint,
-  "window" varchar(20),
-  channel_type varchar(20),
-  channel_id varchar(64),
-  status varchar(20) NOT NULL,
-  payload_json text,
-  error_msg varchar(500),
-  fired_at timestamp NOT NULL,
-  PRIMARY KEY (id)
-);
-COMMENT ON TABLE flow_alert_event IS '告警事件历史';
-COMMENT ON COLUMN flow_alert_event.id IS '主键';
-COMMENT ON COLUMN flow_alert_event.rule_id IS '规则 ID，SysConfig 兜底为空';
-COMMENT ON COLUMN flow_alert_event.fingerprint IS '去重指纹';
-COMMENT ON COLUMN flow_alert_event."window" IS '1h/24h/7d';
-COMMENT ON COLUMN flow_alert_event.status IS 'SUCCESS|FAIL|SUPPRESSED';
-CREATE INDEX IF NOT EXISTS idx_flow_alert_event_fired_at ON flow_alert_event (fired_at);
-CREATE INDEX IF NOT EXISTS idx_flow_alert_event_rule_id ON flow_alert_event (rule_id);
-CREATE INDEX IF NOT EXISTS idx_flow_alert_event_status ON flow_alert_event (status);
 
 -- >>> flow_alert_rule.sql
 -- Table: flow_alert_rule
@@ -223,10 +190,10 @@ COMMENT ON COLUMN flow_asset_version.publish_time IS '发布时间';
 COMMENT ON COLUMN flow_asset_version.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_flow_asset_version_biz_type_asset_id_publish_time ON flow_asset_version (biz_type, asset_id, publish_time);
 
--- >>> flow_datasource.sql
--- Table: flow_datasource
--- 动态数据源配置表
-CREATE TABLE IF NOT EXISTS flow_datasource (
+-- >>> flow_db_connection.sql
+-- Table: flow_db_connection
+-- JDBC 数据库连接配置（原 flow_datasource）
+CREATE TABLE IF NOT EXISTS flow_db_connection (
   id varchar(64) NOT NULL,
   code varchar(50),
   name varchar(100) NOT NULL,
@@ -247,29 +214,29 @@ CREATE TABLE IF NOT EXISTS flow_datasource (
   create_time timestamp DEFAULT CURRENT_TIMESTAMP,
   update_time timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  CONSTRAINT uk_flow_datasource_name UNIQUE (name),
-  CONSTRAINT uk_flow_datasource_code UNIQUE (code)
+  CONSTRAINT uk_flow_db_connection_name UNIQUE (name),
+  CONSTRAINT uk_flow_db_connection_code UNIQUE (code)
 );
-COMMENT ON TABLE flow_datasource IS '动态数据源配置表';
-COMMENT ON COLUMN flow_datasource.id IS '主键ID';
-COMMENT ON COLUMN flow_datasource.code IS '数据源全局唯一编码，用于跨环境关联';
-COMMENT ON COLUMN flow_datasource.name IS '数据源名称';
-COMMENT ON COLUMN flow_datasource.db_type IS '数据库类型(mysql/postgresql/highgo)';
-COMMENT ON COLUMN flow_datasource.driver_class_name IS '驱动类名';
-COMMENT ON COLUMN flow_datasource.url IS 'JDBC URL';
-COMMENT ON COLUMN flow_datasource.username IS '用户名';
-COMMENT ON COLUMN flow_datasource.password IS '密码';
-COMMENT ON COLUMN flow_datasource.initial_size IS '初始连接数';
-COMMENT ON COLUMN flow_datasource.min_idle IS '最小空闲连接';
-COMMENT ON COLUMN flow_datasource.max_active IS '最大活动连接';
-COMMENT ON COLUMN flow_datasource.status IS '状态(0-停用,1-启用)';
-COMMENT ON COLUMN flow_datasource.wall_config IS 'SQL安全墙JSON(DataSourceWallConfig)';
-COMMENT ON COLUMN flow_datasource.is_system IS '系统数据源(1=不可删改连接，如[DEFAULT])';
-COMMENT ON COLUMN flow_datasource.health_status IS '连接健康度：HEALTHY-健康, UNHEALTHY-异常, UNKNOWN-未知';
-COMMENT ON COLUMN flow_datasource.error_count IS '连续连接失败次数';
-COMMENT ON COLUMN flow_datasource.last_error_msg IS '最后一次连接失败的异常堆栈/简述';
-COMMENT ON COLUMN flow_datasource.create_time IS '创建时间';
-COMMENT ON COLUMN flow_datasource.update_time IS '更新时间';
+COMMENT ON TABLE flow_db_connection IS 'JDBC 数据库连接配置';
+COMMENT ON COLUMN flow_db_connection.id IS '主键ID';
+COMMENT ON COLUMN flow_db_connection.code IS '连接全局唯一编码，用于跨环境关联';
+COMMENT ON COLUMN flow_db_connection.name IS '连接名称';
+COMMENT ON COLUMN flow_db_connection.db_type IS '数据库类型(mysql/postgresql/highgo)';
+COMMENT ON COLUMN flow_db_connection.driver_class_name IS '驱动类名';
+COMMENT ON COLUMN flow_db_connection.url IS 'JDBC URL';
+COMMENT ON COLUMN flow_db_connection.username IS '用户名';
+COMMENT ON COLUMN flow_db_connection.password IS '密码';
+COMMENT ON COLUMN flow_db_connection.initial_size IS '初始连接数';
+COMMENT ON COLUMN flow_db_connection.min_idle IS '最小空闲连接';
+COMMENT ON COLUMN flow_db_connection.max_active IS '最大活动连接';
+COMMENT ON COLUMN flow_db_connection.status IS '状态(0-停用,1-启用)';
+COMMENT ON COLUMN flow_db_connection.wall_config IS 'SQL安全墙JSON(DataSourceWallConfig)';
+COMMENT ON COLUMN flow_db_connection.is_system IS '系统连接(1=不可删改连接，如[DEFAULT])';
+COMMENT ON COLUMN flow_db_connection.health_status IS '连接健康度：HEALTHY-健康, UNHEALTHY-异常, UNKNOWN-未知';
+COMMENT ON COLUMN flow_db_connection.error_count IS '连续连接失败次数';
+COMMENT ON COLUMN flow_db_connection.last_error_msg IS '最后一次连接失败的异常堆栈/简述';
+COMMENT ON COLUMN flow_db_connection.create_time IS '创建时间';
+COMMENT ON COLUMN flow_db_connection.update_time IS '更新时间';
 
 -- >>> flow_directory.sql
 -- Table: flow_directory
@@ -292,7 +259,7 @@ COMMENT ON TABLE flow_directory IS '全局目录表';
 COMMENT ON COLUMN flow_directory.id IS '雪花ID';
 COMMENT ON COLUMN flow_directory.parent_id IS '父节点ID，NULL 表示根节点';
 COMMENT ON COLUMN flow_directory.name IS '目录名称';
-COMMENT ON COLUMN flow_directory.biz_type IS '业务域：api/task/service/model/page，空=共用';
+COMMENT ON COLUMN flow_directory.biz_type IS '业务域：api/task/service/model/page/mqtask，空=共用';
 COMMENT ON COLUMN flow_directory.sort IS '排序（升序）';
 COMMENT ON COLUMN flow_directory.path_prefix IS 'URL路径前缀，可空；新建接口默认继承';
 COMMENT ON COLUMN flow_directory.security_config IS '目录级入站防护JSON，结构同ApiSecurityConfig';
@@ -331,6 +298,39 @@ COMMENT ON COLUMN flow_env.sort_order IS '排序（升序）';
 COMMENT ON COLUMN flow_env.remark IS '备注';
 COMMENT ON COLUMN flow_env.create_time IS '创建时间';
 COMMENT ON COLUMN flow_env.update_time IS '更新时间';
+
+-- >>> flow_log_alert.sql
+-- Table: flow_log_alert
+-- 告警事件历史
+CREATE TABLE IF NOT EXISTS flow_log_alert (
+  id varchar(64) NOT NULL,
+  rule_id varchar(64),
+  rule_name varchar(100),
+  fingerprint varchar(200),
+  asset_type varchar(32),
+  asset_id varchar(64),
+  asset_name varchar(200),
+  health varchar(20),
+  error_rate double precision,
+  fail_count bigint,
+  "window" varchar(20),
+  channel_type varchar(20),
+  channel_id varchar(64),
+  status varchar(20) NOT NULL,
+  payload_json text,
+  error_msg varchar(500),
+  fired_at timestamp NOT NULL,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_log_alert IS '告警事件历史';
+COMMENT ON COLUMN flow_log_alert.id IS '主键';
+COMMENT ON COLUMN flow_log_alert.rule_id IS '规则 ID，SysConfig 兜底为空';
+COMMENT ON COLUMN flow_log_alert.fingerprint IS '去重指纹';
+COMMENT ON COLUMN flow_log_alert."window" IS '1h/24h/7d';
+COMMENT ON COLUMN flow_log_alert.status IS 'SUCCESS|FAIL|SUPPRESSED';
+CREATE INDEX IF NOT EXISTS idx_flow_log_alert_fired_at ON flow_log_alert (fired_at);
+CREATE INDEX IF NOT EXISTS idx_flow_log_alert_rule_id ON flow_log_alert (rule_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_alert_status ON flow_log_alert (status);
 
 -- >>> flow_log_audit.sql
 -- Table: flow_log_audit
@@ -416,6 +416,44 @@ COMMENT ON COLUMN flow_log_login.create_time IS '登录时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_login_account ON flow_log_login (account);
 CREATE INDEX IF NOT EXISTS idx_flow_log_login_create_time ON flow_log_login (create_time);
 
+-- >>> flow_log_mq_task.sql
+-- Table: flow_log_mq_task
+-- MQ 任务执行日志
+CREATE TABLE IF NOT EXISTS flow_log_mq_task (
+  id varchar(32) NOT NULL,
+  task_id varchar(32) NOT NULL,
+  task_name varchar(128),
+  topic varchar(255),
+  message_id varchar(255),
+  trigger_type varchar(16) NOT NULL DEFAULT 'MQ',
+  status varchar(16) NOT NULL,
+  cost_time_ms bigint,
+  error_msg text,
+  message_body text,
+  message_headers text,
+  trace_data text,
+  create_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_log_mq_task IS 'MQ 任务执行日志';
+COMMENT ON COLUMN flow_log_mq_task.id IS '雪花ID';
+COMMENT ON COLUMN flow_log_mq_task.task_id IS '关联 MQ 任务ID';
+COMMENT ON COLUMN flow_log_mq_task.task_name IS '任务名称（冗余）';
+COMMENT ON COLUMN flow_log_mq_task.topic IS '消息 topic / 队列名';
+COMMENT ON COLUMN flow_log_mq_task.message_id IS '消息ID（幂等去重键）';
+COMMENT ON COLUMN flow_log_mq_task.trigger_type IS '触发类型：MQ=消息触发, MANUAL=手动';
+COMMENT ON COLUMN flow_log_mq_task.status IS '执行状态：SUCCESS / FAILED / SKIPPED / RUNNING';
+COMMENT ON COLUMN flow_log_mq_task.cost_time_ms IS '耗时（毫秒）';
+COMMENT ON COLUMN flow_log_mq_task.error_msg IS '失败信息';
+COMMENT ON COLUMN flow_log_mq_task.message_body IS '原始消息体（JSON 解析前的字符串，支持超限截断）';
+COMMENT ON COLUMN flow_log_mq_task.message_headers IS '消息头 JSON 字典';
+COMMENT ON COLUMN flow_log_mq_task.trace_data IS 'FlowTrace JSON 快照（logMode=ALL 时记录）';
+COMMENT ON COLUMN flow_log_mq_task.create_time IS '执行开始时间';
+CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_create_time ON flow_log_mq_task (create_time);
+CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_status ON flow_log_mq_task (status);
+CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_task_id ON flow_log_mq_task (task_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_message_id ON flow_log_mq_task (message_id);
+
 -- >>> flow_log_open_call.sql
 -- Table: flow_log_open_call
 -- 开放平台入站调用摘要
@@ -447,6 +485,37 @@ COMMENT ON COLUMN flow_log_open_call.request_id IS '请求追踪ID';
 CREATE INDEX IF NOT EXISTS idx_flow_log_open_call_app_key ON flow_log_open_call (app_key);
 CREATE INDEX IF NOT EXISTS idx_flow_log_open_call_create_time ON flow_log_open_call (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_open_call_platform_id_create_time ON flow_log_open_call (platform_id, create_time);
+
+-- >>> flow_log_oss_download.sql
+-- Table: flow_log_oss_download
+-- OSS 隐私下载审计
+CREATE TABLE IF NOT EXISTS flow_log_oss_download (
+  id varchar(32) NOT NULL,
+  object_id varchar(32),
+  downloaded_by varchar(64),
+  downloaded_by_name varchar(128),
+  client_ip varchar(64),
+  user_agent varchar(512),
+  result varchar(16),
+  deny_reason varchar(512),
+  time_ms bigint,
+  create_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_log_oss_download IS 'OSS 隐私下载审计';
+COMMENT ON COLUMN flow_log_oss_download.id IS '雪花ID';
+COMMENT ON COLUMN flow_log_oss_download.object_id IS '台账 ID';
+COMMENT ON COLUMN flow_log_oss_download.downloaded_by IS '下载人 userId';
+COMMENT ON COLUMN flow_log_oss_download.downloaded_by_name IS '下载人展示名';
+COMMENT ON COLUMN flow_log_oss_download.client_ip IS '客户端 IP';
+COMMENT ON COLUMN flow_log_oss_download.user_agent IS 'User-Agent';
+COMMENT ON COLUMN flow_log_oss_download.result IS 'SUCCESS / DENIED / NOT_FOUND / ERROR';
+COMMENT ON COLUMN flow_log_oss_download.deny_reason IS '拒绝原因';
+COMMENT ON COLUMN flow_log_oss_download.time_ms IS '耗时毫秒';
+COMMENT ON COLUMN flow_log_oss_download.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_flow_log_oss_download_object_id ON flow_log_oss_download (object_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_oss_download_create_time ON flow_log_oss_download (create_time);
+CREATE INDEX IF NOT EXISTS idx_flow_log_oss_download_result ON flow_log_oss_download (result);
 
 -- >>> flow_log_service.sql
 -- Table: flow_log_service
@@ -610,27 +679,6 @@ COMMENT ON COLUMN flow_metrics_minute.update_time IS '最后更新时间';
 CREATE INDEX IF NOT EXISTS idx_flow_metrics_minute_bucket_start ON flow_metrics_minute (bucket_start);
 CREATE INDEX IF NOT EXISTS idx_flow_metrics_minute_asset_type_bucket_start ON flow_metrics_minute (asset_type, bucket_start);
 
--- >>> flow_model_directory.sql
--- Table: flow_model_directory
--- 数据模型目录表
-CREATE TABLE IF NOT EXISTS flow_model_directory (
-  id varchar(32) NOT NULL,
-  parent_id varchar(32),
-  name varchar(128) NOT NULL,
-  sort integer DEFAULT 0,
-  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
-  update_time timestamp DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id)
-);
-COMMENT ON TABLE flow_model_directory IS '数据模型目录表';
-COMMENT ON COLUMN flow_model_directory.id IS '主键（雪花ID）';
-COMMENT ON COLUMN flow_model_directory.parent_id IS '父节点ID，NULL 表示根节点';
-COMMENT ON COLUMN flow_model_directory.name IS '目录名称';
-COMMENT ON COLUMN flow_model_directory.sort IS '排序（升序）';
-COMMENT ON COLUMN flow_model_directory.create_time IS '创建时间';
-COMMENT ON COLUMN flow_model_directory.update_time IS '更新时间';
-CREATE INDEX IF NOT EXISTS idx_flow_model_directory_parent_id ON flow_model_directory (parent_id);
-
 -- >>> flow_model_info.sql
 -- Table: flow_model_info
 -- 数据模型信息表
@@ -764,44 +812,6 @@ CREATE INDEX IF NOT EXISTS idx_flow_mq_task_info_enabled ON flow_mq_task_info (e
 CREATE INDEX IF NOT EXISTS idx_flow_mq_task_info_publish_status ON flow_mq_task_info (publish_status);
 CREATE INDEX IF NOT EXISTS idx_flow_mq_task_info_connection_code ON flow_mq_task_info (connection_code);
 
--- >>> flow_mq_task_log.sql
--- Table: flow_mq_task_log
--- MQ 任务执行日志
-CREATE TABLE IF NOT EXISTS flow_mq_task_log (
-  id varchar(32) NOT NULL,
-  task_id varchar(32) NOT NULL,
-  task_name varchar(128),
-  topic varchar(255),
-  message_id varchar(255),
-  trigger_type varchar(16) NOT NULL DEFAULT 'MQ',
-  status varchar(16) NOT NULL,
-  cost_time_ms bigint,
-  error_msg text,
-  message_body text,
-  message_headers text,
-  trace_data text,
-  create_time timestamp,
-  PRIMARY KEY (id)
-);
-COMMENT ON TABLE flow_mq_task_log IS 'MQ 任务执行日志';
-COMMENT ON COLUMN flow_mq_task_log.id IS '雪花ID';
-COMMENT ON COLUMN flow_mq_task_log.task_id IS '关联 MQ 任务ID';
-COMMENT ON COLUMN flow_mq_task_log.task_name IS '任务名称（冗余）';
-COMMENT ON COLUMN flow_mq_task_log.topic IS '消息 topic / 队列名';
-COMMENT ON COLUMN flow_mq_task_log.message_id IS '消息ID（幂等去重键）';
-COMMENT ON COLUMN flow_mq_task_log.trigger_type IS '触发类型：MQ=消息触发, MANUAL=手动';
-COMMENT ON COLUMN flow_mq_task_log.status IS '执行状态：SUCCESS / FAILED / SKIPPED / RUNNING';
-COMMENT ON COLUMN flow_mq_task_log.cost_time_ms IS '耗时（毫秒）';
-COMMENT ON COLUMN flow_mq_task_log.error_msg IS '失败信息';
-COMMENT ON COLUMN flow_mq_task_log.message_body IS '原始消息体（JSON 解析前的字符串，支持超限截断）';
-COMMENT ON COLUMN flow_mq_task_log.message_headers IS '消息头 JSON 字典';
-COMMENT ON COLUMN flow_mq_task_log.trace_data IS 'FlowTrace JSON 快照（logMode=ALL 时记录）';
-COMMENT ON COLUMN flow_mq_task_log.create_time IS '执行开始时间';
-CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_create_time ON flow_mq_task_log (create_time);
-CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_status ON flow_mq_task_log (status);
-CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_task_id ON flow_mq_task_log (task_id);
-CREATE INDEX IF NOT EXISTS idx_flow_mq_task_log_message_id ON flow_mq_task_log (message_id);
-
 -- >>> flow_open_api_grant.sql
 -- Table: flow_open_api_grant
 -- 开放平台接口授权
@@ -929,37 +939,6 @@ COMMENT ON COLUMN flow_oss_connection.update_time IS '更新时间';
 CREATE INDEX IF NOT EXISTS idx_flow_oss_connection_code ON flow_oss_connection (code);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_connection_enabled ON flow_oss_connection (enabled);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_connection_create_time ON flow_oss_connection (create_time);
-
--- >>> flow_oss_download_log.sql
--- Table: flow_oss_download_log
--- OSS 隐私下载审计
-CREATE TABLE IF NOT EXISTS flow_oss_download_log (
-  id varchar(32) NOT NULL,
-  object_id varchar(32),
-  downloaded_by varchar(64),
-  downloaded_by_name varchar(128),
-  client_ip varchar(64),
-  user_agent varchar(512),
-  result varchar(16),
-  deny_reason varchar(512),
-  time_ms bigint,
-  create_time timestamp,
-  PRIMARY KEY (id)
-);
-COMMENT ON TABLE flow_oss_download_log IS 'OSS 隐私下载审计';
-COMMENT ON COLUMN flow_oss_download_log.id IS '雪花ID';
-COMMENT ON COLUMN flow_oss_download_log.object_id IS '台账 ID';
-COMMENT ON COLUMN flow_oss_download_log.downloaded_by IS '下载人 userId';
-COMMENT ON COLUMN flow_oss_download_log.downloaded_by_name IS '下载人展示名';
-COMMENT ON COLUMN flow_oss_download_log.client_ip IS '客户端 IP';
-COMMENT ON COLUMN flow_oss_download_log.user_agent IS 'User-Agent';
-COMMENT ON COLUMN flow_oss_download_log.result IS 'SUCCESS / DENIED / NOT_FOUND / ERROR';
-COMMENT ON COLUMN flow_oss_download_log.deny_reason IS '拒绝原因';
-COMMENT ON COLUMN flow_oss_download_log.time_ms IS '耗时毫秒';
-COMMENT ON COLUMN flow_oss_download_log.create_time IS '创建时间';
-CREATE INDEX IF NOT EXISTS idx_flow_oss_download_log_object_id ON flow_oss_download_log (object_id);
-CREATE INDEX IF NOT EXISTS idx_flow_oss_download_log_create_time ON flow_oss_download_log (create_time);
-CREATE INDEX IF NOT EXISTS idx_flow_oss_download_log_result ON flow_oss_download_log (result);
 
 -- >>> flow_oss_object_ref.sql
 -- Table: flow_oss_object_ref
@@ -1121,27 +1100,6 @@ COMMENT ON COLUMN flow_oss_upload_profile.update_time IS '更新时间';
 CREATE INDEX IF NOT EXISTS idx_flow_oss_upload_profile_code ON flow_oss_upload_profile (code);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_upload_profile_connection_code ON flow_oss_upload_profile (connection_code);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_upload_profile_enabled ON flow_oss_upload_profile (enabled);
-
--- >>> flow_page_directory.sql
--- Table: flow_page_directory
--- 页面目录表
-CREATE TABLE IF NOT EXISTS flow_page_directory (
-  id varchar(32) NOT NULL,
-  parent_id varchar(32),
-  name varchar(128) NOT NULL,
-  sort integer DEFAULT 0,
-  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
-  update_time timestamp DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id)
-);
-COMMENT ON TABLE flow_page_directory IS '页面目录表';
-COMMENT ON COLUMN flow_page_directory.id IS '主键（雪花ID）';
-COMMENT ON COLUMN flow_page_directory.parent_id IS '父节点ID，NULL 表示根节点';
-COMMENT ON COLUMN flow_page_directory.name IS '目录名称';
-COMMENT ON COLUMN flow_page_directory.sort IS '排序（升序）';
-COMMENT ON COLUMN flow_page_directory.create_time IS '创建时间';
-COMMENT ON COLUMN flow_page_directory.update_time IS '更新时间';
-CREATE INDEX IF NOT EXISTS idx_flow_page_directory_parent_id ON flow_page_directory (parent_id);
 
 -- >>> flow_page_info.sql
 -- Table: flow_page_info

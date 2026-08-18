@@ -127,7 +127,7 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
             Map<String, String> dsMap = new HashMap<>();
             try {
                 String inClause = String.join(",", Collections.nCopies(datasourceCodes.size(), "?"));
-                String sql = "SELECT code, name FROM flow_datasource WHERE code IN (" + inClause + ")";
+                String sql = "SELECT code, name FROM flow_db_connection WHERE code IN (" + inClause + ")";
                 jdbcTemplate.query(sql, datasourceCodes.toArray(), rs -> {
                     dsMap.put(rs.getString("code"), rs.getString("name"));
                 });
@@ -160,6 +160,7 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
         if (flowModelInfoRepository.existsByTableName(saveModelDTO.getTableName())) {
             throw new RuntimeException("物理表名已存在: " + saveModelDTO.getTableName());
         }
+        flowDirectoryService.assertDirectoryBizType(saveModelDTO.getDirectoryId(), "model");
 
         FlowModelInfoDO modelInfo = FlowModelInfoDO.builder()
                 .directoryId(saveModelDTO.getDirectoryId())
@@ -196,6 +197,7 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
             existing.setTableName(saveModelDTO.getTableName());
         }
         if (saveModelDTO.getDirectoryId() != null) {
+            flowDirectoryService.assertDirectoryBizType(saveModelDTO.getDirectoryId(), "model");
             existing.setDirectoryId(saveModelDTO.getDirectoryId());
         }
         if (saveModelDTO.getFieldsSchema() != null) {
@@ -232,6 +234,8 @@ public class FlowModelInfoServiceImpl implements FlowModelInfoService {
         }
         if ("0".equals(targetDirectoryId) || StrUtil.isBlank(targetDirectoryId)) {
             targetDirectoryId = null;
+        } else {
+            flowDirectoryService.assertDirectoryBizType(targetDirectoryId, "model");
         }
         flowModelInfoRepository.updateDirectoryIdByIds(targetDirectoryId, ids);
     }

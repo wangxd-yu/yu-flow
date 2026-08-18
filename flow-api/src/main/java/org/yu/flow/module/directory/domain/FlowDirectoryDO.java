@@ -41,7 +41,7 @@ public class FlowDirectoryDO {
     private String name;
 
     /**
-     * 业务域：api / task / service / model / page；
+     * 业务域：api / task / service / model / page / mqtask；
      * 空表示各模块共用（兼容历史数据）。
      */
     @Column(length = 32)

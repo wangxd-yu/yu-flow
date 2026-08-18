@@ -151,7 +151,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
      * 将所有启用的数据源加载到内存缓存。
      */
     private void loadAllEnabledDataSources() {
-        String sql = "SELECT " + BASE_COLUMNS + " FROM flow_datasource WHERE status = 1";
+        String sql = "SELECT " + BASE_COLUMNS + " FROM flow_db_connection WHERE status = 1";
         try {
             ensureSystemDefaultDataSource();
             // 默认将本机数据源存储到 map 中
@@ -182,14 +182,14 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private void ensureSystemDefaultDataSource() {
         try {
             List<Map<String, Object>> rows = defaultJdbcTemplate.queryForList(
-                    "SELECT id FROM flow_datasource WHERE code = ?",
+                    "SELECT id FROM flow_db_connection WHERE code = ?",
                     Constants.DEFAULT_DATASOURCE_NAME);
             if (rows != null && !rows.isEmpty()) {
                 String legacyId = String.valueOf(rows.get(0).get("id"));
                 if ("ds_system_default".equals(legacyId)) {
                     String snowId = SnowIdGenerator.getId();
                     int n = defaultJdbcTemplate.update(
-                            "UPDATE flow_datasource SET id = ? WHERE id = ? AND code = ?",
+                            "UPDATE flow_db_connection SET id = ? WHERE id = ? AND code = ?",
                             snowId, legacyId, Constants.DEFAULT_DATASOURCE_NAME);
                     if (n > 0) {
                         logger.info("系统默认数据源主键已从英文 id 迁移为雪花: {} -> {}", legacyId, snowId);
@@ -205,7 +205,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             String username = StrUtil.nullToEmpty(springDatasourceUsername);
             String wallJson = DataSourceWallConfig.enabledDefaults().toJson();
 
-            String sql = "INSERT INTO flow_datasource(id, name, code, db_type, driver_class_name, url, "
+            String sql = "INSERT INTO flow_db_connection(id, name, code, db_type, driver_class_name, url, "
                     + "username, password, initial_size, min_idle, max_active, status, wall_config, is_system, "
                     + "health_status, error_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
             defaultJdbcTemplate.update(sql,
@@ -243,7 +243,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
      * 根据 ID 加载单条数据源到内存（用于测试连接等临时场景）。
      */
     private void loadDataSourceById(String id) {
-        String sql = "SELECT " + BASE_COLUMNS + " FROM flow_datasource WHERE status = 1 AND id = ?";
+        String sql = "SELECT " + BASE_COLUMNS + " FROM flow_db_connection WHERE status = 1 AND id = ?";
         try {
             registerDefaultDataSource();
 
@@ -418,7 +418,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
     @Override
     public DataSourceDO getById(String id) {
-        String sql = "SELECT " + DETAIL_COLUMNS + " FROM flow_datasource WHERE id = ?";
+        String sql = "SELECT " + DETAIL_COLUMNS + " FROM flow_db_connection WHERE id = ?";
         DataSourceDO c = defaultJdbcTemplate.queryForObject(sql, (rs, rn) -> mapDetailRow(rs), id);
         if (c != null) {
             enrichSystemRuntimeConnection(c);
@@ -428,7 +428,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
     @Override
     public PageBean<DataSourceDO> findPage(String name, String dbType, int page, int size) {
-        StringBuilder sql = new StringBuilder("SELECT " + DETAIL_COLUMNS + " FROM flow_datasource WHERE 1=1");
+        StringBuilder sql = new StringBuilder("SELECT " + DETAIL_COLUMNS + " FROM flow_db_connection WHERE 1=1");
         List<Object> params = new ArrayList<>();
 
         if (StrUtil.isNotBlank(name)) {
@@ -532,7 +532,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             // code 唯一性校验
             if (StrUtil.isNotBlank(config.getCode())) {
                 Integer count = defaultJdbcTemplate.queryForObject(
-                        "SELECT COUNT(1) FROM flow_datasource WHERE code = ?",
+                        "SELECT COUNT(1) FROM flow_db_connection WHERE code = ?",
                         Integer.class, config.getCode());
                 if (count != null && count > 0) {
                     throw new IllegalArgumentException("数据源编码已存在: " + config.getCode());
@@ -553,7 +553,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
                     : DataSourceWallConfig.enabledDefaults();
             config.setWallConfig(wall);
 
-            String sql = "INSERT INTO flow_datasource(id, name, code, db_type, driver_class_name, url, "
+            String sql = "INSERT INTO flow_db_connection(id, name, code, db_type, driver_class_name, url, "
                     + "username, password, initial_size, min_idle, max_active, status, wall_config, is_system) "
                     + "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
@@ -595,7 +595,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
                         : DataSourceWallConfig.enabledDefaults();
                 String displayName = StrUtil.isNotBlank(config.getName()) ? config.getName() : existing.getName();
                 int affected = defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET name=?, wall_config=?, update_time=NOW() WHERE id=? AND is_system=1",
+                        "UPDATE flow_db_connection SET name=?, wall_config=?, update_time=NOW() WHERE id=? AND is_system=1",
                         displayName, wall.toJson(), config.getId());
                 if (affected > 0) {
                     existing.setName(displayName);
@@ -620,7 +620,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
             final int affected;
             if (StrUtil.isBlank(config.getPassword())) {
-                String sql = "UPDATE flow_datasource SET name=?, db_type=?, driver_class_name=?, url=?, "
+                String sql = "UPDATE flow_db_connection SET name=?, db_type=?, driver_class_name=?, url=?, "
                         + "username=?, initial_size=?, min_idle=?, max_active=?, wall_config=? "
                         + "WHERE id=? AND is_system=0";
                 affected = defaultJdbcTemplate.update(sql,
@@ -632,13 +632,13 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
                 if (affected > 0) {
                     String rawPassword = defaultJdbcTemplate.queryForObject(
-                            "SELECT password FROM flow_datasource WHERE id = ?",
+                            "SELECT password FROM flow_db_connection WHERE id = ?",
                             String.class, config.getId());
                     config.setPassword(aesEncryptUtil.decrypt(rawPassword));
                 }
             } else {
                 String encryptedPassword = aesEncryptUtil.encrypt(config.getPassword());
-                String sql = "UPDATE flow_datasource SET name=?, db_type=?, driver_class_name=?, url=?, "
+                String sql = "UPDATE flow_db_connection SET name=?, db_type=?, driver_class_name=?, url=?, "
                         + "username=?, password=?, initial_size=?, min_idle=?, max_active=?, wall_config=? "
                         + "WHERE id=? AND is_system=0";
                 affected = defaultJdbcTemplate.update(sql,
@@ -674,7 +674,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         try {
             String code = queryCodeById(id);
 
-            String sql = "DELETE FROM flow_datasource WHERE id = ? AND is_system = 0";
+            String sql = "DELETE FROM flow_db_connection WHERE id = ? AND is_system = 0";
             int affected = defaultJdbcTemplate.update(sql, id);
 
             if (affected > 0 && StrUtil.isNotBlank(code)) {
@@ -695,7 +695,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             throw new IllegalArgumentException("系统默认数据源始终启用，无需操作");
         }
         try {
-            String sql = "UPDATE flow_datasource SET status = 1, health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ? AND is_system = 0";
+            String sql = "UPDATE flow_db_connection SET status = 1, health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ? AND is_system = 0";
             int affected = defaultJdbcTemplate.update(sql, DataSourceDO.HEALTH_UNKNOWN, id);
 
             if (affected > 0) {
@@ -718,7 +718,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         try {
             String code = queryCodeById(id);
 
-            String sql = "UPDATE flow_datasource SET status = 0 WHERE id = ? AND is_system = 0";
+            String sql = "UPDATE flow_db_connection SET status = 0 WHERE id = ? AND is_system = 0";
             int affected = defaultJdbcTemplate.update(sql, id);
 
             if (affected > 0 && StrUtil.isNotBlank(code)) {
@@ -737,7 +737,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private boolean isSystemDataSourceId(String id) {
         try {
             Integer flag = defaultJdbcTemplate.queryForObject(
-                    "SELECT is_system FROM flow_datasource WHERE id = ?", Integer.class, id);
+                    "SELECT is_system FROM flow_db_connection WHERE id = ?", Integer.class, id);
             return flag != null && flag == 1;
         } catch (Exception e) {
             return false;
@@ -836,14 +836,14 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             try {
                 conn = defaultDataSource.getConnection();
                 defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
+                        "UPDATE flow_db_connection SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
                         DataSourceDO.HEALTH_HEALTHY, id);
                 logger.info("系统默认数据源连接测试成功, code={}", config.getCode());
                 return true;
             } catch (Exception e) {
                 String errMsg = StrUtil.maxLength(e.getMessage(), 500);
                 defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET health_status = ?, error_count = 1, last_error_msg = ? WHERE id = ?",
+                        "UPDATE flow_db_connection SET health_status = ?, error_count = 1, last_error_msg = ? WHERE id = ?",
                         DataSourceDO.HEALTH_UNHEALTHY, errMsg, id);
                 logger.error("系统默认数据源连接测试失败", e);
                 return false;
@@ -863,7 +863,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
             // 测试成功 → 更新健康状态，重置失败计数
             defaultJdbcTemplate.update(
-                    "UPDATE flow_datasource SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
+                    "UPDATE flow_db_connection SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
                     DataSourceDO.HEALTH_HEALTHY, id);
 
             // 如果之前处于熔断状态（内存中已被移除），恢复连接池
@@ -888,7 +888,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             if (newErrorCount >= DataSourceDO.CIRCUIT_OPEN_THRESHOLD) {
                 // 触发熔断 → 标记为 CIRCUIT_OPEN，从内存中移除连接池以停止 Druid 的空闲连接探测
                 defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET health_status = ?, error_count = ?, last_error_msg = ? WHERE id = ?",
+                        "UPDATE flow_db_connection SET health_status = ?, error_count = ?, last_error_msg = ? WHERE id = ?",
                         DataSourceDO.HEALTH_CIRCUIT_OPEN, newErrorCount, errMsg, id);
 
                 if (StrUtil.isNotBlank(config.getCode())) {
@@ -899,7 +899,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             } else {
                 // 未达阈值 → 标记为 UNHEALTHY
                 defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET health_status = ?, error_count = ?, last_error_msg = ? WHERE id = ?",
+                        "UPDATE flow_db_connection SET health_status = ?, error_count = ?, last_error_msg = ? WHERE id = ?",
                         DataSourceDO.HEALTH_UNHEALTHY, newErrorCount, errMsg, id);
             }
             return false;
@@ -926,7 +926,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
             if (StrUtil.isBlank(testPassword) && StrUtil.isNotBlank(dto.getId())) {
                 // 编辑模式下，如果前端未填新密码，就用传入的 ID 从数据库查现有密码
                 String rawPassword = defaultJdbcTemplate.queryForObject(
-                        "SELECT password FROM flow_datasource WHERE id = ?",
+                        "SELECT password FROM flow_db_connection WHERE id = ?",
                         String.class, dto.getId());
                 if (StrUtil.isNotBlank(rawPassword)) {
                     testPassword = aesEncryptUtil.decrypt(rawPassword);
@@ -993,7 +993,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
      */
     private void circuitBreakerProbe() {
         String sql = "SELECT " + BASE_COLUMNS + ", error_count, health_status "
-                + "FROM flow_datasource WHERE status = 1 AND is_system = 0 AND health_status = ?";
+                + "FROM flow_db_connection WHERE status = 1 AND is_system = 0 AND health_status = ?";
 
         List<DataSourceDO> circuitOpenList;
         try {
@@ -1024,7 +1024,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
 
                 // 探测成功 → 恢复为 HEALTHY
                 defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
+                        "UPDATE flow_db_connection SET health_status = ?, error_count = 0, last_error_msg = NULL WHERE id = ?",
                         DataSourceDO.HEALTH_HEALTHY, config.getId());
 
                 // 重新注册连接池到内存
@@ -1036,7 +1036,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
                 // 探测仍然失败 → 仅更新 errorCount，保持 CIRCUIT_OPEN
                 String errMsg = StrUtil.maxLength(e.getMessage(), 500);
                 defaultJdbcTemplate.update(
-                        "UPDATE flow_datasource SET error_count = error_count + 1, last_error_msg = ? WHERE id = ?",
+                        "UPDATE flow_db_connection SET error_count = error_count + 1, last_error_msg = ? WHERE id = ?",
                         errMsg, config.getId());
                 logger.debug("熔断探测：数据源仍不可达, code={}, name={}, msg={}",
                         config.getCode(), config.getName(), errMsg);
@@ -1055,7 +1055,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
      */
     private void healthCheckAllEnabled() {
         // 查询所有已启用且非熔断状态的数据源 ID
-        String sql = "SELECT id, code, name FROM flow_datasource WHERE status = 1 AND is_system = 0 "
+        String sql = "SELECT id, code, name FROM flow_db_connection WHERE status = 1 AND is_system = 0 "
                 + "AND (health_status IS NULL OR health_status != ?)";
         List<Map<String, Object>> enabledList;
         try {
@@ -1092,7 +1092,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private String queryCodeById(String id) {
         try {
             return defaultJdbcTemplate.queryForObject(
-                    "SELECT code FROM flow_datasource WHERE id = ?",
+                    "SELECT code FROM flow_db_connection WHERE id = ?",
                     String.class, id);
         } catch (Exception e) {
             logger.warn("查询数据源 code 失败, id={}", id, e);
@@ -1106,7 +1106,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     private Integer queryErrorCountById(String id) {
         try {
             return defaultJdbcTemplate.queryForObject(
-                    "SELECT error_count FROM flow_datasource WHERE id = ?",
+                    "SELECT error_count FROM flow_db_connection WHERE id = ?",
                     Integer.class, id);
         } catch (Exception e) {
             logger.warn("查询数据源 error_count 失败, id={}", id, e);
@@ -1119,7 +1119,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
      * 用于 testConnection 等需要临时创建连接池的场景。
      */
     private DataSourceDO queryDataSourceById(String id) {
-        String sql = "SELECT " + BASE_COLUMNS + " FROM flow_datasource WHERE id = ?";
+        String sql = "SELECT " + BASE_COLUMNS + " FROM flow_db_connection WHERE id = ?";
         try {
             return defaultJdbcTemplate.queryForObject(sql, (rs, rn) -> {
                 return mapRowToDataSourceDO(rs);
@@ -1141,7 +1141,7 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
         // 兜底：从数据库查询
         try {
             return defaultJdbcTemplate.queryForObject(
-                    "SELECT db_type FROM flow_datasource WHERE code = ?",
+                    "SELECT db_type FROM flow_db_connection WHERE code = ?",
                     String.class, code);
         } catch (Exception e) {
             logger.warn("查询数据库类型失败, code={}", code, e);

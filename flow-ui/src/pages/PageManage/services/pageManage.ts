@@ -1,40 +1,6 @@
 import { request } from '@umijs/max';
 
 // ================================================================
-// 目录管理 API
-// ================================================================
-
-/** 获取目录树 */
-export async function getDirectoryTree() {
-  return request<any[]>('/flow-api/page-directories/tree', {
-    method: 'GET',
-  });
-}
-
-/** 新增目录 */
-export async function addDirectory(data: { parentId?: string; name: string; sort?: number }) {
-  return request('/flow-api/page-directories', {
-    method: 'POST',
-    data,
-  });
-}
-
-/** 修改目录 */
-export async function updateDirectory(id: string, data: { name?: string; sort?: number }) {
-  return request(`/flow-api/page-directories/${id}`, {
-    method: 'PUT',
-    data,
-  });
-}
-
-/** 删除目录 */
-export async function deleteDirectory(id: string) {
-  return request(`/flow-api/page-directories/${id}`, {
-    method: 'DELETE',
-  });
-}
-
-// ================================================================
 // 页面管理 API
 // ================================================================
 

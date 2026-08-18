@@ -18,7 +18,7 @@ COMMENT ON TABLE flow_directory IS '全局目录表';
 COMMENT ON COLUMN flow_directory.id IS '雪花ID';
 COMMENT ON COLUMN flow_directory.parent_id IS '父节点ID，NULL 表示根节点';
 COMMENT ON COLUMN flow_directory.name IS '目录名称';
-COMMENT ON COLUMN flow_directory.biz_type IS '业务域：api/task/service/model/page，空=共用';
+COMMENT ON COLUMN flow_directory.biz_type IS '业务域：api/task/service/model/page/mqtask，空=共用';
 COMMENT ON COLUMN flow_directory.sort IS '排序（升序）';
 COMMENT ON COLUMN flow_directory.path_prefix IS 'URL路径前缀，可空；新建接口默认继承';
 COMMENT ON COLUMN flow_directory.security_config IS '目录级入站防护JSON，结构同ApiSecurityConfig';

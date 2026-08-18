@@ -1,0 +1,40 @@
+-- 2026-08-18：JDBC 连接表对齐 oss/mq 的 *_connection 命名
+-- 新建 flow_db_connection，从 flow_datasource 复制结构+数据
+-- 现网旧表 flow_datasource 保留不删（应用改读新表）
+-- 与 db/migration-pg/V2026_08_18_04__copy_datasource_to_db_connection.sql 语义等价
+
+CREATE TABLE IF NOT EXISTS `flow_db_connection` (
+  `id` varchar(64) NOT NULL COMMENT '主键ID',
+  `code` varchar(50) COMMENT '连接全局唯一编码，用于跨环境关联',
+  `name` varchar(100) NOT NULL COMMENT '连接名称',
+  `db_type` varchar(20) NOT NULL COMMENT '数据库类型(mysql/postgresql/highgo)',
+  `driver_class_name` varchar(200) NOT NULL COMMENT '驱动类名',
+  `url` varchar(500) NOT NULL COMMENT 'JDBC URL',
+  `username` varchar(100) NOT NULL COMMENT '用户名',
+  `password` varchar(100) NOT NULL COMMENT '密码',
+  `initial_size` int DEFAULT 5 COMMENT '初始连接数',
+  `min_idle` int DEFAULT 5 COMMENT '最小空闲连接',
+  `max_active` int DEFAULT 20 COMMENT '最大活动连接',
+  `status` tinyint DEFAULT 1 COMMENT '状态(0-停用,1-启用)',
+  `wall_config` text COMMENT 'SQL安全墙JSON(DataSourceWallConfig)',
+  `is_system` tinyint NOT NULL DEFAULT 0 COMMENT '系统连接(1=不可删改连接，如[DEFAULT])',
+  `health_status` varchar(20) NOT NULL DEFAULT 'UNKNOWN' COMMENT '连接健康度：HEALTHY-健康, UNHEALTHY-异常, UNKNOWN-未知',
+  `error_count` int NOT NULL DEFAULT 0 COMMENT '连续连接失败次数',
+  `last_error_msg` text COMMENT '最后一次连接失败的异常堆栈/简述',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_flow_db_connection_name` (`name`),
+  UNIQUE KEY `uk_flow_db_connection_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='JDBC 数据库连接配置';
+
+SET @old := (
+  SELECT COUNT(*) FROM information_schema.TABLES
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flow_datasource'
+);
+SET @ddl := IF(@old > 0,
+  'INSERT INTO `flow_db_connection` (`id`, `code`, `name`, `db_type`, `driver_class_name`, `url`, `username`, `password`, `initial_size`, `min_idle`, `max_active`, `status`, `wall_config`, `is_system`, `health_status`, `error_count`, `last_error_msg`, `create_time`, `update_time`) SELECT `id`, `code`, `name`, `db_type`, `driver_class_name`, `url`, `username`, `password`, `initial_size`, `min_idle`, `max_active`, `status`, `wall_config`, `is_system`, `health_status`, `error_count`, `last_error_msg`, `create_time`, `update_time` FROM `flow_datasource` s WHERE NOT EXISTS (SELECT 1 FROM `flow_db_connection` t WHERE t.`id` = s.`id`) AND NOT EXISTS (SELECT 1 FROM `flow_db_connection` t WHERE t.`code` <=> s.`code` AND s.`code` IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM `flow_db_connection` t WHERE t.`name` = s.`name`)',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

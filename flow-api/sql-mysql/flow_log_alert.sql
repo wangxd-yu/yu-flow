@@ -1,6 +1,6 @@
--- Table: flow_alert_event
+-- Table: flow_log_alert
 -- 告警事件历史
-CREATE TABLE IF NOT EXISTS `flow_alert_event` (
+CREATE TABLE IF NOT EXISTS `flow_log_alert` (
   `id` varchar(64) NOT NULL COMMENT '主键',
   `rule_id` varchar(64) COMMENT '规则 ID，SysConfig 兜底为空',
   `rule_name` varchar(100),
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS `flow_alert_event` (
   `error_msg` varchar(500),
   `fired_at` datetime NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_flow_alert_event_fired_at` (`fired_at`),
-  KEY `idx_flow_alert_event_rule_id` (`rule_id`),
-  KEY `idx_flow_alert_event_status` (`status`)
+  KEY `idx_flow_log_alert_fired_at` (`fired_at`),
+  KEY `idx_flow_log_alert_rule_id` (`rule_id`),
+  KEY `idx_flow_log_alert_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警事件历史';

@@ -22,7 +22,14 @@ import java.util.List;
 @YuFlowApi
 @RestController
 @RequestMapping("flow-api/directories")
-@RequirePerm({"flow:api:view", "flow:api:write"})
+@RequirePerm({
+        "flow:api:view", "flow:api:write",
+        "flow:task:view", "flow:task:write",
+        "flow:service:view", "flow:service:write",
+        "flow:model:view", "flow:model:write",
+        "flow:page:view", "flow:page:write",
+        "flow:mq:view", "flow:mq:write"
+})
 public class FlowDirectoryController {
 
     @Resource
@@ -31,7 +38,7 @@ public class FlowDirectoryController {
     /**
      * 获取目录树结构。
      *
-     * @param bizType 可选业务域过滤：api / task / service / model / page
+     * @param bizType 可选业务域过滤：api / task / service / model / page / mqtask
      */
     @GetMapping("/tree")
     public R<List<FlowDirectoryDTO>> getTree(@RequestParam(required = false) String bizType) {

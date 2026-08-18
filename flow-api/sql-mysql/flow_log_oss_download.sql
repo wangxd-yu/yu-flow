@@ -1,6 +1,6 @@
--- Table: flow_oss_download_log
+-- Table: flow_log_oss_download
 -- OSS 隐私下载审计
-CREATE TABLE IF NOT EXISTS `flow_oss_download_log` (
+CREATE TABLE IF NOT EXISTS `flow_log_oss_download` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
   `object_id` varchar(32) COMMENT '台账 ID',
   `downloaded_by` varchar(64) COMMENT '下载人 userId',
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS `flow_oss_download_log` (
   `time_ms` bigint COMMENT '耗时毫秒',
   `create_time` datetime COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  KEY `idx_flow_oss_download_log_object_id` (`object_id`),
-  KEY `idx_flow_oss_download_log_create_time` (`create_time`),
-  KEY `idx_flow_oss_download_log_result` (`result`)
+  KEY `idx_flow_log_oss_download_object_id` (`object_id`),
+  KEY `idx_flow_log_oss_download_create_time` (`create_time`),
+  KEY `idx_flow_log_oss_download_result` (`result`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 隐私下载审计';

@@ -23,7 +23,7 @@ import java.time.ZoneId;
 @AllArgsConstructor
 @Accessors(chain = true)
 @Entity
-@Table(name = "flow_mq_task_log")
+@Table(name = "flow_log_mq_task")
 public class FlowMqTaskLogDO {
 
     @Id

@@ -54,11 +54,10 @@ public class DemoModeGuard {
         log.warn("[DemoModeGuard] *** 演示模式已开启 *** 正在锁定当前所有系统预置资产...");
         loadProtectedIds("flow_api_info", "API 接口");
         loadProtectedIds("flow_model_info", "数据模型");
-        loadProtectedIds("flow_datasource", "数据源");
+        loadProtectedIds("flow_db_connection", "数据源");
         loadProtectedIds("flow_directory", "目录");
         loadProtectedIds("flow_sys_macro", "系统宏定义");
         loadProtectedIds("flow_page_info", "页面设计");
-        loadProtectedIds("flow_page_directory", "页面目录");
         loadProtectedIds("flow_sys_config", "系统参数");
         loadProtectedIds("flow_task_info", "定时任务");
         loadProtectedIds("flow_service_info", "服务编排");

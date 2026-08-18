@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name = "flow_alert_event")
+@Table(name = "flow_log_alert")
 public class AlertEventDO {
 
     @Id
