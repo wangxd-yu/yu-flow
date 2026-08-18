@@ -44,7 +44,7 @@ public class ForEachStepExecutor extends AbstractStepExecutor<ForEachStep> {
         }
 
         String bodyStartId = resolveFirstStepId(step.getNext().get(PortNames.ITEM));
-        log.info("ForEachStep [{}]: 串行循环 length={}, body={}", step.getId(), items.size(), bodyStartId);
+        log.debug("ForEachStep [{}]: 串行循环 length={}, body={}", step.getId(), items.size(), bodyStartId);
 
         for (int i = 0; i < items.size(); i++) {
             Object item = items.get(i);

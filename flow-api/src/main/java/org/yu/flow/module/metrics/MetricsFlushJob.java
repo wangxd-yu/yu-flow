@@ -127,7 +127,7 @@ public class MetricsFlushJob {
             }
         }
         if (flushed > 0) {
-            log.info("[MetricsFlushJob] 已刷入 {} 个分钟桶", flushed);
+            log.debug("[MetricsFlushJob] 已刷入 {} 个分钟桶", flushed);
         }
     }
 
@@ -157,7 +157,7 @@ public class MetricsFlushJob {
             }
         }
         if (flushed > 0) {
-            log.info("[MetricsFlushJob] 已刷入 {} 条计量 meta", flushed);
+            log.debug("[MetricsFlushJob] 已刷入 {} 条计量 meta", flushed);
         }
     }
 

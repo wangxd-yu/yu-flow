@@ -35,7 +35,9 @@ public class TemplateStepExecutor extends AbstractStepExecutor<TemplateStep> {
             throw new FlowException("TEMPLATE_EMPTY", "Template 节点 '" + step.getId() + "' 模版内容为空");
         }
 
-        log.info("Template [{}]: 原始模版: {}", step.getId(), template);
+        if (log.isDebugEnabled()) {
+            log.debug("Template [{}]: 原始模版: {}", step.getId(), template);
+        }
 
         // 1. 先处理 inputs ETL (如果有)
         Map<String, Object> localVars = this.prepareInputs(step, context, flow);
@@ -43,7 +45,9 @@ public class TemplateStepExecutor extends AbstractStepExecutor<TemplateStep> {
         // 2. 替换 {{key}} 占位符
         String result = replaceTemplate(template, localVars, context);
 
-        log.info("Template [{}]: 输出: {}", step.getId(), result);
+        if (log.isDebugEnabled()) {
+            log.debug("Template [{}]: 输出: {}", step.getId(), result);
+        }
 
         // 3. 存入上下文
         Map<String, Object> stepResult = new HashMap<>();

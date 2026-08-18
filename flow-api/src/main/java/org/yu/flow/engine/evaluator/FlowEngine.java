@@ -384,10 +384,10 @@ public class FlowEngine {
             ForStepExecutor.LoopBarrier pendingBarrier = findPendingBarrier(context);
             if (pendingBarrier != null) {
                 long waitTimeout = pendingBarrier.timeoutMs > 0 ? pendingBarrier.timeoutMs : 30_000L;
-                log.info("[execute] 检测到 LoopBarrier [for={}, collect={}]，主线程等待 {}ms",
+                log.debug("[execute] 检测到 LoopBarrier [for={}, collect={}]，主线程等待 {}ms",
                         pendingBarrier.forStepId, pendingBarrier.collectStepId, waitTimeout);
                 pendingBarrier.awaitCompletion(waitTimeout);
-                log.info("[execute] LoopBarrier 完成，主线程继续读取结果");
+                log.debug("[execute] LoopBarrier 完成，主线程继续读取结果");
             }
 
             // 【完全接管并自定义 HTTP 响应 (绕过全局拦截器)】
@@ -669,7 +669,7 @@ public class FlowEngine {
                 for (String nodeId : convergenceNodeIds) {
                     Step convergenceNode = findStepById(nodeId, flowDefinition);
                     if (!context.isStepCompleted(convergenceNode.getId()) && allParentsCompleted(convergenceNode, context, parentMap, parallelSiblings)) {
-                        log.info("汇聚节点 {} 的所有父节点已完成，继续执行", nodeId);
+                        log.debug("汇聚节点 {} 的所有父节点已完成，继续执行", nodeId);
                         currentStep = convergenceNode;
                         break; // 找到第一个可执行的汇聚节点就执行
                     }

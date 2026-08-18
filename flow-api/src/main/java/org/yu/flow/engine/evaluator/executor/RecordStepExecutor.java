@@ -75,7 +75,7 @@ public class RecordStepExecutor extends AbstractStepExecutor<RecordStep> {
         if (record.isEmpty()) {
             log.warn("Record [{}]: schema/inputs 均为空", step.getId());
         } else {
-            log.info("Record [{}]: 构造对象 keys={}", step.getId(), record.keySet());
+            log.debug("Record [{}]: 构造对象 keys={}", step.getId(), record.keySet());
         }
 
         Map<String, Object> stepResult = new LinkedHashMap<>();

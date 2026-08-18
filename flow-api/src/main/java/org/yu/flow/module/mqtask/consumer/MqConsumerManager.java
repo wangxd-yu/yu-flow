@@ -386,7 +386,7 @@ public class MqConsumerManager {
         String traceData = null;
         String body = message != null ? message.getBody() : null;
 
-        log.info("[MqConsumerManager] 开始执行任务: taskId={}, name={}, topic={}, messageId={}, triggerType={}",
+        log.debug("[MqConsumerManager] 开始执行任务: taskId={}, name={}, topic={}, messageId={}, triggerType={}",
                 latestTask.getId(), publishedName,
                 message != null ? message.getTopic() : null,
                 message != null ? message.getMessageId() : null, triggerType);
@@ -478,8 +478,13 @@ public class MqConsumerManager {
             }
         }
 
-        log.info("[MqConsumerManager] 任务执行完成: taskId={}, status={}, costTimeMs={}",
-                latestTask.getId(), status, costTimeMs);
+        if (isSuccess) {
+            log.debug("[MqConsumerManager] 任务执行完成: taskId={}, status={}, costTimeMs={}",
+                    latestTask.getId(), status, costTimeMs);
+        } else {
+            log.info("[MqConsumerManager] 任务执行完成: taskId={}, status={}, costTimeMs={}",
+                    latestTask.getId(), status, costTimeMs);
+        }
     }
 
     private String forwardDeadLetter(PublishedSnapshot snap, String deadLetterTopic,

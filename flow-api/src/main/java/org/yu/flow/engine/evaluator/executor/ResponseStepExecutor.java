@@ -58,7 +58,9 @@ public class ResponseStepExecutor extends AbstractStepExecutor<ResponseStep> {
         // 5. 构造包含解析后最终结果对象（ResponseResult 包装类）
         ResponseResult responseResult = new ResponseResult(statusCode, headers, body);
 
-        log.info("Response [{}]: status={}, headers={}, body={}", step.getId(), statusCode, headers, body);
+        if (log.isDebugEnabled()) {
+            log.debug("Response [{}]: status={}, headers={}, body={}", step.getId(), statusCode, headers, body);
+        }
 
         // 6. 存入上下文，标记为流程最终响应
         context.setVar(step.getId(), responseResult);

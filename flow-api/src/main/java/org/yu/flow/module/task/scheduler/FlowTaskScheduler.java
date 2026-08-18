@@ -288,7 +288,7 @@ public class FlowTaskScheduler {
         PublishedSnapshot snap = resolvePublishedSnapshot(latestTask);
         String publishedName = snap.name() != null ? snap.name() : latestTask.getName();
 
-        log.info("[FlowTaskScheduler] 开始执行任务: taskId={}, name={}, triggerType={}",
+        log.debug("[FlowTaskScheduler] 开始执行任务: taskId={}, name={}, triggerType={}",
                 latestTask.getId(), publishedName, triggerType);
 
         try {
@@ -360,8 +360,13 @@ public class FlowTaskScheduler {
             }
         }
 
-        log.info("[FlowTaskScheduler] 任务执行完成: taskId={}, status={}, costTimeMs={}",
-                latestTask.getId(), status, costTimeMs);
+        if (isSuccess) {
+            log.debug("[FlowTaskScheduler] 任务执行完成: taskId={}, status={}, costTimeMs={}",
+                    latestTask.getId(), status, costTimeMs);
+        } else {
+            log.info("[FlowTaskScheduler] 任务执行完成: taskId={}, status={}, costTimeMs={}",
+                    latestTask.getId(), status, costTimeMs);
+        }
         return "SUCCESS".equals(status);
     }
 

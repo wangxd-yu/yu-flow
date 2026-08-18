@@ -45,7 +45,7 @@ public class JsonMapStepExecutor extends AbstractStepExecutor<JsonMapStep> {
         Map<String, Object> stepResult = new LinkedHashMap<>();
         stepResult.put(PortNames.OUT, mapped);
         context.setVar(step.getId(), stepResult);
-        log.info("JsonMap [{}]: keys={}", step.getId(), mapped.keySet());
+        log.debug("JsonMap [{}]: keys={}", step.getId(), mapped.keySet());
         return PortNames.OUT;
     }
 

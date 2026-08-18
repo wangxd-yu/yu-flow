@@ -92,7 +92,7 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
         String collectStepId = step.getCollectStepId();
         String barrierKey = BARRIER_KEY_PREFIX + (collectStepId != null ? collectStepId : step.getId());
 
-        log.info("ForStep [{}] 启动: 数组长度={}, collectStepId={}", step.getId(),
+        log.debug("ForStep [{}] 启动: 数组长度={}, collectStepId={}", step.getId(),
                 items == null ? "null" : items.size(), collectStepId);
 
         // ====================================================================
@@ -124,7 +124,7 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
         // Step 3: 空数组特殊路径（防止 CollectStep 永久挂起）
         // ====================================================================
         if (totalCount == 0) {
-            log.warn("ForStep [{}]: 空数组，直接触发 CollectStep [{}] 完成信号", step.getId(), collectStepId);
+            log.debug("ForStep [{}]: 空数组，直接触发 CollectStep [{}] 完成信号", step.getId(), collectStepId);
             triggerEmptyCollect(step, collectStepId, barrier, context, flow);
             // 主干 return null → runFlow 循环退出
             // engine.execute() 会检测 barrier.completionFuture（已完成），立即读取结果
@@ -153,7 +153,7 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
         //   d) 若此分支为"最后一条"（CollectStepExecutor 已接管主流程），
         //      则分支任务 lambda 结束时将 branchContext 的输出合并回 mainContext
         // ====================================================================
-        log.info("ForStep [{}]: 发射 {} 条并发分支，item 端口首节点=[{}]，maxInFlight={}",
+        log.debug("ForStep [{}]: 发射 {} 条并发分支，item 端口首节点=[{}]，maxInFlight={}",
                 step.getId(), totalCount, itemStartStepId, maxInFlight > 0 ? maxInFlight : "unlimited");
 
         Semaphore inFlight = maxInFlight > 0 ? new Semaphore(maxInFlight) : null;
@@ -233,7 +233,7 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
         // 主调用线程返回 null 后，FlowEngine.runFlow() 的 while 循环终止。
         // FlowEngine.execute() 随后会检测主上下文中的 LoopBarrier 并阻塞等待。
         // ====================================================================
-        log.info("ForStep [{}]: 主线程退出（return null），{} 条分支异步执行中", step.getId(), totalCount);
+        log.debug("ForStep [{}]: 主线程退出（return null），{} 条分支异步执行中", step.getId(), totalCount);
         return null;
     }
 
@@ -263,7 +263,7 @@ public class ForStepExecutor extends AbstractStepExecutor<ForStep> {
                     Object finishTarget = collectStep.getNext().get("finish");
                     String firstDownstream = resolveFirstStepId(listTarget != null ? listTarget : finishTarget);
                     if (firstDownstream != null) {
-                        log.info("ForStep [{}]: 空数组旁路，从 CollectStep 下游 [{}] 继续", step.getId(), firstDownstream);
+                        log.debug("ForStep [{}]: 空数组旁路，从 CollectStep 下游 [{}] 继续", step.getId(), firstDownstream);
                         engine.runBranchFlow(firstDownstream, context, flow);
                     }
                 }

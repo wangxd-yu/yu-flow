@@ -102,7 +102,7 @@ public class CollectStepExecutor extends AbstractStepExecutor<CollectStep> {
         // ====================================================================
         int arrivedCount = barrier.counter.incrementAndGet();
 
-        log.info("CollectStep [{}]: 分支到达 {}/{}", stepId, arrivedCount, barrier.totalCount);
+        log.debug("CollectStep [{}]: 分支到达 {}/{}", stepId, arrivedCount, barrier.totalCount);
 
         if (arrivedCount < barrier.totalCount) {
             // ================================================================
@@ -127,7 +127,7 @@ public class CollectStepExecutor extends AbstractStepExecutor<CollectStep> {
         //   4. 下游执行完毕后，调用 completionFuture.complete() 唤醒阻塞中的主线程
         //   5. return null，自身的 runBranchFlow 干净退出
         // ====================================================================
-        log.info("CollectStep [{}]: 【线程接力】最后一条线程到达 ({}/{})，开始聚合并接管主流程",
+        log.debug("CollectStep [{}]: 【线程接力】最后一条线程到达 ({}/{})，开始聚合并接管主流程",
                 stepId, arrivedCount, barrier.totalCount);
 
         performHandoff(step, context, flow, barrier);
@@ -170,7 +170,7 @@ public class CollectStepExecutor extends AbstractStepExecutor<CollectStep> {
         resultMap.put("hasError", hasError);
         barrier.mainContext.setVar(stepId, resultMap);
 
-        log.info("CollectStep [{}]: 聚合完成，count={}, hasError={}，写入主上下文", stepId, finalList.size(), hasError);
+        log.debug("CollectStep [{}]: 聚合完成，count={}, hasError={}，写入主上下文", stepId, finalList.size(), hasError);
 
         // ---- 3. 确定 CollectStep 的下游节点（list 优先，其次 finish）----
         String downstreamStepId = null;
@@ -189,9 +189,9 @@ public class CollectStepExecutor extends AbstractStepExecutor<CollectStep> {
         //       engine.execute() 的主线程唤醒后可以直接读取。
         if (downstreamStepId != null) {
             try {
-                log.info("CollectStep [{}]: 线程接力 → 执行下游节点 [{}] (使用主上下文)", stepId, downstreamStepId);
+                log.debug("CollectStep [{}]: 线程接力 → 执行下游节点 [{}] (使用主上下文)", stepId, downstreamStepId);
                 engine.runBranchFlow(downstreamStepId, barrier.mainContext, flow);
-                log.info("CollectStep [{}]: 下游执行完毕", stepId);
+                log.debug("CollectStep [{}]: 下游执行完毕", stepId);
             } catch (Exception e) {
                 log.error("CollectStep [{}]: 下游执行异常: {}", stepId, e.getMessage(), e);
             }
@@ -203,7 +203,7 @@ public class CollectStepExecutor extends AbstractStepExecutor<CollectStep> {
         //       在下游执行完毕后再 complete，确保主线程唤醒时 mainContext.output 已就绪。
         if (!barrier.completionFuture.isDone()) {
             barrier.completionFuture.complete(null);
-            log.info("CollectStep [{}]: completionFuture.complete() → 主线程唤醒", stepId);
+            log.debug("CollectStep [{}]: completionFuture.complete() → 主线程唤醒", stepId);
         }
     }
 
