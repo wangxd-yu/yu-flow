@@ -47,12 +47,7 @@ public class FlowRedisServeUtil {
             // 写入新数据到临时键
             for (FlowApiDO api : publishApis) {
                 // 容错处理：去空格、确保以 / 开头
-                String url = api.getUrl() == null ? "/" : api.getUrl().trim();
-                if (!url.startsWith("/")) {
-                    url = "/" + url;
-                }
-                String hashKey = api.getMethod() + "-" + url;
-                FlowRedisUtil.hset(API_TEMP_CACHE_KEY, hashKey, api);
+                FlowRedisUtil.hset(API_TEMP_CACHE_KEY, apiMapHashField(api.getMethod(), api.getUrl()), api);
             }
             // 原子替换原键
             FlowRedisUtil.delete(API_CACHE_KEY);
@@ -63,18 +58,19 @@ public class FlowRedisServeUtil {
         }
     }
 
-    // 常量定义
-    /**
-     * 接口map
-     */
-    private static final String API_CACHE_KEY = "flow:api:map";
-    /**
-     * 接口临时map，更新时暂存使用
-     */
+    /** 已发布 API 路由 HASH（field = METHOD-/path） */
+    public static final String API_CACHE_KEY = "flow:api:map";
+    /** 刷新时暂存，rename 到 {@link #API_CACHE_KEY} */
     private static final String API_TEMP_CACHE_KEY = "flow:api:map:temp";
 
     /**
-     * flow-ui 前端管理页面是否开启
+     * HASH field：与写入侧保持一致，路径必须以 {@code /} 开头。
      */
-    private static final String UI_ENABLED = "flow:uiEnable";
+    public static String apiMapHashField(String method, String url) {
+        String path = url == null ? "/" : url.trim();
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        return (method == null ? "" : method) + "-" + path;
+    }
 }

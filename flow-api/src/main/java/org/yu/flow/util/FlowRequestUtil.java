@@ -1,6 +1,7 @@
 package org.yu.flow.util;
 
 import org.yu.flow.module.api.domain.FlowApiDO;
+import org.yu.flow.cache.FlowRedisServeUtil;
 import org.yu.flow.cache.FlowRedisUtil;
 import org.springframework.web.util.UrlPathHelper;
 
@@ -27,10 +28,11 @@ public class FlowRequestUtil {
         // 是否解码 URL（默认 true）
         urlPathHelper.setUrlDecode(false);
         String requestPath = urlPathHelper.getPathWithinApplication(request);
+        String hashField = FlowRedisServeUtil.apiMapHashField(requestMethod, requestPath);
 
-        boolean b = FlowRedisUtil.hhasKey("flow::api::map", requestMethod + "-" + requestPath.substring(1));
+        boolean b = FlowRedisUtil.hhasKey(FlowRedisServeUtil.API_CACHE_KEY, hashField);
         if (b) {
-            FlowApiDO flowApiDO = FlowRedisUtil.hget("flow::api::map", requestMethod + "-" + requestPath.substring(1), FlowApiDO.class);
+            FlowApiDO flowApiDO = FlowRedisUtil.hget(FlowRedisServeUtil.API_CACHE_KEY, hashField, FlowApiDO.class);
             return !Objects.isNull(flowApiDO) && flowApiDO.getTags() != null && flowApiDO.getTags().contains(tag);
         }
         return false;

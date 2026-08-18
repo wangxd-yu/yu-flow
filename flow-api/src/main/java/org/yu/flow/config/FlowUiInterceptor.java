@@ -46,9 +46,10 @@ import jakarta.servlet.http.HttpServletResponse;
  *
  * <h3>动态控制方式</h3>
  * <ul>
- *   <li><b>开启 UI</b>：在 Redis 中执行 {@code SET flow:uiEnable true}</li>
- *   <li><b>关闭 UI</b>：在 Redis 中执行 {@code SET flow:uiEnable false}</li>
- *   <li><b>恢复默认</b>：在 Redis 中执行 {@code DEL flow:uiEnable}（将降级使用 yml 配置）</li>
+ *   <li><b>开启 UI</b>：在 Redis 中执行 {@code SET flow:ui:enable true}</li>
+ *   <li><b>关闭 UI</b>：在 Redis 中执行 {@code SET flow:ui:enable false}</li>
+ *   <li><b>恢复默认</b>：在 Redis 中执行 {@code DEL flow:ui:enable}（将降级使用 yml 配置）</li>
+ *   <li>仍兼容旧键 {@code flow:uiEnable}（仅当新键不存在时读取）</li>
  * </ul>
  * <p>变更后最迟 5 秒内在所有节点上自动生效。</p>
  *
@@ -61,7 +62,9 @@ import jakarta.servlet.http.HttpServletResponse;
 public class FlowUiInterceptor implements HandlerInterceptor {
 
     /** Redis 键名：控制前端 UI 是否允许访问 */
-    private static final String REDIS_KEY_UI_ENABLED = "flow:uiEnable";
+    private static final String REDIS_KEY_UI_ENABLED = "flow:ui:enable";
+    /** 旧运维键，仅当新键未设置时回读 */
+    private static final String REDIS_KEY_UI_ENABLED_LEGACY = "flow:uiEnable";
 
     /** 本地缓存有效期（毫秒）：5 秒 */
     private static final long CACHE_TTL_MS = 5_000L;
@@ -151,6 +154,9 @@ public class FlowUiInterceptor implements HandlerInterceptor {
         // 缓存过期，查询 Redis 并刷新
         try {
             String redisValue = stringRedisTemplate.opsForValue().get(REDIS_KEY_UI_ENABLED);
+            if (redisValue == null) {
+                redisValue = stringRedisTemplate.opsForValue().get(REDIS_KEY_UI_ENABLED_LEGACY);
+            }
 
             if (redisValue != null) {
                 // Redis 有值，以 Redis 为准
