@@ -28,6 +28,13 @@ public class OssUploadProfileDTO {
     private Integer thumbnailMaxEdge;
     private Long thumbnailMaxSourceBytes;
     private Double thumbnailJpegQuality;
+    private Boolean extractArchiveEnabled;
+    private Boolean extractKeepArchive;
+    private String extractRejectPolicy;
+    private String extractAllowedExtensions;
+    private String extractAllowedContentTypes;
+    private Integer extractMaxEntries;
+    private Long extractMaxUncompressedBytes;
     private Boolean requireAuth;
     private Boolean presignUploadEnabled;
     private String bizFieldsSchema;
@@ -66,6 +73,13 @@ public class OssUploadProfileDTO {
                 .setThumbnailMaxEdge(entity.getThumbnailMaxEdge())
                 .setThumbnailMaxSourceBytes(entity.getThumbnailMaxSourceBytes())
                 .setThumbnailJpegQuality(entity.getThumbnailJpegQuality())
+                .setExtractArchiveEnabled(entity.getExtractArchiveEnabled())
+                .setExtractKeepArchive(entity.getExtractKeepArchive())
+                .setExtractRejectPolicy(entity.getExtractRejectPolicy())
+                .setExtractAllowedExtensions(entity.getExtractAllowedExtensions())
+                .setExtractAllowedContentTypes(entity.getExtractAllowedContentTypes())
+                .setExtractMaxEntries(entity.getExtractMaxEntries())
+                .setExtractMaxUncompressedBytes(entity.getExtractMaxUncompressedBytes())
                 .setRequireAuth(entity.getRequireAuth())
                 .setPresignUploadEnabled(entity.getPresignUploadEnabled())
                 .setBizFieldsSchema(entity.getBizFieldsSchema())

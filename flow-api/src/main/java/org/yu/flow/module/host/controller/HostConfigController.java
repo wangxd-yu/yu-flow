@@ -27,6 +27,7 @@ import org.yu.flow.module.host.HostCatalogReserved;
 import org.yu.flow.module.host.HostIdentityCatalogSettings;
 import org.yu.flow.module.host.HostIdentityCatalogSettingsStore;
 import org.yu.flow.module.host.HostPrincipalResolver;
+import org.yu.flow.module.host.HostPlatformAccessDefaultsService;
 import org.yu.flow.module.host.HostPrincipalSettings;
 import org.yu.flow.module.host.HostPrincipalSettingsStore;
 import org.yu.flow.module.host.HostPrivacyProfiles;
@@ -34,6 +35,7 @@ import org.yu.flow.module.host.HostPrivacyProfilesStore;
 import org.yu.flow.module.host.dto.HostCatalogApiMetaDTO;
 import org.yu.flow.module.host.dto.HostCatalogOverviewDTO;
 import org.yu.flow.module.host.dto.HostIdentityCatalogItemDTO;
+import org.yu.flow.module.host.dto.HostPlatformAccessDefaultsDTO;
 import org.yu.flow.module.host.dto.HostPrincipalOverviewDTO;
 import org.yu.flow.module.host.dto.HostPrincipalTestResultDTO;
 import org.yu.flow.module.host.dto.HostPrivacyProfilesDTO;
@@ -75,6 +77,8 @@ public class HostConfigController {
     private FlowHostAuthSupport flowHostAuthSupport;
     @Resource
     private HostPrivacyProfilesStore privacyProfilesStore;
+    @Resource
+    private HostPlatformAccessDefaultsService platformAccessDefaultsService;
 
     @GetMapping
     public R<HostCatalogOverviewDTO> overview() {
@@ -190,6 +194,30 @@ public class HostConfigController {
     public R<HostPrincipalTestResultDTO> testPrincipal(HttpServletRequest request) {
         hostCatalogApiBootstrap.ensureReservedApis();
         return R.ok(hostPrincipalResolver.test(request, principalSettingsStore.load(), true));
+    }
+
+    /**
+     * 接口管理目录树「平台默认」。编排账号可读写，避免只能去系统配置/宿主机两处拼。
+     */
+    @GetMapping("/platform-access-defaults")
+    @RequirePerm({
+            "sys:host:view", "sys:host:write",
+            "sys:config:view", "sys:config:write",
+            "flow:api:view", "flow:api:write"
+    })
+    public R<HostPlatformAccessDefaultsDTO> platformAccessDefaults() {
+        return R.ok(platformAccessDefaultsService.load());
+    }
+
+    @PutMapping("/platform-access-defaults")
+    @RequirePerm({
+            "sys:host:view", "sys:host:write",
+            "sys:config:view", "sys:config:write",
+            "flow:api:view", "flow:api:write"
+    })
+    public R<HostPlatformAccessDefaultsDTO> savePlatformAccessDefaults(
+            @RequestBody HostPlatformAccessDefaultsDTO body) {
+        return R.ok(platformAccessDefaultsService.save(body));
     }
 
     // ============================ 隐私解密 / 脱敏方案 ============================

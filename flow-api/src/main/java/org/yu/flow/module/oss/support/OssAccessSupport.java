@@ -5,14 +5,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.host.CallerPolicy;
-import org.yu.flow.module.host.CallerPolicyMatcher;
 import org.yu.flow.module.host.FlowHostPrincipal;
+import org.yu.flow.module.host.PrincipalMatch;
+import org.yu.flow.module.host.PrincipalMatchEngine;
 import org.yu.flow.module.oss.domain.OssObjectDO;
 import org.yu.flow.module.oss.domain.OssUploadProfileDO;
 import org.yu.flow.util.FlowObjectMapperUtil;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -31,17 +31,11 @@ public final class OssAccessSupport {
     }
 
     public static boolean isOpenPrincipal(FlowHostPrincipal principal) {
-        if (principal == null) {
-            return false;
-        }
-        if (FlowHostPrincipal.TYPE_OPEN_APP.equalsIgnoreCase(StrUtil.trim(principal.getUserType()))) {
-            return true;
-        }
-        return StrUtil.isNotBlank(principal.getUserId()) && principal.getUserId().startsWith("open:");
+        return PrincipalMatchEngine.isOpenApp(principal);
     }
 
     public static boolean isFlowConsole(FlowHostPrincipal principal) {
-        return principal != null && CHANNEL_FLOW_JWT.equals(principal.getAuthChannel());
+        return PrincipalMatchEngine.isFlowConsole(principal);
     }
 
     public static OssAccessRules parse(OssUploadProfileDO profile) {
@@ -167,19 +161,11 @@ public final class OssAccessSupport {
         if (rule == null || principal == null) {
             return false;
         }
-        boolean open = isOpenPrincipal(principal);
-        String mode = normalizePrincipals(rule.getPrincipals());
-        if (OssAccessRule.PRINCIPALS_ANY.equals(mode)) {
-            return !open && !isFlowConsole(principal);
-        }
-        if (OssAccessRule.PRINCIPALS_OPEN.equals(mode)) {
-            return open && matchesOpenAppIds(rule, principal);
-        }
-        CallerPolicy policy = toMatchPolicy(rule);
-        if (!policy.hasAnyConstraint()) {
+        String mode = PrincipalMatchEngine.normalizePrincipals(rule.getPrincipals());
+        if (PrincipalMatch.PRINCIPALS_ANY.equals(mode) && isFlowConsole(principal)) {
             return false;
         }
-        return CallerPolicyMatcher.matches(policy, principal);
+        return PrincipalMatchEngine.matches(rule, principal);
     }
 
     public static boolean allowsObject(OssObjectDO object, OssDownloadGrant grant,
@@ -254,13 +240,14 @@ public final class OssAccessSupport {
             if (rule == null) {
                 continue;
             }
-            rule.setPrincipals(normalizePrincipals(rule.getPrincipals()));
+            rule.setPrincipals(PrincipalMatchEngine.normalizePrincipals(rule.getPrincipals()));
             rule.setMatch(CallerPolicy.MATCH_ANY.equalsIgnoreCase(StrUtil.trim(rule.getMatch()))
                     ? CallerPolicy.MATCH_ANY : CallerPolicy.MATCH_ALL);
-            rule.setUserTypes(cleanList(rule.getUserTypes()));
-            rule.setRoles(cleanList(rule.getRoles()));
-            rule.setPermissions(cleanList(rule.getPermissions()));
-            rule.setUserIds(cleanList(rule.getUserIds()));
+            rule.setUserTypes(PrincipalMatchEngine.cleanList(rule.getUserTypes()));
+            rule.setRoles(PrincipalMatchEngine.cleanList(rule.getRoles()));
+            rule.setPermissions(PrincipalMatchEngine.cleanList(rule.getPermissions()));
+            rule.setUserIds(PrincipalMatchEngine.cleanList(rule.getUserIds()));
+            rule.setDeptIds(PrincipalMatchEngine.cleanList(rule.getDeptIds()));
             rule.setDownloadScope(normalizeScope(rule.getDownloadScope()));
             if (!rule.isUpload() && OssAccessRule.SCOPE_OFF.equals(rule.getDownloadScope())) {
                 continue;
@@ -271,16 +258,8 @@ public final class OssAccessSupport {
     }
 
     private static void validateRule(OssAccessRule rule) {
-        if (OssAccessRule.PRINCIPALS_MATCH.equals(rule.getPrincipals())
-                && !hasMatchConstraint(rule)) {
-            throw new FlowException("OSS_ACCESS_RULES_INVALID",
-                    "指定身份的规则请至少填写用户类型、角色、权限或用户");
-        }
-        if (OssAccessRule.PRINCIPALS_OPEN.equals(rule.getPrincipals())) {
-            return;
-        }
         try {
-            CallerPolicyMatcher.assertMatchValid(toMatchPolicy(rule));
+            PrincipalMatchEngine.assertMatchValid(rule);
         } catch (IllegalArgumentException e) {
             throw new FlowException("OSS_ACCESS_RULES_INVALID", e.getMessage());
         }
@@ -323,22 +302,13 @@ public final class OssAccessSupport {
         rule.setName(name);
         rule.setPrincipals(OssAccessRule.PRINCIPALS_MATCH);
         rule.setMatch(policy.getMatch());
-        rule.setUserTypes(cleanList(policy.getUserTypes()));
-        rule.setRoles(cleanList(policy.getRoles()));
-        rule.setPermissions(cleanList(policy.getPermissions()));
-        rule.setUserIds(cleanList(policy.getUserIds()));
+        rule.setUserTypes(PrincipalMatchEngine.cleanList(policy.getUserTypes()));
+        rule.setRoles(PrincipalMatchEngine.cleanList(policy.getRoles()));
+        rule.setPermissions(PrincipalMatchEngine.cleanList(policy.getPermissions()));
+        rule.setUserIds(PrincipalMatchEngine.cleanList(policy.getUserIds()));
+        rule.setDeptIds(PrincipalMatchEngine.cleanList(policy.getDeptIds()));
+        rule.setDeptIncludeChildren(policy.getDeptIncludeChildren());
         return rule;
-    }
-
-    private static CallerPolicy toMatchPolicy(OssAccessRule rule) {
-        CallerPolicy policy = new CallerPolicy();
-        policy.setEnabled(true);
-        policy.setMatch(rule.getMatch());
-        policy.setUserTypes(cleanList(rule.getUserTypes()));
-        policy.setRoles(cleanList(rule.getRoles()));
-        policy.setPermissions(cleanList(rule.getPermissions()));
-        policy.setUserIds(cleanList(rule.getUserIds()));
-        return policy;
     }
 
     private static boolean hasDownload(OssAccessRule rule) {
@@ -346,43 +316,6 @@ public final class OssAccessSupport {
         return OssAccessRule.SCOPE_SELF.equals(scope)
                 || OssAccessRule.SCOPE_DEPT.equals(scope)
                 || OssAccessRule.SCOPE_ALL.equals(scope);
-    }
-
-    private static boolean hasMatchConstraint(OssAccessRule rule) {
-        return !cleanList(rule.getUserTypes()).isEmpty()
-                || !cleanList(rule.getRoles()).isEmpty()
-                || !cleanList(rule.getPermissions()).isEmpty()
-                || !cleanList(rule.getUserIds()).isEmpty();
-    }
-
-    private static String normalizePrincipals(String raw) {
-        String value = StrUtil.trim(raw);
-        if (OssAccessRule.PRINCIPALS_ANY.equalsIgnoreCase(value)) {
-            return OssAccessRule.PRINCIPALS_ANY;
-        }
-        if (OssAccessRule.PRINCIPALS_OPEN.equalsIgnoreCase(value)) {
-            return OssAccessRule.PRINCIPALS_OPEN;
-        }
-        return OssAccessRule.PRINCIPALS_MATCH;
-    }
-
-    private static boolean matchesOpenAppIds(OssAccessRule rule, FlowHostPrincipal principal) {
-        List<String> ids = cleanList(rule.getUserIds());
-        if (ids.isEmpty()) {
-            return true;
-        }
-        String userId = StrUtil.trim(principal.getUserId());
-        String username = StrUtil.trim(principal.getUsername());
-        for (String id : ids) {
-            if (StrUtil.equalsIgnoreCase(id, userId) || StrUtil.equalsIgnoreCase(id, username)) {
-                return true;
-            }
-            String prefixed = id.toLowerCase(Locale.ROOT).startsWith("open:") ? id : "open:" + id;
-            if (StrUtil.equalsIgnoreCase(prefixed, userId)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     static String normalizeScope(String raw) {
@@ -405,24 +338,6 @@ public final class OssAccessSupport {
             return List.of();
         }
         return rules.getRules();
-    }
-
-    private static List<String> cleanList(List<String> raw) {
-        if (raw == null || raw.isEmpty()) {
-            return new ArrayList<>();
-        }
-        List<String> out = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        for (String item : raw) {
-            String value = StrUtil.trim(item);
-            if (StrUtil.isBlank(value)) {
-                continue;
-            }
-            if (seen.add(value.toLowerCase(Locale.ROOT))) {
-                out.add(value);
-            }
-        }
-        return out;
     }
 
     private static boolean containsIgnoreCase(Set<String> values, String target) {

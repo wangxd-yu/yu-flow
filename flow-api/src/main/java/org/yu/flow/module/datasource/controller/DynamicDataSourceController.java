@@ -51,6 +51,15 @@ public class DynamicDataSourceController {
     }
 
     /**
+     * 下拉用：已启用数据源（id / name / code）。系统默认源置顶。
+     * <p>必须写在 {@code /{id}} 之前，否则 {@code /list} 会被当成主键查询。
+     */
+    @GetMapping("/list")
+    public R<List<Map<String, Object>>> listEnabledDataSources() {
+        return R.ok(dynamicDataSourceService.listEnabledSummaries());
+    }
+
+    /**
      * 根据 ID 获取单个数据源配置（密码已脱敏）
      */
     @GetMapping("/{id}")

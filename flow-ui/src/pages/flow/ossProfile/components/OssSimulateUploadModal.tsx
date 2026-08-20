@@ -295,10 +295,29 @@ const OssSimulateUploadModal: React.FC<OssSimulateUploadModalProps> = ({
                         <span>
                           缩略图：
                           <Tag
-                            color={r.thumbStatus === 'SUCCESS' ? 'blue' : 'default'}
+                            color={r.thumbStatus === 'SUCCESS' || r.thumbStatus === 'READY' ? 'blue' : 'default'}
                             style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}
                           >
                             {r.thumbStatus}
+                          </Tag>
+                        </span>
+                      ) : null}
+                      {r.extractStatus && r.extractStatus !== 'NONE' ? (
+                        <span>
+                          展开：
+                          <Tag
+                            color={
+                              r.extractStatus === 'DONE'
+                                ? 'green'
+                                : r.extractStatus === 'FAILED'
+                                  ? 'red'
+                                  : r.extractStatus === 'PENDING' || r.extractStatus === 'EXTRACTING'
+                                    ? 'gold'
+                                    : 'default'
+                            }
+                            style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', margin: 0 }}
+                          >
+                            {r.extractStatus}
                           </Tag>
                         </span>
                       ) : null}

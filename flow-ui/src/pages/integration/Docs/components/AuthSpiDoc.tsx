@@ -1,4 +1,4 @@
-import { Typography, Divider, Alert } from 'antd';
+import { Typography, Divider, Alert, Table } from 'antd';
 import React from 'react';
 
 const { Title, Paragraph, Text } = Typography;
@@ -259,7 +259,7 @@ public class MyIdentityCatalog implements FlowHostIdentityCatalogProvider {
 
       <Title level={3} id="auth-caller-policy">3. 已发布 API 调用方策略</Title>
       <Paragraph>
-        在接口编辑「基本信息 → 入站防护」可配置 <Text strong>调用方策略</Text>
+        在接口编辑「基本信息 → 访问控制」可配置 <Text strong>谁可以调用</Text>
         （写入 <Text code>securityConfig.callerPolicy</Text>，<Text strong>发布后生效</Text>）。
         用于区分「仅管理员可调」与「仅普通用户可调」等，而无需改 Flow 管理端 RBAC。
       </Paragraph>
@@ -274,12 +274,10 @@ public class MyIdentityCatalog implements FlowHostIdentityCatalogProvider {
   "authMode": "HOST",
   "callerPolicy": {
     "enabled": true,
-    "match": "ALL",
-    "userTypes": ["END_USER"],
-    "roles": [],
-    "permissions": ["order:read"],
-    "deptIds": [],
-    "userIds": []
+    "rules": [
+      { "name": "运营可调", "principals": "MATCH", "userTypes": ["STAFF"], "effect": "ALLOW" },
+      { "name": "开放应用", "principals": "OPEN_APP", "effect": "ALLOW" }
+    ]
   }
 }`}</code>
       </pre>
@@ -288,8 +286,8 @@ public class MyIdentityCatalog implements FlowHostIdentityCatalogProvider {
       </Paragraph>
       <ul>
         <li><Text code>enabled=false</Text>（默认）：与历史一致，只做 authMode 门禁。</li>
-        <li><Text code>match=ALL|ANY</Text>：对已填写的维度做「全满足 / 任一满足」。</li>
-        <li>维度：用户类型、角色、权限、部门、用户；权限含 <Text code>*</Text> 视为超管。</li>
+        <li>新格式 <Text code>rules</Text>：多行允许，身份与 OSS 相同（任何已登录 / 指定身份 / 开放应用）。启用后未命中拒绝。</li>
+        <li>旧格式单块 <Text code>userTypes/roles/...</Text> 读入时升成一条 MATCH 规则。</li>
         <li><Text code>authMode=OPEN</Text>：仍以开放平台 grant 为准，<Text strong>不跑</Text> callerPolicy 匹配（可保存便于切回 HOST）。</li>
         <li><Text code>authMode=NONE</Text>：禁止启用 callerPolicy（保存/发布校验）。</li>
       </ul>
@@ -363,56 +361,351 @@ public class MyIdentityCatalog implements FlowHostIdentityCatalogProvider {
       <Divider />
 
       <Title level={4} id="auth-privacy">3.2 接口出站隐私拦截</Title>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="入站管「能不能调」，出站管「看见什么」"
+        description={
+          <>
+            调用方策略（第 3 节）决定请求进不进网关。出站隐私（<Text code>privacyConfig</Text>）在 SQL / 编排跑完之后拦截响应 JSON：
+            先按方案解开库内密文，再按「谁看什么」决定明文、脱敏或删字段。
+            已发布 JSON 接口若判定为明文，还会再套一层传输 SM4（<Text code>X-Privacy-Key</Text>），避免 JWT 一过就把手机号写进响应体。
+          </>
+        }
+      />
       <Paragraph>
-        入站（谁能调）用调用方策略；出站（能看什么）用 <Text code>privacyConfig</Text>。
-        库里存密文，靠可配置后缀（默认 <Text code>_encrypt</Text>）或补充字段名识别。
-        服务端拦截：先解密，再按<Text strong>宿主机配置里的角色码</Text>脱敏或给明文（不写死
-        <Text code>END_USER</Text> / <Text code>ADMIN</Text>）。
+        三层各管各的，不要混用密钥：
+      </Paragraph>
+      <Table
+        size="small"
+        pagination={false}
+        style={{ marginBottom: 16 }}
+        rowKey="layer"
+        columns={[
+          { title: '层', dataIndex: 'layer', width: 88 },
+          { title: '解决的问题', dataIndex: 'problem' },
+          { title: '密钥 / 开关', dataIndex: 'key' },
+        ]}
+        dataSource={[
+          {
+            layer: '库内解密',
+            problem: '列是密文，解开后才能脱敏或给明文',
+            key: '隐私方案里的 SM4/AES 密钥（或 YAML at-rest-sm4-key）',
+          },
+          {
+            layer: '谁看什么',
+            problem: '运营看明文、业务用户看脱敏；未命中一律脱敏',
+            key: '目录/接口「谁看什么」规则，匹配 FlowHostPrincipal',
+          },
+          {
+            layer: '传输封装',
+            problem: '获准看明文时，JSON 里仍不要裸奔 PII',
+            key: '请求头 X-Privacy-Key（一次性 SM4 会话密钥，SM2 加密）',
+          },
+        ]}
+      />
+      <Paragraph>
+        <Text strong>出站总流程：</Text>
+      </Paragraph>
+      <pre style={{ background: '#282c34', color: '#abb2bf', padding: 16, borderRadius: 6, overflowX: 'auto', fontSize: 13, fontFamily: 'Consolas, monospace', lineHeight: '1.45' }}>
+{`  原始响应 JSON（库内密文 / 已是明文列）
+           |
+           |  识别隐私字段
+           |  · 键名以 fieldSuffix 结尾（默认 _encrypt）
+           |  · 或出现在 extraFields（补充字段，如 loginPhone）
+           v
+     按隐私方案解密（SM4 / AES / PLAIN）
+           |                    \\
+           | 成功                 \\ 失败 → 固定占位 ****（绝不回传库内密文）
+           v
+     去掉后缀（stripSuffix=true 时 phone_encrypt → phone）
+           |
+           |  谁看什么（从上到下第一条命中）
+           +-- 未命中 / MASK -----------> 按「脱敏规则」打码后输出
+           +-- DROP 该字段 -------------> 响应里删除该键
+           +-- REVEAL
+                 |
+                 |  通道
+                 +-- 数据查看 / Excel（wrapTransport=false）
+                 |     直接写明文，不再套 SM4
+                 +-- 已发布 JSON 接口（wrapTransport=true）
+                       |
+                       +-- 有合法 X-Privacy-Key → { "__p":1, "alg":"SM4", "v":"…" }
+                       +-- 无 / 解不开 --------→ 降级脱敏（日志 degraded=missing-transport-key）`}
+      </pre>
+      <Paragraph>
+          配置入口与合并顺序：
+      </Paragraph>
+      <ul>
+        <li>
+          <Text strong>隐私方案</Text>（平台设置 → 宿主机配置 → 隐私解密与脱敏方案）：库内算法、模式、编码、IV、密钥、密文后缀、补充字段、脱敏规则。
+        </li>
+        <li>
+          <Text strong>目录 / 接口「访问控制」</Text>：选方案、可再填补充字段与本级脱敏规则（非空则<Text strong>整表覆盖</Text>方案规则）、配置「谁看什么」。
+        </li>
+        <li>
+          <Text strong>系统参数</Text>（平台设置 → 系统参数 → 出站隐私）：<Text code>PRIVACY_WRAP_TRANSPORT</Text> 控制已发布 JSON 是否套传输信封（热更新）。
+        </li>
+        <li>
+          合并：接口显式值 → 目录链（<Text code>inherit=false</Text> 停止向上）→ 平台默认规则 → 系统默认（默认<Text strong>关闭</Text>）。
+          「谁看什么」<Text code>rules</Text> 与「脱敏规则」<Text code>maskRules</Text> 都是整表覆盖，不逐行 merge。
+        </li>
+        <li>
+          目录上改隐私对已发布接口立即生效（运行时按目录链合并）；接口自己的 <Text code>privacyConfig</Text> 仍随发布快照。
+        </li>
+        <li>
+          SQL 别名没有 <Text code>_encrypt</Text> 时（如 <Text code>login_phone AS loginPhone</Text>），必须把
+          <Text code>loginPhone</Text> 写进方案或目录的「补充字段」，否则不会当密文解。
+        </li>
+      </ul>
+
+      <Title level={5} id="auth-privacy-mask">3.2.1 脱敏规则（MASK 时长什么样）</Title>
+      <Paragraph>
+        脱敏长什么样<Text strong>只跟界面上能看到的规则走</Text>：目录/接口填了脱敏规则就用本级；
+        不填则继承所选方案的规则。两级都空时，不解类型、不猜手机号，统一
+        <Text strong>只留第一位，其余每位一个 <Text code>*</Text>，长度与原文一致</Text>
+        （11 位手机号 <Text code>1**********</Text>，不是写死的 <Text code>1****</Text>）。
       </Paragraph>
       <Paragraph>
-        配置入口：平台设置 → 宿主机配置 → 当前用户解析（明文角色 / 脱敏角色）；
-        同页「隐私解密与脱敏方案」维护多套算法与脱敏规则（姓名藏中间、手机隐藏中间 4 位等）；
-        目录「隐私拦截」与接口「基本信息 → 出站隐私」下拉选择方案，也可覆盖密文后缀。
-        合并：接口显式值 → 目录链 → 系统默认（默认<Text strong>关闭</Text>）。
-        未选方案时回退 YAML 的 SM4 密钥与内置脱敏。
+        字段名匹配：<Text code>EXACT</Text> 精确等于别名（忽略大小写）；<Text code>CONTAINS</Text> 字段名包含别名。
+        别名写去后缀后的名字，如 <Text code>loginPhone</Text>、<Text code>phone</Text>。
+        命中第一条规则即停。
+      </Paragraph>
+      <Table
+        size="small"
+        pagination={false}
+        style={{ marginBottom: 16 }}
+        rowKey="method"
+        columns={[
+          { title: '方式', dataIndex: 'label', width: 140 },
+          { title: '行为', dataIndex: 'behavior' },
+          { title: '例子', dataIndex: 'example', width: 200 },
+        ]}
+        dataSource={[
+          {
+            method: 'KEEP_HEAD_TAIL',
+            label: '留头尾、藏中间',
+            behavior: '保留头 N、尾 M，中间按原文剩余位数填 *。长度不够（≤ 头+尾）则整段 *，不报错。',
+            example: '头3尾4：138****1234',
+          },
+          {
+            method: 'KEEP_HEAD',
+            label: '只留开头',
+            behavior: '留头，其余每位一个 *。',
+            example: '头1：1**********',
+          },
+          {
+            method: 'KEEP_TAIL',
+            label: '只留末尾',
+            behavior: '留尾，前面每位一个 *。',
+            example: '尾4：*******1234',
+          },
+          {
+            method: 'PHONE',
+            label: '手机前3后4',
+            behavior: '留前 3 后 4，中间按剩余位数填 *（11 位仍是四颗 *）。',
+            example: '138****1234',
+          },
+          {
+            method: 'NAME_KEEP_ENDS',
+            label: '姓名藏中间',
+            behavior: '1 字→*；2 字藏姓留名；3 字及以上留首尾、中间一颗 *。',
+            example: '李华→*华；张三丰→张*丰',
+          },
+          {
+            method: 'ID_CARD',
+            label: '身份证留首尾',
+            behavior: '留首尾，中间按实际长度填 *。',
+            example: '3****************X',
+          },
+          {
+            method: 'FULL',
+            label: '全部隐藏',
+            behavior: '每位一个 *，长度与原文一致。',
+            example: 'secret→******',
+          },
+        ]}
+      />
+      <Paragraph>
+        解密失败与「解开了但走 MASK」不是一回事：失败关闭固定 <Text code>****</Text>（四位占位，不泄露密文长度）；
+        脱敏则按规则保留长度。日志不要把两者当成同一原因。
+      </Paragraph>
+
+      <Title level={5} id="auth-privacy-who">3.2.2 谁看什么（REVEAL / MASK）</Title>
+      <Paragraph>
+        身份勾选与 OSS 访问规则相同：<Text code>ANY_AUTHENTICATED</Text> 任何已登录（不含开放应用）、
+        <Text code>MATCH</Text> 指定用户类型/角色/权限/部门/用户、<Text code>OPEN_APP</Text> 开放应用。
+        从上到下第一条命中生效；<Text strong>未命中一律 MASK</Text>。
+        可选「字段动作」：回车或逗号生成标签（与脱敏规则相同），按 JSON 键名覆盖本行。
+        <Text code>DROP</Text> 可去掉任意字段（如 <Text code>createBy</Text>）；
+        <Text code>REVEAL</Text> / <Text code>MASK</Text> 只作用于隐私字段。
       </Paragraph>
       <Paragraph>
-        脱敏规则按方案配置：内置为手机保留前 3 后 4；2 字姓名 <Text code>*华</Text>，3 字及以上 <Text code>张*丰</Text>；
-        身份证保留首尾。也可自建 KEEP_HEAD_TAIL / 只留头 / 只留尾 / 全掩。
-        解密失败打成 <Text code>****</Text>，绝不回传库内密文。
-        <Text code>stripSuffix=true</Text> 时 <Text code>phone_encrypt</Text> 输出为 <Text code>phone</Text>，
-        包装 JSONPath 请写去后缀后的字段名。
+        规则里的用户类型必须等于 <Text code>FlowHostPrincipal.userType</Text>，不是 JWT 里的 <Text code>platform</Text>。
+        嵌入宿主时请在 SPI 里映射（例如运营 JWT <Text code>platform=OPCENTER</Text> → <Text code>ADMIN</Text>），
+        「谁看什么」勾「管理员/运营」才能命中。开放应用不会被「任何已登录」带进明文。
       </Paragraph>
       <Paragraph>
-        JSON 明文档再套一层传输 SM4：客户端生成 16 字节会话密钥，用登录 SM2 公钥加密后放请求头
-        <Text code>X-Privacy-Key</Text>。明文值为
-        <Text code>{`{ "__p": 1, "alg": "SM4", "v": "<iv+cipher hex>" }`}</Text>。
-        无会话密钥时失败关闭为脱敏。数据查看页 / Excel 在服务端直接写脱敏串或明文，文件不再套 SM4。
-        签名下载链绑定签发时的隐私档，转发不会升格明文。
+        Flow 管理端 JWT 默认脱敏；权限码 <Text code>flow:privacy:reveal</Text>（或 <Text code>*</Text>）
+        只给控制台预览明文当逃生口，<Text strong>不替代</Text>宿主「谁看什么」。
+        Excel / 数据查看 / 开放下载链走同一套过滤；签名下载链绑定签发时的隐私档，转发不会升格明文。
+        明文档禁止响应缓存；脱敏档缓存 key 带 <Text code>:pMASK</Text> 及规则字段指纹。
+      </Paragraph>
+      <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 6, overflowX: 'auto' }}>
+        <code className="language-json">{`{
+  "enabled": true,
+  "inherit": true,
+  "profileId": "p_ops_sm4",
+  "extraFields": ["loginPhone", "authPhone"],
+  "maskRules": [
+    {
+      "matchMode": "CONTAINS",
+      "aliases": ["phone"],
+      "method": "KEEP_HEAD_TAIL",
+      "keepHead": 3,
+      "keepTail": 4
+    }
+  ],
+  "rules": [
+    {
+      "name": "运营看明文",
+      "principals": "MATCH",
+      "match": "ALL",
+      "userTypes": ["ADMIN"],
+      "privacy": "REVEAL"
+    }
+  ]
+}`}</code>
+      </pre>
+
+      <Title level={5} id="auth-privacy-transport">3.2.3 传输封装与 X-Privacy-Key</Title>
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="X-Privacy-Key 不是库内解密密钥"
+        description={
+          <>
+            库内 SM4 配在隐私方案（或 YAML <Text code>yu.flow.privacy.at-rest-sm4-key</Text>）。
+            <Text code>X-Privacy-Key</Text> 只用于<Text strong>已发布 JSON 接口的明文档</Text>：
+            客户端每次（或按会话）生成一把 16 字节 SM4，用<Text strong>登录 SM2 公钥</Text>加密后放进请求头；
+            服务端用 SM2 私钥解开，再用这把会话密钥把 REVEAL 字段封成信封。
+            curl 只带运营 JWT、不建会话时，即使规则是明文也会降成脱敏，这是失败关闭，不是配置没生效。
+          </>
+        }
+      />
+      <Paragraph>
+        <Text strong>会话握手：</Text>
+      </Paragraph>
+      <pre style={{ background: '#282c34', color: '#abb2bf', padding: 16, borderRadius: 6, overflowX: 'auto', fontSize: 13, fontFamily: 'Consolas, monospace', lineHeight: '1.45' }}>
+{`  +-------------+                         +------------------+
+  | 宿主 / Amis |                         | Flow 已发布接口  |
+  +------+------+                         +--------+---------+
+         |  1. GET /flow-api/login/public-key      |
+         |---------------------------------------->|
+         |  2. SM2 公钥（与登录同一套）            |
+         |<----------------------------------------|
+         |                                         |
+         |  3. 本地随机 16 字节 SM4 会话密钥        |
+         |     用公钥加密 → 请求头 X-Privacy-Key   |
+         |  4. GET /op/…  + 宿主 JWT + 该头        |
+         |---------------------------------------->|
+         |                                         | SM2 私钥解出会话密钥
+         |                                         | 库内解密 → 谁看什么
+         |                                         | REVEAL 字段用会话 SM4 封装
+         |  5. loginPhone: { "__p":1, "v":"…" }    |
+         |<----------------------------------------|
+         |  6. 用本地会话密钥 unwrapPrivacyTree    |
+         |     用户看到明文                         |
+         +-------------+                         +--------+---------+`}
+      </pre>
+      <Paragraph>
+        信封字段：<Text code>{`{ "__p": 1, "alg": "SM4", "v": "<32位IV hex + 密文 hex>" }`}</Text>。
+        前端用 <Text code>@/utils/privacyDecrypt</Text>：先 <Text code>createPrivacySession()</Text> 写头，
+        再 <Text code>unwrapPrivacyTree(json, session.sm4KeyHex)</Text> 递归解开。Amis 在请求适配器写头、响应适配器拆树。
+      </Paragraph>
+      <Table
+        size="small"
+        pagination={false}
+        style={{ marginBottom: 16 }}
+        rowKey="scene"
+        columns={[
+          { title: '场景', dataIndex: 'scene', width: 200 },
+          { title: 'wrapTransport', dataIndex: 'wrap', width: 120 },
+          { title: '要不要 X-Privacy-Key', dataIndex: 'need' },
+        ]}
+        dataSource={[
+          {
+            scene: '已发布业务 JSON（/op、/co、/open）',
+            wrap: '系统参数 PRIVACY_WRAP_TRANSPORT（默认开）',
+            need: '开着时要带头；缺了 REVEAL 也会降成脱敏。关掉则 JSON 直接明文',
+          },
+          {
+            scene: '管理端「数据查看」',
+            wrap: 'false',
+            need: '不要。服务端直接写明文或脱敏串',
+          },
+          {
+            scene: 'Excel 导出',
+            wrap: 'false',
+            need: '不要。单元格里是脱敏或明文，不再套信封',
+          },
+          {
+            scene: '规则命中 MASK',
+            wrap: '—',
+            need: '无意义，响应已是脱敏串',
+          },
+        ]}
+      />
+      <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 6, overflowX: 'auto' }}>
+        <code className="language-ts">{`import { createPrivacySession, unwrapPrivacyTree, PRIVACY_KEY_HEADER } from '@/utils/privacyDecrypt';
+
+const session = await createPrivacySession();
+const res = await fetch('/op/user/me', {
+  headers: {
+    Authorization: 'Bearer <host-jwt>',
+    [PRIVACY_KEY_HEADER]: session.headerValue,
+  },
+});
+const json = unwrapPrivacyTree(await res.json(), session.sm4KeyHex);
+// json.data.loginPhone === '13812341234'
+// 未带头时同一字段是脱敏串，例如 '1**********'`}</code>
+      </pre>
+      <Paragraph>
+        日志对照：<Text code>resolved=REVEAL effective=MASK … degraded=missing-transport-key</Text>
+        表示「谁看什么」已命中明文，但传输会话没建立。
+        <Text code>resolved=MASK</Text> 才是规则没勾上运营明文。不要用 curl 无头结果去判断库内 SM4 配错了。
+      </Paragraph>
+
+      <Title level={5} id="auth-privacy-host">3.2.4 宿主接入清单</Title>
+      <Paragraph>
+        传输封装开关不在 YAML 里改。到管理端
+        <Text strong>平台设置 → 系统参数 → 出站隐私</Text>，关闭
+        <Text code>PRIVACY_WRAP_TRANSPORT</Text> 即可（热更新，无需重启）。
+        优先级：本项 &gt; yml 兜底 &gt; 默认开。生产公网不建议关。
       </Paragraph>
       <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 6, overflowX: 'auto' }}>
         <code className="language-yaml">{`yu:
   flow:
     privacy:
-      # 系统内置方案的 SM4 密钥（16 字节明文或 32 位 hex）；不要复用数据源 AES 或登录 SM2 私钥
-      # 自定义方案在「宿主机配置 → 隐私解密与脱敏方案」里各自配密钥
+      # 仅「系统内置」方案回退用；自定义方案在页面里各自配密钥
+      # 16 字节明文或 32 位 hex；不要复用数据源 AES 或登录 SM2 私钥
       at-rest-sm4-key: \${YU_FLOW_PRIVACY_AT_REST_SM4_KEY:}`}</code>
       </pre>
-      <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 6, overflowX: 'auto' }}>
-        <code className="language-ts">{`import { createPrivacySession, unwrapPrivacyTree, PRIVACY_KEY_HEADER } from '@/utils/privacyDecrypt';
-
-const session = await createPrivacySession();
-const res = await fetch('/api/user/me', {
-  headers: { [PRIVACY_KEY_HEADER]: session.headerValue },
-});
-const json = unwrapPrivacyTree(await res.json(), session.sm4KeyHex);
-// Amis：在请求适配器里写入同一请求头，在响应适配器里调用 unwrapPrivacyTree`}</code>
-      </pre>
-      <Paragraph>
-        Flow 管理端 JWT 默认脱敏；权限码 <Text code>flow:privacy:reveal</Text>（或 <Text code>*</Text>）
-        可作为控制台预览明文的逃生口，不替代宿主角色。开放应用 / 未登录一律脱敏。
-        明文档禁止响应缓存；脱敏档缓存 key 带 <Text code>:pMASK</Text>。
-      </Paragraph>
+      <ul>
+        <li>
+          关掉「这一套」要分清关哪一层：目录/接口 <Text code>enabled=false</Text> 整段拦截不跑（库内密文会原样出站）；
+          系统参数 <Text code>PRIVACY_WRAP_TRANSPORT=false</Text> 只关传输信封，库内解密和「谁看什么」仍生效，REVEAL 的 JSON 里就是明文手机号。
+        </li>
+        <li>宿主必须实现 <Text code>FlowHostPrincipalProvider</Text>（或配置式主体解析），把运营 / C 端映射成规则里能勾到的 <Text code>userType</Text>。</li>
+        <li>业务前端若要在已发布接口上看明文：接入 <Text code>createPrivacySession</Text> + <Text code>unwrapPrivacyTree</Text>；只带 JWT 且封装仍开着时永远拿不到 JSON 明文。</li>
+        <li>
+          自测顺序：数据查看（确认库内解密）→ 日志 <Text code>resolved=REVEAL</Text>（确认谁看什么）→
+          带 <Text code>X-Privacy-Key</Text> 调已发布接口（确认传输封装）；内网也可先关系统参数再 curl。
+        </li>
+        <li><Text code>stripSuffix=true</Text> 时包装 JSONPath 写去后缀后的字段名（<Text code>phone</Text> 不是 <Text code>phone_encrypt</Text>）。</li>
+      </ul>
 
       <Divider />
 
@@ -535,7 +828,7 @@ ORDER BY id DESC`}</code>
       </Paragraph>
       <Paragraph>
         配置已发布 API 的调用方策略：管理端 → 接口编排 → 编辑接口 →
-        <Text strong>基本信息 → 入站防护 → 调用方策略</Text>，保存并发布。
+        <Text strong>基本信息 → 访问控制 → 谁可以调用</Text>，保存并发布。
       </Paragraph>
     </Typography>
   );

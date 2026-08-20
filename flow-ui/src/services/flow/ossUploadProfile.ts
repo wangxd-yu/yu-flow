@@ -23,6 +23,16 @@ export interface OssUploadProfile {
   thumbnailMaxSourceBytes?: number;
   /** JPEG 质量 0~1，空=用全局 */
   thumbnailJpegQuality?: number;
+  /** 上传 zip 后异步展开 */
+  extractArchiveEnabled?: boolean;
+  /** 展开成功后是否保留原 zip */
+  extractKeepArchive?: boolean;
+  /** SKIP_ZERO_FAIL / FAIL_PACK */
+  extractRejectPolicy?: string;
+  extractAllowedExtensions?: string;
+  extractAllowedContentTypes?: string;
+  extractMaxEntries?: number;
+  extractMaxUncompressedBytes?: number;
   requireAuth?: boolean;
   /** 是否开放预签名直传（客户端 PUT 直达 OSS） */
   presignUploadEnabled?: boolean;

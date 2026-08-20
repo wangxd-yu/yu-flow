@@ -53,6 +53,42 @@ class PrivacyConfigMergeTest {
     }
 
     @Test
+    void overlay_rulesChildReplacesParent() {
+        ApiPrivacyConfig merged = PrivacyConfigMerge.empty();
+        ApiPrivacyConfig api = new ApiPrivacyConfig();
+        org.yu.flow.module.host.PrivacyAccessRule child = new org.yu.flow.module.host.PrivacyAccessRule();
+        child.setName("child");
+        child.setPrincipals("ANY_AUTHENTICATED");
+        api.setRules(java.util.List.of(child));
+        PrivacyConfigMerge.overlay(merged, api);
+
+        ApiPrivacyConfig dir = new ApiPrivacyConfig();
+        org.yu.flow.module.host.PrivacyAccessRule parent = new org.yu.flow.module.host.PrivacyAccessRule();
+        parent.setName("parent");
+        dir.setRules(java.util.List.of(parent));
+        PrivacyConfigMerge.overlay(merged, dir);
+
+        assertEquals(1, merged.getRules().size());
+        assertEquals("child", merged.getRules().get(0).getName());
+    }
+
+    @Test
+    void overlay_nullRulesInheritParent() {
+        ApiPrivacyConfig merged = PrivacyConfigMerge.empty();
+        ApiPrivacyConfig api = new ApiPrivacyConfig();
+        api.setEnabled(true);
+        PrivacyConfigMerge.overlay(merged, api);
+
+        ApiPrivacyConfig dir = new ApiPrivacyConfig();
+        org.yu.flow.module.host.PrivacyAccessRule parent = new org.yu.flow.module.host.PrivacyAccessRule();
+        parent.setName("parent");
+        dir.setRules(java.util.List.of(parent));
+        PrivacyConfigMerge.overlay(merged, dir);
+
+        assertEquals("parent", merged.getRules().get(0).getName());
+    }
+
+    @Test
     void overlay_profileIdChildWins() {
         ApiPrivacyConfig merged = PrivacyConfigMerge.empty();
         ApiPrivacyConfig api = new ApiPrivacyConfig();
@@ -64,6 +100,43 @@ class PrivacyConfigMergeTest {
         PrivacyConfigMerge.overlay(merged, dir);
 
         assertEquals("staff-sm4", merged.getProfileId());
+    }
+
+    @Test
+    void mergeMask_unionsAliasesPerType() {
+        java.util.Map<String, java.util.List<String>> overlay = new java.util.LinkedHashMap<>();
+        overlay.put(PrivacyMasker.PHONE, java.util.List.of("loginPhone", "authPhone"));
+        java.util.Map<String, java.util.List<String>> merged =
+                PrivacyConfigMerge.mergeMask(PrivacyConfigMerge.defaultMask(), overlay);
+        assertTrue(merged.get(PrivacyMasker.PHONE).contains("phone"));
+        assertTrue(merged.get(PrivacyMasker.PHONE).contains("loginPhone"));
+        assertTrue(merged.get(PrivacyMasker.PHONE).contains("authPhone"));
+        assertTrue(merged.containsKey(PrivacyMasker.NAME));
+    }
+
+    @Test
+    void overlay_maskRulesOverrideProfile() {
+        ApiPrivacyConfig merged = PrivacyConfigMerge.empty();
+        ApiPrivacyConfig dir = new ApiPrivacyConfig();
+        dir.setEnabled(true);
+        PrivacyMaskRule child = new PrivacyMaskRule();
+        child.setAliases(java.util.List.of("loginPhone", "authPhone"));
+        child.setMatchMode(PrivacyMaskRule.MATCH_CONTAINS);
+        child.setMethod(PrivacyMaskRule.PHONE);
+        dir.setMaskRules(java.util.List.of(child));
+        PrivacyConfigMerge.overlay(merged, dir);
+
+        org.yu.flow.module.host.HostPrivacyProfile profile = new org.yu.flow.module.host.HostPrivacyProfile();
+        profile.setId("p1");
+        PrivacyMaskRule profileRule = new PrivacyMaskRule();
+        profileRule.setAliases(java.util.List.of("mobile"));
+        profileRule.setMethod(PrivacyMaskRule.FULL);
+        profile.setRules(java.util.List.of(profileRule));
+
+        EffectivePrivacy eff = PrivacyConfigMerge.toEffective(merged, PrivacyConfigMerge.systemDefaults(), profile);
+        assertEquals(1, eff.getMaskRules().size());
+        assertEquals(PrivacyMaskRule.PHONE, eff.getMaskRules().get(0).getMethod());
+        assertTrue(eff.getMaskRules().get(0).getAliases().contains("loginPhone"));
     }
 
     @Test
@@ -91,5 +164,19 @@ class PrivacyConfigMergeTest {
         assertEquals("abcdefghijklmnop", eff.getDecryptKey());
         assertEquals(1, eff.getMaskRules().size());
         assertEquals("KEEP_HEAD_TAIL", eff.getMaskRules().get(0).getMethod());
+    }
+
+    @Test
+    void toEffective_emptyRulesDoNotInjectSilentDefaults() {
+        ApiPrivacyConfig cfg = new ApiPrivacyConfig();
+        cfg.setEnabled(true);
+        org.yu.flow.module.host.HostPrivacyProfile profile = new org.yu.flow.module.host.HostPrivacyProfile();
+        profile.setId("p1");
+        profile.setRules(java.util.List.of());
+
+        EffectivePrivacy eff = PrivacyConfigMerge.toEffective(cfg, PrivacyConfigMerge.systemDefaults(), profile);
+        assertTrue(eff.getMaskRules().isEmpty());
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "loginPhone", eff.getMaskRules()));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "phone", eff.getMaskRules()));
     }
 }

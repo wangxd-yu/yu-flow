@@ -115,6 +115,18 @@ public class OssObjectDO implements Serializable {
     @Column(name = "thumb_error", length = 512)
     private String thumbError;
 
+    @Column(name = "parent_object_id", length = 32)
+    private String parentObjectId;
+
+    @Column(name = "archive_entry_path", length = 512)
+    private String archiveEntryPath;
+
+    @Column(name = "extract_status", length = 16)
+    private String extractStatus;
+
+    @Column(name = "extract_error", length = 512)
+    private String extractError;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
 

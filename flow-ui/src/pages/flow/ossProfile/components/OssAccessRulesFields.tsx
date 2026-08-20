@@ -2,25 +2,24 @@ import {
   catalogItemToOption,
   catalogSelectItems,
   getHostIdentityCatalog,
+  HOST_IDENTITY_CATALOG_CHANGED,
   HostIdentityCatalog,
 } from '@/services/flow/hostIdentityCatalog';
 import { getHostPrincipalOverview } from '@/services/flow/hostConfig';
+import { PrincipalMatchRuleList } from '@/components/flow/PrincipalMatchFields';
 import {
   EMPTY_ACCESS_RULE,
   MAX_OSS_ACCESS_RULES,
   OSS_ACCESS_PRESETS,
   buildOssAccessPreset,
   guessOpsUserTypes,
-  matchDimensionCount,
   previewAccessRules,
   type OssAccessPresetKey,
   type OssAccessRule,
   type OssDownloadScope,
 } from '@/utils/ossAccessRules';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
-import { ProFormSelect } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
-import { Alert, Button, Col, Form, Input, Radio, Row, Select, Switch, Tag, message } from 'antd';
+import { Alert, Button, Col, Form, Select, Switch, Tag, message } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 
 type Props = {
@@ -40,14 +39,18 @@ const OssAccessRulesFields: React.FC<Props> = ({ visibility, requireAuth }) => {
   const rules: OssAccessRule[] = Form.useWatch('accessRules') || [];
   const [catalog, setCatalog] = useState<HostIdentityCatalog | null>(null);
   const [principalReady, setPrincipalReady] = useState<boolean | null>(null);
-  const [advanced, setAdvanced] = useState<Record<number, boolean>>({});
   const privateVis = visibility !== 'PUBLIC';
 
   useEffect(() => {
     let cancelled = false;
-    getHostIdentityCatalog().then((data) => {
-      if (!cancelled) setCatalog(data);
-    });
+    const loadCatalog = () => {
+      getHostIdentityCatalog().then((data) => {
+        if (!cancelled) setCatalog(data);
+      });
+    };
+    loadCatalog();
+    const onCatalogChanged = () => loadCatalog();
+    window.addEventListener(HOST_IDENTITY_CATALOG_CHANGED, onCatalogChanged);
     getHostPrincipalOverview()
       .then((overview) => {
         if (!cancelled) {
@@ -59,23 +62,12 @@ const OssAccessRulesFields: React.FC<Props> = ({ visibility, requireAuth }) => {
       });
     return () => {
       cancelled = true;
+      window.removeEventListener(HOST_IDENTITY_CATALOG_CHANGED, onCatalogChanged);
     };
   }, []);
 
   const userTypeOptions = useMemo(
     () => catalogSelectItems(catalog, 'USER_TYPE').map(catalogItemToOption),
-    [catalog],
-  );
-  const roleOptions = useMemo(
-    () => catalogSelectItems(catalog, 'ROLE').map(catalogItemToOption),
-    [catalog],
-  );
-  const permOptions = useMemo(
-    () => catalogSelectItems(catalog, 'PERMISSION').map(catalogItemToOption),
-    [catalog],
-  );
-  const userOptions = useMemo(
-    () => catalogSelectItems(catalog, 'USER').map(catalogItemToOption),
     [catalog],
   );
   const opsTypes = useMemo(
@@ -156,182 +148,45 @@ const OssAccessRulesFields: React.FC<Props> = ({ visibility, requireAuth }) => {
         ) : null}
         <Alert type={preview.type} showIcon className="oss-access-rules-hint" message={preview.text} />
 
-        <Form.List name="accessRules">
-          {(fields, { add, remove }) => (
-            <>
-              {fields.map((field, index) => {
-                const rule = rules[index] || EMPTY_ACCESS_RULE;
-                const isMatch = rule.principals === 'MATCH';
-                const isOpen = rule.principals === 'OPEN_APP';
-                const showMatchMode = isMatch && matchDimensionCount(rule) > 1;
-                return (
-                  <div key={field.key} className="oss-access-rule-card">
-                    <div className="oss-access-rule-card-head">
-                      <Form.Item name={[field.name, 'name']} noStyle>
-                        <Input placeholder={`规则 ${index + 1}`} maxLength={32} style={{ width: 160 }} />
-                      </Form.Item>
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        icon={<MinusCircleOutlined />}
-                        onClick={() => remove(field.name)}
-                      />
-                    </div>
-                    <div className="oss-access-rule-row">
-                      <span className="oss-access-rule-label">身份</span>
-                      <Form.Item name={[field.name, 'principals']} noStyle>
-                        <Radio.Group
-                          optionType="button"
-                          buttonStyle="solid"
-                          size="small"
-                          options={[
-                            { label: '任何已登录', value: 'ANY_AUTHENTICATED' },
-                            { label: '指定身份', value: 'MATCH' },
-                            { label: '开放应用', value: 'OPEN_APP' },
-                          ]}
-                        />
-                      </Form.Item>
-                    </div>
-                    {isOpen ? (
-                      <ProFormSelect
-                        name={[field.name, 'userIds']}
-                        label="指定 AppKey"
-                        mode="tags"
-                        placeholder="留空=全部开放应用；可填 appKey 或 open:appKey"
-                        colProps={{ span: 24 }}
-                        formItemProps={{ style: { marginBottom: 8 } }}
-                        fieldProps={{ tokenSeparators: [','], maxTagCount: 'responsive' }}
-                      />
-                    ) : null}
-                    {isMatch ? (
-                      <Row gutter={[12, 0]}>
-                        {showMatchMode ? (
-                          <Col span={24}>
-                            <Form.Item
-                              name={[field.name, 'match']}
-                              label="多维度组合"
-                              style={{ marginBottom: 8 }}
-                            >
-                              <Radio.Group
-                                optionType="button"
-                                buttonStyle="solid"
-                                size="small"
-                                options={[
-                                  { label: '全部满足', value: 'ALL' },
-                                  { label: '任一满足', value: 'ANY' },
-                                ]}
-                              />
-                            </Form.Item>
-                          </Col>
-                        ) : null}
-                        <ProFormSelect
-                          name={[field.name, 'userTypes']}
-                          label="用户类型"
-                          mode="tags"
-                          options={userTypeOptions}
-                          placeholder="选择或回车手输"
-                          colProps={{ span: 12 }}
-                          formItemProps={{ style: { marginBottom: 8 } }}
-                          fieldProps={{ tokenSeparators: [','], maxTagCount: 'responsive' }}
-                        />
-                        <ProFormSelect
-                          name={[field.name, 'roles']}
-                          label="角色"
-                          mode="tags"
-                          options={roleOptions}
-                          placeholder="选择或回车手输"
-                          colProps={{ span: 12 }}
-                          formItemProps={{ style: { marginBottom: 8 } }}
-                          fieldProps={{ tokenSeparators: [','], maxTagCount: 'responsive' }}
-                        />
-                        {advanced[index] ? (
-                          <>
-                            <ProFormSelect
-                              name={[field.name, 'permissions']}
-                              label="权限"
-                              mode="tags"
-                              options={permOptions}
-                              placeholder="高级：宿主权限码"
-                              colProps={{ span: 12 }}
-                              formItemProps={{ style: { marginBottom: 8 } }}
-                              fieldProps={{ tokenSeparators: [','], maxTagCount: 'responsive' }}
-                            />
-                            <ProFormSelect
-                              name={[field.name, 'userIds']}
-                              label="指定用户"
-                              mode="tags"
-                              options={userOptions}
-                              placeholder="高级：仅这些人匹配本行"
-                              colProps={{ span: 12 }}
-                              formItemProps={{ style: { marginBottom: 8 } }}
-                              fieldProps={{ tokenSeparators: [','], maxTagCount: 'responsive' }}
-                            />
-                          </>
-                        ) : (
-                          <Col span={24}>
-                            <Button
-                              type="link"
-                              size="small"
-                              style={{ padding: 0, marginBottom: 8 }}
-                              onClick={() => setAdvanced((prev) => ({ ...prev, [index]: true }))}
-                            >
-                              高级：权限 / 指定用户
-                            </Button>
-                          </Col>
-                        )}
-                      </Row>
-                    ) : null}
-                    <div className="oss-access-rule-row">
-                      <span className="oss-access-rule-label">可上传</span>
-                      <Form.Item name={[field.name, 'upload']} valuePropName="checked" noStyle>
-                        <Switch size="small" />
-                      </Form.Item>
-                      {privateVis ? (
-                        <>
-                          <span className="oss-access-rule-label" style={{ marginLeft: 16 }}>
-                            下载范围
-                          </span>
-                          <Form.Item name={[field.name, 'downloadScope']} noStyle>
-                            <Select
-                              size="small"
-                              style={{ minWidth: 168 }}
-                              options={SCOPE_OPTIONS}
-                            />
-                          </Form.Item>
-                        </>
-                      ) : (
-                        <Tag style={{ marginLeft: 12 }}>公有可读，无需下载范围</Tag>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              <Button
-                type="dashed"
-                block
-                size="small"
-                icon={<PlusOutlined />}
-                disabled={fields.length >= MAX_OSS_ACCESS_RULES}
-                onClick={() =>
-                  add({
-                    ...EMPTY_ACCESS_RULE,
-                    name: `规则 ${fields.length + 1}`,
-                    principals: 'MATCH',
-                    upload: false,
-                    downloadScope: privateVis ? 'SELF' : 'OFF',
-                    userTypes: [],
-                    roles: [],
-                    permissions: [],
-                    userIds: [],
-                  })
-                }
-              >
-                添加规则{fields.length >= MAX_OSS_ACCESS_RULES ? '（最多 8 条）' : ''}
-              </Button>
-            </>
-          )}
-        </Form.List>
+        <Form.Item name="accessRules" noStyle>
+          <PrincipalMatchRuleList<OssAccessRule>
+            accent="oss"
+            max={MAX_OSS_ACCESS_RULES}
+            createEmpty={() => ({
+              ...EMPTY_ACCESS_RULE,
+              name: '',
+              principals: 'MATCH',
+              upload: false,
+              downloadScope: privateVis ? 'SELF' : 'OFF',
+            })}
+            extra={(rule, patch) => (
+              <div className="principal-match-row">
+                <span className="principal-match-label">可上传</span>
+                <Switch
+                  size="small"
+                  checked={!!rule.upload}
+                  onChange={(v) => patch({ upload: v })}
+                />
+                {privateVis ? (
+                  <>
+                    <span className="principal-match-label" style={{ marginLeft: 16 }}>
+                      下载范围
+                    </span>
+                    <Select
+                      size="small"
+                      style={{ minWidth: 168 }}
+                      value={rule.downloadScope}
+                      options={SCOPE_OPTIONS}
+                      onChange={(v) => patch({ downloadScope: v })}
+                    />
+                  </>
+                ) : (
+                  <Tag style={{ marginLeft: 12 }}>公有可读，无需下载范围</Tag>
+                )}
+              </div>
+            )}
+          />
+        </Form.Item>
       </div>
     </Col>
   );

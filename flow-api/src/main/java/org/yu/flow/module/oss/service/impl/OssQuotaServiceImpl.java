@@ -25,22 +25,30 @@ public class OssQuotaServiceImpl implements OssQuotaService {
     @Override
     public void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy, String uploadedByUserType,
                                   long additionalBytes, int additionalFiles) {
+        checkBeforeUpload(profile, uploadedBy, uploadedByUserType, additionalBytes, additionalFiles, 0, 0);
+    }
+
+    @Override
+    public void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy, String uploadedByUserType,
+                                  long additionalBytes, int additionalFiles, long creditBytes, int creditFiles) {
         if (profile == null) {
             return;
         }
         String status = OssObjectDO.STATUS_ACTIVE;
         String profileCode = profile.getCode();
+        long creditF = Math.max(0, creditFiles);
+        long creditB = Math.max(0, creditBytes);
 
         if (profile.getQuotaMaxFiles() != null && profile.getQuotaMaxFiles() > 0) {
             long currentFiles = ossObjectRepository.countByProfileCodeAndStatus(profileCode, status);
-            if (currentFiles + additionalFiles > profile.getQuotaMaxFiles()) {
+            if (Math.max(0, currentFiles - creditF) + additionalFiles > profile.getQuotaMaxFiles()) {
                 throw new FlowException("OSS_QUOTA_EXCEEDED",
                         "场景文件数已达配额上限 " + profile.getQuotaMaxFiles());
             }
         }
         if (profile.getQuotaMaxBytes() != null && profile.getQuotaMaxBytes() > 0) {
             long currentBytes = ossObjectRepository.sumSizeBytesByProfileCodeAndStatus(profileCode, status);
-            if (currentBytes + additionalBytes > profile.getQuotaMaxBytes()) {
+            if (Math.max(0, currentBytes - creditB) + additionalBytes > profile.getQuotaMaxBytes()) {
                 throw new FlowException("OSS_QUOTA_EXCEEDED",
                         "场景容量已达配额上限 " + profile.getQuotaMaxBytes() + " 字节");
             }
@@ -55,7 +63,7 @@ public class OssQuotaServiceImpl implements OssQuotaService {
         if (userMaxFiles > 0) {
             long currentFiles = ossObjectRepository.countByUploadedByAndUploadedByUserTypeAndStatus(
                     uploadedBy, userType, status);
-            if (currentFiles + additionalFiles > userMaxFiles) {
+            if (Math.max(0, currentFiles - creditF) + additionalFiles > userMaxFiles) {
                 throw new FlowException("OSS_QUOTA_EXCEEDED",
                         "用户文件数已达配额上限 " + userMaxFiles);
             }
@@ -63,7 +71,7 @@ public class OssQuotaServiceImpl implements OssQuotaService {
         if (userMaxBytes > 0) {
             long currentBytes = ossObjectRepository.sumSizeBytesByUploadedByAndUploadedByUserTypeAndStatus(
                     uploadedBy, userType, status);
-            if (currentBytes + additionalBytes > userMaxBytes) {
+            if (Math.max(0, currentBytes - creditB) + additionalBytes > userMaxBytes) {
                 throw new FlowException("OSS_QUOTA_EXCEEDED",
                         "用户容量已达配额上限 " + userMaxBytes + " 字节");
             }

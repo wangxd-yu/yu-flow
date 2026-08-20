@@ -5,6 +5,7 @@
 -- 用法（二选一）：
 -- A) 空库/可清空：DROP 全部 flow_* 后重跑 00_all + 00_system_init（推荐）
 -- B) 保留数据：执行本脚本（幂等 ADD COLUMN IF NOT EXISTS）后再启动应用
+-- 主键类型：旧库 flow_api_info.id 若仍是 bigint，另执行 sql/20260820_pg_api_info_snowflake_id.sql
 
 -- ── flow_sys_config ──
 ALTER TABLE flow_sys_config ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 100;

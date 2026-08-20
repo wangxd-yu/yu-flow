@@ -78,8 +78,47 @@ const OssObjectList: React.FC = () => {
     {
       title: '原始文件名',
       dataIndex: 'originalName',
-      width: 220,
+      width: 260,
       ellipsis: true,
+      render: (_, record) => {
+        const extractTag = (() => {
+          const st = record.extractStatus;
+          if (!st || st === 'NONE' || st === 'SKIPPED') return null;
+          const map: Record<string, { color: string; text: string }> = {
+            PENDING: { color: 'gold', text: '待展开' },
+            EXTRACTING: { color: 'gold', text: '展开中' },
+            DONE: { color: 'green', text: '已展开' },
+            FAILED: { color: 'red', text: '展开失败' },
+          };
+          const item = map[st];
+          if (!item) return null;
+          return (
+            <Tag color={item.color} title={record.extractError || undefined} style={{ margin: 0 }}>
+              {item.text}
+            </Tag>
+          );
+        })();
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+            {record.parentObjectId ? (
+              <Tag color="cyan" style={{ margin: 0 }} title={record.archiveEntryPath || record.originalName}>
+                包内
+              </Tag>
+            ) : null}
+            {extractTag}
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={record.archiveEntryPath || record.originalName}
+            >
+              {record.originalName || '-'}
+            </span>
+          </span>
+        );
+      },
     },
     {
       title: '场景编码',

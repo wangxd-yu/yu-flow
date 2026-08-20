@@ -1114,12 +1114,28 @@ public class YuFlowProperties {
          */
         private String atRestSm4Key = "";
 
+        /**
+         * 已发布 JSON 接口的明文档是否再套传输 SM4（{@code X-Privacy-Key}）。
+         * 运行时优先读系统参数 {@code PRIVACY_WRAP_TRANSPORT}，本字段仅作 yml 兜底。
+         * {@code true}（默认）：无会话密钥则 REVEAL 降级为 MASK。
+         * {@code false}：命中明文规则时响应里直接给明文，供内网或调试；生产不建议关。
+         */
+        private boolean wrapTransport = true;
+
         public String getAtRestSm4Key() {
             return atRestSm4Key;
         }
 
         public void setAtRestSm4Key(String atRestSm4Key) {
             this.atRestSm4Key = atRestSm4Key;
+        }
+
+        public boolean isWrapTransport() {
+            return wrapTransport;
+        }
+
+        public void setWrapTransport(boolean wrapTransport) {
+            this.wrapTransport = wrapTransport;
         }
     }
 
@@ -1462,6 +1478,9 @@ public class YuFlowProperties {
         /** 缩略图生成配置 */
         private Thumbnail thumbnail = new Thumbnail();
 
+        /** zip 异步展开配置 */
+        private Extract extract = new Extract();
+
         public boolean isEnabled() {
             return enabled;
         }
@@ -1582,6 +1601,14 @@ public class YuFlowProperties {
             this.thumbnail = thumbnail != null ? thumbnail : new Thumbnail();
         }
 
+        public Extract getExtract() {
+            return extract;
+        }
+
+        public void setExtract(Extract extract) {
+            this.extract = extract != null ? extract : new Extract();
+        }
+
         /**
          * 缩略图生成配置。对应 YAML：{@code yu.flow.oss.thumbnail.*}
          */
@@ -1629,6 +1656,67 @@ public class YuFlowProperties {
 
             public void setJpegQuality(float jpegQuality) {
                 this.jpegQuality = jpegQuality;
+            }
+        }
+
+        /**
+         * zip 异步展开。对应 YAML：{@code yu.flow.oss.extract.*}
+         */
+        public static class Extract {
+
+            /** 全局开关，默认开启；场景仍需单独打开 */
+            private boolean enabled = true;
+
+            /** 单包最多处理的文件条目（不含目录） */
+            private int maxEntries = 200;
+
+            /** 单包解压后总字节上限，默认 512MB */
+            private long maxUncompressedBytes = 512L * 1024 * 1024;
+
+            /** 未压缩/压缩包体积比上限，用于抑制 zip bomb */
+            private double maxRatio = 100d;
+
+            /** 展开线程池大小 */
+            private int poolSize = 2;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public int getMaxEntries() {
+                return maxEntries;
+            }
+
+            public void setMaxEntries(int maxEntries) {
+                this.maxEntries = maxEntries;
+            }
+
+            public long getMaxUncompressedBytes() {
+                return maxUncompressedBytes;
+            }
+
+            public void setMaxUncompressedBytes(long maxUncompressedBytes) {
+                this.maxUncompressedBytes = maxUncompressedBytes;
+            }
+
+            public double getMaxRatio() {
+                return maxRatio;
+            }
+
+            public void setMaxRatio(double maxRatio) {
+                this.maxRatio = maxRatio;
+            }
+
+            public int getPoolSize() {
+                return poolSize;
+            }
+
+            public void setPoolSize(int poolSize) {
+                this.poolSize = poolSize;
             }
         }
     }

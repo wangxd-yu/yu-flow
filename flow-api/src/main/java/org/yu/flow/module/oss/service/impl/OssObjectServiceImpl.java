@@ -40,6 +40,7 @@ import org.yu.flow.module.oss.query.OssObjectQueryDTO;
 import org.yu.flow.module.oss.repository.OssConnectionRepository;
 import org.yu.flow.module.oss.repository.OssObjectRepository;
 import org.yu.flow.module.oss.repository.OssUploadProfileRepository;
+import org.yu.flow.module.oss.service.OssArchiveExtractService;
 import org.yu.flow.module.oss.service.OssDownloadLogService;
 import org.yu.flow.module.oss.service.OssObjectRefService;
 import org.yu.flow.module.oss.service.OssObjectService;
@@ -140,6 +141,9 @@ public class OssObjectServiceImpl implements OssObjectService {
 
     @Resource
     private OssThumbnailService ossThumbnailService;
+
+    @Resource
+    private OssArchiveExtractService ossArchiveExtractService;
 
     @Resource
     private OssUploadProfileRepository ossUploadProfileRepository;
@@ -540,11 +544,13 @@ public class OssObjectServiceImpl implements OssObjectService {
                 .expiresAt(expiresAt)
                 .objectPurged(false)
                 .thumbStatus(OssThumbnailService.THUMB_NONE)
+                .extractStatus(OssArchiveExtractService.EXTRACT_NONE)
                 .createTime(now)
                 .updateTime(now)
                 .build();
         entity = ossObjectRepository.save(entity);
         ossThumbnailService.scheduleIfNeeded(entity, profile);
+        ossArchiveExtractService.scheduleIfNeeded(entity, profile);
 
         OssUploadResultDTO dto = new OssUploadResultDTO()
                 .setId(entity.getId())
@@ -556,7 +562,8 @@ public class OssObjectServiceImpl implements OssObjectService {
                 .setExpiresAt(expiresAt)
                 .setThumbStatus(entity.getThumbStatus())
                 .setThumbPublicPath(entity.getThumbPublicPath())
-                .setHasThumbnail(OssThumbnailService.THUMB_READY.equals(entity.getThumbStatus()));
+                .setHasThumbnail(OssThumbnailService.THUMB_READY.equals(entity.getThumbStatus()))
+                .setExtractStatus(entity.getExtractStatus());
         if (OssObjectDO.VISIBILITY_PUBLIC.equals(visibility)) {
             dto.setPublicUrl(OssKeyPatternResolver.buildPublicUrl(connection.getPublicBaseUrl(), publicPath));
         }

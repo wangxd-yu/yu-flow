@@ -50,6 +50,18 @@ public class ApiPrivacyConfig {
     /** 解密失败策略，默认 {@link #FAIL_MASK} */
     private String onDecryptFail;
 
+    /**
+     * 谁看明文/脱敏。{@code null}=继承上级整表；空列表=本级明确「无规则」（未命中一律 MASK）。
+     * 不要与上级逐行 merge。
+     */
+    private List<org.yu.flow.module.host.PrivacyAccessRule> rules;
+
+    /**
+     * 字段脱敏规则（与隐私方案 {@code rules} 同一结构）。
+     * {@code null}=继承方案/上级整表；非空=本级整表覆盖。
+     */
+    private List<PrivacyMaskRule> maskRules;
+
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class AtRest {

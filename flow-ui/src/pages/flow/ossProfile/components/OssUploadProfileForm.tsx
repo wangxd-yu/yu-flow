@@ -229,6 +229,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
   const fetchedCodesRef = React.useRef<Set<string>>(new Set());
   const connectionsRequestRef = useRef(0);
   const prevExtsRef = useRef<string[]>([]);
+  const extractPrevExtsRef = useRef<string[]>([]);
 
   const loadMinioBuckets = React.useCallback(async (code: string) => {
     if (!code || fetchedCodesRef.current.has(code)) return;
@@ -302,11 +303,23 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         values.thumbnailEnabled === undefined
           ? false
           : Boolean(Number(values.thumbnailEnabled)),
+      extractArchiveEnabled:
+        values.extractArchiveEnabled === undefined
+          ? false
+          : Boolean(Number(values.extractArchiveEnabled)),
+      extractKeepArchive:
+        values.extractKeepArchive === undefined
+          ? true
+          : Boolean(Number(values.extractKeepArchive)),
+      extractRejectPolicy: values.extractRejectPolicy || 'SKIP_ZERO_FAIL',
       maxSizeMb: bytesToMb(values.maxSizeBytes),
       quotaMaxMb: bytesToMb(values.quotaMaxBytes),
       thumbnailMaxSourceMb: bytesToMb(values.thumbnailMaxSourceBytes),
+      extractMaxUncompressedMb: bytesToMb(values.extractMaxUncompressedBytes),
       allowedContentTypes: splitCsv(values.allowedContentTypes),
       allowedExtensions: splitCsv(values.allowedExtensions),
+      extractAllowedContentTypes: splitCsv(values.extractAllowedContentTypes),
+      extractAllowedExtensions: splitCsv(values.extractAllowedExtensions),
       accessRules,
     };
     },
@@ -316,8 +329,9 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
   useEffect(() => {
     if (modalVisible) {
       prevExtsRef.current = splitCsv(values.allowedExtensions) || [];
+      extractPrevExtsRef.current = splitCsv(values.extractAllowedExtensions) || [];
     }
-  }, [modalVisible, values.allowedExtensions]);
+  }, [modalVisible, values.allowedExtensions, values.extractAllowedExtensions]);
 
   const handleSubmit = async (formValues: any) => {
     const hide = message.loading(isEdit ? '正在更新...' : '正在添加...');
@@ -329,9 +343,11 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         maxSizeMb,
         quotaMaxMb,
         thumbnailMaxSourceMb,
+        extractMaxUncompressedMb,
         maxSizeBytes: _dropMax,
         quotaMaxBytes: _dropQuota,
         thumbnailMaxSourceBytes: _dropThumbSrc,
+        extractMaxUncompressedBytes: _dropExtractSrc,
         accessRules,
         ...rest
       } = formValues;
@@ -346,6 +362,24 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         message.error('私有且要求登录时请至少配置一条访问规则');
         return false;
       }
+      if (formValues.extractArchiveEnabled) {
+        const exts = (formValues.allowedExtensions || []).map((s: string) => normalizeExt(s));
+        const mimes = (formValues.allowedContentTypes || []).map((s: string) => String(s).trim().toLowerCase());
+        if (exts.length > 0 && !exts.includes('zip')) {
+          hide();
+          message.error('开启 zip 自动展开时，外层允许扩展名需包含 zip（或留空不限制）');
+          return false;
+        }
+        if (
+          mimes.length > 0
+          && !mimes.includes('application/zip')
+          && !mimes.includes('application/x-zip-compressed')
+        ) {
+          hide();
+          message.error('开启 zip 自动展开时，外层允许 MIME 需包含 application/zip（或留空不限制）');
+          return false;
+        }
+      }
       if (
         formValues.visibility === 'PRIVATE'
         && rules.length > 0
@@ -359,6 +393,8 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
         ...rest,
         allowedContentTypes: joinCsv(formValues.allowedContentTypes),
         allowedExtensions: joinCsv(formValues.allowedExtensions),
+        extractAllowedContentTypes: joinCsv(formValues.extractAllowedContentTypes),
+        extractAllowedExtensions: joinCsv(formValues.extractAllowedExtensions),
         maxSizeBytes: mbToBytes(maxSizeMb),
         quotaMaxBytes: mbToBytes(quotaMaxMb),
         thumbnailMaxEdge:
@@ -370,6 +406,11 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
           formValues.thumbnailJpegQuality == null || formValues.thumbnailJpegQuality === ''
             ? 0
             : formValues.thumbnailJpegQuality,
+        extractMaxEntries:
+          formValues.extractMaxEntries == null || formValues.extractMaxEntries === ''
+            ? 0
+            : formValues.extractMaxEntries,
+        extractMaxUncompressedBytes: mbToBytes(extractMaxUncompressedMb),
         callerPolicy: buildOssAccessRulesJson(
           formValues.visibility === 'PUBLIC'
             ? rules.map((rule: any) => ({ ...rule, downloadScope: 'OFF' }))
@@ -714,7 +755,7 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
           title={
             <Space size={6}>
               <Tag color="green" style={{ margin: 0 }}>4</Tag>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>🛡️ 格式校验与缩略图</span>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>🛡️ 格式校验、缩略图与压缩包</span>
             </Space>
           }
           bordered
@@ -893,6 +934,177 @@ const OssUploadProfileForm: React.FC<OssUploadProfileFormProps> = (props) => {
                           max={1}
                           fieldProps={{ step: 0.05, precision: 2 }}
                           colProps={{ span: 8 }}
+                        />
+                      </Row>
+                    </div>
+                  </Col>
+                ) : null
+              }
+            </ProFormDependency>
+            <ProFormSwitch
+              name="extractArchiveEnabled"
+              label="上传 zip 后自动展开"
+              tooltip="仅处理 zip，不递归解压。外层白名单管能否上传这个包，下面内层白名单管包内哪些文件落库"
+              colProps={{ span: 24 }}
+              fieldProps={{
+                onChange: (checked: boolean) => {
+                  if (!checked) return;
+                  const curExts: string[] = form.getFieldValue('allowedExtensions') || [];
+                  if (!curExts.length) return;
+                  const hasZip = curExts.map(normalizeExt).includes('zip');
+                  if (hasZip) return;
+                  const nextExts = uniqueStrings([...curExts.map(normalizeExt), 'zip']);
+                  const curMimes: string[] = form.getFieldValue('allowedContentTypes') || [];
+                  const nextMimes = uniqueStrings([...curMimes, 'application/zip']);
+                  form.setFieldsValue({
+                    allowedExtensions: nextExts,
+                    allowedContentTypes: nextMimes,
+                  });
+                  prevExtsRef.current = nextExts;
+                  message.info('已在外层白名单追加 zip，否则无法上传压缩包');
+                },
+              }}
+            />
+            <ProFormDependency name={['extractArchiveEnabled']}>
+              {({ extractArchiveEnabled }) =>
+                extractArchiveEnabled ? (
+                  <Col span={24}>
+                    <div
+                      style={{
+                        background: '#f0f9ff',
+                        border: '1px solid #bae6fd',
+                        borderRadius: 6,
+                        padding: '8px 12px 0 12px',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: '#0369a1', marginBottom: 6 }}>
+                        外层管「包能不能上传」，内层管「包内哪些文件落库」。空内层=除嵌套压缩包与系统垃圾文件外全部落库。不支持 rar/7z，也不二次解压。
+                      </div>
+                      <Row gutter={[12, 0]}>
+                        <ProFormSwitch
+                          name="extractKeepArchive"
+                          label="保留原 zip"
+                          tooltip="关闭后，展开成功且至少落库 1 个文件时软删原包；失败则始终保留原包便于重试"
+                          colProps={{ span: 12 }}
+                        />
+                        <ProFormSelect
+                          name="extractRejectPolicy"
+                          label="不合格条目"
+                          colProps={{ span: 12 }}
+                          options={[
+                            { label: '跳过；合格数为 0 则整包失败', value: 'SKIP_ZERO_FAIL' },
+                            { label: '任一不合格则整包失败并回滚', value: 'FAIL_PACK' },
+                          ]}
+                          tooltip="目录、__MACOSX、.DS_Store、嵌套压缩包始终跳过，不计入不合格"
+                        />
+                        <Col span={24}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              marginBottom: 4,
+                            }}
+                          >
+                            <span style={{ fontSize: 12, color: '#475569' }}>包内落库一键预填：</span>
+                            <Space wrap size={[4, 4]}>
+                              {PRESET_SCENARIOS.filter((p) => p.key === 'IMAGE' || p.key === 'DOCUMENT').map((p) => (
+                                <Button
+                                  key={`inner-${p.key}`}
+                                  size="small"
+                                  type="dashed"
+                                  onClick={() => {
+                                    const curMimes: string[] = form.getFieldValue('extractAllowedContentTypes') || [];
+                                    const curExts: string[] = form.getFieldValue('extractAllowedExtensions') || [];
+                                    const newMimes = uniqueStrings([...curMimes, ...p.mimeTypes]);
+                                    const newExts = uniqueStrings([...curExts, ...p.exts]);
+                                    form.setFieldsValue({
+                                      extractAllowedContentTypes: newMimes,
+                                      extractAllowedExtensions: newExts,
+                                    });
+                                    extractPrevExtsRef.current = newExts;
+                                    message.success(`已追加包内「${p.label}」`);
+                                  }}
+                                >
+                                  {p.label}
+                                </Button>
+                              ))}
+                              <Button
+                                size="small"
+                                danger
+                                type="text"
+                                onClick={() => {
+                                  form.setFieldsValue({
+                                    extractAllowedContentTypes: [],
+                                    extractAllowedExtensions: [],
+                                  });
+                                  extractPrevExtsRef.current = [];
+                                  message.info('已清空包内限制');
+                                }}
+                              >
+                                清空包内限制
+                              </Button>
+                            </Space>
+                          </div>
+                        </Col>
+                        <ProFormSelect
+                          name="extractAllowedExtensions"
+                          label="包内扩展名"
+                          mode="tags"
+                          options={EXT_OPTIONS.filter((o) => !['zip', 'rar', '7z'].includes(o.value))}
+                          placeholder="空=不限制（仍排除嵌套压缩包）"
+                          colProps={{ span: 12 }}
+                          fieldProps={{
+                            tokenSeparators: [',', '，', ' '],
+                            maxTagCount: 'responsive',
+                            onChange: (exts: string[]) => {
+                              const nextExts = uniqueStrings((exts || []).map(normalizeExt));
+                              const currentMimes: string[] = form.getFieldValue('extractAllowedContentTypes') || [];
+                              const nextMimes = mergeMimesFromExts(
+                                currentMimes,
+                                extractPrevExtsRef.current,
+                                nextExts,
+                              );
+                              extractPrevExtsRef.current = nextExts;
+                              form.setFieldsValue({
+                                extractAllowedExtensions: nextExts,
+                                extractAllowedContentTypes: nextMimes,
+                              });
+                            },
+                          }}
+                          tooltip="按扩展名 + 文件头魔数校验，不信任压缩包内自带类型"
+                        />
+                        <ProFormSelect
+                          name="extractAllowedContentTypes"
+                          label="包内 MIME"
+                          mode="tags"
+                          options={MIME_OPTIONS.filter((o) => !String(o.value).includes('zip') && !String(o.value).includes('rar') && !String(o.value).includes('7z'))}
+                          placeholder="由扩展名带出，也可再选"
+                          colProps={{ span: 12 }}
+                          fieldProps={{
+                            tokenSeparators: [',', '，', ' '],
+                            maxTagCount: 'responsive',
+                          }}
+                        />
+                        <ProFormDigit
+                          name="extractMaxEntries"
+                          label="单包最多条目"
+                          placeholder="空=全局 200"
+                          min={1}
+                          max={5000}
+                          fieldProps={{ precision: 0 }}
+                          colProps={{ span: 12 }}
+                          tooltip="含将被跳过的文件条目，用于抑制恶意包"
+                        />
+                        <ProFormDigit
+                          name="extractMaxUncompressedMb"
+                          label="解压后体积上限"
+                          placeholder="空=全局 512MB"
+                          min={0}
+                          fieldProps={{ precision: 0, addonAfter: 'MB' }}
+                          colProps={{ span: 12 }}
+                          tooltip="按解压后累计字节限制，防止 zip bomb"
                         />
                       </Row>
                     </div>

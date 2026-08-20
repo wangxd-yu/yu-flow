@@ -28,6 +28,7 @@ import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 import org.yu.flow.module.oss.support.OssAccessRule;
 import org.yu.flow.module.oss.support.OssAccessRules;
 import org.yu.flow.module.oss.support.OssAccessSupport;
+import org.yu.flow.module.oss.support.OssArchiveExtractSupport;
 import org.yu.flow.module.oss.support.OssProfileCallerAuth;
 
 @ConditionalOnOssEnabled
@@ -117,6 +118,31 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         if (profileDO.getThumbnailJpegQuality() != null) {
             double q = profileDO.getThumbnailJpegQuality();
             existing.setThumbnailJpegQuality(q <= 0 || q > 1 ? null : q);
+        }
+        if (profileDO.getExtractArchiveEnabled() != null) {
+            existing.setExtractArchiveEnabled(profileDO.getExtractArchiveEnabled());
+        }
+        if (profileDO.getExtractKeepArchive() != null) {
+            existing.setExtractKeepArchive(profileDO.getExtractKeepArchive());
+        }
+        if (profileDO.getExtractRejectPolicy() != null) {
+            existing.setExtractRejectPolicy(
+                    OssArchiveExtractSupport.normalizePolicy(profileDO.getExtractRejectPolicy()));
+        }
+        if (profileDO.getExtractAllowedExtensions() != null) {
+            existing.setExtractAllowedExtensions(profileDO.getExtractAllowedExtensions());
+        }
+        if (profileDO.getExtractAllowedContentTypes() != null) {
+            existing.setExtractAllowedContentTypes(profileDO.getExtractAllowedContentTypes());
+        }
+        if (profileDO.getExtractMaxEntries() != null) {
+            existing.setExtractMaxEntries(
+                    profileDO.getExtractMaxEntries() <= 0 ? null : profileDO.getExtractMaxEntries());
+        }
+        if (profileDO.getExtractMaxUncompressedBytes() != null) {
+            existing.setExtractMaxUncompressedBytes(
+                    profileDO.getExtractMaxUncompressedBytes() <= 0
+                            ? null : profileDO.getExtractMaxUncompressedBytes());
         }
         if (profileDO.getRequireAuth() != null) {
             existing.setRequireAuth(profileDO.getRequireAuth());
@@ -241,8 +267,20 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
             throw new FlowException("OSS_PROFILE_LIMIT_INVALID", "单次文件数必须在 1 到 100 之间");
         }
         if (negative(profileDO.getMaxSizeBytes()) || negative(profileDO.getQuotaMaxBytes())
-                || negative(profileDO.getQuotaMaxFiles()) || negative(profileDO.getThumbnailMaxSourceBytes())) {
+                || negative(profileDO.getQuotaMaxFiles()) || negative(profileDO.getThumbnailMaxSourceBytes())
+                || negative(profileDO.getExtractMaxUncompressedBytes())
+                || negative(profileDO.getExtractMaxEntries())) {
             throw new FlowException("OSS_PROFILE_LIMIT_INVALID", "容量、数量限制不能为负数");
+        }
+        if (Boolean.TRUE.equals(profileDO.getExtractArchiveEnabled())
+                && !OssArchiveExtractSupport.outerAllowlistAllowsZip(
+                        profileDO.getAllowedExtensions(), profileDO.getAllowedContentTypes())) {
+            throw new FlowException("OSS_EXTRACT_NEED_ZIP",
+                    "开启 zip 自动展开时，外层白名单需允许 zip（或留空表示不限制）");
+        }
+        if (StrUtil.isNotBlank(profileDO.getExtractRejectPolicy())) {
+            profileDO.setExtractRejectPolicy(
+                    OssArchiveExtractSupport.normalizePolicy(profileDO.getExtractRejectPolicy()));
         }
         ossProfileCallerAuth.validateOnSave(profileDO);
     }
@@ -262,6 +300,18 @@ public class OssUploadProfileServiceImpl implements OssUploadProfileService {
         }
         if (profileDO.getThumbnailEnabled() == null) {
             profileDO.setThumbnailEnabled(false);
+        }
+        if (profileDO.getExtractArchiveEnabled() == null) {
+            profileDO.setExtractArchiveEnabled(false);
+        }
+        if (profileDO.getExtractKeepArchive() == null) {
+            profileDO.setExtractKeepArchive(true);
+        }
+        if (StrUtil.isBlank(profileDO.getExtractRejectPolicy())) {
+            profileDO.setExtractRejectPolicy(OssArchiveExtractSupport.POLICY_SKIP_ZERO_FAIL);
+        } else {
+            profileDO.setExtractRejectPolicy(
+                    OssArchiveExtractSupport.normalizePolicy(profileDO.getExtractRejectPolicy()));
         }
         if (profileDO.getDeleted() == null) {
             profileDO.setDeleted(0);

@@ -208,7 +208,7 @@ const HostCatalogPane: React.FC<Props> = ({
         message={
           spiOverride
             ? '当前进程已注入 Java SPI，运行时优先使用 SPI；本页配置保留为降级方案。'
-            : '启用的维度会出现在接口调用方策略与 OSS 访问规则的下拉里；未发布目录使用草稿数据。'
+            : '启用的维度会出现在 OSS、接口/目录「访问规则」的勾选里；未发布目录使用草稿数据。'
         }
       />
 
@@ -260,7 +260,7 @@ const HostCatalogPane: React.FC<Props> = ({
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
-                  <Tooltip title="关闭后，策略表单不展示该维，运行时也不匹配">
+                  <Tooltip title="关闭后，OSS / 接口访问规则表单不再展示该维；已保存的约束仍会匹配，避免策略被悄悄放宽">
                     <span className="host-dim-enable">
                       启用
                       <Switch
@@ -342,7 +342,7 @@ const DimEditor: React.FC<{
     <div className="host-dim-section">
       <div className="host-dim-section-title">目录绑定</div>
       <div className="host-binding-switches">
-        <Tooltip title="关闭后，策略表单不展示该维，运行时也不匹配">
+        <Tooltip title="关闭后，OSS / 接口访问规则表单不再展示该维；已保存的约束仍会匹配，避免策略被悄悄放宽">
           <span>
             启用
             <Switch

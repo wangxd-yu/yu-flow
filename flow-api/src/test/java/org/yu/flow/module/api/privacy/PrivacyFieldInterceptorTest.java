@@ -108,6 +108,54 @@ class PrivacyFieldInterceptorTest {
     }
 
     @Test
+    void excelPath_dropOmitsKey() {
+        String phoneCipher = crypto.encryptAtRest("13812341234");
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("phone_encrypt", phoneCipher);
+        row.put("id_no", crypto.encryptAtRest("31010119900101123X"));
+        row.put("title", "ok");
+        PrivacyDecision decision = PrivacyDecision.of(PrivacyClass.MASK,
+                Map.of("id_no", PrivacyDecision.ACTION_DROP), "r1");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) interceptor.apply(
+                row, cfg, decision, null, false);
+        assertEquals("138****1234", out.get("phone"));
+        assertFalse(out.containsKey("id_no"));
+        assertEquals("ok", out.get("title"));
+    }
+
+    @Test
+    void drop_omitsNonPrivacyKeys_andSplitsCommaNames() {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("phone_encrypt", crypto.encryptAtRest("13812341234"));
+        row.put("createBy", "admin");
+        row.put("updateBy", "ops");
+        row.put("title", "ok");
+        PrivacyDecision decision = PrivacyDecision.of(PrivacyClass.MASK,
+                Map.of("createBy,updateBy", PrivacyDecision.ACTION_DROP), "r1");
+        assertTrue(decision.drops("createBy", "createBy"));
+        assertTrue(decision.drops("updateBy", "updateBy"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) interceptor.apply(
+                row, cfg, decision, null, false);
+        assertEquals("138****1234", out.get("phone"));
+        assertFalse(out.containsKey("createBy"));
+        assertFalse(out.containsKey("updateBy"));
+        assertEquals("ok", out.get("title"));
+    }
+
+    @Test
+    void fieldReveal_onMaskRow_excelIsPlaintext() {
+        Map<String, Object> row = Map.of("phone_encrypt", crypto.encryptAtRest("13812341234"));
+        PrivacyDecision decision = PrivacyDecision.of(PrivacyClass.MASK,
+                Map.of("phone", PrivacyDecision.ACTION_REVEAL), "r1");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) interceptor.apply(
+                row, cfg, decision, null, false);
+        assertEquals("13812341234", out.get("phone"));
+    }
+
+    @Test
     void usesProfileKeyAndCustomMaskRule() {
         String profileKey = "abcdefghijklmnop";
         PrivacyMaskRule phone = new PrivacyMaskRule();

@@ -64,7 +64,7 @@ DDL：`flow-api/sql/20260811_directory_path_prefix_security.sql`（MySQL）/ `_p
 
 ## 按接口覆盖（`security_config`）
 
-接口「基本信息 → 入站防护」写入 `flow_api_info.security_config`，并打进 `publishedSnapshot`。**改完需发布才影响线上。**
+接口「基本信息 → 访问控制」写入 `flow_api_info.security_config`，并打进 `publishedSnapshot`。**改完需发布才影响线上。**
 
 ```json
 {
@@ -74,16 +74,15 @@ DDL：`flow-api/sql/20260811_directory_path_prefix_security.sql`（MySQL）/ `_p
   "rateLimitQps": null,
   "ipAllowlist": null,
   "callerPolicy": {
-    "enabled": false,
-    "match": "ALL",
-    "userTypes": [],
-    "roles": [],
-    "permissions": [],
-    "deptIds": [],
-    "userIds": []
+    "enabled": true,
+    "rules": [
+      { "name": "运营", "principals": "MATCH", "userTypes": ["STAFF"], "effect": "ALLOW" }
+    ]
   }
 }
 ```
+
+旧版单块 `userTypes/roles/...` 读入时升成一条 MATCH 规则。启用后未命中任何允许行即拒绝。开放应用不会被 `ANY_AUTHENTICATED` 覆盖。
 
 | 字段 | 取值 | 含义 |
 |------|------|------|
@@ -92,15 +91,15 @@ DDL：`flow-api/sql/20260811_directory_path_prefix_security.sql`（MySQL）/ `_p
 | `rateLimitEnabled` | `null` / `true` / `false` | `null` → 全局 |
 | `rateLimitQps` | `null` / number | 启用限流时的秒级 QPS |
 | `ipAllowlist` | `null` / `""` / `"ip,cidr"` | `null` → 全局；`""` → 明确不限制 |
-| `callerPolicy` | 见下 | 调用方策略（用户类型/角色/权限等）；默认关闭 |
+| `callerPolicy` | 见下 | 谁可以调用；默认关闭 |
 
 ### 调用方策略 `callerPolicy`
 
 | 字段 | 含义 |
 |------|------|
 | `enabled` | `false`（默认）= 只做 authMode 门禁 |
-| `match` | `ALL` / `ANY`：已填写维度的组合方式 |
-| `userTypes` / `roles` / `permissions` / `deptIds` / `userIds` | 与 `FlowHostPrincipal` 匹配 |
+| `rules` | 多行允许。身份：`ANY_AUTHENTICATED` / `MATCH` / `OPEN_APP`，与 OSS 访问规则相同 |
+| （旧）`match` + `userTypes/roles/...` | 无 `rules` 时升成一条 MATCH |
 
 - 仅对 **HOST**（及未放开匿名时 NONE→HOST）做匹配；**OPEN** 以平台 grant 为准，忽略匹配。
 - `authMode=NONE` 且 `enabled=true` 禁止保存/发布。
@@ -108,7 +107,7 @@ DDL：`flow-api/sql/20260811_directory_path_prefix_security.sql`（MySQL）/ `_p
 - 通过后注入流程上下文 `@AUTH`（SQL/表达式 `${@AUTH.userId}`，节点 inputs `$['@AUTH'].userId`）；失败 `403 INGRESS_CALLER_DENIED`。
 - 嵌入对接说明见管理端「集成文档 → 核心用户体系与数据隔离」。
 - 管理端用户类型等下拉优先来自可选 SPI `FlowHostIdentityCatalogProvider`；否则读「宿主机配置」里已启用且已发布的保留接口；都未对接时独立运行有前端示例（可手输码）。
-- **OSS 上传场景**复用同一 `CallerPolicy` 模型，写入 `flow_oss_upload_profile.caller_policy`（`upload` / `download` 两段）。失败码 `403 OSS_CALLER_DENIED`；AppKey 开放上传不匹配。见管理台「OSS 文件上传 API → 宿主调用方策略」。
+- **OSS 上传场景**共用同一套身份匹配器，写入 `flow_oss_upload_profile.caller_policy.rules`（上传 + 下载范围）。失败码 `403 OSS_CALLER_DENIED`。开放应用必须用 `OPEN_APP`，不会被「任何已登录」覆盖。
 
 单字段优先级：**接口显式值 > 全局默认**。`ingress.enabled=false` 时强制等效 `NONE` + 无限流 + 无 IP 限制（开放入口除外）。
 

@@ -291,6 +291,7 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
         ArrayDeque<String> pending = new ArrayDeque<>();
         seen.add(directoryId);
         pending.add(directoryId);
+        resultIds.add(directoryId);
         while (!pending.isEmpty()) {
             String parent = pending.removeFirst();
             for (CachedDir child : snap.childrenByParent.getOrDefault(parent, List.of())) {

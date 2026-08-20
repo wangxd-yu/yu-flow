@@ -151,7 +151,7 @@ const IdentityCatalogPage: React.FC = () => {
     setSaving(true);
     try {
       await persistSettings(settings);
-      message.success('已保存。未启用的维度会从策略表单隐藏，运行时也不匹配');
+      message.success('已保存。未启用的维度会从访问规则表单隐藏；已填写的约束仍按原样匹配，避免策略被悄悄放宽');
     } catch {
       message.error('保存失败');
     } finally {

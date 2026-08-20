@@ -162,7 +162,8 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
         this.executionHandler = new GatewayApiExecutionHandler(flowApiService, schemaValidatorService,
                 contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, assetMetricsRecorder, apiDataViewService,
-                ingressSecurityResolver, privacyFieldInterceptor, io, objectMapper);
+                ingressSecurityResolver, privacyFieldInterceptor, io, objectMapper,
+                flowProperties, yuFlowRuntimeSettings);
         this.openEntryHandler = new GatewayOpenEntryHandler(flowProperties, yuFlowRuntimeSettings,
                 openAuthService, flowApiCacheManager, assetMetricsRecorder,
                 executionHandler, wrapForwardHandler, io);

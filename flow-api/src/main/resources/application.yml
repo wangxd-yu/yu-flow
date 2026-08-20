@@ -79,6 +79,8 @@ yu:
     privacy:
       # 库内密文字段 SM4 密钥：16 字节明文或 32 位 hex；未配置则 *_encrypt 字段失败关闭为 ****
       at-rest-sm4-key: ${YU_FLOW_PRIVACY_AT_REST_SM4_KEY:}
+      # 仅当系统参数 PRIVACY_WRAP_TRANSPORT 未配置时回退。日常请在「平台设置 → 系统参数 → 出站隐私」开关
+      wrap-transport: ${YU_FLOW_PRIVACY_WRAP_TRANSPORT:true}
     task:
       lock-ttl-minutes: ${YU_FLOW_TASK_LOCK_TTL_MINUTES:30}
       lock-renew-interval-seconds: ${YU_FLOW_TASK_LOCK_RENEW_SECONDS:60}

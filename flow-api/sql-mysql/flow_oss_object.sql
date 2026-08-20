@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS `flow_oss_object` (
   `thumb_content_type` varchar(128) DEFAULT NULL COMMENT '缩略图 Content-Type',
   `thumb_size_bytes` bigint DEFAULT NULL COMMENT '缩略图大小',
   `thumb_error` varchar(512) DEFAULT NULL COMMENT '缩略图失败原因',
+  `parent_object_id` varchar(32) DEFAULT NULL COMMENT '来源压缩包台账 ID，空=独立上传',
+  `archive_entry_path` varchar(512) DEFAULT NULL COMMENT '包内相对路径（正斜杠）',
+  `extract_status` varchar(16) NOT NULL DEFAULT 'NONE' COMMENT 'NONE / PENDING / EXTRACTING / DONE / FAILED / SKIPPED',
+  `extract_error` varchar(512) DEFAULT NULL COMMENT '展开结果摘要或失败原因',
   `create_time` datetime COMMENT '创建时间',
   `update_time` datetime COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -37,5 +41,7 @@ CREATE TABLE IF NOT EXISTS `flow_oss_object` (
   KEY `idx_flow_oss_object_create_time` (`create_time`),
   KEY `idx_flow_oss_object_expires_at` (`expires_at`),
   KEY `idx_flow_oss_object_status_object_purged` (`status`, `object_purged`),
-  KEY `idx_flow_oss_object_thumb_status` (`thumb_status`)
+  KEY `idx_flow_oss_object_thumb_status` (`thumb_status`),
+  KEY `idx_flow_oss_object_parent_object_id` (`parent_object_id`),
+  KEY `idx_flow_oss_object_extract_status` (`extract_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 文件台账';

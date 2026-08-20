@@ -1,3 +1,4 @@
+import type { CallerAccessRule, PrivacyAccessRule } from '@/utils/principalMatch';
 import { request } from '@umijs/max';
 import type { HostCatalogDimension, HostCatalogItem } from './hostIdentityCatalog';
 
@@ -79,10 +80,17 @@ export interface HostPrincipalSettings {
   headerNames?: Partial<Record<HostPrincipalField, string>>;
   trustProxyHeaders?: boolean;
   adminUserTypes?: string[];
-  /** 隐私字段解密后给明文的宿主角色码 */
+  privacyRules?: PrivacyAccessRule[];
+  /** @deprecated 由 privacyRules 替代 */
   privacyRevealRoles?: string[];
-  /** 隐私字段解密后脱敏的宿主角色码 */
+  /** @deprecated 未生效 */
   privacyMaskRoles?: string[];
+  privacyProfileId?: string;
+  privacyFieldSuffix?: string;
+  privacyExtraFields?: string[];
+  privacyStripSuffix?: boolean;
+  ingressCallerEnabled?: boolean;
+  ingressRules?: CallerAccessRule[];
 }
 
 export interface HostPrincipalOverview {
@@ -127,6 +135,38 @@ export async function testHostPrincipal(): Promise<HostPrincipalTestResult> {
   return unwrap<HostPrincipalTestResult>(res) || {};
 }
 
+export interface HostPlatformAccessDefaults {
+  authMode?: string;
+  rateLimitEnabled?: boolean;
+  rateLimitQps?: number;
+  ipAllowlist?: string;
+  timeoutMs?: number;
+  ingressCallerEnabled?: boolean;
+  ingressRules?: CallerAccessRule[];
+  privacyRules?: PrivacyAccessRule[];
+  privacyProfileId?: string;
+  privacyFieldSuffix?: string;
+  privacyExtraFields?: string[];
+  privacyStripSuffix?: boolean;
+}
+
+export async function getPlatformAccessDefaults(): Promise<HostPlatformAccessDefaults> {
+  const res = await request('/flow-api/host/config/platform-access-defaults', {
+    method: 'GET',
+  });
+  return unwrap<HostPlatformAccessDefaults>(res) || {};
+}
+
+export async function savePlatformAccessDefaults(
+  payload: HostPlatformAccessDefaults,
+): Promise<HostPlatformAccessDefaults> {
+  const res = await request('/flow-api/host/config/platform-access-defaults', {
+    method: 'PUT',
+    data: payload,
+  });
+  return unwrap<HostPlatformAccessDefaults>(res) || {};
+}
+
 export type PrivacyDecryptAlg = 'SM4' | 'AES' | 'PLAIN';
 
 export interface PrivacyMaskRule {
@@ -137,6 +177,7 @@ export interface PrivacyMaskRule {
   method?: string;
   keepHead?: number | null;
   keepTail?: number | null;
+  /** 已忽略。中间按原文剩余长度填 * */
   maskLen?: number | null;
   maskChar?: string;
 }

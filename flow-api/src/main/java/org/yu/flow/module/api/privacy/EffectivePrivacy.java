@@ -1,5 +1,7 @@
 package org.yu.flow.module.api.privacy;
 
+import org.yu.flow.module.host.PrivacyAccessRule;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -24,13 +26,14 @@ public final class EffectivePrivacy {
     private final PrivacyDecryptSpec decryptSpec;
     private final String decryptKey;
     private final List<PrivacyMaskRule> maskRules;
+    private final List<PrivacyAccessRule> accessRules;
 
     public EffectivePrivacy(boolean enabled, String fieldSuffix, Set<String> extraFieldsLower,
                             boolean stripSuffix, String atRestAlg, String atRestKeyId,
                             Map<String, List<String>> maskAliases, String onDecryptFail) {
         this(enabled, fieldSuffix, extraFieldsLower, stripSuffix, atRestAlg, atRestKeyId,
                 maskAliases, onDecryptFail, null, PrivacyDecryptSpec.fromAlg(atRestAlg), null,
-                PrivacyMasker.rulesFromAliasMap(maskAliases));
+                PrivacyMasker.rulesFromAliasMap(maskAliases), List.of());
     }
 
     public EffectivePrivacy(boolean enabled, String fieldSuffix, Set<String> extraFieldsLower,
@@ -41,7 +44,7 @@ public final class EffectivePrivacy {
         this(enabled, fieldSuffix, extraFieldsLower, stripSuffix, atRestAlg, atRestKeyId,
                 maskAliases, onDecryptFail, profileId,
                 PrivacyDecryptSpec.fromAlg(decryptAlg != null ? decryptAlg : atRestAlg),
-                decryptKey, maskRules);
+                decryptKey, maskRules, List.of());
     }
 
     public EffectivePrivacy(boolean enabled, String fieldSuffix, Set<String> extraFieldsLower,
@@ -49,6 +52,15 @@ public final class EffectivePrivacy {
                             Map<String, List<String>> maskAliases, String onDecryptFail,
                             String profileId, PrivacyDecryptSpec decryptSpec, String decryptKey,
                             List<PrivacyMaskRule> maskRules) {
+        this(enabled, fieldSuffix, extraFieldsLower, stripSuffix, atRestAlg, atRestKeyId,
+                maskAliases, onDecryptFail, profileId, decryptSpec, decryptKey, maskRules, List.of());
+    }
+
+    public EffectivePrivacy(boolean enabled, String fieldSuffix, Set<String> extraFieldsLower,
+                            boolean stripSuffix, String atRestAlg, String atRestKeyId,
+                            Map<String, List<String>> maskAliases, String onDecryptFail,
+                            String profileId, PrivacyDecryptSpec decryptSpec, String decryptKey,
+                            List<PrivacyMaskRule> maskRules, List<PrivacyAccessRule> accessRules) {
         this.enabled = enabled;
         this.fieldSuffix = fieldSuffix == null ? ApiPrivacyConfig.DEFAULT_SUFFIX : fieldSuffix;
         this.extraFieldsLower = extraFieldsLower == null ? Set.of() : extraFieldsLower;
@@ -64,6 +76,7 @@ public final class EffectivePrivacy {
         this.decryptAlg = this.decryptSpec.getFamily();
         this.decryptKey = decryptKey;
         this.maskRules = maskRules == null ? List.of() : List.copyOf(maskRules);
+        this.accessRules = accessRules == null ? List.of() : List.copyOf(accessRules);
     }
 
     public static EffectivePrivacy disabled() {
@@ -117,6 +130,16 @@ public final class EffectivePrivacy {
 
     public List<PrivacyMaskRule> getMaskRules() {
         return maskRules;
+    }
+
+    public List<PrivacyAccessRule> getAccessRules() {
+        return accessRules;
+    }
+
+    public EffectivePrivacy withAccessRules(List<PrivacyAccessRule> rules) {
+        return new EffectivePrivacy(enabled, fieldSuffix, extraFieldsLower, stripSuffix,
+                atRestAlg, atRestKeyId, maskAliases, onDecryptFail, profileId, decryptSpec,
+                decryptKey, maskRules, rules);
     }
 
     public boolean isPrivacyField(String key) {

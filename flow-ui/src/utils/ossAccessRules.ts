@@ -11,6 +11,8 @@ export interface OssAccessRule {
   roles: string[];
   permissions: string[];
   userIds: string[];
+  deptIds?: string[];
+  deptIncludeChildren?: boolean;
   upload: boolean;
   downloadScope: OssDownloadScope;
 }
@@ -23,6 +25,8 @@ export const EMPTY_ACCESS_RULE: OssAccessRule = {
   roles: [],
   permissions: [],
   userIds: [],
+  deptIds: [],
+  deptIncludeChildren: true,
   upload: true,
   downloadScope: 'SELF',
 };
@@ -79,6 +83,8 @@ export function normalizeAccessRule(raw?: Partial<OssAccessRule> | null): OssAcc
     roles: asStringList(raw?.roles),
     permissions: asStringList(raw?.permissions),
     userIds: asStringList(raw?.userIds),
+    deptIds: asStringList(raw?.deptIds),
+    deptIncludeChildren: raw?.deptIncludeChildren !== false,
     upload: !!raw?.upload,
     downloadScope,
   };
@@ -98,6 +104,8 @@ function fromLegacyPolicy(
     roles: policy?.roles,
     permissions: policy?.permissions,
     userIds: policy?.userIds,
+    deptIds: policy?.deptIds,
+    deptIncludeChildren: policy?.deptIncludeChildren,
     upload,
     downloadScope,
   });
@@ -235,6 +243,7 @@ function whoLabel(rule: OssAccessRule): string {
     rule.userTypes.join('/') ||
     rule.roles.join('/') ||
     rule.permissions.join('/') ||
+    (rule.deptIds || []).join('/') ||
     rule.userIds.join('/') ||
     '指定身份'
   );
@@ -271,7 +280,11 @@ export function previewAccessRules(
 }
 
 export function matchDimensionCount(rule: OssAccessRule): number {
-  return [rule.userTypes, rule.roles, rule.permissions, rule.userIds].filter(
-    (list) => Array.isArray(list) && list.length > 0,
-  ).length;
+  return [
+    rule.userTypes,
+    rule.roles,
+    rule.permissions,
+    rule.deptIds,
+    rule.userIds,
+  ].filter((list) => Array.isArray(list) && list.length > 0).length;
 }

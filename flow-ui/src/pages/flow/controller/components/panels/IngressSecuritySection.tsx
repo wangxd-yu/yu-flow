@@ -1,6 +1,8 @@
 /**
  * 入站防护：继承全局 yu.flow.ingress，或按接口覆盖。改完需发布后生效。
  */
+import { PrincipalMatchRuleList } from '@/components/flow/PrincipalMatchFields';
+import { EMPTY_CALLER_RULE, type CallerAccessRule, previewAccessControl } from '@/utils/principalMatch';
 import React from 'react';
 import { Alert, Col, Divider, Form, Row, Switch } from 'antd';
 import {
@@ -9,7 +11,6 @@ import {
   ProFormRadio,
   ProFormText,
 } from '@ant-design/pro-components';
-import CallerPolicyFields from '@/components/flow/CallerPolicyFields';
 
 const AUTH_OPTIONS = [
   { label: '继承全局', value: 'INHERIT' },
@@ -166,20 +167,31 @@ const IngressSecuritySection: React.FC = () => {
       </Row>
 
       <Divider orientation="left" plain>
-        调用方策略
+        谁可以调用
       </Divider>
 
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="按用户类型 / 角色 / 权限限制谁能调用本接口"
-        description="依赖宿主实现 FlowHostPrincipalProvider（内置 JWT 固定为 ADMIN）。下拉选项仅在宿主实现 FlowHostIdentityCatalogProvider 后出现。关闭时仅校验鉴权方式。维度全空且开启时，仅要求能解析到主体。"
+        message="多行允许规则，与 OSS 访问规则同一套身份勾选"
+        description="启用后未命中任何一行即拒绝（403）。开放应用不会被「任何已登录」覆盖，需单独一行。关闭时只做鉴权方式门禁。需发布后生效。"
       />
 
-      <ProFormDependency name={['secAuthMode', 'secCallerEnabled']}>
-        {({ secAuthMode, secCallerEnabled }) => (
+      <ProFormDependency name={['secAuthMode', 'secCallerEnabled', 'secCallerRules', 'privacyMode', 'privacyRules']}>
+        {({ secAuthMode, secCallerEnabled, secCallerRules, privacyMode, privacyRules }) => (
           <>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={previewAccessControl({
+                callerEnabled: !!secCallerEnabled,
+                callerRules: secCallerRules,
+                privacyEnabled: privacyMode !== 'OFF',
+                privacyRules,
+              })}
+            />
             {secAuthMode === 'OPEN' && secCallerEnabled ? (
               <Alert
                 type="warning"
@@ -200,21 +212,28 @@ const IngressSecuritySection: React.FC = () => {
             ) : null}
 
             <Row gutter={[16, 0]}>
-              <CallerPolicyFields
-                names={{
-                  enabled: 'secCallerEnabled',
-                  match: 'secCallerMatch',
-                  userTypes: 'secCallerUserTypes',
-                  roles: 'secCallerRoles',
-                  permissions: 'secCallerPermissions',
-                  deptIds: 'secCallerDeptIds',
-                  deptIncludeChildren: 'secCallerDeptIncludeChildren',
-                  userIds: 'secCallerUserIds',
-                }}
-                enabled={!!secCallerEnabled}
-                enabledLabel="启用调用方策略"
-                enabledExtra="需发布后生效；匹配失败返回 403 INGRESS_CALLER_DENIED"
-              />
+              <Col span={24}>
+                <Form.Item
+                  label="启用调用方策略"
+                  extra="需发布后生效；匹配失败返回 403 INGRESS_CALLER_DENIED"
+                  style={{ marginBottom: 8 }}
+                >
+                  <Form.Item name="secCallerEnabled" valuePropName="checked" noStyle>
+                    <Switch checkedChildren="开" unCheckedChildren="关" />
+                  </Form.Item>
+                </Form.Item>
+              </Col>
+              {secCallerEnabled ? (
+                <Col span={24}>
+                  <Form.Item name="secCallerRules" noStyle>
+                    <PrincipalMatchRuleList<CallerAccessRule>
+                      accent="ingress"
+                      createEmpty={() => ({ ...EMPTY_CALLER_RULE })}
+                      description="一行一类人，组间或。结果只有「允许」。"
+                    />
+                  </Form.Item>
+                </Col>
+              ) : null}
             </Row>
           </>
         )}

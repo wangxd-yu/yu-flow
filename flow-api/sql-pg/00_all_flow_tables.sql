@@ -1,5 +1,5 @@
 -- Yu Flow PostgreSQL / 瀚高 全量建表（由 sql-pg/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-08-18T02:10:43.007Z
+-- 生成时间: 2026-08-20T02:57:14.656Z
 -- 用法: 空库执行本文件 → 再执行 00_system_init.sql
 -- Boolean 映射列必须用 boolean，勿写成 smallint
 --
@@ -81,7 +81,7 @@ COMMENT ON COLUMN flow_api_excel_template.content IS 'xlsx 二进制';
 -- Table: flow_api_info
 -- 接口配置类
 CREATE TABLE IF NOT EXISTS flow_api_info (
-  id bigint NOT NULL,
+  id varchar(32) NOT NULL,
   name varchar(20),
   directory_id varchar(32),
   url varchar(100),
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS flow_api_info (
   PRIMARY KEY (id)
 );
 COMMENT ON TABLE flow_api_info IS '接口配置类';
-COMMENT ON COLUMN flow_api_info.id IS '主键ID，通过Snowflake算法生成';
+COMMENT ON COLUMN flow_api_info.id IS '雪花ID';
 COMMENT ON COLUMN flow_api_info.name IS 'API配置的名称';
 COMMENT ON COLUMN flow_api_info.directory_id IS '关联全局目录树';
 COMMENT ON COLUMN flow_api_info.url IS 'API的URL路径';
@@ -991,6 +991,10 @@ CREATE TABLE IF NOT EXISTS flow_oss_object (
   thumb_content_type varchar(128),
   thumb_size_bytes bigint,
   thumb_error varchar(512),
+  parent_object_id varchar(32),
+  archive_entry_path varchar(512),
+  extract_status varchar(16) NOT NULL DEFAULT 'NONE',
+  extract_error varchar(512),
   create_time timestamp,
   update_time timestamp,
   PRIMARY KEY (id)
@@ -1022,6 +1026,10 @@ COMMENT ON COLUMN flow_oss_object.thumb_public_path IS '缩略图公有路径';
 COMMENT ON COLUMN flow_oss_object.thumb_content_type IS '缩略图 Content-Type';
 COMMENT ON COLUMN flow_oss_object.thumb_size_bytes IS '缩略图大小';
 COMMENT ON COLUMN flow_oss_object.thumb_error IS '缩略图失败原因';
+COMMENT ON COLUMN flow_oss_object.parent_object_id IS '来源压缩包台账 ID，空=独立上传';
+COMMENT ON COLUMN flow_oss_object.archive_entry_path IS '包内相对路径（正斜杠）';
+COMMENT ON COLUMN flow_oss_object.extract_status IS 'NONE / PENDING / EXTRACTING / DONE / FAILED / SKIPPED';
+COMMENT ON COLUMN flow_oss_object.extract_error IS '展开结果摘要或失败原因';
 COMMENT ON COLUMN flow_oss_object.create_time IS '创建时间';
 COMMENT ON COLUMN flow_oss_object.update_time IS '更新时间';
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_profile_code ON flow_oss_object (profile_code);
@@ -1033,6 +1041,8 @@ CREATE INDEX IF NOT EXISTS idx_flow_oss_object_create_time ON flow_oss_object (c
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_expires_at ON flow_oss_object (expires_at);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_status_object_purged ON flow_oss_object (status, object_purged);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_thumb_status ON flow_oss_object (thumb_status);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_parent_object_id ON flow_oss_object (parent_object_id);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_extract_status ON flow_oss_object (extract_status);
 
 -- >>> flow_oss_upload_profile.sql
 -- Table: flow_oss_upload_profile
@@ -1055,6 +1065,13 @@ CREATE TABLE IF NOT EXISTS flow_oss_upload_profile (
   thumbnail_max_edge integer,
   thumbnail_max_source_bytes bigint,
   thumbnail_jpeg_quality numeric(3,2),
+  extract_archive_enabled boolean NOT NULL DEFAULT false,
+  extract_keep_archive boolean NOT NULL DEFAULT true,
+  extract_reject_policy varchar(32) NOT NULL DEFAULT 'SKIP_ZERO_FAIL',
+  extract_allowed_extensions varchar(512),
+  extract_allowed_content_types text,
+  extract_max_entries integer,
+  extract_max_uncompressed_bytes bigint,
   require_auth boolean NOT NULL DEFAULT true,
   presign_upload_enabled boolean NOT NULL DEFAULT false,
   biz_fields_schema text,
@@ -1086,6 +1103,13 @@ COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_enabled IS '是否异步生�
 COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_max_edge IS '缩略图最长边像素，空=用全局';
 COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_max_source_bytes IS '参与缩略图的源文件上限，空=用全局';
 COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_jpeg_quality IS 'JPEG 质量 0~1，空=用全局';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_archive_enabled IS '上传 zip 后是否异步展开';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_keep_archive IS '展开成功后是否保留原包';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_reject_policy IS 'SKIP_ZERO_FAIL / FAIL_PACK';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_allowed_extensions IS '展开后落库扩展名白名单';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_allowed_content_types IS '展开后落库 MIME 白名单';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_max_entries IS '单包最多处理条目数，空=用全局';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_max_uncompressed_bytes IS '单包解压后总字节上限，空=用全局';
 COMMENT ON COLUMN flow_oss_upload_profile.require_auth IS '上传是否必须登录';
 COMMENT ON COLUMN flow_oss_upload_profile.presign_upload_enabled IS '是否开放预签名直传';
 COMMENT ON COLUMN flow_oss_upload_profile.biz_fields_schema IS '业务字段 JSON Schema';

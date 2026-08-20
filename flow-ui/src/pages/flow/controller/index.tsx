@@ -80,11 +80,16 @@ function renderIngressSummary(securityConfig?: string) {
   }
 
   const callerOn = !!cfg?.callerPolicy?.enabled;
+  const ruleNames = Array.isArray(cfg?.callerPolicy?.rules)
+    ? cfg.callerPolicy.rules.map((r: { name?: string }) => r?.name).filter(Boolean)
+    : [];
   const types = Array.isArray(cfg?.callerPolicy?.userTypes)
     ? cfg.callerPolicy.userTypes.filter(Boolean)
     : [];
   const callerText = callerOn
-    ? (types.length ? `调用方·${types.slice(0, 2).join('/')}` : '调用方·开')
+    ? (ruleNames.length
+      ? `调用方·${ruleNames.slice(0, 2).join('/')}`
+      : (types.length ? `调用方·${types.slice(0, 2).join('/')}` : '调用方·开'))
     : null;
 
   return (

@@ -166,21 +166,46 @@ public class FlowHostIdentityCatalogService {
     }
 
     CallerPolicy applyDeptTree(CallerPolicy policy) {
-        if (policy == null || !policy.includeDeptChildren()
-                || policy.getDeptIds() == null
-                || policy.getDeptIds().stream().noneMatch(StrUtil::isNotBlank)) {
+        if (policy == null) {
+            return null;
+        }
+        boolean topNeed = policy.includeDeptChildren() && notEmptyIds(policy.getDeptIds());
+        boolean ruleNeed = false;
+        if (policy.getRules() != null) {
+            for (CallerAccessRule rule : policy.getRules()) {
+                if (rule != null && includeDeptChildren(rule) && notEmptyIds(rule.getDeptIds())) {
+                    ruleNeed = true;
+                    break;
+                }
+            }
+        }
+        if (!topNeed && !ruleNeed) {
             return policy;
         }
         List<HostIdentityCatalogItemDTO> tree = loadDeptItemsForTree();
         if (!HostDeptTree.hasTree(tree)) {
             return policy;
         }
-        CallerPolicy out = policy;
-        if (out.getDeptIds() == policy.getDeptIds()) {
-            out = copyPolicy(policy);
+        CallerPolicy out = copyPolicy(policy);
+        if (topNeed) {
+            out.setDeptIds(new ArrayList<>(HostDeptTree.expand(tree, policy.getDeptIds())));
         }
-        out.setDeptIds(new ArrayList<>(HostDeptTree.expand(tree, policy.getDeptIds())));
+        if (ruleNeed && out.getRules() != null) {
+            for (CallerAccessRule rule : out.getRules()) {
+                if (rule != null && includeDeptChildren(rule) && notEmptyIds(rule.getDeptIds())) {
+                    rule.setDeptIds(new ArrayList<>(HostDeptTree.expand(tree, rule.getDeptIds())));
+                }
+            }
+        }
         return out;
+    }
+
+    private static boolean includeDeptChildren(PrincipalMatch match) {
+        return match.getDeptIncludeChildren() == null || Boolean.TRUE.equals(match.getDeptIncludeChildren());
+    }
+
+    private static boolean notEmptyIds(List<String> ids) {
+        return ids != null && ids.stream().anyMatch(StrUtil::isNotBlank);
     }
 
     private List<HostIdentityCatalogItemDTO> loadDeptItemsForTree() {
@@ -220,6 +245,31 @@ public class FlowHostIdentityCatalogService {
         out.setDeptIds(copyList(src.getDeptIds()));
         out.setDeptIncludeChildren(src.getDeptIncludeChildren());
         out.setUserIds(copyList(src.getUserIds()));
+        if (src.getRules() != null && !src.getRules().isEmpty()) {
+            List<CallerAccessRule> copied = new ArrayList<>();
+            for (CallerAccessRule rule : src.getRules()) {
+                copied.add(copyAccessRule(rule));
+            }
+            out.setRules(copied);
+        }
+        return out;
+    }
+
+    private static CallerAccessRule copyAccessRule(CallerAccessRule src) {
+        if (src == null) {
+            return null;
+        }
+        CallerAccessRule out = new CallerAccessRule();
+        out.setName(src.getName());
+        out.setPrincipals(src.getPrincipals());
+        out.setMatch(src.getMatch());
+        out.setUserTypes(copyList(src.getUserTypes()));
+        out.setRoles(copyList(src.getRoles()));
+        out.setPermissions(copyList(src.getPermissions()));
+        out.setUserIds(copyList(src.getUserIds()));
+        out.setDeptIds(copyList(src.getDeptIds()));
+        out.setDeptIncludeChildren(src.getDeptIncludeChildren());
+        out.setEffect(src.getEffect());
         return out;
     }
 

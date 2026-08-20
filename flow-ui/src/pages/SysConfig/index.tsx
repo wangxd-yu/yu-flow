@@ -77,6 +77,7 @@ const GROUP_NAMES: Record<string, string> = {
   INGRESS: '入站防护',
   OPEN: '开放平台',
   SECURITY: '安全配置',
+  PRIVACY: '出站隐私',
   GATEWAY: '网关配置',
   GENERAL: '通用配置',
   FLOW: '流程配置',
@@ -90,6 +91,7 @@ const GROUP_TAB_ORDER = [
   'INGRESS',
   'OPEN',
   'SECURITY',
+  'PRIVACY',
   'GATEWAY',
   'GENERAL',
   'FLOW',
@@ -112,6 +114,11 @@ const GROUP_ALERTS: Record<string, { message: string; description: string }> = {
   SECURITY: {
     message: '安全相关运行参数',
     description: '部分项仅 yml/环境变量生效，请以各项 ? 说明为准。',
+  },
+  PRIVACY: {
+    message: '出站隐私 · 已发布 JSON',
+    description:
+      '优先级：本页 > application.yml。关闭传输封装后，命中明文规则的字段会以明文出现在 JSON 里，生产公网不建议关。修改后热更新，无需重启。',
   },
   GATEWAY: {
     message: '网关与路由相关',

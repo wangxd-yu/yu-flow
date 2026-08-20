@@ -67,9 +67,7 @@ public class IngressSecurityGuard {
                 if (!ok) {
                     throw IngressException.hostAuthRequired();
                 }
-                FlowHostPrincipal principal = resolveHostPrincipal(request);
-                FlowHostRequestAttrs.bind(request, principal);
-                assertCallerPolicyForHost(callerPolicy, principal);
+                bindHostPrincipal(request, callerPolicy);
             }
             case OPEN -> {
                 try {
@@ -94,9 +92,7 @@ public class IngressSecurityGuard {
                     if (!ok) {
                         throw IngressException.hostAuthRequired();
                     }
-                    FlowHostPrincipal principal = resolveHostPrincipal(request);
-                    FlowHostRequestAttrs.bind(request, principal);
-                    assertCallerPolicyForHost(callerPolicy, principal);
+                    bindHostPrincipal(request, callerPolicy);
                 }
             }
         }
@@ -114,6 +110,15 @@ public class IngressSecurityGuard {
         }
 
         return openCtx;
+    }
+
+    private void bindHostPrincipal(HttpServletRequest request, CallerPolicy callerPolicy) {
+        FlowHostPrincipal principal = resolveHostPrincipal(request);
+        if (principal == null) {
+            log.warn("[Ingress] HOST 已登录但未解析到主体，出站隐私将按 MASK");
+        }
+        FlowHostRequestAttrs.bind(request, principal);
+        assertCallerPolicyForHost(callerPolicy, principal);
     }
 
     private FlowHostPrincipal resolveHostPrincipal(HttpServletRequest request) {

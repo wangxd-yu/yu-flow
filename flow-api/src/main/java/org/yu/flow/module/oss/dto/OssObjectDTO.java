@@ -32,6 +32,10 @@ public class OssObjectDTO {
     private String thumbStatus;
     private String thumbPublicPath;
     private Boolean hasThumbnail;
+    private String parentObjectId;
+    private String archiveEntryPath;
+    private String extractStatus;
+    private String extractError;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime expiresAt;
@@ -69,6 +73,10 @@ public class OssObjectDTO {
                 .setThumbPublicPath(entity.getThumbPublicPath())
                 .setHasThumbnail(org.yu.flow.module.oss.service.OssThumbnailService.THUMB_READY
                         .equals(entity.getThumbStatus()))
+                .setParentObjectId(entity.getParentObjectId())
+                .setArchiveEntryPath(entity.getArchiveEntryPath())
+                .setExtractStatus(entity.getExtractStatus())
+                .setExtractError(entity.getExtractError())
                 .setExpiresAt(entity.getExpiresAt())
                 .setCreateTime(entity.getCreateTime())
                 .setUpdateTime(entity.getUpdateTime());

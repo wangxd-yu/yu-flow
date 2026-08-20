@@ -109,8 +109,8 @@ public class FlowAutoConfiguration {
         FilterRegistrationBean<FlowApiGatewayFilter> registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/*");
         registration.setName("flowApiGatewayFilter");
-        // 极低优先级设置（LOWEST_PRECEDENCE - 10），确保在宿主的 Spring Security/Sa-Token 鉴权 Filter 之后执行，
-        // 从而能在动态 API 业务逻辑中获取到上下文及 ThreadLocal 用户信息。
+        // LOWEST_PRECEDENCE - 10：晚于宿主 LoginHolder Filter（SSP 为 LOWEST_PRECEDENCE - 20）。
+        // 已发布 API 在本 Filter 内短路写出，必须先有宿主主体，否则出站隐私按匿名 MASK。
         registration.setOrder(Ordered.LOWEST_PRECEDENCE - 10);
         return registration;
     }

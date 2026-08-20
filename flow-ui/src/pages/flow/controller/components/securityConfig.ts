@@ -1,21 +1,19 @@
 /**
  * securityConfig.ts
- * ─────────────────────────────────────────────────────────────────────────────
  * ControllerForm 安全/入口配置表单字段与 JSON 配置之间的双向转换。
  */
+
+import {
+  type CallerAccessRule,
+  parseCallerAccessRules,
+  normalizeCallerAccessRule,
+} from '@/utils/principalMatch';
 
 export type CallerMatchMode = 'ALL' | 'ANY';
 
 export interface CallerPolicyForm {
   secCallerEnabled: boolean;
-  secCallerMatch: CallerMatchMode;
-  /** 用户类型码，如 ADMIN / END_USER */
-  secCallerUserTypes: string[];
-  secCallerRoles: string[];
-  secCallerPermissions: string[];
-  secCallerDeptIds: string[];
-  secCallerDeptIncludeChildren: boolean;
-  secCallerUserIds: string[];
+  secCallerRules: CallerAccessRule[];
 }
 
 export interface SecurityFormDefaults extends CallerPolicyForm {
@@ -33,13 +31,7 @@ export interface SecurityFormDefaults extends CallerPolicyForm {
 
 export interface ApiCallerPolicy {
   enabled: boolean;
-  match: CallerMatchMode;
-  userTypes: string[];
-  roles: string[];
-  permissions: string[];
-  deptIds: string[];
-  deptIncludeChildren?: boolean;
-  userIds: string[];
+  rules?: CallerAccessRule[];
 }
 
 export interface SecurityConfig {
@@ -64,21 +56,8 @@ const DEFAULTS: SecurityFormDefaults = {
   secTimeoutOverride: false,
   secTimeoutMs: 30000,
   secCallerEnabled: false,
-  secCallerMatch: 'ALL',
-  secCallerUserTypes: [],
-  secCallerRoles: [],
-  secCallerPermissions: [],
-  secCallerDeptIds: [],
-  secCallerDeptIncludeChildren: true,
-  secCallerUserIds: [],
+  secCallerRules: [],
 };
-
-function asStringList(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return v
-    .map((x) => (x == null ? '' : String(x).trim()))
-    .filter(Boolean);
-}
 
 /** 将 securityConfig JSON 还原为表单字段 */
 export function parseSecurityConfigToForm(raw?: string | object | null): SecurityFormDefaults {
@@ -87,7 +66,6 @@ export function parseSecurityConfigToForm(raw?: string | object | null): Securit
     const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const authMode = cfg?.authMode || 'INHERIT';
     const cp = cfg?.callerPolicy || {};
-    const match = cp?.match === 'ANY' ? 'ANY' : 'ALL';
     return {
       secAuthMode: ['INHERIT', 'NONE', 'HOST', 'OPEN'].includes(authMode) ? authMode : 'INHERIT',
       secAntiReplayOverride: cfg?.antiReplay !== null && cfg?.antiReplay !== undefined,
@@ -102,13 +80,7 @@ export function parseSecurityConfigToForm(raw?: string | object | null): Securit
       secTimeoutOverride: cfg?.timeoutMs !== null && cfg?.timeoutMs !== undefined,
       secTimeoutMs: typeof cfg?.timeoutMs === 'number' ? cfg.timeoutMs : 30000,
       secCallerEnabled: !!cp?.enabled,
-      secCallerMatch: match,
-      secCallerUserTypes: asStringList(cp?.userTypes),
-      secCallerRoles: asStringList(cp?.roles),
-      secCallerPermissions: asStringList(cp?.permissions),
-      secCallerDeptIds: asStringList(cp?.deptIds),
-      secCallerDeptIncludeChildren: cp?.deptIncludeChildren !== false,
-      secCallerUserIds: asStringList(cp?.userIds),
+      secCallerRules: parseCallerAccessRules(cp),
     };
   } catch {
     return { ...DEFAULTS };
@@ -119,27 +91,13 @@ export function parseSecurityConfigToForm(raw?: string | object | null): Securit
 export function buildSecurityConfigFromForm(formValues: Record<string, any>): SecurityConfig {
   const authMode = formValues.secAuthMode || 'INHERIT';
   const callerEnabled = !!formValues.secCallerEnabled;
-  const callerPolicy: ApiCallerPolicy | null = callerEnabled
-    ? {
-        enabled: true,
-        match: formValues.secCallerMatch === 'ANY' ? 'ANY' : 'ALL',
-        userTypes: asStringList(formValues.secCallerUserTypes),
-        roles: asStringList(formValues.secCallerRoles),
-        permissions: asStringList(formValues.secCallerPermissions),
-        deptIds: asStringList(formValues.secCallerDeptIds),
-        deptIncludeChildren: formValues.secCallerDeptIncludeChildren !== false,
-        userIds: asStringList(formValues.secCallerUserIds),
-      }
-    : {
-        enabled: false,
-        match: 'ALL',
-        userTypes: [],
-        roles: [],
-        permissions: [],
-        deptIds: [],
-        deptIncludeChildren: true,
-        userIds: [],
-      };
+  const rules = Array.isArray(formValues.secCallerRules)
+    ? formValues.secCallerRules.map((r: CallerAccessRule) => normalizeCallerAccessRule(r))
+    : [];
+  const callerPolicy: ApiCallerPolicy = {
+    enabled: callerEnabled,
+    rules: callerEnabled ? rules : [],
+  };
 
   return {
     authMode,

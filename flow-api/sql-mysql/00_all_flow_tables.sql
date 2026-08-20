@@ -1,5 +1,5 @@
 -- Yu Flow MySQL 全量建表（由 sql-mysql/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-08-18T02:10:42.995Z
+-- 生成时间: 2026-08-20T02:57:14.645Z
 -- 用法: 先执行本文件，再执行 00_system_init.sql
 
 -- >>> flow_alert_channel.sql
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS `flow_api_excel_template` (
 -- Table: flow_api_info
 -- 接口配置类
 CREATE TABLE IF NOT EXISTS `flow_api_info` (
-  `id` bigint NOT NULL COMMENT '主键ID，通过Snowflake算法生成',
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
   `name` varchar(20) COMMENT 'API配置的名称',
   `directory_id` varchar(32) COMMENT '关联全局目录树',
   `url` varchar(100) COMMENT 'API的URL路径',
@@ -647,6 +647,10 @@ CREATE TABLE IF NOT EXISTS `flow_oss_object` (
   `thumb_content_type` varchar(128) DEFAULT NULL COMMENT '缩略图 Content-Type',
   `thumb_size_bytes` bigint DEFAULT NULL COMMENT '缩略图大小',
   `thumb_error` varchar(512) DEFAULT NULL COMMENT '缩略图失败原因',
+  `parent_object_id` varchar(32) DEFAULT NULL COMMENT '来源压缩包台账 ID，空=独立上传',
+  `archive_entry_path` varchar(512) DEFAULT NULL COMMENT '包内相对路径（正斜杠）',
+  `extract_status` varchar(16) NOT NULL DEFAULT 'NONE' COMMENT 'NONE / PENDING / EXTRACTING / DONE / FAILED / SKIPPED',
+  `extract_error` varchar(512) DEFAULT NULL COMMENT '展开结果摘要或失败原因',
   `create_time` datetime COMMENT '创建时间',
   `update_time` datetime COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -657,7 +661,9 @@ CREATE TABLE IF NOT EXISTS `flow_oss_object` (
   KEY `idx_flow_oss_object_create_time` (`create_time`),
   KEY `idx_flow_oss_object_expires_at` (`expires_at`),
   KEY `idx_flow_oss_object_status_object_purged` (`status`, `object_purged`),
-  KEY `idx_flow_oss_object_thumb_status` (`thumb_status`)
+  KEY `idx_flow_oss_object_thumb_status` (`thumb_status`),
+  KEY `idx_flow_oss_object_parent_object_id` (`parent_object_id`),
+  KEY `idx_flow_oss_object_extract_status` (`extract_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 文件台账';
 
 -- >>> flow_oss_upload_profile.sql
@@ -681,6 +687,13 @@ CREATE TABLE IF NOT EXISTS `flow_oss_upload_profile` (
   `thumbnail_max_edge` int DEFAULT NULL COMMENT '缩略图最长边像素，空=用全局',
   `thumbnail_max_source_bytes` bigint DEFAULT NULL COMMENT '参与缩略图的源文件上限，空=用全局',
   `thumbnail_jpeg_quality` decimal(3,2) DEFAULT NULL COMMENT 'JPEG 质量 0~1，空=用全局',
+  `extract_archive_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '上传 zip 后是否异步展开：0=否, 1=是',
+  `extract_keep_archive` tinyint(1) NOT NULL DEFAULT 1 COMMENT '展开成功后是否保留原包：1=保留, 0=软删原包',
+  `extract_reject_policy` varchar(32) NOT NULL DEFAULT 'SKIP_ZERO_FAIL' COMMENT '不合格条目：SKIP_ZERO_FAIL=跳过且0合格则失败 / FAIL_PACK=任一不合格整包失败',
+  `extract_allowed_extensions` varchar(512) COMMENT '展开后落库扩展名白名单，空=不限制（仍排除嵌套压缩包）',
+  `extract_allowed_content_types` text COMMENT '展开后落库 MIME 白名单，空=不限制',
+  `extract_max_entries` int DEFAULT NULL COMMENT '单包最多处理条目数，空=用全局',
+  `extract_max_uncompressed_bytes` bigint DEFAULT NULL COMMENT '单包解压后总字节上限，空=用全局',
   `require_auth` tinyint(1) NOT NULL DEFAULT 1 COMMENT '上传是否必须登录',
   `presign_upload_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否开放预签名直传：0=仅网关代理上传, 1=允许客户端 PUT 直达 OSS',
   `biz_fields_schema` text COMMENT '业务字段 JSON Schema',

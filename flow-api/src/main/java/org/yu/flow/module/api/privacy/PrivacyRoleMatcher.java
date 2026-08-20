@@ -5,15 +5,17 @@ import org.springframework.stereotype.Component;
 import org.yu.flow.module.host.FlowHostPrincipal;
 import org.yu.flow.module.host.HostPrincipalSettings;
 import org.yu.flow.module.host.HostPrincipalSettingsStore;
+import org.yu.flow.module.host.PrincipalMatchEngine;
+import org.yu.flow.module.host.PrivacyAccessRule;
 import org.yu.flow.module.rbac.service.RbacService;
 
 import jakarta.annotation.Resource;
-import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /**
- * 按宿主机配置的角色名判定 MASK / REVEAL。角色码任意，不写死。
+ * 按隐私规则从上到下第一条命中判定 MASK / REVEAL；未命中一律 MASK。
+ * {@code flow:privacy:reveal} / {@code *} 只给 Flow 管理端预览，不替代宿主规则。
  */
 @Component
 public class PrivacyRoleMatcher {
@@ -28,21 +30,51 @@ public class PrivacyRoleMatcher {
     private RbacService rbacService;
 
     public PrivacyClass resolve(FlowHostPrincipal principal) {
+        return resolveDecision(principal, null).getPrivacyClass();
+    }
+
+    public PrivacyDecision resolveDecision(FlowHostPrincipal principal, List<PrivacyAccessRule> rules) {
         if (principal == null) {
-            return PrivacyClass.MASK;
+            return PrivacyDecision.mask();
         }
-        if (isOpenApp(principal)) {
-            return PrivacyClass.MASK;
+        List<PrivacyAccessRule> effective = rules;
+        if (effective == null) {
+            HostPrincipalSettings settings = hostPrincipalSettingsStore == null
+                    ? null : hostPrincipalSettingsStore.load();
+            effective = settings == null ? List.of() : settings.resolvedPrivacyRules();
         }
-        HostPrincipalSettings settings = hostPrincipalSettingsStore == null
-                ? null : hostPrincipalSettingsStore.load();
-        if (matchesAnyRole(principal.getRoles(), settings == null ? null : settings.getPrivacyRevealRoles())) {
-            return PrivacyClass.REVEAL;
+        if (PrincipalMatchEngine.isOpenApp(principal)) {
+            return firstHit(principal, effective, true);
         }
         if (isFlowConsole(principal) && hasRevealPerm(principal)) {
-            return PrivacyClass.REVEAL;
+            return PrivacyDecision.of(PrivacyClass.REVEAL);
         }
-        return PrivacyClass.MASK;
+        return firstHit(principal, effective, false);
+    }
+
+    private static PrivacyDecision firstHit(FlowHostPrincipal principal, List<PrivacyAccessRule> rules,
+                                            boolean openAppOnly) {
+        if (rules == null || rules.isEmpty()) {
+            return PrivacyDecision.mask();
+        }
+        for (PrivacyAccessRule rule : rules) {
+            if (rule == null) {
+                continue;
+            }
+            if (openAppOnly
+                    && !PrivacyAccessRule.PRINCIPALS_OPEN.equals(
+                    PrincipalMatchEngine.normalizePrincipals(rule.getPrincipals()))) {
+                continue;
+            }
+            if (!PrincipalMatchEngine.matches(rule, principal)) {
+                continue;
+            }
+            PrivacyClass cls = PrivacyAccessRule.PRIVACY_REVEAL.equalsIgnoreCase(StrUtil.trim(rule.getPrivacy()))
+                    ? PrivacyClass.REVEAL
+                    : PrivacyClass.MASK;
+            return PrivacyDecision.of(cls, rule.getFields(), rule.getName());
+        }
+        return PrivacyDecision.mask();
     }
 
     private boolean hasRevealPerm(FlowHostPrincipal principal) {
@@ -56,33 +88,7 @@ public class PrivacyRoleMatcher {
         }
     }
 
-    static boolean matchesAnyRole(Collection<String> actual, Collection<String> configured) {
-        if (actual == null || actual.isEmpty() || configured == null || configured.isEmpty()) {
-            return false;
-        }
-        Set<String> have = actual.stream()
-                .filter(StrUtil::isNotBlank)
-                .map(s -> s.trim().toLowerCase(Locale.ROOT))
-                .collect(java.util.stream.Collectors.toSet());
-        for (String role : configured) {
-            if (StrUtil.isNotBlank(role) && have.contains(role.trim().toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static boolean isFlowConsole(FlowHostPrincipal principal) {
         return principal != null && CHANNEL_FLOW_JWT.equals(principal.getAuthChannel());
-    }
-
-    private static boolean isOpenApp(FlowHostPrincipal principal) {
-        if (principal == null) {
-            return false;
-        }
-        if (FlowHostPrincipal.TYPE_OPEN_APP.equalsIgnoreCase(StrUtil.trim(principal.getUserType()))) {
-            return true;
-        }
-        return StrUtil.isNotBlank(principal.getUserId()) && principal.getUserId().startsWith("open:");
     }
 }

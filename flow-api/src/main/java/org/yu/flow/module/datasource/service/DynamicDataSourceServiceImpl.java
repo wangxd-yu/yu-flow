@@ -427,6 +427,28 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     }
 
     @Override
+    public List<Map<String, Object>> listEnabledSummaries() {
+        String sql = "SELECT id, name, code FROM flow_db_connection WHERE status = 1 ORDER BY is_system DESC, id DESC";
+        List<Map<String, Object>> rows = defaultJdbcTemplate.query(sql, (rs, rn) -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", rs.getString("id"));
+            m.put("name", rs.getString("name"));
+            m.put("code", rs.getString("code"));
+            return m;
+        });
+        boolean hasDefault = rows.stream()
+                .anyMatch(r -> Constants.DEFAULT_DATASOURCE_NAME.equals(r.get("code")));
+        if (!hasDefault) {
+            Map<String, Object> def = new LinkedHashMap<>();
+            def.put("id", "0");
+            def.put("name", "默认数据源");
+            def.put("code", Constants.DEFAULT_DATASOURCE_NAME);
+            rows.add(0, def);
+        }
+        return rows;
+    }
+
+    @Override
     public PageBean<DataSourceDO> findPage(String name, String dbType, int page, int size) {
         StringBuilder sql = new StringBuilder("SELECT " + DETAIL_COLUMNS + " FROM flow_db_connection WHERE 1=1");
         List<Object> params = new ArrayList<>();

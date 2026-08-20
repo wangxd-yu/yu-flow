@@ -7,8 +7,9 @@ trap 'read -p "按任意键退出..."' EXIT
 # ==========================================
 # yu-flow 一键打包脚本 (Linux / Mac / Git Bash)
 # 功能：前端 Umi 编译 -> 复制产物到后端 -> mvn install 本机
-#       ->（默认）deploy 到本地 Nexus 私服
-# 仅本机安装、不上私服：SKIP_DEPLOY=1 ./build.sh
+#       -> 询问是否 deploy 到 Nexus 私服（默认不推）
+# 非交互强制推送：DEPLOY=1 ./build.sh
+# 非交互跳过推送：SKIP_DEPLOY=1 ./build.sh（或不设 DEPLOY）
 # ==========================================
 
 # 切换到脚本所在目录
@@ -45,16 +46,31 @@ echo "执行: mvn clean install -DskipTests -Djacoco.skip=true"
 mvn clean install -DskipTests -Djacoco.skip=true
 echo "本机 install 成功！坐标: org.yu:yu-flow-api-java17-springboot3:1.0-SNAPSHOT"
 
-echo -e "\n[4/4] ================== 推送到 Nexus 私服 =================="
+echo -e "\n[4/4] ================== 推送到 Nexus 私服（可选） =================="
+SHOULD_DEPLOY=0
 if [ "${SKIP_DEPLOY}" = "1" ]; then
   echo "已设置 SKIP_DEPLOY=1，跳过私服 deploy。"
+elif [ "${DEPLOY}" = "1" ]; then
+  SHOULD_DEPLOY=1
+  echo "已设置 DEPLOY=1，将推送到私服。"
+elif [ -t 0 ]; then
+  echo ""
+  read -r -p "是否推送到 Nexus 私服？[y/N] " DEPLOY_ANSWER
+  case "${DEPLOY_ANSWER}" in
+    y|Y|yes|YES) SHOULD_DEPLOY=1 ;;
+    *) echo "未选择推送，仅完成本机 install。" ;;
+  esac
 else
+  echo "非交互环境且未设 DEPLOY=1，默认不推私服。"
+fi
+
+if [ "${SHOULD_DEPLOY}" = "1" ]; then
   if [ ! -f "${DEPLOY_SCRIPT}" ]; then
     echo "[ERROR] 未找到 deploy 脚本: ${DEPLOY_SCRIPT}"
     exit 1
   fi
   echo "执行: ${DEPLOY_SCRIPT}"
-  # 非交互：避免 deploy.sh 末尾二次 read 卡住
+  # 避免 deploy.sh 末尾二次 read 卡住
   NONINTERACTIVE=1 bash "${DEPLOY_SCRIPT}"
   echo "私服 deploy 成功！snapshots: http://192.168.102.20:28080/repository/maven-snapshots/"
 fi
@@ -64,14 +80,14 @@ echo "========================================"
 echo "一键构建完成"
 echo "  - 本机 JAR: ${BACKEND_DIR}/target/"
 echo "  - 本机 m2:  org.yu:yu-flow-api-java17-springboot3:1.0-SNAPSHOT"
-if [ "${SKIP_DEPLOY}" = "1" ]; then
-  echo "  - 私服:    已跳过（SKIP_DEPLOY=1）"
-else
+if [ "${SHOULD_DEPLOY}" = "1" ]; then
   echo "  - 私服:    已推送 maven-snapshots"
+else
+  echo "  - 私服:    未推送"
 fi
 echo "用法提示:"
-echo "  - 改完 UI/后端后跑本脚本 → 本机 m2 + 私服同步"
+echo "  - 默认只装本机 m2；脚本结束前问是否推私服，直接回车=不推"
+echo "  - 非交互要推私服：DEPLOY=1 ./build.sh"
 echo "  - cloud-lowcode 若仍拿旧 SNAPSHOT：mvn -U 或清本地该坐标后再编"
-echo "  - 仅本机调试不上私服：SKIP_DEPLOY=1 ./build.sh"
 echo "========================================"
 echo ""

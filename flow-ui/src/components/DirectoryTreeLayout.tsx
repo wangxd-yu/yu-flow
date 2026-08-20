@@ -22,10 +22,12 @@ import {
   RightOutlined,
   ApiOutlined,
   CloudServerOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { request } from '@umijs/max';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 import DirectoryFormModal, { type DirectoryFormMode } from './DirectoryFormModal';
+import PlatformDefaultsDrawer from './PlatformDefaultsDrawer';
 
 /** 目录业务域 */
 export type DirectoryBizType = 'api' | 'task' | 'service' | 'model' | 'page' | 'mqtask';
@@ -74,13 +76,14 @@ function collectAllKeys(dirs: any[]): string[] {
 // ================================================================
 const TreeNodeTitle: React.FC<{
   nodeData: DataNode;
+  selected?: boolean;
+  expanded?: boolean;
   onAdd?: (key: string) => void;
   onRename?: (key: string) => void;
   onDelete?: (key: string) => void;
   onCreateApi?: (directoryId: string) => void;
   onHostImport?: (directoryId: string) => void;
-}> = ({ nodeData, onAdd, onRename, onDelete, onCreateApi, onHostImport }) => {
-  const isRoot = nodeData.key === 'root';
+}> = ({ nodeData, selected, expanded, onAdd, onRename, onDelete, onCreateApi, onHostImport }) => {
   const dirId = nodeData.key as string;
 
   const menuItems: MenuProps['items'] = [
@@ -118,8 +121,7 @@ const TreeNodeTitle: React.FC<{
           },
         }
       : null,
-    !isRoot
-      ? {
+    {
           key: 'edit-dir',
           icon: <EditOutlined />,
           label: '编辑目录',
@@ -127,10 +129,8 @@ const TreeNodeTitle: React.FC<{
             domEvent.stopPropagation();
             onRename?.(dirId);
           },
-        }
-      : null,
-    !isRoot
-      ? {
+        },
+    {
           key: 'delete-dir',
           icon: <DeleteOutlined />,
           danger: true,
@@ -146,8 +146,7 @@ const TreeNodeTitle: React.FC<{
               onOk: () => onDelete?.(dirId),
             });
           },
-        }
-      : null,
+        },
   ].filter(Boolean);
 
   return (
@@ -162,12 +161,23 @@ const TreeNodeTitle: React.FC<{
         }}
         className="tree-node-title"
       >
-        <Typography.Text
-          ellipsis={{ tooltip: nodeData.title as string }}
-          style={{ flex: 1, minWidth: 0 }}
-        >
-          {nodeData.title as string}
-        </Typography.Text>
+        <span className="tree-node-label">
+          {nodeData.isLeaf
+            ? <FileOutlined />
+            : expanded
+              ? <FolderOpenOutlined />
+              : <FolderOutlined />}
+          <Typography.Text
+            ellipsis={{
+              tooltip: selected
+                ? '再次点击取消筛选，查看全部'
+                : (nodeData.title as string),
+            }}
+            style={{ flex: 1, minWidth: 0, lineHeight: '22px' }}
+          >
+            {nodeData.title as string}
+          </Typography.Text>
+        </span>
 
         <Space
           size={2}
@@ -191,42 +201,38 @@ const TreeNodeTitle: React.FC<{
               />
             </Tooltip>
           )}
-          {!isRoot && (
-            <>
-              <Tooltip title="编辑目录" mouseEnterDelay={0.5}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRename?.(dirId);
-                  }}
-                  style={{ width: 20, height: 20, fontSize: 12 }}
-                />
-              </Tooltip>
-              <Tooltip title="删除" mouseEnterDelay={0.5}>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    Modal.confirm({
-                      title: '确认删除该目录？',
-                      content: '删除后无法恢复，请谨慎操作。',
-                      okText: '删除',
-                      okButtonProps: { danger: true },
-                      cancelText: '取消',
-                      onOk: () => onDelete?.(dirId),
-                    });
-                  }}
-                  style={{ width: 20, height: 20, fontSize: 12 }}
-                />
-              </Tooltip>
-            </>
-          )}
+          <Tooltip title="编辑目录" mouseEnterDelay={0.5}>
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename?.(dirId);
+              }}
+              style={{ width: 20, height: 20, fontSize: 12 }}
+            />
+          </Tooltip>
+          <Tooltip title="删除" mouseEnterDelay={0.5}>
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                Modal.confirm({
+                  title: '确认删除该目录？',
+                  content: '删除后无法恢复，请谨慎操作。',
+                  okText: '删除',
+                  okButtonProps: { danger: true },
+                  cancelText: '取消',
+                  onOk: () => onDelete?.(dirId),
+                });
+              }}
+              style={{ width: 20, height: 20, fontSize: 12 }}
+            />
+          </Tooltip>
         </Space>
       </div>
     </Dropdown>
@@ -241,13 +247,47 @@ const treeStyles = `
     opacity: 0;
     transition: opacity 0.2s;
   }
-  .dir-tree-layout .ant-tree-node-content-wrapper:hover .tree-node-actions {
+  .dir-tree-layout .directory-tree .ant-tree-treenode:hover .tree-node-actions,
+  .dir-tree-layout .directory-tree .ant-tree-treenode-selected .tree-node-actions {
     opacity: 1;
   }
-  .dir-tree-layout .directory-tree .ant-tree-node-content-wrapper {
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-treenode {
+    position: relative;
+    align-items: center;
+    width: 100%;
+    padding: 4px 8px;
+    margin-bottom: 2px;
+    border-radius: 6px;
+    line-height: 22px;
+  }
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-treenode:hover {
+    background: #f5f5f5;
+  }
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-treenode-selected,
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-treenode-selected:hover {
+    background: #e6f4ff;
+  }
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-switcher {
+    width: 16px;
+    margin-inline-end: 0 !important;
+    line-height: 22px;
+    align-self: center;
+  }
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-switcher::before {
+    display: none;
+  }
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-node-content-wrapper,
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-node-content-wrapper:hover,
+  .dir-tree-layout .directory-tree.ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
     display: flex;
     align-items: center;
-    width: calc(100% - 24px);
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    min-height: 22px;
+    padding: 0 0 0 4px;
+    line-height: 22px;
+    background: transparent !important;
   }
   .dir-tree-layout .directory-tree .ant-tree-node-content-wrapper .ant-tree-title {
     flex: 1;
@@ -256,8 +296,23 @@ const treeStyles = `
   .dir-tree-layout .tree-node-title {
     min-width: 0;
   }
+  .dir-tree-layout .tree-node-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  }
+  .dir-tree-layout .tree-node-label .anticon {
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+  .dir-tree-layout .tree-node-title .ant-typography {
+    line-height: 22px;
+    margin-bottom: 0;
+  }
   .dir-tree-layout .directory-tree .ant-tree-indent-unit {
-    width: 20px;
+    width: 16px;
   }
   .dir-tree-layout .dir-tree-resizer:hover .dir-tree-divider,
   .dir-tree-layout .dir-tree-resizer.is-resizing .dir-tree-divider {
@@ -270,6 +325,38 @@ const treeStyles = `
   }
   .dir-tree-layout .dir-tree-toggle-btn:hover span {
     color: #fff !important;
+  }
+  .dir-tree-layout .dir-tree-pin {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background: #f8fafc;
+    border: 1px solid #e8ecf2;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .dir-tree-layout .dir-tree-pin:hover,
+  .dir-tree-layout .dir-tree-pin.is-open {
+    background: #f0f5ff;
+    border-color: #91caff;
+  }
+  .dir-tree-layout .dir-tree-pin-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: rgba(0, 0, 0, 0.88);
+    font-size: 13px;
+  }
+  .dir-tree-layout .dir-tree-pin .tree-node-actions {
+    opacity: 0;
+  }
+  .dir-tree-layout .dir-tree-pin:hover .tree-node-actions,
+  .dir-tree-layout .dir-tree-pin.is-open .tree-node-actions {
+    opacity: 1;
   }
 `;
 
@@ -329,6 +416,8 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   const [dirModalMode, setDirModalMode] = useState<DirectoryFormMode>('create');
   const [dirModalParentId, setDirModalParentId] = useState<string | undefined>();
   const [dirModalDirectoryId, setDirModalDirectoryId] = useState<string | undefined>();
+  const [platformDefaultsOpen, setPlatformDefaultsOpen] = useState(false);
+  const showPlatformDefaults = !bizType || bizType === 'api';
 
   useEffect(() => {
     setCurrentTreeWidth(Math.min(maxTreeWidth, Math.max(minTreeWidth, initialTreeWidth)));
@@ -377,7 +466,6 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
       const anyRes = res as any;
       const data = Array.isArray(anyRes) ? anyRes : anyRes?.data ?? [];
       setTreeData(convertToTreeData(data));
-      // 默认展开所有节点
       setExpandedKeys(collectAllKeys(data));
     } catch (err) {
       console.error('获取目录树失败', err);
@@ -411,9 +499,14 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
   const [selectedDirName, setSelectedDirName] = useState<string>();
 
   const handleTreeSelect: TreeProps['onSelect'] = (selectedKeys, info) => {
-    const key = selectedKeys[0] as string;
-    setSelectedDirKey(key || undefined);
-    setSelectedDirName(key ? (info.node.title as string) : undefined);
+    const clickedKey = String(info.node?.key ?? selectedKeys[0] ?? '');
+    if (!clickedKey || clickedKey === selectedDirKey) {
+      setSelectedDirKey(undefined);
+      setSelectedDirName(undefined);
+      return;
+    }
+    setSelectedDirKey(clickedKey);
+    setSelectedDirName((info.node.title as string) || undefined);
   };
 
   // ---- 目录 CRUD（弹框）----
@@ -525,6 +618,31 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+              {showPlatformDefaults ? (
+                <div
+                  className={`dir-tree-pin${platformDefaultsOpen ? ' is-open' : ''}`}
+                  onClick={() => setPlatformDefaultsOpen(true)}
+                >
+                  <span className="dir-tree-pin-label">
+                    <SettingOutlined />
+                    平台默认
+                  </span>
+                  <span className="tree-node-actions">
+                    <Tooltip title="编辑访问控制" mouseEnterDelay={0.5}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPlatformDefaultsOpen(true);
+                        }}
+                        style={{ width: 20, height: 20, fontSize: 12 }}
+                      />
+                    </Tooltip>
+                  </span>
+                </div>
+              ) : null}
               <Tree
                 className="directory-tree"
                 treeData={filteredTreeData}
@@ -533,14 +651,11 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
                 onExpand={(keys) => setExpandedKeys(keys)}
                 onSelect={handleTreeSelect}
                 blockNode
-                showIcon
-                icon={(props: any) => {
-                  if (props.data?.isLeaf) return <FileOutlined />;
-                  return props.expanded ? <FolderOpenOutlined /> : <FolderOutlined />;
-                }}
                 titleRender={(nodeData) => (
                   <TreeNodeTitle
                     nodeData={nodeData}
+                    selected={selectedDirKey === nodeData.key}
+                    expanded={expandedKeys.includes(nodeData.key)}
                     onAdd={handleAddDir}
                     onRename={handleEditDir}
                     onDelete={handleDeleteDir}
@@ -562,6 +677,11 @@ const DirectoryTreeLayout: React.FC<DirectoryTreeLayoutProps> = ({
             </div>
           </div>
         </div>
+
+        <PlatformDefaultsDrawer
+          open={platformDefaultsOpen}
+          onClose={() => setPlatformDefaultsOpen(false)}
+        />
 
         <DirectoryFormModal
           open={dirModalOpen}

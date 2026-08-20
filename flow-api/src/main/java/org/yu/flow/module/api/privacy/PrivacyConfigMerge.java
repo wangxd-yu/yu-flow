@@ -2,6 +2,7 @@ package org.yu.flow.module.api.privacy;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.module.host.HostPrivacyProfile;
+import org.yu.flow.module.host.PrivacyAccessRule;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -63,6 +64,12 @@ public final class PrivacyConfigMerge {
         if (StrUtil.isBlank(merged.getOnDecryptFail()) && StrUtil.isNotBlank(layer.getOnDecryptFail())) {
             merged.setOnDecryptFail(layer.getOnDecryptFail().trim());
         }
+        if (merged.getRules() == null && layer.getRules() != null) {
+            merged.setRules(copyAccessRules(layer.getRules()));
+        }
+        if (merged.getMaskRules() == null && layer.getMaskRules() != null) {
+            merged.setMaskRules(copyRules(layer.getMaskRules()));
+        }
         return Boolean.FALSE.equals(layer.getInherit());
     }
 
@@ -89,14 +96,19 @@ public final class PrivacyConfigMerge {
                 ? merged.getAtRest().getAlg().trim() : ApiPrivacyConfig.ALG_SM4;
         String keyId = merged.getAtRest() != null && StrUtil.isNotBlank(merged.getAtRest().getKeyId())
                 ? merged.getAtRest().getKeyId().trim() : ApiPrivacyConfig.KEY_DEFAULT;
-        Map<String, List<String>> mask = merged.getMask() == null || merged.getMask().isEmpty()
-                ? defaultMask() : copyMask(merged.getMask());
+        Map<String, List<String>> mask = mergeMask(defaultMask(), merged.getMask());
         String fail = StrUtil.blankToDefault(merged.getOnDecryptFail(), ApiPrivacyConfig.FAIL_MASK);
 
         String profileId = merged.getProfileId();
         PrivacyDecryptSpec spec = PrivacyDecryptSpec.fromAlg(alg);
         String decryptKey = null;
-        List<PrivacyMaskRule> rules = PrivacyMasker.rulesFromAliasMap(mask);
+        // 脱敏长什么样只跟界面上能看到的规则走；都空则只留第一位。
+        List<PrivacyMaskRule> rules = List.of();
+        if (merged.getMaskRules() != null && !merged.getMaskRules().isEmpty()) {
+            rules = copyRules(merged.getMaskRules());
+        } else if (profile != null && profile.getRules() != null && !profile.getRules().isEmpty()) {
+            rules = copyRules(profile.getRules());
+        }
         if (profile != null) {
             profileId = profile.getId();
             spec = PrivacyDecryptSpec.fromProfile(profile);
@@ -104,12 +116,10 @@ public final class PrivacyConfigMerge {
             if (StrUtil.isBlank(decryptKey)) {
                 decryptKey = null;
             }
-            if (profile.getRules() != null && !profile.getRules().isEmpty()) {
-                rules = copyRules(profile.getRules());
-            }
         }
         return new EffectivePrivacy(enabled, suffix, extras, strip, alg, keyId, mask, fail,
-                profileId, spec, decryptKey, rules);
+                profileId, spec, decryptKey, rules)
+                .withAccessRules(copyAccessRules(merged.getRules()));
     }
 
     public static ApiPrivacyConfig systemDefaults() {
@@ -125,6 +135,32 @@ public final class PrivacyConfigMerge {
         cfg.setMask(defaultMask());
         cfg.setOnDecryptFail(ApiPrivacyConfig.FAIL_MASK);
         return cfg;
+    }
+
+    /** 目录/接口别名与系统默认按类型并集，避免只写 loginPhone 时丢掉 name/idCard。 */
+    public static Map<String, List<String>> mergeMask(Map<String, List<String>> defaults,
+                                                      Map<String, List<String>> overlay) {
+        Map<String, List<String>> out = copyMask(defaults == null ? Map.of() : defaults);
+        if (overlay == null || overlay.isEmpty()) {
+            return out;
+        }
+        overlay.forEach((type, names) -> {
+            if (StrUtil.isBlank(type) || names == null || names.isEmpty()) {
+                return;
+            }
+            LinkedHashSet<String> union = new LinkedHashSet<>();
+            List<String> existing = out.get(type);
+            if (existing != null) {
+                union.addAll(existing);
+            }
+            for (String name : names) {
+                if (StrUtil.isNotBlank(name)) {
+                    union.add(name.trim());
+                }
+            }
+            out.put(type.trim(), new ArrayList<>(union));
+        });
+        return out;
     }
 
     public static Map<String, List<String>> defaultMask() {
@@ -148,6 +184,32 @@ public final class PrivacyConfigMerge {
         if (merged.getStripSuffix() == null && profile.getStripSuffix() != null) {
             merged.setStripSuffix(profile.getStripSuffix());
         }
+    }
+
+    private static List<PrivacyAccessRule> copyAccessRules(List<PrivacyAccessRule> src) {
+        if (src == null) {
+            return null;
+        }
+        List<PrivacyAccessRule> out = new ArrayList<>();
+        for (PrivacyAccessRule r : src) {
+            if (r == null) {
+                continue;
+            }
+            PrivacyAccessRule c = new PrivacyAccessRule();
+            c.setName(r.getName());
+            c.setPrincipals(r.getPrincipals());
+            c.setMatch(r.getMatch());
+            c.setUserTypes(r.getUserTypes() == null ? new ArrayList<>() : new ArrayList<>(r.getUserTypes()));
+            c.setRoles(r.getRoles() == null ? new ArrayList<>() : new ArrayList<>(r.getRoles()));
+            c.setPermissions(r.getPermissions() == null ? new ArrayList<>() : new ArrayList<>(r.getPermissions()));
+            c.setUserIds(r.getUserIds() == null ? new ArrayList<>() : new ArrayList<>(r.getUserIds()));
+            c.setDeptIds(r.getDeptIds() == null ? new ArrayList<>() : new ArrayList<>(r.getDeptIds()));
+            c.setDeptIncludeChildren(r.getDeptIncludeChildren());
+            c.setPrivacy(r.getPrivacy());
+            c.setFields(r.getFields() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(r.getFields()));
+            out.add(c);
+        }
+        return out;
     }
 
     private static List<PrivacyMaskRule> copyRules(List<PrivacyMaskRule> src) {

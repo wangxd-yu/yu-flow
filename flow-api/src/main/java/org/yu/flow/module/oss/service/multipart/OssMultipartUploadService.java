@@ -22,6 +22,7 @@ import org.yu.flow.module.oss.dto.OssUploadOptions;
 import org.yu.flow.module.oss.dto.OssUploadResultDTO;
 import org.yu.flow.module.oss.repository.OssConnectionRepository;
 import org.yu.flow.module.oss.repository.OssObjectRepository;
+import org.yu.flow.module.oss.service.OssArchiveExtractService;
 import org.yu.flow.module.oss.service.OssQuotaService;
 import org.yu.flow.module.oss.service.OssThumbnailService;
 import org.yu.flow.module.oss.service.OssUploadProfileService;
@@ -91,6 +92,9 @@ public class OssMultipartUploadService {
 
     @Resource
     private OssThumbnailService ossThumbnailService;
+
+    @Resource
+    private OssArchiveExtractService ossArchiveExtractService;
 
     private ScheduledExecutorService cleanupScheduler;
     private Path rootTempDir;
@@ -324,11 +328,13 @@ public class OssMultipartUploadService {
                 .expiresAt(session.getExpiresAt())
                 .objectPurged(false)
                 .thumbStatus(OssThumbnailService.THUMB_NONE)
+                .extractStatus(OssArchiveExtractService.EXTRACT_NONE)
                 .createTime(now)
                 .updateTime(now)
                 .build();
         entity = ossObjectRepository.save(entity);
         ossThumbnailService.scheduleIfNeeded(entity, profile);
+        ossArchiveExtractService.scheduleIfNeeded(entity, profile);
 
         cleanupSessionFiles(session);
         sessions.remove(sessionId);
@@ -343,7 +349,8 @@ public class OssMultipartUploadService {
                 .setExpiresAt(session.getExpiresAt())
                 .setThumbStatus(entity.getThumbStatus())
                 .setThumbPublicPath(entity.getThumbPublicPath())
-                .setHasThumbnail(OssThumbnailService.THUMB_READY.equals(entity.getThumbStatus()));
+                .setHasThumbnail(OssThumbnailService.THUMB_READY.equals(entity.getThumbStatus()))
+                .setExtractStatus(entity.getExtractStatus());
         if (OssObjectDO.VISIBILITY_PUBLIC.equals(visibility)) {
             dto.setPublicUrl(OssKeyPatternResolver.buildPublicUrl(connection.getPublicBaseUrl(), publicPath));
         }

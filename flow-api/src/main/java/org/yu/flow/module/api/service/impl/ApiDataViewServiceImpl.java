@@ -27,6 +27,7 @@ import org.yu.flow.module.api.domain.FlowApiExcelTemplateDO;
 import org.yu.flow.module.api.dto.*;
 import org.yu.flow.module.api.privacy.EffectivePrivacy;
 import org.yu.flow.module.api.privacy.PrivacyClass;
+import org.yu.flow.module.api.privacy.PrivacyDecision;
 import org.yu.flow.module.api.privacy.PrivacyFieldInterceptor;
 import org.yu.flow.module.api.repository.FlowApiExcelTemplateRepository;
 import org.yu.flow.module.api.repository.FlowApiRepository;
@@ -154,12 +155,13 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
             EffectivePrivacy privacy = privacyFieldInterceptor.resolveConfig(api, useDraft);
             privacyEnabled = privacy.isEnabled();
             if (privacyEnabled) {
-                privacyClass = privacyFieldInterceptor.resolveClass(currentPrincipal());
-                rows = applyPrivacyRows(rows, privacy, privacyClass);
+                PrivacyDecision decision = privacyFieldInterceptor.resolveDecision(currentPrincipal(), privacy);
+                privacyClass = decision.getPrivacyClass();
+                rows = applyPrivacyRows(rows, privacy, decision);
                 if (object != null && !rows.isEmpty()) {
                     object = rows.get(0);
                 } else if (object != null) {
-                    object = applyPrivacyObject(object, privacy, privacyClass);
+                    object = applyPrivacyObject(object, privacy, decision);
                 }
                 columns = resolveColumns(cfg, api.getContract(), rows, object, false);
             }
@@ -256,11 +258,14 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
             params.setBodyParams(request.getBodyParams());
             params.setPathParams(request.getPathParams());
         }
-        PrivacyClass privacyClass = privacyFieldInterceptor == null
-                ? PrivacyClass.MASK
-                : privacyFieldInterceptor.resolveClass(currentPrincipal());
+        PrivacyDecision privacyDecision = PrivacyDecision.mask();
+        if (privacyFieldInterceptor != null) {
+            EffectivePrivacy privacy = privacyFieldInterceptor.resolveConfig(api, false);
+            privacyDecision = privacyFieldInterceptor.resolveDecision(currentPrincipal(), privacy);
+        }
         String token = ExcelExportLinkToken.issue(
-                yuFlowProperties, apiId, JwtTokenUtil.currentUsername(), params, ttl, privacyClass.name());
+                yuFlowProperties, apiId, JwtTokenUtil.currentUsername(), params, ttl,
+                privacyDecision.getPrivacyClass().name(), privacyDecision.getFieldActions());
         long exp = java.time.Instant.now().getEpochSecond() + ttl;
         String url = "/flow-api/download/excel/" + token;
         return ApiExcelExportLinkDTO.builder()
@@ -284,7 +289,10 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
             throw new ValidationException("该接口已关闭数据导出");
         }
         doExportCore(api, cfg, parsed.request(), response,
-                PrivacyClass.valueOf(ExcelExportLinkToken.normalizePrivacyClass(parsed.privacyClass())));
+                PrivacyDecision.of(
+                        PrivacyClass.valueOf(ExcelExportLinkToken.normalizePrivacyClass(parsed.privacyClass())),
+                        parsed.fieldActions(),
+                        null));
     }
 
     private void doExportCore(FlowApiDO api, ViewExportConfigDTO cfg,
@@ -294,7 +302,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
 
     private void doExportCore(FlowApiDO api, ViewExportConfigDTO cfg,
                               ApiDataExportRequestDTO request, HttpServletResponse response,
-                              PrivacyClass forcedPrivacyClass) {
+                              PrivacyDecision forcedPrivacy) {
         int maxRows = cfg.getMaxExportRows() == null || cfg.getMaxExportRows() <= 0
                 ? DEFAULT_MAX_EXPORT_ROWS
                 : Math.min(cfg.getMaxExportRows(), DEFAULT_MAX_EXPORT_ROWS);
@@ -312,11 +320,11 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
         EffectivePrivacy privacy = privacyFieldInterceptor == null
                 ? EffectivePrivacy.disabled()
                 : privacyFieldInterceptor.resolveConfig(api, useDraft);
-        PrivacyClass privacyClass = !privacy.isEnabled()
-                ? PrivacyClass.MASK
-                : (forcedPrivacyClass != null
-                ? forcedPrivacyClass
-                : privacyFieldInterceptor.resolveClass(currentPrincipal()));
+        PrivacyDecision privacyDecision = !privacy.isEnabled()
+                ? PrivacyDecision.mask()
+                : (forcedPrivacy != null
+                ? forcedPrivacy
+                : privacyFieldInterceptor.resolveDecision(currentPrincipal(), privacy));
 
         boolean preferTemplate = "TEMPLATE".equalsIgnoreCase(StrUtil.blankToDefault(cfg.getExportMode(), "DYNAMIC"));
         FlowApiExcelTemplateDO template = preferTemplate
@@ -345,7 +353,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
                 List<ViewExportColumnDTO> columns = null;
                 try {
                     rows = loadExportRows(api, sqlAndParams, responseType, maxRows);
-                    rows = applyPrivacyRows(rows, privacy, privacyClass);
+                    rows = applyPrivacyRows(rows, privacy, privacyDecision);
                     columns = resolveColumns(cfg, api.getContract(), rows,
                             rows.isEmpty() ? null : rows.get(0), true);
                     byte[] filled = fillExcelByTemplate(template.getContent(), cfg, api.getName(), columns, rows);
@@ -384,7 +392,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
                 Map<String, Object> one = castObjectRow(
                         sqlExecutorService.executeObjectQuery(api.getDatasource(), sqlAndParams));
                 if (one != null) {
-                    one = applyPrivacyObject(one, privacy, privacyClass);
+                    one = applyPrivacyObject(one, privacy, privacyDecision);
                 }
                 List<Map<String, Object>> rows = one == null ? List.of() : List.of(one);
                 List<ViewExportColumnDTO> columns = resolveColumns(cfg, api.getContract(), rows, one, true);
@@ -398,7 +406,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
             }
 
             List<Map<String, Object>> rows = loadExportRows(api, sqlAndParams, responseType, maxRows);
-            rows = applyPrivacyRows(rows, privacy, privacyClass);
+            rows = applyPrivacyRows(rows, privacy, privacyDecision);
             List<ViewExportColumnDTO> columns = resolveColumns(
                     cfg, api.getContract(), rows, rows.isEmpty() ? null : rows.get(0), true);
             if (!rows.isEmpty()) {
@@ -1380,12 +1388,12 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> applyPrivacyRows(List<Map<String, Object>> rows,
-                                                       EffectivePrivacy privacy, PrivacyClass privacyClass) {
+                                                       EffectivePrivacy privacy, PrivacyDecision decision) {
         if (privacyFieldInterceptor == null || privacy == null || !privacy.isEnabled()
                 || rows == null || rows.isEmpty()) {
             return rows;
         }
-        Object walked = privacyFieldInterceptor.apply(rows, privacy, privacyClass, null, false);
+        Object walked = privacyFieldInterceptor.apply(rows, privacy, decision, null, false);
         if (!(walked instanceof List<?> list)) {
             return rows;
         }
@@ -1402,11 +1410,11 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> applyPrivacyObject(Map<String, Object> object,
-                                                   EffectivePrivacy privacy, PrivacyClass privacyClass) {
+                                                   EffectivePrivacy privacy, PrivacyDecision decision) {
         if (privacyFieldInterceptor == null || privacy == null || !privacy.isEnabled() || object == null) {
             return object;
         }
-        Object walked = privacyFieldInterceptor.apply(object, privacy, privacyClass, null, false);
+        Object walked = privacyFieldInterceptor.apply(object, privacy, decision, null, false);
         if (!(walked instanceof Map<?, ?> m)) {
             return object;
         }

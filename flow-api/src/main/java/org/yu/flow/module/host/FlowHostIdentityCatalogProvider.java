@@ -6,7 +6,8 @@ import java.util.List;
  * 可选：向管理端提供调用方策略的下拉清单（用户类型 / 角色 / 权限 / 部门 / 用户）。
  *
  * <p><b>没有本 Bean 时</b>走「宿主机配置」保留接口。
- * {@link #supports} 为 false 的维度会从策略表单隐藏，运行时也不匹配。</p>
+ * {@link #supports} 为 false 的维度会从 OSS / 接口访问规则表单隐藏；
+ * 已保存的约束仍按原样匹配，避免停用维度后策略被悄悄放宽。</p>
  *
  * <p>内置 JWT 不提供本实现。嵌入宿主后声明一个 {@code @Component} 即可，例如：</p>
  * <pre>{@code
@@ -32,7 +33,7 @@ import java.util.List;
 public interface FlowHostIdentityCatalogProvider {
 
     /**
-     * 本宿主是否拥有该身份维度。{@code false} 时策略表单隐藏该维，运行时也不匹配。
+     * 本宿主是否拥有该身份维度。{@code false} 时管理端表单隐藏该维；已保存约束仍匹配。
      */
     default boolean supports(FlowHostCatalogDimension dimension) {
         return true;

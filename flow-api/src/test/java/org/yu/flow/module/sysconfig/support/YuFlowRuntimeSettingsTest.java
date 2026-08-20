@@ -56,6 +56,22 @@ class YuFlowRuntimeSettingsTest {
     }
 
     @Test
+    void privacyWrapTransport_sysConfigOverridesYml() {
+        props.getPrivacy().setWrapTransport(true);
+        when(cache.getConfig(YuFlowRuntimeSettings.Keys.PRIVACY_WRAP_TRANSPORT))
+                .thenReturn(Optional.of(cfg(YuFlowRuntimeSettings.Keys.PRIVACY_WRAP_TRANSPORT, "false")));
+
+        assertFalse(settings.isPrivacyWrapTransport());
+    }
+
+    @Test
+    void privacyWrapTransport_fallsBackToYml() {
+        props.getPrivacy().setWrapTransport(false);
+
+        assertFalse(settings.isPrivacyWrapTransport());
+    }
+
+    @Test
     void entryPrefix_alwaysFromYml() {
         props.getOpen().setEntryPrefix("/custom/open");
         assertEquals("/custom/open", settings.getOpenEntryPrefix());

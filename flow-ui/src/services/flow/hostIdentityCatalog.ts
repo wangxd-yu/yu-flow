@@ -56,10 +56,15 @@ function unwrap<T>(result: any): T {
   return result as T;
 }
 
-/** 宿主机配置保存后清掉管理端下拉缓存。 */
+/** 宿主机配置保存后清掉管理端下拉缓存，并通知已打开的策略表单刷新维度显隐。 */
+export const HOST_IDENTITY_CATALOG_CHANGED = 'yu-flow:host-identity-catalog-changed';
+
 export function resetHostIdentityCatalogCache() {
   snapshotPromise = null;
   snapshotExpiresAt = 0;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(HOST_IDENTITY_CATALOG_CHANGED));
+  }
 }
 
 /** 同一页多个策略块共用请求；30 秒后自动刷新，配置保存时会主动清除。 */

@@ -18,4 +18,10 @@ public interface OssQuotaService {
      */
     void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy, String uploadedByUserType,
                            long additionalBytes, int additionalFiles);
+
+    /**
+     * 上传前校验配额。{@code credit*} 从当前占用中抵扣（例如即将软删的原 zip）。
+     */
+    void checkBeforeUpload(OssUploadProfileDO profile, String uploadedBy, String uploadedByUserType,
+                           long additionalBytes, int additionalFiles, long creditBytes, int creditFiles);
 }

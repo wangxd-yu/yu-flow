@@ -32,7 +32,35 @@ class CallerPolicyMatcherTest {
     }
 
     @Test
-    void userType_allMatch() {
+    void multiRow_allowOpenAppAndStaff() {
+        CallerPolicy p = new CallerPolicy();
+        p.setEnabled(true);
+        CallerAccessRule staff = new CallerAccessRule();
+        staff.setPrincipals(PrincipalMatch.PRINCIPALS_MATCH);
+        staff.setUserTypes(List.of("STAFF"));
+        CallerAccessRule open = new CallerAccessRule();
+        open.setPrincipals(PrincipalMatch.PRINCIPALS_OPEN);
+        p.setRules(List.of(staff, open));
+
+        FlowHostPrincipal ops = FlowHostPrincipal.builder()
+                .userId("s1")
+                .userType("STAFF")
+                .build();
+        FlowHostPrincipal app = FlowHostPrincipal.builder()
+                .userId("open:shop")
+                .userType(FlowHostPrincipal.TYPE_OPEN_APP)
+                .build();
+        FlowHostPrincipal user = FlowHostPrincipal.builder()
+                .userId("u1")
+                .userType("END_USER")
+                .build();
+        assertNull(CallerPolicyMatcher.denyReason(p, ops));
+        assertNull(CallerPolicyMatcher.denyReason(p, app));
+        assertNotNull(CallerPolicyMatcher.denyReason(p, user));
+    }
+
+    @Test
+    void legacyBlock_stillWorksAsSingleMatchRule() {
         CallerPolicy p = new CallerPolicy();
         p.setEnabled(true);
         p.setMatch("ALL");

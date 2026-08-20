@@ -1,3 +1,11 @@
+import { FieldActionEditor, PrincipalMatchRuleList } from '@/components/flow/PrincipalMatchFields';
+import {
+  EMPTY_CALLER_RULE,
+  EMPTY_PRIVACY_RULE,
+  normalizePrivacyAccessRule,
+  type CallerAccessRule,
+  type PrivacyAccessRule,
+} from '@/utils/principalMatch';
 import {
   getHostPrincipalOverview,
   previewHostCatalog,
@@ -55,9 +63,29 @@ const DEFAULT_SETTINGS: HostPrincipalSettings = {
   headerNames: {},
   trustProxyHeaders: false,
   adminUserTypes: [],
+  privacyRules: [],
   privacyRevealRoles: [],
   privacyMaskRoles: [],
+  ingressCallerEnabled: false,
+  ingressRules: [],
 };
+
+function migrateHostPrivacyRules(settings: HostPrincipalSettings): PrivacyAccessRule[] {
+  if (Array.isArray(settings.privacyRules) && settings.privacyRules.length) {
+    return settings.privacyRules.map((r) => normalizePrivacyAccessRule(r));
+  }
+  const roles = (settings.privacyRevealRoles || []).map((x) => String(x || '').trim()).filter(Boolean);
+  if (!roles.length) return [];
+  return [
+    normalizePrivacyAccessRule({
+      ...EMPTY_PRIVACY_RULE,
+      name: '隐私明文角色',
+      principals: 'MATCH',
+      roles,
+      privacy: 'REVEAL',
+    }),
+  ];
+}
 
 type Props = {
   canWrite: boolean;
@@ -87,9 +115,6 @@ const PrincipalResolverCard: React.FC<Props> = ({
   const [userTypeOptions, setUserTypeOptions] = useState<
     { label: string; value: string }[]
   >([]);
-  const [roleOptions, setRoleOptions] = useState<
-    { label: string; value: string }[]
-  >([]);
   const [result, setResult] = useState<HostPrincipalTestResult | null>(null);
 
   const load = useCallback(async (keepDirty = false) => {
@@ -100,7 +125,17 @@ const PrincipalResolverCard: React.FC<Props> = ({
       setApi(data.api);
       setDefaultHeaderNames(data.defaultHeaderNames || {});
       if (!keepDirty) {
-        setSettings({ ...DEFAULT_SETTINGS, ...(data.settings || {}) });
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          ...(data.settings || {}),
+          privacyRules: migrateHostPrivacyRules({
+            ...DEFAULT_SETTINGS,
+            ...(data.settings || {}),
+          }),
+          ingressRules: Array.isArray(data.settings?.ingressRules)
+            ? data.settings.ingressRules
+            : [],
+        });
         setDirty(false);
       }
     } catch {
@@ -129,16 +164,6 @@ const PrincipalResolverCard: React.FC<Props> = ({
         ),
       )
       .catch(() => setUserTypeOptions([]));
-    previewHostCatalog('ROLE', '', 50)
-      .then((items) =>
-        setRoleOptions(
-          items.map((item) => ({
-            label: item.label ? `${item.label}（${item.value}）` : item.value,
-            value: item.value,
-          })),
-        ),
-      )
-      .catch(() => setRoleOptions([]));
   }, []);
 
   const patch = useCallback((partial: Partial<HostPrincipalSettings>) => {
@@ -156,8 +181,26 @@ const PrincipalResolverCard: React.FC<Props> = ({
     }
     setSaving(true);
     try {
-      const saved = await saveHostPrincipalSettings(settings);
-      setSettings({ ...DEFAULT_SETTINGS, ...(saved.settings || {}) });
+      const payload: HostPrincipalSettings = {
+        ...settings,
+        privacyRules: settings.privacyRules || [],
+        privacyRevealRoles: [],
+        privacyMaskRoles: [],
+        ingressCallerEnabled: !!settings.ingressCallerEnabled,
+        ingressRules: settings.ingressRules || [],
+      };
+      const saved = await saveHostPrincipalSettings(payload);
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ...(saved.settings || {}),
+        privacyRules: migrateHostPrivacyRules({
+          ...DEFAULT_SETTINGS,
+          ...(saved.settings || {}),
+        }),
+        ingressRules: Array.isArray(saved.settings?.ingressRules)
+          ? saved.settings.ingressRules
+          : [],
+      });
       setApi(saved.api);
       setSpiOverride(!!saved.spiOverride);
       setDirty(false);
@@ -424,40 +467,67 @@ const PrincipalResolverCard: React.FC<Props> = ({
         </Typography.Text>
       </div>
 
-      <div className="host-principal-row is-scope">
-        <label>隐私明文角色</label>
-        <Select
-          mode="tags"
-          size="small"
-          style={{ minWidth: 320 }}
-          value={settings.privacyRevealRoles}
-          options={roleOptions}
-          disabled={!canWrite || spiOverride}
-          tokenSeparators={[',']}
-          placeholder="宿主角色码，可手输"
-          onChange={(v) => patch({ privacyRevealRoles: v })}
-        />
-        <Typography.Text type="secondary">
-          命中后解密给明文。只认角色码，不认用户类型。
-        </Typography.Text>
+      <div className="host-principal-row is-scope" style={{ alignItems: 'flex-start' }}>
+        <label>平台默认入站</label>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Switch
+              size="small"
+              checked={!!settings.ingressCallerEnabled}
+              disabled={!canWrite || spiOverride}
+              onChange={(v) => patch({ ingressCallerEnabled: v })}
+            />
+            <Typography.Text type="secondary">
+              目录/接口未写调用方策略时生效。启用后未命中拒绝。也可在接口管理左侧「平台默认」维护同一份配置。
+            </Typography.Text>
+          </div>
+          {settings.ingressCallerEnabled ? (
+            <PrincipalMatchRuleList<CallerAccessRule>
+              accent="ingress"
+              value={settings.ingressRules || []}
+              onChange={(ingressRules) => patch({ ingressRules })}
+              createEmpty={() => ({ ...EMPTY_CALLER_RULE })}
+            />
+          ) : null}
+        </div>
       </div>
 
-      <div className="host-principal-row is-scope">
-        <label>隐私脱敏角色</label>
-        <Select
-          mode="tags"
-          size="small"
-          style={{ minWidth: 320 }}
-          value={settings.privacyMaskRoles}
-          options={roleOptions}
-          disabled={!canWrite || spiOverride}
-          tokenSeparators={[',']}
-          placeholder="宿主角色码，可手输"
-          onChange={(v) => patch({ privacyMaskRoles: v })}
-        />
-        <Typography.Text type="secondary">
-          同时命中两档时明文优先。已登录但都不中、未登录、开放应用：一律脱敏，绝不回传库内密文。
-        </Typography.Text>
+      <div className="host-principal-row is-scope" style={{ alignItems: 'flex-start' }}>
+        <label>平台默认隐私</label>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+            目录/接口未配置「谁看什么」时继承这里。从上到下第一条命中；未命中脱敏。开放应用不会被「任何已登录」覆盖。也可在接口管理左侧「平台默认」维护。
+          </Typography.Text>
+          <PrincipalMatchRuleList<PrivacyAccessRule>
+            accent="privacy"
+            value={settings.privacyRules || []}
+            onChange={(privacyRules) => patch({ privacyRules })}
+            createEmpty={() => ({ ...EMPTY_PRIVACY_RULE, principals: 'MATCH' })}
+            extra={(rule, patchRule) => (
+              <>
+                <div className="principal-match-row">
+                  <span className="principal-match-label">出站</span>
+                  <Radio.Group
+                    optionType="button"
+                    buttonStyle="solid"
+                    size="small"
+                    value={rule.privacy || 'MASK'}
+                    disabled={!canWrite || spiOverride}
+                    options={[
+                      { label: '脱敏', value: 'MASK' },
+                      { label: '明文', value: 'REVEAL' },
+                    ]}
+                    onChange={(e) => patchRule({ privacy: e.target.value })}
+                  />
+                </div>
+                <FieldActionEditor
+                  value={rule.fields}
+                  onChange={(fields) => patchRule({ fields })}
+                />
+              </>
+            )}
+          />
+        </div>
       </div>
 
       {result ? (

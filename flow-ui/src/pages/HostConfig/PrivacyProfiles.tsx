@@ -1,3 +1,4 @@
+import PrivacyMaskRuleList, { normalizePrivacyMaskRule } from '@/components/flow/PrivacyMaskRuleList';
 import {
   getHostPrivacyProfiles,
   hydratePrivacyCrypto,
@@ -8,7 +9,7 @@ import {
   type HostPrivacyProfile,
   type PrivacyMaskRule,
 } from '@/services/flow/hostConfig';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -18,7 +19,6 @@ import {
   Input,
   InputNumber,
   Popconfirm,
-  Radio,
   Select,
   Space,
   Switch,
@@ -60,21 +60,6 @@ const IV_OPTIONS = [
   { value: 'FIXED', label: '固定' },
 ];
 
-const MATCH_OPTIONS = [
-  { value: 'EXACT', label: '精确' },
-  { value: 'CONTAINS', label: '包含' },
-];
-
-const METHOD_OPTIONS = [
-  { value: 'KEEP_HEAD_TAIL', label: '留头尾、藏中间' },
-  { value: 'NAME_KEEP_ENDS', label: '姓名藏中间' },
-  { value: 'PHONE', label: '手机前3后4' },
-  { value: 'ID_CARD', label: '身份证留首尾' },
-  { value: 'KEEP_HEAD', label: '只留开头' },
-  { value: 'KEEP_TAIL', label: '只留末尾' },
-  { value: 'FULL', label: '全部隐藏' },
-];
-
 const DEFAULT_RULES: PrivacyMaskRule[] = [
   {
     matchMode: 'EXACT',
@@ -82,7 +67,6 @@ const DEFAULT_RULES: PrivacyMaskRule[] = [
     method: 'KEEP_HEAD_TAIL',
     keepHead: 3,
     keepTail: 4,
-    maskLen: 4,
   },
   {
     matchMode: 'EXACT',
@@ -100,10 +84,6 @@ const DEFAULT_RULES: PrivacyMaskRule[] = [
 
 function newId(): string {
   return `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function needsKeep(method?: string): boolean {
-  return method === 'KEEP_HEAD_TAIL' || method === 'KEEP_HEAD' || method === 'KEEP_TAIL';
 }
 
 function toUiMatchMode(mode?: string): 'EXACT' | 'CONTAINS' {
@@ -216,15 +196,7 @@ const PrivacyProfilesCard: React.FC<Props> = ({ canWrite }) => {
       fieldSuffix: values.fieldSuffix?.trim() || undefined,
       extraFields: values.extraFields || [],
       stripSuffix: values.stripSuffix !== false,
-      rules: (values.rules || []).map((r) => ({
-        aliases: r.aliases || [],
-        matchMode: r.matchMode === 'CONTAINS' ? 'CONTAINS' : 'EXACT',
-        method: r.method || 'FULL',
-        keepHead: r.keepHead ?? undefined,
-        keepTail: r.keepTail ?? undefined,
-        maskLen: r.maskLen ?? undefined,
-        maskChar: r.maskChar || undefined,
-      })),
+      rules: (values.rules || []).map((r) => normalizePrivacyMaskRule(r)),
     };
     const typedKey = typeof values.decryptKey === 'string' ? values.decryptKey.trim() : '';
     if (typedKey) payload.decryptKey = typedKey;
@@ -465,102 +437,7 @@ const PrivacyProfilesCard: React.FC<Props> = ({ canWrite }) => {
               </Tooltip>
             }
           >
-            <Form.List name="rules">
-              {(fields, { add, remove }) => (
-                <div className="host-privacy-rule-list">
-                  {fields.map(({ key, name, ...restField }) => (
-                    <div key={key} className="host-privacy-rule">
-                      <div className="host-privacy-rule-row">
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'matchMode']}
-                          initialValue="EXACT"
-                          className="host-privacy-rule-match"
-                        >
-                          <Radio.Group
-                            optionType="button"
-                            buttonStyle="solid"
-                            size="small"
-                            options={MATCH_OPTIONS}
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'aliases']}
-                          rules={[{ required: true, message: '填写别名' }]}
-                          className="host-privacy-rule-grow"
-                        >
-                          <Select
-                            mode="tags"
-                            size="small"
-                            tokenSeparators={[',']}
-                            placeholder="phone、手机"
-                          />
-                        </Form.Item>
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<MinusCircleOutlined />}
-                          onClick={() => remove(name)}
-                        />
-                      </div>
-                      <div className="host-privacy-rule-row">
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'method']}
-                          rules={[{ required: true, message: '选择方式' }]}
-                          className="host-privacy-rule-grow"
-                        >
-                          <Select size="small" options={METHOD_OPTIONS} placeholder="脱敏方式" />
-                        </Form.Item>
-                        <Form.Item noStyle shouldUpdate>
-                          {({ getFieldValue }) => {
-                            const method = getFieldValue(['rules', name, 'method']);
-                            if (!needsKeep(method)) return null;
-                            return (
-                              <>
-                                {(method === 'KEEP_HEAD' || method === 'KEEP_HEAD_TAIL') ? (
-                                  <Form.Item {...restField} name={[name, 'keepHead']} className="host-privacy-rule-num">
-                                    <InputNumber size="small" min={0} max={32} addonBefore="头" />
-                                  </Form.Item>
-                                ) : null}
-                                {(method === 'KEEP_TAIL' || method === 'KEEP_HEAD_TAIL') ? (
-                                  <Form.Item {...restField} name={[name, 'keepTail']} className="host-privacy-rule-num">
-                                    <InputNumber size="small" min={0} max={32} addonBefore="尾" />
-                                  </Form.Item>
-                                ) : null}
-                                {method === 'KEEP_HEAD_TAIL' ? (
-                                  <Form.Item {...restField} name={[name, 'maskLen']} className="host-privacy-rule-num">
-                                    <InputNumber size="small" min={1} max={32} addonBefore="*" placeholder="实际" />
-                                  </Form.Item>
-                                ) : null}
-                              </>
-                            );
-                          }}
-                        </Form.Item>
-                      </div>
-                    </div>
-                  ))}
-                  <Button
-                    type="dashed"
-                    size="small"
-                    block
-                    icon={<PlusOutlined />}
-                    onClick={() => add({
-                      matchMode: 'EXACT',
-                      method: 'KEEP_HEAD_TAIL',
-                      keepHead: 3,
-                      keepTail: 4,
-                      maskLen: 4,
-                      aliases: [],
-                    })}
-                  >
-                    添加规则
-                  </Button>
-                </div>
-              )}
-            </Form.List>
+            <PrivacyMaskRuleList name="rules" />
           </Form.Item>
         </Form>
       </Drawer>

@@ -94,6 +94,24 @@ class FlowDirectoryServiceImplTest {
         verify(directoryRepository, times(1)).findAll();
     }
 
+    @Test
+    void getAllChildIds_includesSelfWhenLeaf() {
+        FlowDirectoryDO leaf = dir("leaf", null, null);
+        when(directoryRepository.findAll()).thenReturn(List.of(leaf));
+
+        assertEquals(List.of("leaf"), service.getAllChildIds("leaf"));
+    }
+
+    @Test
+    void getAllChildIds_includesSelfThenDescendants() {
+        FlowDirectoryDO root = dir("root", null, null);
+        FlowDirectoryDO child = dir("child", "root", null);
+        when(directoryRepository.findAll()).thenReturn(List.of(root, child));
+
+        assertEquals(List.of("root", "child"), service.getAllChildIds("root"));
+        assertEquals(List.of("child"), service.getAllChildIds("child"));
+    }
+
     private static FlowDirectoryDO dir(String id, String parentId, String securityConfig) {
         FlowDirectoryDO d = new FlowDirectoryDO();
         d.setId(id);

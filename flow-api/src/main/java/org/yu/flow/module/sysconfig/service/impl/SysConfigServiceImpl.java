@@ -156,6 +156,7 @@ public class SysConfigServiceImpl implements SysConfigService {
             }
             existing.setUpdateTime(LocalDateTime.now());
             SysConfigDO saved = sysConfigRepository.save(existing);
+            sysConfigCacheManager.putLocal(saved);
             sysConfigCacheManager.publishRefreshEvent();
             if (dto.getConfigValue() != null && !StrUtil.equals(oldValue, saved.getConfigValue())) {
                 auditConfigUpdate(configKey, oldValue, saved.getConfigValue());
@@ -187,9 +188,30 @@ public class SysConfigServiceImpl implements SysConfigService {
         existing.setUpdateTime(LocalDateTime.now());
 
         SysConfigDO saved = sysConfigRepository.save(existing);
+        sysConfigCacheManager.putLocal(saved);
         sysConfigCacheManager.publishRefreshEvent();
         auditConfigUpdate(configKey, oldValue, saved.getConfigValue());
         return saved;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SysConfigDO updateValueByKey(String configKey, String configValue) {
+        if (StrUtil.isBlank(configKey)) {
+            throw new RuntimeException("配置键不能为空");
+        }
+        SysConfigDO existing = sysConfigRepository.findByConfigKey(configKey.trim())
+                .orElseThrow(() -> new RuntimeException("配置不存在: " + configKey));
+        SaveSysConfigDTO dto = new SaveSysConfigDTO();
+        dto.setConfigKey(existing.getConfigKey());
+        dto.setConfigValue(configValue);
+        dto.setValueType(existing.getValueType());
+        dto.setConfigGroup(existing.getConfigGroup());
+        dto.setRemark(existing.getRemark());
+        dto.setIsBuiltin(existing.getIsBuiltin());
+        dto.setStatus(existing.getStatus());
+        dto.setSortOrder(existing.getSortOrder());
+        return update(existing.getId(), dto);
     }
 
     private void auditConfigUpdate(String configKey, String oldValue, String newValue) {

@@ -8,13 +8,19 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Col, Form, Row, Switch, Radio, Tooltip } from 'antd';
+import { Alert, Col, Form, Row, Switch, Radio, Tooltip, Divider } from 'antd';
 import type { FormInstance } from 'antd';
 import {
-  ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea, ProFormRadio,
+  ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormTextArea,
 } from '@ant-design/pro-components';
-import { SafetyCertificateOutlined, LockOutlined, DatabaseOutlined, GiftOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { SafetyCertificateOutlined, DatabaseOutlined, GiftOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import DirectoryTreeSelect from '@/components/DirectoryTreeSelect';
+import {
+  ASSET_FORM_SCROLL_CLASS,
+  ASSET_FORM_BASIC_CLASS,
+  ASSET_FORM_COL_FIELD,
+  ASSET_FORM_COL_FULL,
+} from '@/components/flow/ops';
 import { useGlobalLogMode, getLogModeLabel } from '@/components/flow/useGlobalLogMode';
 import ResponseWrapperSection from './ResponseWrapperSection';
 import CacheConfigSection from './CacheConfigSection';
@@ -36,8 +42,7 @@ export interface BasicInfoPanelProps {
 
 const ALL_NAV_ITEMS = [
   { key: 'meta', label: '接口元信息', icon: <InfoCircleOutlined /> },
-  { key: 'ingress', label: '入站防护', icon: <SafetyCertificateOutlined /> },
-  { key: 'privacy', label: '出站隐私', icon: <LockOutlined /> },
+  { key: 'access', label: '访问控制', icon: <SafetyCertificateOutlined /> },
   { key: 'cache', label: '查询响应缓存', icon: <DatabaseOutlined /> },
   { key: 'wrapper', label: '返回包装配置', icon: <GiftOutlined /> },
 ] as const;
@@ -130,85 +135,133 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
     };
   }, [navItems]);
 
+  const logModeHint = useMemo(() => {
+    if (!logMode || logMode === 'SYSTEM_DEFAULT') {
+      return `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`;
+    }
+    if (logMode === 'ERROR_ONLY') {
+      return '覆盖全局配置：显式指定当前接口为【仅错误】，平时零开销，异常自动保存日志排障';
+    }
+    if (logMode === 'ALL') {
+      return '覆盖全局配置：显式指定当前接口为【全量记录】，每次调用均保存 FlowTrace 快照';
+    }
+    if (logMode === 'OFF') {
+      return '覆盖全局配置：显式指定当前接口为【完全关闭】，任何情况下均不保存日志';
+    }
+    return undefined;
+  }, [logMode, globalLogMode]);
+
   return (
-    <div ref={scrollRootRef} className="basic-info-scroll">
+    <div ref={scrollRootRef} className={ASSET_FORM_SCROLL_CLASS}>
       <style>{`
-        /* 面板自身作为滚动容器，撑满 Tab 内容区并可独立滚动 */
-        .basic-info-scroll {
-          height: 100%;
-          overflow-y: auto;
-          overflow-x: hidden;
-          overscroll-behavior: contain;
-        }
         .basic-info-panel {
           display: flex;
+          align-items: flex-start;
           gap: 20px;
-          max-width: 1080px;
-          margin: 0 auto;
-          padding: 16px 4px 32px;
+          width: 100%;
           box-sizing: border-box;
-        }
-        .basic-info-panel .ant-form-item {
-          margin-bottom: 14px;
         }
         .basic-info-panel .ant-form-item-extra {
           min-height: 0;
         }
+        .basic-info-nav {
+          width: 168px;
+          flex-shrink: 0;
+          position: sticky;
+          top: 0;
+        }
+        .basic-info-nav-inner {
+          background: #fff;
+          border: 1px solid #ebeef5;
+          border-radius: 10px;
+          padding: 6px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+        .basic-info-nav-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          border: none;
+          border-left: 3px solid transparent;
+          border-radius: 6px;
+          background: transparent;
+          color: #4e5969;
+          font-weight: 400;
+          font-size: 13px;
+          line-height: 22px;
+          padding: 8px 10px;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.2s, color 0.2s, border-color 0.2s;
+        }
         .basic-info-nav-btn:hover {
-          background: #f2f6fc !important;
+          background: #f2f6fc;
+        }
+        .basic-info-nav-btn.is-active {
+          border-left-color: #1677ff;
+          border-radius: 0 6px 6px 0;
+          background: #e6f4ff;
+          color: #1677ff;
+          font-weight: 600;
+        }
+        .basic-info-nav-btn.is-active:hover {
+          background: #e6f4ff;
+        }
+        .basic-info-nav-icon {
+          display: flex;
+          font-size: 14px;
+          color: #86909c;
+        }
+        .basic-info-nav-btn.is-active .basic-info-nav-icon {
+          color: #1677ff;
+        }
+        .basic-info-content {
+          flex: 1;
+          min-width: 0;
+        }
+        @media (max-width: 900px) {
+          .basic-info-panel {
+            flex-direction: column;
+          }
+          .basic-info-nav {
+            width: 100%;
+            position: static;
+          }
+          .basic-info-nav-inner {
+            display: flex;
+            gap: 4px;
+          }
+          .basic-info-nav-btn {
+            flex: 1;
+            justify-content: center;
+            border-left: none;
+            border-bottom: 2px solid transparent;
+            border-radius: 6px;
+            padding: 8px 6px;
+          }
+          .basic-info-nav-btn.is-active {
+            border-left: none;
+            border-bottom-color: #1677ff;
+            border-radius: 6px;
+          }
         }
       `}</style>
 
       <div className="basic-info-panel">
-        {/* ── 左侧锚点导航 ── */}
-        <nav
-          style={{
-            width: 160,
-            flexShrink: 0,
-            position: 'sticky',
-            top: 0,
-            alignSelf: 'flex-start',
-          }}
-        >
-          <div
-            style={{
-              background: '#fff',
-              border: '1px solid #ebeef5',
-              borderRadius: 10,
-              padding: '6px',
-              overflow: 'hidden',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-            }}
-          >
+        <nav className="basic-info-nav" aria-label="基本信息分区">
+          <div className="basic-info-nav-inner">
             {navItems.map((item) => {
               const active = activeKey === item.key;
               return (
                 <button
                   key={item.key}
                   type="button"
-                  className="basic-info-nav-btn"
+                  className={`basic-info-nav-btn${active ? ' is-active' : ''}`}
+                  aria-current={active ? 'true' : undefined}
                   onClick={() => scrollToSection(item.key)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    border: 'none',
-                    borderLeft: active ? '3px solid #1677ff' : '3px solid transparent',
-                    borderRadius: active ? '0 6px 6px 0' : '6px',
-                    background: active ? '#e6f4ff' : 'transparent',
-                    color: active ? '#1677ff' : '#4e5969',
-                    fontWeight: active ? 600 : 400,
-                    fontSize: 13,
-                    padding: '8px 10px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.2s cubic-bezier(0.2, 0, 0, 1)',
-                  }}
                 >
-                  <span style={{ fontSize: 14, display: 'flex', color: active ? '#1677ff' : '#86909c' }}>
-                    {item.icon}
-                  </span>
+                  <span className="basic-info-nav-icon">{item.icon}</span>
                   {item.label}
                 </button>
               );
@@ -216,16 +269,15 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
           </div>
         </nav>
 
-        {/* ── 右侧内容区 ── */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className={`basic-info-content ${ASSET_FORM_BASIC_CLASS}`}>
         <ProForm form={form} submitter={false} layout="vertical">
           <SectionCard
             id="basic-info-meta"
             icon={<InfoCircleOutlined />}
             title="接口元信息"
           >
-            <Row gutter={[16, 0]}>
-              <Col span={24}>
+            <Row gutter={[24, 0]} className="yf-asset-form-row">
+              <Col {...ASSET_FORM_COL_FULL}>
                 <ProFormTextArea
                   name="info"
                   label="描述"
@@ -234,14 +286,14 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                 />
               </Col>
 
-              <Col span={12}>
+              <Col {...ASSET_FORM_COL_FIELD}>
                 <ProFormText
                   name="module"
                   label="模块"
                   placeholder="如: user、order"
                 />
               </Col>
-              <Col span={12}>
+              <Col {...ASSET_FORM_COL_FIELD}>
                 <DirectoryTreeSelect
                   bizType="api"
                   name="directoryId"
@@ -249,15 +301,15 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                   placeholder="不选默认为根目录"
                 />
               </Col>
-
-              <Col span={12}>
+              <Col {...ASSET_FORM_COL_FIELD}>
                 <ProFormText
                   name="version"
                   label="版本"
                   placeholder="如: v1、v2"
                 />
               </Col>
-              <Col span={12}>
+
+              <Col {...ASSET_FORM_COL_FIELD}>
                 <ProFormDigit
                   name="level"
                   label="优先级"
@@ -267,8 +319,7 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                   fieldProps={{ precision: 0, style: { width: '100%' } }}
                 />
               </Col>
-
-              <Col span={12}>
+              <Col {...ASSET_FORM_COL_FIELD}>
                 <ProFormDigit
                   name="logRetentionDays"
                   label="日志保留天数"
@@ -278,9 +329,12 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                   fieldProps={{ precision: 0, style: { width: '100%' } }}
                 />
               </Col>
-
-              <Col span={24}>
-                <Form.Item name="logMode" label="日志策略" style={{ marginBottom: 4 }}>
+              <Col {...ASSET_FORM_COL_FULL}>
+                <Form.Item
+                  name="logMode"
+                  label="日志策略"
+                  extra={logModeHint}
+                >
                   <Radio.Group optionType="button" buttonStyle="solid">
                     <Tooltip title={`跟随系统全局配置（当前全局：${getLogModeLabel(globalLogMode)}，可在「系统配置」中热更）`}>
                       <Radio.Button value="SYSTEM_DEFAULT">继承全局</Radio.Button>
@@ -296,15 +350,9 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
                     </Tooltip>
                   </Radio.Group>
                 </Form.Item>
-                <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 14 }}>
-                  {(!logMode || logMode === 'SYSTEM_DEFAULT') && `继承全局策略：当前全局生效为【${getLogModeLabel(globalLogMode)}】（来自系统配置 ENGINE_DEFAULT_LOG_MODE）`}
-                  {logMode === 'ERROR_ONLY' && '覆盖全局配置：显式指定当前接口为【仅错误】，平时零开销，异常自动保存日志排障'}
-                  {logMode === 'ALL' && '覆盖全局配置：显式指定当前接口为【全量记录】，每次调用均保存 FlowTrace 快照'}
-                  {logMode === 'OFF' && '覆盖全局配置：显式指定当前接口为【完全关闭】，任何情况下均不保存日志'}
-                </div>
               </Col>
 
-              <Col span={24}>
+              <Col {...ASSET_FORM_COL_FULL}>
                 <ProFormSelect
                   name="tags"
                   label="标签"
@@ -318,20 +366,15 @@ const BasicInfoPanel: React.FC<BasicInfoPanelProps> = ({
           </SectionCard>
 
           <SectionCard
-            id="basic-info-ingress"
+            id="basic-info-access"
             icon={<SafetyCertificateOutlined />}
-            title="入站防护"
-            description="鉴权 / 防重放 / 限流 / IP；继承全局或按接口覆盖，需发布后生效"
+            title="访问控制"
+            description="入站（谁能调）与出站（谁看什么）同一页配置，身份勾选与 OSS 访问规则相同"
           >
             <IngressSecuritySection />
-          </SectionCard>
-
-          <SectionCard
-            id="basic-info-privacy"
-            icon={<LockOutlined />}
-            title="出站隐私拦截"
-            description="库内密文识别后按宿主角色脱敏或明文；接口级需发布后生效"
-          >
+            <Divider orientation="left" plain>
+              出站隐私
+            </Divider>
             <PrivacySection />
           </SectionCard>
 

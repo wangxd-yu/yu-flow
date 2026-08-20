@@ -25,6 +25,10 @@ export interface OssObject {
   thumbStatus?: string;
   thumbPublicPath?: string;
   hasThumbnail?: boolean;
+  parentObjectId?: string;
+  archiveEntryPath?: string;
+  extractStatus?: string;
+  extractError?: string;
   expiresAt?: string;
   createTime?: string;
   updateTime?: string;
@@ -190,6 +194,7 @@ export interface OssUploadResult {
   thumbStatus?: string;
   thumbPublicPath?: string;
   hasThumbnail?: boolean;
+  extractStatus?: string;
   expiresAt?: string;
 }
 

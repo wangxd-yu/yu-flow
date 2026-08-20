@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * 开放平台 / 入站防护运行时配置桥接。
+ * 开放平台 / 入站防护 / 出站隐私等运行时配置桥接。
  *
  * <p>优先级：{@code flow_sys_config}（启用且在缓存中）→ {@code yu.flow.*}（yml/环境变量）→ 代码默认。</p>
  * <p>库中无键或已停用时回退 yml，保证初始化阶段无系统配置也能工作。</p>
@@ -50,6 +50,8 @@ public class YuFlowRuntimeSettings {
         public static final String SCRIPT_ALLOWED_LANGUAGES = "SCRIPT_ALLOWED_LANGUAGES";
         public static final String ENGINE_DEFAULT_LOG_MODE = "ENGINE_DEFAULT_LOG_MODE";
         public static final String MQ_LOG_PAYLOAD_MODE = "MQ_LOG_PAYLOAD_MODE";
+
+        public static final String PRIVACY_WRAP_TRANSPORT = "PRIVACY_WRAP_TRANSPORT";
     }
 
     @Resource
@@ -176,6 +178,16 @@ public class YuFlowRuntimeSettings {
         return resolveInt(Keys.INGRESS_DEFAULT_TIMEOUT_MS, ingressYml().getDefaultTimeoutMs());
     }
 
+    // ── Privacy ──
+
+    /**
+     * 已发布 JSON 明文档是否套传输 SM4。
+     * 系统参数 {@link Keys#PRIVACY_WRAP_TRANSPORT} 优先，未配置则回退 yml，再回退 true。
+     */
+    public boolean isPrivacyWrapTransport() {
+        return resolveBool(Keys.PRIVACY_WRAP_TRANSPORT, privacyYml().isWrapTransport());
+    }
+
     // ── Security ──
 
     /**
@@ -248,5 +260,10 @@ public class YuFlowRuntimeSettings {
     private YuFlowProperties.Ingress ingressYml() {
         YuFlowProperties.Ingress ingress = yuFlowProperties != null ? yuFlowProperties.getIngress() : null;
         return ingress != null ? ingress : new YuFlowProperties.Ingress();
+    }
+
+    private YuFlowProperties.Privacy privacyYml() {
+        YuFlowProperties.Privacy privacy = yuFlowProperties != null ? yuFlowProperties.getPrivacy() : null;
+        return privacy != null ? privacy : new YuFlowProperties.Privacy();
     }
 }

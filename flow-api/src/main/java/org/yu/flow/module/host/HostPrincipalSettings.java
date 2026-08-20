@@ -68,11 +68,32 @@ public class HostPrincipalSettings {
     /** 数据范围视为管理员（可见全部）的宿主用户类型码，其余用户仅可见本人数据 */
     private List<String> adminUserTypes = new ArrayList<>();
 
-    /** 隐私字段解密后给明文的宿主角色码（任意字符串，不写死） */
+    /**
+     * 平台默认隐私规则（未覆盖的目录/接口继承）。非空时优先于 {@link #privacyRevealRoles}。
+     */
+    private List<PrivacyAccessRule> privacyRules = new ArrayList<>();
+
+    /** 平台默认解密/脱敏方案 ID；空或 builtin=系统内置 */
+    private String privacyProfileId;
+
+    /** 平台默认密文列后缀；空则用方案或系统默认 _encrypt */
+    private String privacyFieldSuffix;
+
+    private List<String> privacyExtraFields = new ArrayList<>();
+
+    /** 平台默认输出是否去掉后缀；null=跟方案/系统默认 */
+    private Boolean privacyStripSuffix;
+
+    /** @deprecated 一期起由 {@link #privacyRules} 替代；读入时升成一条 MATCH + REVEAL */
     private List<String> privacyRevealRoles = new ArrayList<>();
 
-    /** 隐私字段解密后脱敏的宿主角色码；未命中明文角色时一律按脱敏 */
+    /** @deprecated 后端从未按此名单脱敏；未命中明文规则一律 MASK */
     private List<String> privacyMaskRoles = new ArrayList<>();
+
+    /** 平台默认入站：目录/接口未启用 callerPolicy 时生效 */
+    private boolean ingressCallerEnabled;
+
+    private List<CallerAccessRule> ingressRules = new ArrayList<>();
 
     @JsonIgnore
     public boolean isHeaderMode() {
@@ -134,5 +155,43 @@ public class HostPrincipalSettings {
 
     public static Map<String, String> defaultHeaderNames() {
         return DEFAULT_HEADER_NAMES;
+    }
+
+    /**
+     * 平台默认隐私规则。旧配置只有 {@link #privacyRevealRoles} 时升成一条 MATCH + REVEAL。
+     */
+    @JsonIgnore
+    public List<PrivacyAccessRule> resolvedPrivacyRules() {
+        if (privacyRules != null && !privacyRules.isEmpty()) {
+            return privacyRules;
+        }
+        if (privacyRevealRoles == null || privacyRevealRoles.stream().noneMatch(StrUtil::isNotBlank)) {
+            return List.of();
+        }
+        PrivacyAccessRule rule = new PrivacyAccessRule();
+        rule.setName("隐私明文角色");
+        rule.setPrincipals(PrincipalMatch.PRINCIPALS_MATCH);
+        rule.setMatch(CallerPolicy.MATCH_ALL);
+        List<String> roles = new ArrayList<>();
+        for (String role : privacyRevealRoles) {
+            if (StrUtil.isNotBlank(role)) {
+                roles.add(role.trim());
+            }
+        }
+        rule.setRoles(roles);
+        rule.setPrivacy(PrivacyAccessRule.PRIVACY_REVEAL);
+        return List.of(rule);
+    }
+
+    /** 平台默认入站策略；未启用时返回 null。 */
+    @JsonIgnore
+    public CallerPolicy toIngressCallerPolicy() {
+        if (!ingressCallerEnabled) {
+            return null;
+        }
+        CallerPolicy policy = new CallerPolicy();
+        policy.setEnabled(true);
+        policy.setRules(ingressRules == null ? new ArrayList<>() : new ArrayList<>(ingressRules));
+        return policy;
     }
 }

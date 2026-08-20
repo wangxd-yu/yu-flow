@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS flow_oss_object (
   thumb_content_type varchar(128),
   thumb_size_bytes bigint,
   thumb_error varchar(512),
+  parent_object_id varchar(32),
+  archive_entry_path varchar(512),
+  extract_status varchar(16) NOT NULL DEFAULT 'NONE',
+  extract_error varchar(512),
   create_time timestamp,
   update_time timestamp,
   PRIMARY KEY (id)
@@ -58,6 +62,10 @@ COMMENT ON COLUMN flow_oss_object.thumb_public_path IS '缩略图公有路径';
 COMMENT ON COLUMN flow_oss_object.thumb_content_type IS '缩略图 Content-Type';
 COMMENT ON COLUMN flow_oss_object.thumb_size_bytes IS '缩略图大小';
 COMMENT ON COLUMN flow_oss_object.thumb_error IS '缩略图失败原因';
+COMMENT ON COLUMN flow_oss_object.parent_object_id IS '来源压缩包台账 ID，空=独立上传';
+COMMENT ON COLUMN flow_oss_object.archive_entry_path IS '包内相对路径（正斜杠）';
+COMMENT ON COLUMN flow_oss_object.extract_status IS 'NONE / PENDING / EXTRACTING / DONE / FAILED / SKIPPED';
+COMMENT ON COLUMN flow_oss_object.extract_error IS '展开结果摘要或失败原因';
 COMMENT ON COLUMN flow_oss_object.create_time IS '创建时间';
 COMMENT ON COLUMN flow_oss_object.update_time IS '更新时间';
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_profile_code ON flow_oss_object (profile_code);
@@ -69,3 +77,5 @@ CREATE INDEX IF NOT EXISTS idx_flow_oss_object_create_time ON flow_oss_object (c
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_expires_at ON flow_oss_object (expires_at);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_status_object_purged ON flow_oss_object (status, object_purged);
 CREATE INDEX IF NOT EXISTS idx_flow_oss_object_thumb_status ON flow_oss_object (thumb_status);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_parent_object_id ON flow_oss_object (parent_object_id);
+CREATE INDEX IF NOT EXISTS idx_flow_oss_object_extract_status ON flow_oss_object (extract_status);

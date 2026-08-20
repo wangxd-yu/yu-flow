@@ -3,6 +3,13 @@
  * 接口 / 目录出站隐私策略表单 ↔ JSON。
  */
 
+import { normalizePrivacyMaskRule } from '@/components/flow/PrivacyMaskRuleList';
+import type { PrivacyMaskRule } from '@/services/flow/hostConfig';
+import {
+  type PrivacyAccessRule,
+  normalizePrivacyAccessRule,
+} from '@/utils/principalMatch';
+
 export type PrivacyMode = 'INHERIT' | 'ON' | 'OFF';
 
 export interface ApiPrivacyConfig {
@@ -12,6 +19,9 @@ export interface ApiPrivacyConfig {
   fieldSuffix?: string | null;
   extraFields?: string[];
   stripSuffix?: boolean | null;
+  /** 与隐私方案 rules 相同；不填继承方案 */
+  maskRules?: PrivacyMaskRule[];
+  rules?: PrivacyAccessRule[];
 }
 
 export interface PrivacyFormDefaults {
@@ -22,6 +32,8 @@ export interface PrivacyFormDefaults {
   privacyExtraFields: string[];
   privacyStripSuffixOverride: boolean;
   privacyStripSuffix: boolean;
+  privacyMaskRules: PrivacyMaskRule[];
+  privacyRules: PrivacyAccessRule[];
 }
 
 const DEFAULTS: PrivacyFormDefaults = {
@@ -32,6 +44,8 @@ const DEFAULTS: PrivacyFormDefaults = {
   privacyExtraFields: [],
   privacyStripSuffixOverride: false,
   privacyStripSuffix: true,
+  privacyMaskRules: [],
+  privacyRules: [],
 };
 
 function asStringList(v: unknown): string[] {
@@ -56,6 +70,12 @@ export function parsePrivacyConfigToForm(raw?: string | object | null): PrivacyF
       privacyExtraFields: asStringList(cfg?.extraFields),
       privacyStripSuffixOverride: cfg?.stripSuffix !== null && cfg?.stripSuffix !== undefined,
       privacyStripSuffix: cfg?.stripSuffix !== false,
+      privacyMaskRules: Array.isArray(cfg?.maskRules)
+        ? cfg.maskRules.map((r) => normalizePrivacyMaskRule(r))
+        : [],
+      privacyRules: Array.isArray(cfg?.rules)
+        ? cfg.rules.map((r) => normalizePrivacyAccessRule(r))
+        : [],
     };
   } catch {
     return { ...DEFAULTS };
@@ -81,6 +101,19 @@ export function buildPrivacyConfigFromForm(formValues: Record<string, any>): Api
   if (extra.length) cfg.extraFields = extra;
   if (formValues.privacyStripSuffixOverride) {
     cfg.stripSuffix = !!formValues.privacyStripSuffix;
+  }
+  const maskRules = Array.isArray(formValues.privacyMaskRules)
+    ? formValues.privacyMaskRules.map((r: PrivacyMaskRule) => normalizePrivacyMaskRule(r))
+        .filter((r: PrivacyMaskRule) => (r.aliases || []).length > 0)
+    : [];
+  if (maskRules.length) {
+    cfg.maskRules = maskRules;
+  }
+  const rules = Array.isArray(formValues.privacyRules)
+    ? formValues.privacyRules.map((r: PrivacyAccessRule) => normalizePrivacyAccessRule(r))
+    : [];
+  if (rules.length) {
+    cfg.rules = rules;
   }
   return cfg;
 }

@@ -37,6 +37,11 @@ public class CallerPolicy {
     private Boolean deptIncludeChildren;
     private List<String> userIds = new ArrayList<>();
 
+    /**
+     * 多行允许规则。非空时优先于上方单块字段；空则把单块字段当成一条 MATCH（兼容旧 JSON）。
+     */
+    private List<CallerAccessRule> rules = new ArrayList<>();
+
     public boolean includeDeptChildren() {
         return deptIncludeChildren == null || Boolean.TRUE.equals(deptIncludeChildren);
     }
@@ -44,6 +49,28 @@ public class CallerPolicy {
     public boolean hasAnyConstraint() {
         return notEmpty(userTypes) || notEmpty(roles) || notEmpty(permissions)
                 || notEmpty(deptIds) || notEmpty(userIds);
+    }
+
+    /** 运行时求值用的允许行：新格式 {@code rules}，否则把旧单块升成一行。 */
+    public List<CallerAccessRule> effectiveRules() {
+        if (rules != null && !rules.isEmpty()) {
+            return rules;
+        }
+        if (!hasAnyConstraint()) {
+            return List.of();
+        }
+        CallerAccessRule rule = new CallerAccessRule();
+        rule.setName("调用方");
+        rule.setPrincipals(PrincipalMatch.PRINCIPALS_MATCH);
+        rule.setMatch(match);
+        rule.setUserTypes(userTypes);
+        rule.setRoles(roles);
+        rule.setPermissions(permissions);
+        rule.setDeptIds(deptIds);
+        rule.setDeptIncludeChildren(deptIncludeChildren);
+        rule.setUserIds(userIds);
+        rule.setEffect(CallerAccessRule.EFFECT_ALLOW);
+        return List.of(rule);
     }
 
     private static boolean notEmpty(List<String> list) {

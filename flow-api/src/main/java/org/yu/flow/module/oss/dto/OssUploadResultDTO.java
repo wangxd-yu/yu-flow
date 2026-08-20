@@ -20,6 +20,7 @@ public class OssUploadResultDTO {
     private String thumbStatus;
     private String thumbPublicPath;
     private Boolean hasThumbnail;
+    private String extractStatus;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime expiresAt;

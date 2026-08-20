@@ -23,6 +23,8 @@ public interface OssObjectRepository extends JpaRepository<OssObjectDO, String>,
 
     List<OssObjectDO> findByProfileCodeAndStatus(String profileCode, String status);
 
+    List<OssObjectDO> findByParentObjectIdAndStatus(String parentObjectId, String status);
+
     @Query("SELECT COALESCE(SUM(o.sizeBytes), 0) FROM OssObjectDO o "
             + "WHERE o.profileCode = :profileCode AND o.status = :status")
     long sumSizeBytesByProfileCodeAndStatus(@Param("profileCode") String profileCode,

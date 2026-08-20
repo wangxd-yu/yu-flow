@@ -20,6 +20,7 @@ import org.yu.flow.module.api.dto.ApiDataExportRequestDTO;
 import org.yu.flow.module.api.privacy.EffectivePrivacy;
 import org.yu.flow.module.api.privacy.PrivacyClass;
 import org.yu.flow.module.api.privacy.PrivacyCryptoService;
+import org.yu.flow.module.api.privacy.PrivacyDecision;
 import org.yu.flow.module.api.privacy.PrivacyFieldInterceptor;
 import org.yu.flow.module.api.security.IngressException;
 import org.yu.flow.module.api.security.IngressSecurityResolver;
@@ -31,6 +32,7 @@ import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
 import org.yu.flow.module.metrics.MetricsKeys;
 import org.yu.flow.module.metrics.MetricsOutcome;
+import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.util.ThrowableUtil;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -81,6 +83,8 @@ class GatewayApiExecutionHandler {
     private final PrivacyFieldInterceptor privacyFieldInterceptor;
     private final GatewayIo io;
     private final ObjectMapper objectMapper;
+    private final YuFlowProperties flowProperties;
+    private final YuFlowRuntimeSettings yuFlowRuntimeSettings;
 
     GatewayApiExecutionHandler(FlowApiExecutionService flowApiService,
                                SchemaValidatorService schemaValidatorService,
@@ -95,7 +99,7 @@ class GatewayApiExecutionHandler {
                                ObjectMapper objectMapper) {
         this(flowApiService, schemaValidatorService, contractParamTypeConverter, responseStrategyResolver,
                 responseTransformer, apiResponseCacheService, assetMetricsRecorder, apiDataViewService,
-                ingressSecurityResolver, null, io, objectMapper);
+                ingressSecurityResolver, null, io, objectMapper, null, null);
     }
 
     GatewayApiExecutionHandler(FlowApiExecutionService flowApiService,
@@ -110,6 +114,43 @@ class GatewayApiExecutionHandler {
                                PrivacyFieldInterceptor privacyFieldInterceptor,
                                GatewayIo io,
                                ObjectMapper objectMapper) {
+        this(flowApiService, schemaValidatorService, contractParamTypeConverter, responseStrategyResolver,
+                responseTransformer, apiResponseCacheService, assetMetricsRecorder, apiDataViewService,
+                ingressSecurityResolver, privacyFieldInterceptor, io, objectMapper, null, null);
+    }
+
+    GatewayApiExecutionHandler(FlowApiExecutionService flowApiService,
+                               SchemaValidatorService schemaValidatorService,
+                               ContractParamTypeConverter contractParamTypeConverter,
+                               ResponseStrategyResolver responseStrategyResolver,
+                               ResponseTransformer responseTransformer,
+                               ApiResponseCacheService apiResponseCacheService,
+                               AssetMetricsRecorder assetMetricsRecorder,
+                               ApiDataViewService apiDataViewService,
+                               IngressSecurityResolver ingressSecurityResolver,
+                               PrivacyFieldInterceptor privacyFieldInterceptor,
+                               GatewayIo io,
+                               ObjectMapper objectMapper,
+                               YuFlowProperties flowProperties) {
+        this(flowApiService, schemaValidatorService, contractParamTypeConverter, responseStrategyResolver,
+                responseTransformer, apiResponseCacheService, assetMetricsRecorder, apiDataViewService,
+                ingressSecurityResolver, privacyFieldInterceptor, io, objectMapper, flowProperties, null);
+    }
+
+    GatewayApiExecutionHandler(FlowApiExecutionService flowApiService,
+                               SchemaValidatorService schemaValidatorService,
+                               ContractParamTypeConverter contractParamTypeConverter,
+                               ResponseStrategyResolver responseStrategyResolver,
+                               ResponseTransformer responseTransformer,
+                               ApiResponseCacheService apiResponseCacheService,
+                               AssetMetricsRecorder assetMetricsRecorder,
+                               ApiDataViewService apiDataViewService,
+                               IngressSecurityResolver ingressSecurityResolver,
+                               PrivacyFieldInterceptor privacyFieldInterceptor,
+                               GatewayIo io,
+                               ObjectMapper objectMapper,
+                               YuFlowProperties flowProperties,
+                               YuFlowRuntimeSettings yuFlowRuntimeSettings) {
         this.flowApiService = flowApiService;
         this.schemaValidatorService = schemaValidatorService;
         this.contractParamTypeConverter = contractParamTypeConverter;
@@ -122,6 +163,8 @@ class GatewayApiExecutionHandler {
         this.privacyFieldInterceptor = privacyFieldInterceptor;
         this.io = io;
         this.objectMapper = objectMapper;
+        this.flowProperties = flowProperties;
+        this.yuFlowRuntimeSettings = yuFlowRuntimeSettings;
     }
 
     /**
@@ -187,18 +230,21 @@ class GatewayApiExecutionHandler {
         EffectivePrivacy privacy = privacyFieldInterceptor == null
                 ? EffectivePrivacy.disabled()
                 : privacyFieldInterceptor.resolveConfig(flowApiDO, false);
-        PrivacyClass privacyClass = privacyFieldInterceptor == null
-                ? PrivacyClass.MASK
-                : privacyFieldInterceptor.resolveClass(hostPrincipal);
-        if (privacy.isEnabled() && privacyClass == PrivacyClass.REVEAL) {
+        PrivacyDecision privacyDecision = privacyFieldInterceptor == null
+                ? PrivacyDecision.mask()
+                : privacyFieldInterceptor.resolveDecision(hostPrincipal, privacy);
+        PrivacyClass privacyClass = privacyDecision.getPrivacyClass();
+        boolean privacyReveal = privacy.isEnabled() && (privacyClass == PrivacyClass.REVEAL
+                || privacyDecision.getFieldActions().containsValue(PrivacyDecision.ACTION_REVEAL));
+        if (privacyReveal) {
             cacheEnabled = false;
         }
         if (cacheEnabled) {
             cacheKey = apiResponseCacheService.buildCacheKey(
                     flowApiDO.getId(), cacheConfig,
                     typedQueryParams, typedBodyParams, typedPathParams, typedHeaders, pageable);
-            if (privacy.isEnabled() && privacyClass == PrivacyClass.MASK) {
-                cacheKey = cacheKey + ":pMASK";
+            if (privacy.isEnabled()) {
+                cacheKey = cacheKey + privacyDecision.cacheSuffix();
             }
             String cachedJson = apiResponseCacheService.get(cacheKey);
             if (cachedJson != null) {
@@ -250,12 +296,13 @@ class GatewayApiExecutionHandler {
             }
 
             if (privacyFieldInterceptor != null && privacy.isEnabled() && !businessFail) {
+                boolean wrapTransport = isPublishedJsonWrapTransport();
                 byte[] transportKey = null;
-                if (privacyClass == PrivacyClass.REVEAL) {
+                if (privacyReveal && wrapTransport) {
                     transportKey = privacyFieldInterceptor.unwrapTransportKey(
                             request.getHeader(PrivacyCryptoService.HEADER_PRIVACY_KEY));
                 }
-                result = privacyFieldInterceptor.apply(result, privacy, privacyClass, transportKey, true);
+                result = privacyFieldInterceptor.apply(result, privacy, privacyDecision, transportKey, wrapTransport);
             }
 
             Object finalResult = responseTransformer.transform(result, templateToUse);
@@ -392,5 +439,18 @@ class GatewayApiExecutionHandler {
             return map.containsKey("items") && map.containsKey("total") && map.containsKey("current");
         }
         return false;
+    }
+
+    /**
+     * 已发布 JSON 是否套传输信封。系统参数优先，未注入运行时配置时回退 yml，再回退 true。
+     */
+    private boolean isPublishedJsonWrapTransport() {
+        if (yuFlowRuntimeSettings != null) {
+            return yuFlowRuntimeSettings.isPrivacyWrapTransport();
+        }
+        if (flowProperties != null && flowProperties.getPrivacy() != null) {
+            return flowProperties.getPrivacy().isWrapTransport();
+        }
+        return true;
     }
 }

@@ -10,6 +10,7 @@ import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
 import org.yu.flow.module.host.CallerPolicy;
+import org.yu.flow.module.host.HostPrincipalSettingsStore;
 import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.util.FlowObjectMapperUtil;
 
@@ -40,6 +41,9 @@ public class IngressSecurityResolver {
 
     @Resource
     private FlowDirectoryService flowDirectoryService;
+
+    @Resource
+    private HostPrincipalSettingsStore hostPrincipalSettingsStore;
 
     public EffectiveSecurity resolve(FlowApiDO api) {
         ApiSecurityConfig apiCfg = parseConfig(PublishedApiSnapshot.resolveSecurityConfig(api));
@@ -83,15 +87,22 @@ public class IngressSecurityResolver {
     }
 
     /**
-     * 接口 {@code callerPolicy.enabled=true} 优先；否则用目录链已合并的策略（含父目录）。
+     * 接口 {@code callerPolicy.enabled=true} 优先；否则用目录链已合并的策略（含父目录）；
+     * 目录/接口都未写 callerPolicy 时再用宿主机平台默认入站规则。
      */
-    private static CallerPolicy resolveCallerPolicy(ApiSecurityConfig apiCfg, ApiSecurityConfig dirCfg) {
+    private CallerPolicy resolveCallerPolicy(ApiSecurityConfig apiCfg, ApiSecurityConfig dirCfg) {
         CallerPolicy api = apiCfg != null ? apiCfg.getCallerPolicy() : null;
         if (api != null && api.isEnabled()) {
             return api;
         }
         if (dirCfg != null && dirCfg.getCallerPolicy() != null) {
             return dirCfg.getCallerPolicy();
+        }
+        if (hostPrincipalSettingsStore != null) {
+            CallerPolicy host = hostPrincipalSettingsStore.load().toIngressCallerPolicy();
+            if (host != null && host.isEnabled()) {
+                return host;
+            }
         }
         return api;
     }

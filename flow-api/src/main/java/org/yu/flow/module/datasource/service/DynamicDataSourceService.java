@@ -32,6 +32,11 @@ public interface DynamicDataSourceService {
      */
     DataSourceDO getById(String id);
 
+    /**
+     * 已启用数据源摘要（下拉用）：id / name / code。系统默认源置顶。
+     */
+    List<Map<String, Object>> listEnabledSummaries();
+
     PageBean<DataSourceDO> findPage(String name, String dbType, int page, int size);
 
     boolean addDataSource(DataSourceDO config);

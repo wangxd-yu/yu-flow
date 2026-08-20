@@ -39,7 +39,7 @@ public class PrivacyMaskRule {
     private Integer keepHead;
     /** KEEP_TAIL / KEEP_HEAD_TAIL：保留末尾字符数 */
     private Integer keepTail;
-    /** 中间遮罩长度；空则按实际中间长度 */
+    /** 已忽略。中间位数按原文剩余长度填 {@code *}，不再固定个数。 */
     private Integer maskLen;
     /** 遮罩字符，默认 * */
     private String maskChar;

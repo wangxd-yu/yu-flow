@@ -1,7 +1,7 @@
 -- Table: flow_api_info
 -- 接口配置类
 CREATE TABLE IF NOT EXISTS `flow_api_info` (
-  `id` bigint NOT NULL COMMENT '主键ID，通过Snowflake算法生成',
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
   `name` varchar(20) COMMENT 'API配置的名称',
   `directory_id` varchar(32) COMMENT '关联全局目录树',
   `url` varchar(100) COMMENT 'API的URL路径',

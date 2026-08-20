@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * 解密后的展示脱敏：按方案规则或内置手机 / 姓名 / 身份证；未识别则全掩。
+ * 解密后的展示脱敏：命中方案/目录规则则按规则；未命中则只留第一位。
  */
 public final class PrivacyMasker {
 
@@ -31,13 +31,27 @@ public final class PrivacyMasker {
         }
         PrivacyMaskRule rule = matchRule(outputKey, rules);
         if (rule == null) {
-            return placeholder();
+            return keepFirst(plain);
         }
         return apply(plain, rule);
     }
 
     public static String placeholder() {
         return "****";
+    }
+
+    /** 未配置规则时的默认展示：只留第一位，其余每位一个 {@code *}，长度与原文一致。 */
+    public static String keepFirst(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = compactIfContact(raw);
+        if (s.isEmpty()) {
+            return placeholder();
+        }
+        int n = s.codePointCount(0, s.length());
+        int first = s.offsetByCodePoints(0, 1);
+        return s.substring(0, first) + "*".repeat(n - 1);
     }
 
     public static List<PrivacyMaskRule> defaultRules() {
@@ -156,43 +170,11 @@ public final class PrivacyMasker {
             case PrivacyMaskRule.NAME_KEEP_ENDS, "NAME" -> maskName(plain);
             case PrivacyMaskRule.ID_CARD, "IDCARD" -> maskIdCard(plain);
             case PrivacyMaskRule.KEEP_HEAD_TAIL, "HEAD_TAIL" -> keepHeadTail(
-                    plain, rule.getKeepHead(), rule.getKeepTail(), rule.getMaskLen(), rule.getMaskChar());
+                    plain, rule.getKeepHead(), rule.getKeepTail(), rule.getMaskChar());
             case PrivacyMaskRule.KEEP_HEAD, "HEAD" -> keepHead(plain, rule.getKeepHead(), rule.getMaskChar());
             case PrivacyMaskRule.KEEP_TAIL, "TAIL" -> keepTail(plain, rule.getKeepTail(), rule.getMaskChar());
             default -> maskFull(plain);
         };
-    }
-
-    static String resolveType(String outputKey, Map<String, List<String>> aliases) {
-        String key = StrUtil.blankToDefault(outputKey, "").trim().toLowerCase(Locale.ROOT);
-        if (key.isEmpty()) {
-            return "";
-        }
-        if (aliases != null) {
-            for (Map.Entry<String, List<String>> e : aliases.entrySet()) {
-                if (e.getValue() == null) {
-                    continue;
-                }
-                for (String alias : e.getValue()) {
-                    if (key.equals(StrUtil.trim(alias).toLowerCase(Locale.ROOT))) {
-                        return e.getKey();
-                    }
-                }
-            }
-        }
-        if (key.contains("phone") || key.contains("mobile") || key.contains("tel")
-                || key.contains("手机")) {
-            return PHONE;
-        }
-        if (key.contains("idcard") || key.contains("id_no") || key.contains("idno")
-                || key.contains("certno") || key.contains("身份证")) {
-            return ID_CARD;
-        }
-        if (key.equals("name") || key.equals("realname") || key.equals("username")
-                || key.equals("real_name") || key.contains("姓名")) {
-            return NAME;
-        }
-        return "";
     }
 
     static String maskPhone(String raw) {
@@ -200,7 +182,9 @@ public final class PrivacyMasker {
         if (digits.length() < 7) {
             return maskFull(raw);
         }
-        return digits.substring(0, 3) + "****" + digits.substring(digits.length() - 4);
+        return digits.substring(0, 3)
+                + "*".repeat(digits.length() - 7)
+                + digits.substring(digits.length() - 4);
     }
 
     static String maskName(String raw) {
@@ -228,7 +212,7 @@ public final class PrivacyMasker {
         return s.charAt(0) + "*".repeat(s.length() - 2) + s.charAt(s.length() - 1);
     }
 
-    static String keepHeadTail(String raw, Integer keepHead, Integer keepTail, Integer maskLen, String maskChar) {
+    static String keepHeadTail(String raw, Integer keepHead, Integer keepTail, String maskChar) {
         String s = compactIfContact(raw);
         int head = keepHead == null ? 0 : Math.max(0, keepHead);
         int tail = keepTail == null ? 0 : Math.max(0, keepTail);
@@ -236,8 +220,7 @@ public final class PrivacyMasker {
             return maskFull(raw);
         }
         int mid = s.length() - head - tail;
-        int stars = maskLen != null && maskLen > 0 ? maskLen : Math.max(1, mid);
-        return s.substring(0, head) + repeatMask(maskChar, stars) + s.substring(s.length() - tail);
+        return s.substring(0, head) + repeatMask(maskChar, mid) + s.substring(s.length() - tail);
     }
 
     static String keepHead(String raw, Integer keepHead, String maskChar) {
@@ -246,7 +229,7 @@ public final class PrivacyMasker {
         if (s.length() <= head) {
             return maskFull(raw);
         }
-        return s.substring(0, head) + repeatMask(maskChar, Math.max(4, s.length() - head));
+        return s.substring(0, head) + repeatMask(maskChar, s.length() - head);
     }
 
     static String keepTail(String raw, Integer keepTail, String maskChar) {
@@ -255,11 +238,15 @@ public final class PrivacyMasker {
         if (s.length() <= tail) {
             return maskFull(raw);
         }
-        return repeatMask(maskChar, Math.max(4, s.length() - tail)) + s.substring(s.length() - tail);
+        return repeatMask(maskChar, s.length() - tail) + s.substring(s.length() - tail);
     }
 
     static String maskFull(String raw) {
-        int n = Math.min(8, Math.max(4, raw.length()));
+        String s = raw == null ? "" : raw;
+        int n = s.codePointCount(0, s.length());
+        if (n <= 0) {
+            return placeholder();
+        }
         return "*".repeat(n);
     }
 

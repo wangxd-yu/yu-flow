@@ -19,5 +19,8 @@ public interface SysConfigService {
 
     SysConfigDO update(String id, SaveSysConfigDTO dto);
 
+    /** 按键只改 configValue（内置项与通用页相同：可改值，不可改键） */
+    SysConfigDO updateValueByKey(String configKey, String configValue);
+
     void delete(String id);
 }

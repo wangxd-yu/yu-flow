@@ -18,6 +18,13 @@ CREATE TABLE IF NOT EXISTS flow_oss_upload_profile (
   thumbnail_max_edge integer,
   thumbnail_max_source_bytes bigint,
   thumbnail_jpeg_quality numeric(3,2),
+  extract_archive_enabled boolean NOT NULL DEFAULT false,
+  extract_keep_archive boolean NOT NULL DEFAULT true,
+  extract_reject_policy varchar(32) NOT NULL DEFAULT 'SKIP_ZERO_FAIL',
+  extract_allowed_extensions varchar(512),
+  extract_allowed_content_types text,
+  extract_max_entries integer,
+  extract_max_uncompressed_bytes bigint,
   require_auth boolean NOT NULL DEFAULT true,
   presign_upload_enabled boolean NOT NULL DEFAULT false,
   biz_fields_schema text,
@@ -49,6 +56,13 @@ COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_enabled IS '是否异步生�
 COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_max_edge IS '缩略图最长边像素，空=用全局';
 COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_max_source_bytes IS '参与缩略图的源文件上限，空=用全局';
 COMMENT ON COLUMN flow_oss_upload_profile.thumbnail_jpeg_quality IS 'JPEG 质量 0~1，空=用全局';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_archive_enabled IS '上传 zip 后是否异步展开';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_keep_archive IS '展开成功后是否保留原包';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_reject_policy IS 'SKIP_ZERO_FAIL / FAIL_PACK';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_allowed_extensions IS '展开后落库扩展名白名单';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_allowed_content_types IS '展开后落库 MIME 白名单';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_max_entries IS '单包最多处理条目数，空=用全局';
+COMMENT ON COLUMN flow_oss_upload_profile.extract_max_uncompressed_bytes IS '单包解压后总字节上限，空=用全局';
 COMMENT ON COLUMN flow_oss_upload_profile.require_auth IS '上传是否必须登录';
 COMMENT ON COLUMN flow_oss_upload_profile.presign_upload_enabled IS '是否开放预签名直传';
 COMMENT ON COLUMN flow_oss_upload_profile.biz_fields_schema IS '业务字段 JSON Schema';

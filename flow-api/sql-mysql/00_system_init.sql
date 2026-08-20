@@ -122,7 +122,7 @@ INSERT INTO `flow_sys_role_permission` (`role_id`, `perm_code`) VALUES
 ON DUPLICATE KEY UPDATE role_id = VALUES(role_id);
 
 
--- ===== flow_sys_config (54) =====
+-- ===== flow_sys_config (55) =====
 
 INSERT INTO `flow_sys_config` (`id`, `config_key`, `config_value`, `value_type`, `config_group`, `remark`, `is_builtin`, `status`, `sort_order`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES
 ('1', 'SYSTEM_PREFIX', '/flow-api', 'STRING', 'GATEWAY', '网关 API 统一前缀，影响所有动态 API 的路由注册路径', 1, 1, 100, NULL, '2026-04-12 18:51:52', NULL, '2026-04-12 19:29:32'),
@@ -178,7 +178,8 @@ INSERT INTO `flow_sys_config` (`id`, `config_key`, `config_value`, `value_type`,
 ('51', 'LOG_ALERT_EVENT_RETENTION_DAYS', '90', 'NUMBER', 'LOG', '告警历史事件保留天数（flow_log_alert；0 = 不清理）', 1, 1, 80, NULL, '2026-07-23 10:12:58', NULL, '2026-07-23 10:12:58'),
 ('52', 'SCRIPT_ALLOWED_LANGUAGES', 'aviator,spel,javascript,groovy', 'STRING', 'SECURITY', 'Evaluate/Switch 等节点允许的脚本语言白名单（逗号分隔）。空=不限制；未在白名单的语言将不可用。', 1, 1, 100, NULL, '2026-07-27 20:25:31', NULL, '2026-07-27 20:25:31'),
 ('53', 'ENGINE_DEFAULT_LOG_MODE', 'ERROR_ONLY', 'ENUM', 'LOG', '[ERROR_ONLY:仅错误|ALL:全量记录|OFF:完全关闭] 全局默认日志策略。当接口、任务、消息队列或服务编排设置为「继承全局」时，默认生效的日志落库策略。', 1, 1, 15, NULL, '2026-08-01 19:30:35', NULL, '2026-08-01 19:35:51'),
-('54', 'MQ_LOG_PAYLOAD_MODE', 'FULL', 'ENUM', 'LOG', '[FULL:明文|MASK:脱敏占位|OFF:不存报文] MQ 消费日志原始报文全局默认策略。任务设为「继承全局」时生效。', 1, 1, 16, NULL, '2026-08-03 19:35:29', NULL, '2026-08-03 19:35:29')
+('54', 'MQ_LOG_PAYLOAD_MODE', 'FULL', 'ENUM', 'LOG', '[FULL:明文|MASK:脱敏占位|OFF:不存报文] MQ 消费日志原始报文全局默认策略。任务设为「继承全局」时生效。', 1, 1, 16, NULL, '2026-08-03 19:35:29', NULL, '2026-08-03 19:35:29'),
+('55', 'PRIVACY_WRAP_TRANSPORT', 'true', 'BOOLEAN', 'PRIVACY', '已发布 JSON 明文档是否套传输 SM4（X-Privacy-Key）。true=套信封，无会话密钥则 REVEAL 降级脱敏；false=命中明文规则时直接返回明文（内网/调试，生产不建议关）。本项优先于 yml，修改后热更新', 1, 1, 10, NULL, '2026-08-20 17:00:00', NULL, '2026-08-20 17:00:00')
 ON DUPLICATE KEY UPDATE id = VALUES(id);
 
 

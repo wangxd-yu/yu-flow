@@ -12,6 +12,7 @@ class PrivacyMaskerTest {
     void maskPhone_keepsFirst3Last4() {
         assertEquals("138****1234", PrivacyMasker.maskPhone("13812341234"));
         assertEquals("138****1234", PrivacyMasker.maskPhone("138 1234 1234"));
+        assertEquals("138*****2345", PrivacyMasker.maskPhone("138123412345"));
     }
 
     @Test
@@ -33,8 +34,20 @@ class PrivacyMaskerTest {
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "mobile", aliases));
         assertEquals("张*丰", PrivacyMasker.mask("张三丰", "realName", aliases));
         assertEquals("3****************X", PrivacyMasker.mask("31010119900101123X", "idNo", aliases));
-        assertEquals("****", PrivacyMasker.mask("secret", "remark", aliases));
+        assertEquals("s*****", PrivacyMasker.mask("secret", "remark", aliases));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "loginPhone", aliases));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "authPhone", aliases));
         assertEquals("****", PrivacyMasker.placeholder());
+    }
+
+    @Test
+    void mask_unmatchedKeepsFirstChar() {
+        Map<String, java.util.List<String>> aliases = PrivacyConfigMerge.defaultMask();
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "userPhone", aliases));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "home_phone", aliases));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "loginPhone", java.util.List.of()));
+        assertEquals("张**", PrivacyMasker.mask("张三丰", "other", java.util.List.of()));
+        assertEquals("王", PrivacyMasker.keepFirst("王"));
     }
 
     @Test
@@ -52,8 +65,9 @@ class PrivacyMaskerTest {
 
         java.util.List<PrivacyMaskRule> rules = java.util.List.of(phone, name);
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "mobile", rules));
+        assertEquals("138*****2345", PrivacyMasker.mask("138123412345", "mobile", rules));
         assertEquals("张*丰", PrivacyMasker.mask("张三丰", "realName", rules));
-        assertEquals("****", PrivacyMasker.mask("secret", "other", rules));
+        assertEquals("s*****", PrivacyMasker.mask("secret", "other", rules));
     }
 
     @Test
@@ -67,7 +81,7 @@ class PrivacyMaskerTest {
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "userPhone", rules));
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "home_phone", rules));
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "phoneNumber", rules));
-        assertEquals("****", PrivacyMasker.mask("secret", "remark", rules));
+        assertEquals("s*****", PrivacyMasker.mask("secret", "remark", rules));
     }
 
     @Test
@@ -76,7 +90,7 @@ class PrivacyMaskerTest {
         rule.setMatchMode(PrivacyMaskRule.MATCH_EXACT);
         rule.setAliases(java.util.List.of("phone"));
         rule.setMethod(PrivacyMaskRule.PHONE);
-        assertEquals("****", PrivacyMasker.mask("13812341234", "userPhone", java.util.List.of(rule)));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "userPhone", java.util.List.of(rule)));
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "phone", java.util.List.of(rule)));
     }
 
@@ -87,6 +101,6 @@ class PrivacyMaskerTest {
         rule.setAliases(java.util.List.of(".*phone$"));
         rule.setMethod(PrivacyMaskRule.PHONE);
         assertEquals("138****1234", PrivacyMasker.mask("13812341234", "userPhone", java.util.List.of(rule)));
-        assertEquals("****", PrivacyMasker.mask("13812341234", "phoneNumber", java.util.List.of(rule)));
+        assertEquals("1**********", PrivacyMasker.mask("13812341234", "phoneNumber", java.util.List.of(rule)));
     }
 }

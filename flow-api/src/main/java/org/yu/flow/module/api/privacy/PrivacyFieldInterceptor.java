@@ -1,10 +1,12 @@
 package org.yu.flow.module.api.privacy;
 
+import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.host.FlowHostPrincipal;
+import org.yu.flow.module.host.PrivacyAccessRule;
 import org.yu.flow.util.FlowObjectMapperUtil;
 
 import jakarta.annotation.Resource;
@@ -34,7 +36,12 @@ public class PrivacyFieldInterceptor {
     }
 
     public PrivacyClass resolveClass(FlowHostPrincipal principal) {
-        return privacyRoleMatcher.resolve(principal);
+        return resolveDecision(principal, null).getPrivacyClass();
+    }
+
+    public PrivacyDecision resolveDecision(FlowHostPrincipal principal, EffectivePrivacy privacy) {
+        List<PrivacyAccessRule> rules = privacy == null ? null : privacy.getAccessRules();
+        return privacyRoleMatcher.resolveDecision(principal, rules);
     }
 
     public byte[] unwrapTransportKey(String header) {
@@ -46,23 +53,35 @@ public class PrivacyFieldInterceptor {
      */
     public Object apply(Object result, EffectivePrivacy cfg, PrivacyClass privacyClass,
                         byte[] transportKey, boolean wrapTransport) {
+        return apply(result, cfg, PrivacyDecision.of(privacyClass), transportKey, wrapTransport);
+    }
+
+    public Object apply(Object result, EffectivePrivacy cfg, PrivacyDecision decision,
+                        byte[] transportKey, boolean wrapTransport) {
         if (result == null || cfg == null || !cfg.isEnabled()) {
             return result;
         }
-        PrivacyClass effective = privacyClass == null ? PrivacyClass.MASK : privacyClass;
-        if (effective == PrivacyClass.REVEAL && wrapTransport && (transportKey == null || transportKey.length == 0)) {
+        PrivacyDecision effective = decision == null ? PrivacyDecision.mask() : decision;
+        PrivacyClass resolved = effective.getPrivacyClass();
+        String ruleName = StrUtil.blankToDefault(effective.getMatchedRuleName(), "-");
+        boolean degraded = false;
+        if (resolved == PrivacyClass.REVEAL && wrapTransport && (transportKey == null || transportKey.length == 0)) {
             log.warn("[Privacy] 明文档缺少 X-Privacy-Key，降级为脱敏");
-            effective = PrivacyClass.MASK;
+            effective = PrivacyDecision.of(PrivacyClass.MASK, effective.getFieldActions(),
+                    effective.getMatchedRuleName());
+            degraded = true;
         }
         int[] fieldCount = {0};
         Object out = walk(result, cfg, effective, transportKey, wrapTransport, fieldCount);
         if (fieldCount[0] > 0) {
-            log.info("[Privacy] class={} fields={} wrapTransport={}", effective, fieldCount[0], wrapTransport);
+            log.info("[Privacy] resolved={} effective={} rule={} fields={} wrapTransport={}{}",
+                    resolved, effective.getPrivacyClass(), ruleName, fieldCount[0], wrapTransport,
+                    degraded ? " degraded=missing-transport-key" : "");
         }
         return out;
     }
 
-    private Object walk(Object node, EffectivePrivacy cfg, PrivacyClass cls,
+    private Object walk(Object node, EffectivePrivacy cfg, PrivacyDecision decision,
                         byte[] transportKey, boolean wrapTransport, int[] fieldCount) {
         if (node == null) {
             return null;
@@ -70,7 +89,7 @@ public class PrivacyFieldInterceptor {
         if (node instanceof R<?> r) {
             @SuppressWarnings("unchecked")
             R<Object> typed = (R<Object>) r;
-            typed.setData(walk(typed.getData(), cfg, cls, transportKey, wrapTransport, fieldCount));
+            typed.setData(walk(typed.getData(), cfg, decision, transportKey, wrapTransport, fieldCount));
             return typed;
         }
         if (node instanceof PageBean<?> page) {
@@ -78,7 +97,7 @@ public class PrivacyFieldInterceptor {
             if (items != null) {
                 List<Object> out = new ArrayList<>(items.size());
                 for (Object item : items) {
-                    out.add(walk(item, cfg, cls, transportKey, wrapTransport, fieldCount));
+                    out.add(walk(item, cfg, decision, transportKey, wrapTransport, fieldCount));
                 }
                 @SuppressWarnings("unchecked")
                 PageBean<Object> typed = (PageBean<Object>) page;
@@ -87,19 +106,19 @@ public class PrivacyFieldInterceptor {
             return page;
         }
         if (node instanceof Map<?, ?> map) {
-            return walkMap(map, cfg, cls, transportKey, wrapTransport, fieldCount);
+            return walkMap(map, cfg, decision, transportKey, wrapTransport, fieldCount);
         }
         if (node instanceof List<?> list) {
             List<Object> out = new ArrayList<>(list.size());
             for (Object item : list) {
-                out.add(walk(item, cfg, cls, transportKey, wrapTransport, fieldCount));
+                out.add(walk(item, cfg, decision, transportKey, wrapTransport, fieldCount));
             }
             return out;
         }
         if (node instanceof Object[] arr) {
             Object[] out = new Object[arr.length];
             for (int i = 0; i < arr.length; i++) {
-                out[i] = walk(arr[i], cfg, cls, transportKey, wrapTransport, fieldCount);
+                out[i] = walk(arr[i], cfg, decision, transportKey, wrapTransport, fieldCount);
             }
             return out;
         }
@@ -111,13 +130,13 @@ public class PrivacyFieldInterceptor {
             if (converted == node || isSimple(converted)) {
                 return node;
             }
-            return walk(converted, cfg, cls, transportKey, wrapTransport, fieldCount);
+            return walk(converted, cfg, decision, transportKey, wrapTransport, fieldCount);
         } catch (Exception e) {
             return node;
         }
     }
 
-    private Map<String, Object> walkMap(Map<?, ?> map, EffectivePrivacy cfg, PrivacyClass cls,
+    private Map<String, Object> walkMap(Map<?, ?> map, EffectivePrivacy cfg, PrivacyDecision decision,
                                         byte[] transportKey, boolean wrapTransport, int[] fieldCount) {
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : map.entrySet()) {
@@ -126,23 +145,31 @@ public class PrivacyFieldInterceptor {
             }
             String key = String.valueOf(e.getKey());
             Object value = e.getValue();
-            if (cfg.isPrivacyField(key)) {
-                String outKey = cfg.outputKey(key);
-                out.put(outKey, transformField(outKey, value, cfg, cls, transportKey, wrapTransport, fieldCount));
+            boolean privacyField = cfg.isPrivacyField(key);
+            String outKey = privacyField ? cfg.outputKey(key) : key;
+            if (decision.drops(outKey, key)) {
+                fieldCount[0]++;
+                continue;
+            }
+            if (privacyField) {
+                PrivacyClass fieldClass = decision.classForField(outKey, key);
+                out.put(outKey, transformField(outKey, value, cfg, fieldClass, transportKey, wrapTransport, fieldCount,
+                        decision));
             } else {
-                out.put(key, walk(value, cfg, cls, transportKey, wrapTransport, fieldCount));
+                out.put(key, walk(value, cfg, decision, transportKey, wrapTransport, fieldCount));
             }
         }
         return out;
     }
 
     private Object transformField(String outputKey, Object value, EffectivePrivacy cfg, PrivacyClass cls,
-                                  byte[] transportKey, boolean wrapTransport, int[] fieldCount) {
+                                  byte[] transportKey, boolean wrapTransport, int[] fieldCount,
+                                  PrivacyDecision decision) {
         if (value == null) {
             return null;
         }
         if (value instanceof Map || value instanceof List) {
-            return walk(value, cfg, cls, transportKey, wrapTransport, fieldCount);
+            return walk(value, cfg, decision, transportKey, wrapTransport, fieldCount);
         }
         fieldCount[0]++;
         String cipher = String.valueOf(value);
@@ -154,10 +181,12 @@ public class PrivacyFieldInterceptor {
         if (plain == null) {
             return PrivacyMasker.placeholder();
         }
-        if (cls == PrivacyClass.MASK) {
+        boolean canReveal = cls == PrivacyClass.REVEAL
+                && (!wrapTransport || (transportKey != null && transportKey.length > 0));
+        if (!canReveal) {
             return PrivacyMasker.mask(plain, outputKey, cfg.getMaskRules());
         }
-        if (wrapTransport && transportKey != null) {
+        if (wrapTransport) {
             return privacyCryptoService.wrapTransport(plain, transportKey);
         }
         return plain;

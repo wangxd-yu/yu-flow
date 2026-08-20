@@ -85,6 +85,28 @@ public class OssUploadProfileDO implements Serializable {
     @Column(name = "thumbnail_jpeg_quality")
     private Double thumbnailJpegQuality;
 
+    @Column(name = "extract_archive_enabled", nullable = false)
+    private Boolean extractArchiveEnabled;
+
+    @Column(name = "extract_keep_archive", nullable = false)
+    private Boolean extractKeepArchive;
+
+    /** SKIP_ZERO_FAIL / FAIL_PACK */
+    @Column(name = "extract_reject_policy", length = 32)
+    private String extractRejectPolicy;
+
+    @Column(name = "extract_allowed_extensions", length = 512)
+    private String extractAllowedExtensions;
+
+    @Column(name = "extract_allowed_content_types", columnDefinition = "text")
+    private String extractAllowedContentTypes;
+
+    @Column(name = "extract_max_entries")
+    private Integer extractMaxEntries;
+
+    @Column(name = "extract_max_uncompressed_bytes")
+    private Long extractMaxUncompressedBytes;
+
     @Column(name = "require_auth", nullable = false)
     private Boolean requireAuth;
 
