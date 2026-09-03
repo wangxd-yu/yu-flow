@@ -53,12 +53,30 @@ export function csrfHeaders(): Record<string, string> {
   return csrf ? { [CSRF_HEADER]: csrf } : {};
 }
 
-/** 运营中心宿主 JWT Cookie（历史拼写） */
-export const HOST_TOKEN_COOKIE = 'SDSES-TOEKN';
+/** 运营中心宿主 JWT（与门户 ssp.token.user 同源隔离） */
+export const HOST_TOKEN_LS = 'ssp.token.opcenter';
 const HOST_TOKEN_SESSION_KEY = 'ssp_host_token';
 
+function rememberHostToken(token: string): string {
+  try {
+    sessionStorage.setItem(HOST_TOKEN_SESSION_KEY, token);
+  } catch {
+    /* ignore */
+  }
+  return token;
+}
+
+function readLocalStorage(key: string): string | null {
+  try {
+    const value = localStorage.getItem(key);
+    return value && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 嵌入运营中心时的宿主 Token：优先 session 缓存，其次 URL ?token=，再读 Cookie。
+ * 嵌入运营中心时的宿主 Token：session 缓存、URL ?token=、localStorage {@code ssp.token.opcenter}。
  * 用于 Authorization（OPCENTER）；与 Flow 自身 YU_FLOW_TOKEN Cookie 分离。
  */
 export function resolveHostToken(): string | null {
@@ -72,18 +90,13 @@ export function resolveHostToken(): string | null {
   try {
     const q = new URLSearchParams(window.location.search).get('token');
     if (q && q.trim()) {
-      const t = q.trim();
-      try {
-        sessionStorage.setItem(HOST_TOKEN_SESSION_KEY, t);
-      } catch {
-        /* ignore */
-      }
-      return t;
+      return rememberHostToken(q.trim());
     }
   } catch {
     /* ignore */
   }
-  return readCookie(HOST_TOKEN_COOKIE);
+  const fromLs = readLocalStorage(HOST_TOKEN_LS);
+  return fromLs ? rememberHostToken(fromLs) : null;
 }
 
 /** 管理 API 附加宿主 Authorization（Flow JWT 仍走 Cookie） */
