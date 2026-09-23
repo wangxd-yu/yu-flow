@@ -26,7 +26,7 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "flow_api_info")
 @org.hibernate.annotations.SQLDelete(sql = "update flow_api_info set deleted = 1 where id = ?")
-@org.hibernate.annotations.Where(clause = "deleted = 0 OR deleted IS NULL")
+@org.hibernate.annotations.SQLRestriction("deleted = 0 OR deleted IS NULL")
 public class FlowApiDO implements Serializable {
     @Id
     @Column(name = "id", nullable = false)

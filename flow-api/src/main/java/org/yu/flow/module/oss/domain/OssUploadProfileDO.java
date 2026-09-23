@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 @Table(name = "flow_oss_upload_profile")
 @org.hibernate.annotations.SQLDelete(sql = "update flow_oss_upload_profile set deleted = 1 where id = ?")
-@org.hibernate.annotations.Where(clause = "deleted = 0 OR deleted IS NULL")
+@org.hibernate.annotations.SQLRestriction("deleted = 0 OR deleted IS NULL")
 public class OssUploadProfileDO implements Serializable {
 
     public static final String VISIBILITY_PUBLIC = "PUBLIC";

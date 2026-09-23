@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * }
  * </pre>
  *
- * <p>线程安全：内部 ObjectMapper 和 JsonSchemaFactory 均为无状态/线程安全实例。</p>
+ * <p>线程安全：内部 ObjectMapper 和 SchemaRegistry 均为无状态/线程安全实例。</p>
  *
  * @author yu-flow
  */
@@ -48,21 +48,21 @@ public class SchemaValidatorService {
     /**
      * 使用 Draft 7 作为默认规范（兼容性最好，前端 treeToSchema 输出即为此规范）
      */
-    private final JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+    private final SchemaRegistry schemaRegistry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7);
 
     /**
      * 契约编译产物包装类
      */
     private static class CompiledContract {
-        final JsonSchema bodySchema;
-        final JsonSchema querySchema;
-        final JsonSchema pathSchema;
-        final JsonSchema headersSchema;
+        final Schema bodySchema;
+        final Schema querySchema;
+        final Schema pathSchema;
+        final Schema headersSchema;
         /** headers SchemaNode 声明的规范键名（用于大小写不敏感对齐） */
         final Set<String> headerPropertyNames;
 
-        CompiledContract(JsonSchema bodySchema, JsonSchema querySchema,
-                         JsonSchema pathSchema, JsonSchema headersSchema,
+        CompiledContract(Schema bodySchema, Schema querySchema,
+                         Schema pathSchema, Schema headersSchema,
                          Set<String> headerPropertyNames) {
             this.bodySchema = bodySchema;
             this.querySchema = querySchema;
@@ -93,18 +93,18 @@ public class SchemaValidatorService {
 
                 JsonNode bodyNodesArray = requestNode.path("body");
                 String bodyType = requestNode.path("bodyType").asText("none");
-                JsonSchema bodySchema = null;
+                Schema bodySchema = null;
                 if ("json".equals(bodyType) && bodyNodesArray.isArray() && bodyNodesArray.size() > 0) {
                     JsonNode nodeSchema = schemaNodesTreeToJsonSchema(bodyNodesArray);
                     if (nodeSchema != null) {
-                        bodySchema = schemaFactory.getSchema(nodeSchema);
+                        bodySchema = schemaRegistry.getSchema(nodeSchema);
                     }
                 }
 
                 JsonNode headersNodes = requestNode.path("headers");
-                JsonSchema querySchema = compileFlatSection(requestNode.path("query"));
-                JsonSchema pathSchema = compileFlatSection(requestNode.path("pathParams"));
-                JsonSchema headersSchema = compileFlatSection(headersNodes);
+                Schema querySchema = compileFlatSection(requestNode.path("query"));
+                Schema pathSchema = compileFlatSection(requestNode.path("pathParams"));
+                Schema headersSchema = compileFlatSection(headersNodes);
 
                 return new CompiledContract(bodySchema, querySchema, pathSchema, headersSchema,
                         extractSchemaNodeNames(headersNodes));
@@ -116,12 +116,12 @@ public class SchemaValidatorService {
         });
     }
 
-    private JsonSchema compileFlatSection(JsonNode nodesArray) {
+    private Schema compileFlatSection(JsonNode nodesArray) {
         if (nodesArray == null || !nodesArray.isArray() || nodesArray.size() == 0) {
             return null;
         }
         JsonNode nodeSchema = schemaNodesFlatToJsonSchema(nodesArray);
-        return nodeSchema != null ? schemaFactory.getSchema(nodeSchema) : null;
+        return nodeSchema != null ? schemaRegistry.getSchema(nodeSchema) : null;
     }
 
     /**
@@ -181,7 +181,7 @@ public class SchemaValidatorService {
         }
     }
 
-    private void collectSectionErrors(List<String> allErrors, JsonSchema schema, Map<String, ?> params) {
+    private void collectSectionErrors(List<String> allErrors, Schema schema, Map<String, ?> params) {
         if (schema == null) {
             return;
         }
@@ -262,8 +262,8 @@ public class SchemaValidatorService {
     /**
      * 执行 JSON Schema 校验并返回中文错误消息列表
      */
-    private List<String> doValidate(JsonSchema schema, JsonNode dataNode) {
-        Set<ValidationMessage> errors = schema.validate(dataNode);
+    private List<String> doValidate(Schema schema, JsonNode dataNode) {
+        List<com.networknt.schema.Error> errors = schema.validate(dataNode);
         if (errors == null || errors.isEmpty()) {
             return Collections.emptyList();
         }
@@ -488,9 +488,9 @@ public class SchemaValidatorService {
     // ============================= 中文消息转换 =============================
 
     /**
-     * 将 networknt 校验库的 ValidationMessage 转换为中文友好提示。
+     * 将 networknt 校验库的 Error 转换为中文友好提示。
      */
-    private String toChineseMessage(ValidationMessage vm) {
+    private String toChineseMessage(com.networknt.schema.Error vm) {
         String path = vm.getInstanceLocation() != null
                 ? vm.getInstanceLocation().toString()
                 : "";
@@ -500,7 +500,7 @@ public class SchemaValidatorService {
             field = "根对象";
         }
 
-        String type = vm.getType();
+        String type = vm.getKeyword();
         if (type == null) {
             return "「" + field + "」" + vm.getMessage();
         }

@@ -2,8 +2,6 @@ package org.yu.flow.app;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration;
-import org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration;
 import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
@@ -17,7 +15,10 @@ import org.springframework.scheduling.annotation.EnableAsync;
  * 排除全局自动装配以避免无 Broker 环境下产生指向 localhost 的默认连接工厂。
  */
 @EnableAsync
-@SpringBootApplication(exclude = {RabbitAutoConfiguration.class, KafkaAutoConfiguration.class})
+@SpringBootApplication(excludeName = {
+        "org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration",
+        "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration"
+})
 public class FlowApp {
     public static void main(String[] args) {
         SpringApplication.run(FlowApp.class, args);

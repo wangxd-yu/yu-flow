@@ -70,17 +70,26 @@ public class FlowWebConfig implements WebMvcConfigurer {
     @Override
     public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
         MediaType jsonUtf8 = MediaType.valueOf("application/json;charset=UTF-8");
+        MappingJackson2HttpMessageConverter jackson2 = null;
         for (HttpMessageConverter<?> converter : converters) {
             if (converter instanceof MappingJackson2HttpMessageConverter jackson) {
-                List<MediaType> types = new ArrayList<>(jackson.getSupportedMediaTypes());
-                if (!types.contains(jsonUtf8)) {
-                    types.add(jsonUtf8);
-                }
-                if (!types.contains(MediaType.APPLICATION_JSON)) {
-                    types.add(0, MediaType.APPLICATION_JSON);
-                }
-                jackson.setSupportedMediaTypes(types);
+                jackson2 = jackson;
+                break;
             }
         }
+        if (jackson2 == null) {
+            jackson2 = new MappingJackson2HttpMessageConverter();
+        } else {
+            converters.remove(jackson2);
+        }
+        List<MediaType> types = new ArrayList<>(jackson2.getSupportedMediaTypes());
+        if (!types.contains(jsonUtf8)) {
+            types.add(jsonUtf8);
+        }
+        if (!types.contains(MediaType.APPLICATION_JSON)) {
+            types.add(0, MediaType.APPLICATION_JSON);
+        }
+        jackson2.setSupportedMediaTypes(types);
+        converters.add(0, jackson2);
     }
 }

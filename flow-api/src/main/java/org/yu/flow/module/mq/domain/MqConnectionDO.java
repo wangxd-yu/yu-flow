@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 @Table(name = "flow_mq_connection")
 @org.hibernate.annotations.SQLDelete(sql = "update flow_mq_connection set deleted = 1 where id = ?")
-@org.hibernate.annotations.Where(clause = "deleted = 0 OR deleted IS NULL")
+@org.hibernate.annotations.SQLRestriction("deleted = 0 OR deleted IS NULL")
 public class MqConnectionDO implements Serializable {
 
     /** 健康状态常量 */

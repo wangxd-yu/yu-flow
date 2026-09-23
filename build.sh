@@ -44,7 +44,7 @@ cd "${BACKEND_DIR}"
 
 echo "执行: mvn clean install -DskipTests -Djacoco.skip=true"
 mvn clean install -DskipTests -Djacoco.skip=true
-echo "本机 install 成功！坐标: org.yu:yu-flow-api-java17-springboot3:1.0-SNAPSHOT"
+echo "本机 install 成功！坐标: org.yu:yu-flow-api-java25-springboot4:2.0-SNAPSHOT"
 
 echo -e "\n[4/4] ================== 推送到 Nexus 私服（可选） =================="
 SHOULD_DEPLOY=0
@@ -79,7 +79,7 @@ echo ""
 echo "========================================"
 echo "一键构建完成"
 echo "  - 本机 JAR: ${BACKEND_DIR}/target/"
-echo "  - 本机 m2:  org.yu:yu-flow-api-java17-springboot3:1.0-SNAPSHOT"
+echo "  - 本机 m2:  org.yu:yu-flow-api-java25-springboot4:2.0-SNAPSHOT"
 if [ "${SHOULD_DEPLOY}" = "1" ]; then
   echo "  - 私服:    已推送 maven-snapshots"
 else

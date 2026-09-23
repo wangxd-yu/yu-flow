@@ -42,7 +42,7 @@ class GatewayIo {
     }
 
     void writeResponseEntity(HttpServletResponse response, ResponseEntity<?> responseEntity) throws IOException {
-        response.setStatus(responseEntity.getStatusCodeValue());
+        response.setStatus(responseEntity.getStatusCode().value());
         responseEntity.getHeaders().forEach((name, values) -> {
             for (String value : values) {
                 response.setHeader(name, value);
@@ -54,7 +54,7 @@ class GatewayIo {
             return;
         }
         if (body instanceof String) {
-            if (!responseEntity.getHeaders().containsKey(HttpHeaders.CONTENT_TYPE)) {
+            if (!responseEntity.getHeaders().containsHeader(HttpHeaders.CONTENT_TYPE)) {
                 response.setContentType("text/plain;charset=UTF-8");
             }
             response.getWriter().write((String) body);

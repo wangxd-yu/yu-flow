@@ -7,6 +7,10 @@ server:
       enabled: true
       force: true
 spring:
+  http:
+    converters:
+      # 业务代码使用 Jackson 2（com.fasterxml.jackson）。Boot 4 默认 Jackson 3 会把 JsonNode 收成空对象。
+      preferred-json-mapper: jackson2
   servlet:
     multipart:
       # 需 ≥ yu.flow.oss.max-upload-bytes（默认 50MB），否则大文件在进业务前就被拒
@@ -81,6 +85,9 @@ yu:
       at-rest-sm4-key: ${YU_FLOW_PRIVACY_AT_REST_SM4_KEY:}
       # 仅当系统参数 PRIVACY_WRAP_TRANSPORT 未配置时回退。日常请在「平台设置 → 系统参数 → 出站隐私」开关
       wrap-transport: ${YU_FLOW_PRIVACY_WRAP_TRANSPORT:true}
+      # 非生产联调：登录后 GET /flow-api/dev/privacy-session。prod/demo 一律拒绝。
+      # dev/local/test 即使本项为 false 也会开；其它环境设 YU_FLOW_PRIVACY_DEV_SESSION=true
+      dev-session-enabled: ${YU_FLOW_PRIVACY_DEV_SESSION:false}
     task:
       lock-ttl-minutes: ${YU_FLOW_TASK_LOCK_TTL_MINUTES:30}
       lock-renew-interval-seconds: ${YU_FLOW_TASK_LOCK_RENEW_SECONDS:60}

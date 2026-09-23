@@ -637,7 +637,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
             return outputs;
         } else if ("FLOW".equals(flowApiDO.getServiceType()) && result instanceof ResponseEntity) {
             ResponseEntity<?> responseEntity = (ResponseEntity<?>) result;
-            if (shouldBypassResponseWrapper(responseEntity.getStatusCodeValue(), responseEntity.getHeaders())) {
+            if (shouldBypassResponseWrapper(responseEntity.getStatusCode().value(), responseEntity.getHeaders())) {
                 return responseEntity;
             }
             Object body = responseEntity.getBody();

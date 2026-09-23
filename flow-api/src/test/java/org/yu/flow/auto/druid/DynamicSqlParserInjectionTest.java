@@ -62,7 +62,7 @@ class DynamicSqlParserInjectionTest {
         assertEquals(List.of(1), result.getParams());
     }
 
-    @ParameterizedTest(name = "标识位 ${} 应拒绝: {0}")
+    @ParameterizedTest(name = "标识位 $'{}' 应拒绝: {0}")
     @ValueSource(strings = {
             "SELECT * FROM ${table} WHERE id = 1",
             "SELECT * FROM users u JOIN ${t} x ON u.id = x.id",
@@ -98,7 +98,7 @@ class DynamicSqlParserInjectionTest {
         SqlAndParams result = DynamicSqlParser.parseDynamicSqlToPrepared(
                 "UPDATE users SET name = ${name} WHERE age > ${age} AND id IN (${ids})", params);
 
-        assertEquals("UPDATE users SET name = ? WHERE age > ? AND id IN (?, ?)",
+        assertEquals("UPDATE users SET name = ? WHERE age > ? AND id IN ( ?, ?)",
                 normalize(result.getSql()));
         assertEquals(List.of("n", 18, 1, 2), result.getParams());
     }

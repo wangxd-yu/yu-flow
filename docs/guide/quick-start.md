@@ -19,8 +19,8 @@ outline: deep
 
 | 组件 | 版本要求 | 说明 |
 | --- | --- | --- |
-| **JDK** | 1.8+ 或 17+ | 推荐 17 |
-| **Spring Boot** | 2.x 或 3.x | 已验证 2.7.x |
+| **JDK** | 25 | 与引擎同一主版本 |
+| **Spring Boot** | 4.1.x | 已在 4.1.1 上验证 |
 | **MySQL** | 5.7+ / 8.0+ | 引擎元数据存储 |
 | **Redis** | 任意版本 | *可选*，用于接口缓存加速 |
 | **Maven / Gradle** | 3.6+ / 7.0+ | 构建工具 |
@@ -40,13 +40,13 @@ outline: deep
 ```xml [Maven (pom.xml)]
 <dependency>
     <groupId>org.yu</groupId>
-    <artifactId>yu-flow-api</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <artifactId>yu-flow-api-java25-springboot4</artifactId>
+    <version>2.0-SNAPSHOT</version>
 </dependency>
 ```
 
 ```groovy [Gradle (build.gradle)]
-implementation 'org.yu:yu-flow-api:1.0-SNAPSHOT'
+implementation 'org.yu:yu-flow-api-java25-springboot4:2.0-SNAPSHOT'
 ```
 
 :::

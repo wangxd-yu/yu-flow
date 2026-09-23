@@ -13,7 +13,7 @@ import io.minio.Result;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
-import io.minio.http.Method;
+import io.minio.Http.Method;
 import io.minio.messages.Item;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;

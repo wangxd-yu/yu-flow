@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.yu.flow.exception.YuFlowExceptionHandler;
@@ -49,6 +50,7 @@ class OpenApiYamlControllerTest {
     private final MockMvc mockMvc = MockMvcBuilders
             .standaloneSetup(controller)
             .setControllerAdvice(new YuFlowExceptionHandler())
+            .setMessageConverters(new MappingJackson2HttpMessageConverter())
             .build();
 
     @Test

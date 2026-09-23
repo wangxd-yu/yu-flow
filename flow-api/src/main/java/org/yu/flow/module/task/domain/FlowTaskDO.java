@@ -25,7 +25,7 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 @Table(name = "flow_task_info")
 @org.hibernate.annotations.SQLDelete(sql = "update flow_task_info set deleted = 1 where id = ?")
-@org.hibernate.annotations.Where(clause = "deleted = 0 OR deleted IS NULL")
+@org.hibernate.annotations.SQLRestriction("deleted = 0 OR deleted IS NULL")
 public class FlowTaskDO implements Serializable {
 
     @Id

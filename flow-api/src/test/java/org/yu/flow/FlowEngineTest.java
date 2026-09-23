@@ -1100,7 +1100,7 @@ public class FlowEngineTest {
         // 验证结构化响应
         assertNotNull(response, "应有输出数据");
 
-        assertEquals(404, response.getStatusCodeValue(), "状态码应为 404");
+        assertEquals(404, response.getStatusCode().value(), "状态码应为 404");
 
         org.springframework.http.HttpHeaders headers = response.getHeaders();
         assertEquals("v1", headers.getFirst("X-Flow"), "X-Flow 头应为 v1");
@@ -1471,7 +1471,7 @@ public class FlowEngineTest {
 
         org.springframework.http.ResponseEntity<?> output = engine.execute(flowJson, args);
         assertNotNull(output, "输出不应为 null");
-        assertEquals(200, output.getStatusCodeValue());
+        assertEquals(200, output.getStatusCode().value());
         assertEquals("hello world ssss", output.getBody(),
                 "body 中应包含从 request params 解析出的 name 参数");
     }
@@ -1542,7 +1542,7 @@ public class FlowEngineTest {
 
         org.springframework.http.ResponseEntity<?> result = engine.execute(flowJson, args);
 
-        assertEquals(201, result.getStatusCodeValue());
+        assertEquals(201, result.getStatusCode().value());
         assertEquals("Bob", result.getHeaders().getFirst("X-User-Name"));
 
         @SuppressWarnings("unchecked")
@@ -1621,7 +1621,7 @@ public class FlowEngineTest {
 
         org.springframework.http.ResponseEntity<?> result = engine.execute(flowJson, args);
 
-        assertEquals(200, result.getStatusCodeValue());
+        assertEquals(200, result.getStatusCode().value());
         @SuppressWarnings("unchecked")
         Map<String, Object> respBody = (Map<String, Object>) result.getBody();
         assertEquals("myHeaderToken123", respBody.get("token"));

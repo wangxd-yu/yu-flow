@@ -347,9 +347,9 @@ public class OssConnectionServiceImpl implements OssConnectionService {
         List<String> list = new ArrayList<>();
         try {
             io.minio.MinioClient client = minioClientFactory.getClient(conn.getCode());
-            List<io.minio.messages.Bucket> buckets = client.listBuckets();
+            List<io.minio.messages.ListAllMyBucketsResult.Bucket> buckets = client.listBuckets();
             if (buckets != null) {
-                for (io.minio.messages.Bucket b : buckets) {
+                for (io.minio.messages.ListAllMyBucketsResult.Bucket b : buckets) {
                     if (StrUtil.isNotBlank(b.name())) {
                         list.add(b.name());
                     }
