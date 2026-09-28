@@ -6,12 +6,15 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
+import org.graalvm.polyglot.ResourceLimits;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyExecutable;
+import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
+import org.yu.flow.util.FlowObjectMapperUtil;
 import org.springframework.expression.Expression;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
@@ -19,6 +22,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * JavaScript (GraalJS) 表达式求值器实现
@@ -34,7 +41,9 @@ import java.util.Map;
  *       确保线程安全和沙箱隔离；执行完毕后立即关闭释放资源。</li>
  *   <li><b>安全沙箱</b>: 禁用系统 I/O (allowIO=false)、进程创建 (allowCreateProcess=false)、
  *       环境变量 (allowEnvironmentAccess=NONE)、线程 (allowCreateThread=false)、
- *       Native 访问 (allowNativeAccess=false)。禁止 JS 反向查找任何 Java 类。</li>
+ *       Native 访问 (allowNativeAccess=false)。宿主访问为 {@link HostAccess#NONE}：脚本拿不到任何 Java 对象，
+ *       进入脚本的值一律先转成原生 JS 值，堵住 {@code getClass().forName(...)} 一类反射逃逸。
+ *       另有语句数上限与墙钟超时，死循环脚本会被终止。</li>
  *   <li><b>变量注入</b>: 将流程输入 Map 序列化为 JSON，通过 {@code JSON.parse()} 转为
  *       原生 JS 对象注入，确保 JS 数组拥有完整的 filter/map/reduce 等原生方法。</li>
  *   <li><b>结果转换</b>: 将 JS 执行结果递归转换为 Java 的 Map / List / String / Number / Boolean。</li>
@@ -63,9 +72,20 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
             .option("engine.WarnInterpreterOnly", "false")
             .build();
 
-    /** Jackson ObjectMapper - 用于 Java Map → JSON 字符串 */
+    /** Jackson ObjectMapper - 用于 Java 值 → JSON 字符串（含 java.time 支持，与全局一致） */
     private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER =
-            new com.fasterxml.jackson.databind.ObjectMapper();
+            FlowObjectMapperUtil.flowObjectMapper();
+
+    /** 未能读到配置时的沙箱默认值（yu.flow.engine.script-statement-limit / script-timeout-ms） */
+    static final long DEFAULT_STATEMENT_LIMIT = 2_000_000L;
+    static final long DEFAULT_TIMEOUT_MS = 10_000L;
+
+    /** 到时强制取消脚本执行的看门狗线程 */
+    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "js-sandbox-watchdog");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** 共享的 Spring SpEL 类型转换器，支持增强的自动类型转换 */
     private static final org.springframework.expression.TypeConverter CUSTOM_TYPE_CONVERTER;
@@ -130,10 +150,15 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
         /** 宏定义参数名列表 (逗号分隔，如 "format,date") */
         private final String macroParams;
 
-        public DynamicMacroFunction(Expression compiledSpel, Map<String, Object> requestContext, String macroParams) {
+        /** 所属 JS 上下文的 {@code JSON.parse}，把 SpEL 结果转成原生 JS 值（HostAccess.NONE 下宿主对象不可访问） */
+        private final Value jsonParse;
+
+        public DynamicMacroFunction(Expression compiledSpel, Map<String, Object> requestContext, String macroParams,
+                                    Value jsonParse) {
             this.compiledSpel = compiledSpel;
             this.requestContext = requestContext;
             this.macroParams = macroParams;
+            this.jsonParse = jsonParse;
         }
 
         /**
@@ -172,8 +197,12 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
                 spelCtx.setVariables(requestContext);
             }
 
-            return compiledSpel.getValue(spelCtx);
+            return toGuestValue(compiledSpel.getValue(spelCtx), jsonParse);
         }
+    }
+
+    /** 沙箱资源限制 */
+    record ScriptLimits(long statementLimit, long timeoutMs) {
     }
 
     // ============================= 核心方法 =============================
@@ -184,86 +213,147 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
             return null;
         }
 
-        // 每次调用新建 Context (线程安全 + 沙箱隔离)
-        try (Context jsContext = Context.newBuilder("js")
+        ScriptLimits limits = scriptLimits();
+        Context.Builder builder = Context.newBuilder("js")
                 .engine(SHARED_ENGINE)
                 // ---- 安全配置 ----
-                .allowHostAccess(HostAccess.ALL)           // 允许 JS 访问注入的 Java 对象
+                .allowHostAccess(HostAccess.NONE)          // 脚本拿不到任何 Java 对象；进脚本的值都先转成原生 JS 值
                 .allowHostClassLookup(className -> false)   // 禁止 JS 反向查找任何 Java 类
                 .allowIO(false)                             // 禁用文件 I/O
                 .allowCreateProcess(false)                  // 禁用进程创建
                 .allowCreateThread(false)                   // 禁用线程创建
                 .allowNativeAccess(false)                   // 禁用 Native 调用
                 .allowExperimentalOptions(true)
-                .option("js.ecmascript-version", "2021")    // 启用 ES2021 语法
-                .build()) {
+                .option("js.ecmascript-version", "2021");   // 启用 ES2021 语法
+        if (limits.statementLimit() > 0) {
+            builder.resourceLimits(ResourceLimits.newBuilder().statementLimit(limits.statementLimit(), null).build());
+        }
 
-            // ---- 全局宏注入 (Semantic Layer) ----
-            injectMacros(jsContext, context);
-
-            // ---- 变量注入: 顶级变量绑定 + 向后兼容 input 对象 ----
-            // 将整个 Map 序列化为 JSON，再在 JS 中解析为原生对象，以确保拥有完整的原生 JS 方法。
-            // 优化点：使用固定脚本并在 binding 中传递动态字符串，提高 GraalVM 的 AST 缓存命中率。
-            String inputJson = (context != null && !context.isEmpty()) ? 
-                    OBJECT_MAPPER.writeValueAsString(context) : "{}";
-                    
-            Value bindings = jsContext.getBindings("js");
-            bindings.putMember("__input_json_str__", inputJson);
-            
-            // 执行固定的初始化脚本，此脚本会被 GraalVM 引擎高效缓存
-            // 解析完成后立即 delete 临时变量，防止用户脚本访问到内部传递用的原始 JSON 字符串
-            jsContext.eval("js", "var input = JSON.parse(__input_json_str__); delete __input_json_str__;");
-
-            // 构建顶级变量展开脚本 (变量名组合通常是固定的，缓存命中率也很高)
-            if (context != null && !context.isEmpty()) {
-                StringBuilder setupBuilder = new StringBuilder();
-                for (String key : context.keySet()) {
-                    if (isValidJsIdentifier(key)) {
-                        setupBuilder.append("var ").append(key).append(" = input['").append(key).append("'];\n");
-                    }
-                }
-                if (setupBuilder.length() > 0) {
-                    jsContext.eval("js", setupBuilder.toString());
-                }
-            }
-
-            // ---- 执行用户脚本（支持表达式与多行块自动回退） ----
-            Value result;
-            try {
-                // 尝试 1：作为单个表达式执行 (用括号包裹可确保 {a:1} 被正确解析为对象而不是代码块)
-                result = jsContext.eval("js", "(" + expression + ")");
-            } catch (PolyglotException e) {
-                if (e.isSyntaxError()) {
-                    // 尝试 2：作为包含 return 的多行函数体执行
-                    try {
-                        String blockScript = "(function() {\n" + expression + "\n})()";
-                        result = jsContext.eval("js", blockScript);
-                    } catch (PolyglotException ex2) {
-                        // 如果第二种方式也失败，抛出第二种方式的异常
-                        // （因为多行函数体更包容，此时的 SyntaxError 更能反映真实的语法错误）
-                        throw ex2;
-                    }
-                } else {
-                    throw e;
-                }
-            }
-
-            // ---- 结果转换：Value -> Java 类型 ----
-            return convertValue(result);
-
+        // 每次调用新建 Context (线程安全 + 沙箱隔离)
+        try (Context jsContext = builder.build()) {
+            return evaluateInContext(jsContext, expression, context, limits);
         } catch (PolyglotException e) {
-            // 区分语法错误和运行时错误，统一包装为 FlowException
-            String errorType = e.isSyntaxError() ? "JS_SYNTAX_ERROR" : "JS_RUNTIME_ERROR";
-            String detail = e.isGuestException()
-                    ? "JavaScript 运行时错误: " + e.getMessage()
-                    : "JavaScript 引擎错误: " + e.getMessage();
-            throw new FlowException(errorType, detail + " | 脚本: " + truncate(expression, 200), e);
-
+            throw translate(e, expression, limits);
         } catch (FlowException e) {
             throw e;
         } catch (Exception e) {
             throw new FlowException("JS_EVAL_ERROR",
                     "JavaScript 表达式求值失败: " + truncate(expression, 200) + ", 错误: " + e.getMessage(), e);
+        }
+    }
+
+    /** 在已建好的沙箱上下文里注入宏、变量并执行脚本 */
+    private Object evaluateInContext(Context jsContext, String expression, Map<String, Object> context,
+                                     ScriptLimits limits) throws Exception {
+        Value jsonParse = jsContext.eval("js", "JSON.parse");
+
+        // ---- 全局宏注入 (Semantic Layer) ----
+        injectMacros(jsContext, context, jsonParse);
+
+        // ---- 变量注入: 顶级变量绑定 + 向后兼容 input 对象 ----
+        // 将整个 Map 序列化为 JSON，再在 JS 中解析为原生对象，以确保拥有完整的原生 JS 方法。
+        // 优化点：使用固定脚本并在 binding 中传递动态字符串，提高 GraalVM 的 AST 缓存命中率。
+        String inputJson = (context != null && !context.isEmpty()) ? 
+                OBJECT_MAPPER.writeValueAsString(context) : "{}";
+                
+        Value bindings = jsContext.getBindings("js");
+        bindings.putMember("__input_json_str__", inputJson);
+        
+        // 执行固定的初始化脚本，此脚本会被 GraalVM 引擎高效缓存
+        // 解析完成后立即 delete 临时变量，防止用户脚本访问到内部传递用的原始 JSON 字符串
+        jsContext.eval("js", "var input = JSON.parse(__input_json_str__); delete __input_json_str__;");
+
+        // 构建顶级变量展开脚本 (变量名组合通常是固定的，缓存命中率也很高)
+        if (context != null && !context.isEmpty()) {
+            StringBuilder setupBuilder = new StringBuilder();
+            for (String key : context.keySet()) {
+                if (isValidJsIdentifier(key)) {
+                    setupBuilder.append("var ").append(key).append(" = input['").append(key).append("'];\n");
+                }
+            }
+            if (setupBuilder.length() > 0) {
+                jsContext.eval("js", setupBuilder.toString());
+            }
+        }
+
+        // ---- 执行用户脚本（支持表达式与多行块自动回退） ----
+        // 墙钟超时只管用户脚本本身（宏注入是宿主侧 SpEL，首次初始化可能较慢，不算在内）：
+        // 到时从看门狗线程取消执行，正常结束时撤销
+        ScheduledFuture<?> watchdog = limits.timeoutMs() > 0
+                ? WATCHDOG.schedule(() -> jsContext.close(true), limits.timeoutMs(), TimeUnit.MILLISECONDS)
+                : null;
+        Value result;
+        try {
+            try {
+                // 尝试 1：作为单个表达式执行 (用括号包裹可确保 {a:1} 被正确解析为对象而不是代码块)
+                result = jsContext.eval("js", "(" + expression + ")");
+            } catch (PolyglotException e) {
+                if (e.isSyntaxError()) {
+                    // 尝试 2：作为包含 return 的多行函数体执行；仍失败时抛第二种方式的异常
+                    // （多行函数体更包容，此时的 SyntaxError 更能反映真实的语法错误）
+                    result = jsContext.eval("js", "(function() {\n" + expression + "\n})()");
+                } else {
+                    throw e;
+                }
+            }
+            // ---- 结果转换：Value -> Java 类型（仍在超时保护内，避免超大结果拖住线程） ----
+            return convertValue(result);
+        } finally {
+            if (watchdog != null) {
+                watchdog.cancel(false);
+            }
+        }
+    }
+
+    /** 区分超时 / 语句数超限 / 语法错误 / 运行时错误，统一包装为 FlowException */
+    private FlowException translate(PolyglotException e, String expression, ScriptLimits limits) {
+        String script = " | 脚本: " + truncate(expression, 200);
+        if (e.isResourceExhausted()) {
+            return new FlowException("JS_RESOURCE_LIMIT",
+                    "JavaScript 执行语句数超过上限 " + limits.statementLimit() + "，已终止（请检查循环）" + script, e);
+        }
+        if (e.isCancelled()) {
+            return new FlowException("JS_TIMEOUT",
+                    "JavaScript 执行超过 " + limits.timeoutMs() + " ms，已终止" + script, e);
+        }
+        String errorType = e.isSyntaxError() ? "JS_SYNTAX_ERROR" : "JS_RUNTIME_ERROR";
+        String detail = e.isGuestException()
+                ? "JavaScript 运行时错误: " + e.getMessage()
+                : "JavaScript 引擎错误: " + e.getMessage();
+        return new FlowException(errorType, detail + script, e);
+    }
+
+    /** 读取沙箱限制配置；非 Spring 环境（单元测试）用默认值 */
+    static ScriptLimits scriptLimits() {
+        try {
+            YuFlowProperties props = SpringUtil.getBean(YuFlowProperties.class);
+            if (props != null && props.getEngine() != null) {
+                return new ScriptLimits(props.getEngine().getScriptStatementLimit(), props.getEngine().getScriptTimeoutMs());
+            }
+        } catch (Exception ignored) {
+            // 容器未就绪
+        }
+        return new ScriptLimits(DEFAULT_STATEMENT_LIMIT, DEFAULT_TIMEOUT_MS);
+    }
+
+    /**
+     * 进入 JS 的宿主值：基本类型直接给（引擎会映射为 JS 原生值），其余经 JSON 往返变成原生 JS 对象。
+     * {@link HostAccess#NONE} 下直接放入的 Java 对象在脚本里没有任何可访问成员，也正因如此堵住了反射逃逸。
+     */
+    static Object toGuestValue(Object value, Value jsonParse) {
+        if (value == null || value instanceof String || value instanceof Boolean
+                || value instanceof Integer || value instanceof Long || value instanceof Double
+                || value instanceof Float || value instanceof Short || value instanceof Byte) {
+            return value;
+        }
+        if (value instanceof Character) {
+            return value.toString();
+        }
+        try {
+            return jsonParse.execute(OBJECT_MAPPER.writeValueAsString(value));
+        } catch (Exception e) {
+            throw new FlowException("JS_MACRO_VALUE",
+                    "宏返回值无法转换为 JS 值（" + value.getClass().getSimpleName() + "）: " + e.getMessage(), e);
         }
     }
 
@@ -282,8 +372,9 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
      *
      * @param jsContext GraalVM JS 上下文
      * @param context   当前请求的参数上下文
+     * @param jsonParse 该上下文的 {@code JSON.parse}，宏值经它转成原生 JS 值
      */
-    private void injectMacros(Context jsContext, Map<String, Object> context) {
+    private void injectMacros(Context jsContext, Map<String, Object> context, Value jsonParse) {
         try {
             // 通过 Hutool SpringUtil 获取 SysMacroCacheManager 实例
             // 注意：此处依赖 Spring 容器已初始化完成，在非 Spring 环境（如单元测试）中
@@ -334,12 +425,12 @@ public class JavaScriptEvaluatorImpl implements ExpressionEvaluatorStrategy {
                             spelCtx.setVariables(context);
                         }
                         Object evaluatedValue = macro.getCompiledExpression().getValue(spelCtx);
-                        bindings.putMember(macroCode, evaluatedValue);
+                        bindings.putMember(macroCode, toGuestValue(evaluatedValue, jsonParse));
 
                     } else if ("FUNCTION".equalsIgnoreCase(macroType)) {
                         // ---- FUNCTION 宏：包装为代理函数，延迟求值 ----
                         DynamicMacroFunction proxyFunc = new DynamicMacroFunction(
-                                macro.getCompiledExpression(), context, macro.getSysMacro().getMacroParams());
+                                macro.getCompiledExpression(), context, macro.getSysMacro().getMacroParams(), jsonParse);
                         bindings.putMember(macroCode, proxyFunc);
                     }
                 } catch (Exception e) {

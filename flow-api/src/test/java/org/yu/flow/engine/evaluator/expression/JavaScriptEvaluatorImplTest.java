@@ -545,4 +545,67 @@ class JavaScriptEvaluatorImplTest {
     void testConvertValueNull() {
         assertNull(JavaScriptEvaluatorImpl.convertValue(null));
     }
+
+    // ============================= 沙箱：宿主对象不可达 + 资源限制 =============================
+
+    @Test
+    @Order(80)
+    @DisplayName("80、沙箱 - 宏返回的 Java 对象进脚本后只是普通 JS 值，拿不到 getClass 等宿主成员")
+    void testMacroObjectsAreConvertedToGuestValues() {
+        try (MockedStatic<SpringUtil> springUtilMock = mockStatic(SpringUtil.class)) {
+            SysMacroCacheManager mockManager = mock(SysMacroCacheManager.class);
+            springUtilMock.when(() -> SpringUtil.getBean(SysMacroCacheManager.class)).thenReturn(mockManager);
+
+            Map<String, CachedMacro> macros = new ConcurrentHashMap<>();
+            macros.put("sys_cfg", new CachedMacro(
+                    SysMacroDO.builder().macroCode("sys_cfg").macroType("VARIABLE").scope("ALL").build(),
+                    SPEL_PARSER.parseExpression("{name:'yu', tags:{'a','b'}}")));
+            macros.put("sys_build", new CachedMacro(
+                    SysMacroDO.builder().macroCode("sys_build").macroType("FUNCTION").scope("ALL").build(),
+                    SPEL_PARSER.parseExpression("{id:#p0, ok:true}")));
+            when(mockManager.getAllCachedMacros()).thenReturn(Collections.unmodifiableMap(macros));
+
+            // 原生 JS 对象：能用数组方法、能读字段
+            assertEquals("a,b", evaluator.evaluate("sys_cfg.tags.map(t => t).join(',')", null));
+            assertEquals(7L, evaluator.evaluate("sys_build(7).id", null));
+            // 宿主成员不存在：反射链 getClass().forName(...) 无从下手
+            assertEquals(true, evaluator.evaluate("typeof sys_cfg.getClass === 'undefined' && typeof sys_build(1).getClass === 'undefined'", null));
+        }
+    }
+
+    @Test
+    @Order(81)
+    @DisplayName("81、沙箱 - 死循环被语句数上限 / 超时终止")
+    void testInfiniteLoopIsTerminated() {
+        try (MockedStatic<SpringUtil> springUtilMock = mockStatic(SpringUtil.class)) {
+            springUtilMock.when(() -> SpringUtil.getBean(SysMacroCacheManager.class))
+                    .thenThrow(new RuntimeException("No Spring context"));
+
+            long start = System.currentTimeMillis();
+            org.yu.flow.exception.FlowException ex = assertThrows(org.yu.flow.exception.FlowException.class,
+                    () -> evaluator.evaluate("let n = 0; while (true) { n++; } return n;", null));
+
+            assertTrue(Set.of("JS_RESOURCE_LIMIT", "JS_TIMEOUT").contains(ex.getErrorCode()), ex.getErrorCode());
+            assertTrue(System.currentTimeMillis() - start < JavaScriptEvaluatorImpl.DEFAULT_TIMEOUT_MS + 5_000);
+            // 上下文已回收，后续求值不受影响
+            assertEquals(3L, evaluator.evaluate("1 + 2", null));
+        }
+    }
+
+    @Test
+    @Order(82)
+    @DisplayName("82、沙箱 - 输入变量里的 Java 对象同样不暴露宿主成员")
+    void testInputsHaveNoHostMembers() {
+        try (MockedStatic<SpringUtil> springUtilMock = mockStatic(SpringUtil.class)) {
+            springUtilMock.when(() -> SpringUtil.getBean(SysMacroCacheManager.class))
+                    .thenThrow(new RuntimeException("No Spring context"));
+
+            Map<String, Object> context = new HashMap<>();
+            context.put("when", java.time.LocalDate.of(2026, 9, 28));
+            context.put("items", List.of(Map.of("k", 1)));
+
+            assertEquals(true, evaluator.evaluate("typeof items.getClass === 'undefined' && typeof items[0].getClass === 'undefined'", context));
+            assertEquals("2026-09-28", evaluator.evaluate("String(when)", context));
+        }
+    }
 }
