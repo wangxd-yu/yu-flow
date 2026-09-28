@@ -148,3 +148,8 @@
 .fh-table-fit .ant-table-tbody > tr > td {
   white-space: nowrap;
 }
+
+/* 空数据：竖向滚动条槽会挤出横向条，空表无需横向滚动 */
+.fh-table .ant-table-empty .ant-table-body {
+  overflow-x: hidden !important;
+}

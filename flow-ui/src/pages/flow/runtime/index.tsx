@@ -436,8 +436,8 @@ const RuntimeCenterPage: React.FC = () => {
     loading,
     columns,
     tableLayout: 'fixed' as const,
-    scroll: { x: activeTab === 'rank' ? 1128 : 1076, y: 100000 },
-    className: 'fh-table runtime-table',
+    scroll: { y: 100000 },
+    className: 'fh-table fh-table-fit runtime-table',
     size: 'middle' as const,
     rowClassName: (r: AssetMetricsRankItem) =>
       r.health === 'error' ? 'rt-row-error' : r.health === 'warn' ? 'rt-row-warn' : '',
