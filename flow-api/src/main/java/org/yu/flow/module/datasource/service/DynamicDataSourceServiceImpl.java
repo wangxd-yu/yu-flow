@@ -1155,6 +1155,47 @@ public class DynamicDataSourceServiceImpl implements DynamicDataSourceService {
     /**
      * 根据 code 从缓存中查询 dbType（用于元数据查询等场景）。
      */
+    @Override
+    public String findDbTypeByCode(String code) {
+        List<String> types = defaultJdbcTemplate.queryForList(
+                "SELECT db_type FROM flow_db_connection WHERE code = ?", String.class, code);
+        return types.isEmpty() ? null : types.get(0);
+    }
+
+    @Override
+    public boolean existsByCode(String code) {
+        Integer count = defaultJdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM flow_db_connection WHERE code = ?", Integer.class, code);
+        return count != null && count > 0;
+    }
+
+    @Override
+    public boolean createPlaceholder(String code, String dbType) {
+        if (StrUtil.isBlank(code) || existsByCode(code)) {
+            return false;
+        }
+        String type = StrUtil.blankToDefault(dbType, "mysql").toLowerCase();
+        String driver = switch (type) {
+            case "postgresql" -> "org.postgresql.Driver";
+            case "highgo" -> "com.highgo.jdbc.Driver";
+            default -> "com.mysql.cj.jdbc.Driver";
+        };
+        String id = SnowIdGenerator.getId();
+        // 名称有唯一约束：与已有连接重名时带上 ID 尾号区分
+        String name = code + "（待配置）";
+        Integer sameName = defaultJdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flow_db_connection WHERE name = ?", Integer.class, name);
+        if (sameName != null && sameName > 0) {
+            name = code + "（待配置 " + id.substring(Math.max(0, id.length() - 6)) + "）";
+        }
+        String sql = "INSERT INTO flow_db_connection(id, name, code, db_type, driver_class_name, url, "
+                + "username, password, initial_size, min_idle, max_active, status, wall_config, is_system) "
+                + "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        return defaultJdbcTemplate.update(sql, id, name, code, type, driver,
+                "", "", aesEncryptUtil.encrypt(""), 5, 5, 20, 0,
+                DataSourceWallConfig.enabledDefaults().toJson(), 0) > 0;
+    }
+
     private String getDbTypeByCode(String code) {
         DataSource ds = datasourceMap.get(code);
         if (ds instanceof DruidDataSource) {

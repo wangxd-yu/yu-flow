@@ -7,15 +7,48 @@ import { request } from '@umijs/max';
  * 导入按 ID upsert 且只写草稿列，目标环境的线上快照不受影响，需再发布才生效。
  */
 
-export type AssetTransferType = 'API' | 'SERVICE' | 'TASK' | 'DIRECTORY' | 'REGRESSION_SUITE';
+export type AssetTransferType =
+  | 'API'
+  | 'SERVICE'
+  | 'TASK'
+  | 'MQ_TASK'
+  | 'RESPONSE_TEMPLATE'
+  | 'EXCEL_TEMPLATE'
+  | 'PAGE'
+  | 'MODEL'
+  | 'SYS_MACRO'
+  | 'SYS_CONFIG'
+  | 'OPEN_PLATFORM'
+  | 'ALERT_RULE'
+  | 'DIRECTORY'
+  | 'REGRESSION_SUITE';
 
-export type TransferAction = 'CREATE' | 'UPDATE' | 'SKIP' | 'CONFLICT';
+export type TransferAction = 'CREATE' | 'UPDATE' | 'SKIP' | 'CONFLICT' | 'OFFLINE';
 
-export type RequirementKind = 'DATASOURCE' | 'MQ_CONNECTION' | 'OSS_CONNECTION' | 'RESPONSE_TEMPLATE';
+export type RequirementKind =
+  | 'DATASOURCE'
+  | 'MQ_CONNECTION'
+  | 'OSS_CONNECTION'
+  | 'RESPONSE_TEMPLATE'
+  | 'ENV_VAR'
+  | 'ALERT_CHANNEL';
+
+/** 可以在导入页一键创建占位的依赖 */
+export const PLACEHOLDER_KINDS: RequirementKind[] = [
+  'DATASOURCE',
+  'MQ_CONNECTION',
+  'OSS_CONNECTION',
+  'ENV_VAR',
+  'ALERT_CHANNEL',
+];
 
 export interface TransferRequirement {
   kind: RequirementKind;
   key: string;
+  /** 环境变量说明（来源环境填写） */
+  remark?: string;
+  /** 创建占位用的非敏感属性，如 dbType / mqType / type */
+  attributes?: Record<string, string>;
   /** 目标环境是否已具备，仅预检结果里有值 */
   satisfied?: boolean;
   usedBy?: string[];
@@ -27,6 +60,8 @@ export interface TransferItem {
   name?: string;
   action: TransferAction;
   message?: string;
+  /** 更新项相对目标环境当前内容变化的字段 */
+  changedFields?: string[];
 }
 
 export interface AssetBundle {
@@ -52,6 +87,7 @@ export interface TransferReport {
   updateCount: number;
   skipCount: number;
   conflictCount: number;
+  offlineCount?: number;
   exportedAt?: string;
   exportedBy?: string;
   sourceEnv?: string;
@@ -98,12 +134,23 @@ export const REQUIREMENT_LABELS: Record<RequirementKind, string> = {
   MQ_CONNECTION: 'MQ 连接',
   OSS_CONNECTION: 'OSS 连接',
   RESPONSE_TEMPLATE: '响应模板',
+  ENV_VAR: '环境变量',
+  ALERT_CHANNEL: '告警通道',
 };
 
 export const ASSET_TYPE_LABELS: Record<AssetTransferType, string> = {
   API: '接口',
   SERVICE: '内部服务',
   TASK: '定时任务',
+  MQ_TASK: 'MQ 任务',
+  RESPONSE_TEMPLATE: '响应模板',
+  EXCEL_TEMPLATE: 'Excel 模板',
+  PAGE: '页面',
+  MODEL: '数据模型',
+  SYS_MACRO: '全局宏',
+  SYS_CONFIG: '系统配置',
+  OPEN_PLATFORM: '开放平台',
+  ALERT_RULE: '告警规则',
   DIRECTORY: '目录',
   REGRESSION_SUITE: '回归套件',
 };
@@ -113,6 +160,7 @@ export const ACTION_LABELS: Record<TransferAction, string> = {
   UPDATE: '更新',
   SKIP: '跳过',
   CONFLICT: '冲突',
+  OFFLINE: '下线',
 };
 
 /** 触发浏览器另存为，文件名带上时间戳便于区分批次 */

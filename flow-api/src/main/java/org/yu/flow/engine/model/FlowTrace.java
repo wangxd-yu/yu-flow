@@ -1,10 +1,12 @@
 package org.yu.flow.engine.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 完整流程执行追踪链路（用于调试模式）
@@ -37,4 +39,8 @@ public class FlowTrace {
     private Object globalOutputs;
     
     private List<ExecutionLog> stepLogs;
+
+    /** 本次执行用到的敏感值，落库前按值脱敏；不序列化 */
+    @JsonIgnore
+    private transient Set<String> secretValues;
 }

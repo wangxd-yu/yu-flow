@@ -1,7 +1,7 @@
 import { Alert, Modal, Select, Space, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { listReleaseEnvs, type FlowEnv } from '@/services/flow/releaseService';
+import { getCurrentEnv, listReleaseEnvs, type FlowEnv } from '@/services/flow/releaseService';
 
 /**
  * 批量发布前选择目标环境；确认返回 envCode，取消返回 null。
@@ -32,11 +32,18 @@ export function confirmBatchPublish(options: {
       const [envs, setEnvs] = useState<FlowEnv[]>([]);
       const [code, setCode] = useState('DEV');
       const [open, setOpen] = useState(true);
+      const [locked, setLocked] = useState(false);
 
       useEffect(() => {
         listReleaseEnvs()
           .then((list) => setEnvs(list?.length ? list : [{ id: 'dev', code: 'DEV', name: '开发' }]))
           .catch(() => setEnvs([{ id: 'dev', code: 'DEV', name: '开发' }]));
+        getCurrentEnv().then((cur) => {
+          if (cur?.locked) {
+            setLocked(true);
+            setCode(cur.code);
+          }
+        });
       }, []);
 
       const env = envs.find((e) => e.code === code);
@@ -67,6 +74,7 @@ export function confirmBatchPublish(options: {
                 style={{ width: 260 }}
                 value={code}
                 onChange={setCode}
+                disabled={locked}
                 options={envs.map((e) => ({
                   value: e.code,
                   label: `${e.name}（${e.code}）${e.requireSuitePass === 1 ? ' · 需回归' : ''}`,

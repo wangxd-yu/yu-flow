@@ -11,6 +11,8 @@ import org.yu.flow.dto.R;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.engine.model.TracePersistUtil;
+import org.yu.flow.util.SecretScope;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.dto.FlowServiceFlowDTO;
@@ -161,6 +163,8 @@ public class FlowServiceFlowController {
      */
     @PostMapping("/debug/run")
     public R<FlowTrace> debugRun(@RequestBody FlowDebugRequestDTO requestDTO) {
+        // 执行前出错（参数校验、DSL 解析）的信息也可能带出敏感环境变量，与轨迹一样按值脱敏
+        SecretScope secrets = SecretScope.open();
         try {
             Map<String, Object> rawInput = parseDebugInputBody(requestDTO.getBody());
             String contractJson = resolveDebugContract(requestDTO);
@@ -180,7 +184,7 @@ public class FlowServiceFlowController {
                     requestDTO.getSourceRef(),
                     requestDTO.getSourceName()
             );
-            return R.ok(trace != null ? trace : new FlowTrace());
+            return R.ok(trace != null ? TracePersistUtil.maskedForResponse(trace) : new FlowTrace());
         } catch (Exception e) {
             log.error("Service flow debug run failed", e);
             ExecutionLog errorLog = new ExecutionLog()
@@ -190,12 +194,14 @@ public class FlowServiceFlowController {
                     .setNodeType("error")
                     .setStatus("error")
                     .setStartTime(LocalTime.now(ZONE_SH).format(TRACE_CLOCK))
-                    .setError(e.getMessage());
+                    .setError(secrets.mask(e.getMessage()));
             FlowTrace errorTrace = new FlowTrace();
             errorTrace.setStatus("error");
-            errorTrace.setErrorMsg(e.getMessage());
+            errorTrace.setErrorMsg(secrets.mask(e.getMessage()));
             errorTrace.setStepLogs(Collections.singletonList(errorLog));
             return R.ok(errorTrace);
+        } finally {
+            secrets.close();
         }
     }
 

@@ -71,6 +71,13 @@ public class ExecutionContext {
     /** Trace 快照限深 / 限长（分支 copy 共享同一配置） */
     private TraceSnapshotLimits snapshotLimits = TraceSnapshotLimits.DEFAULTS;
 
+    /**
+     * 本次执行解析到的敏感值（如敏感环境变量），轨迹与各类执行日志落库前按值脱敏。
+     * <p>分支 copy 共享同一集合，并行分支里解析到的值同样会被脱敏；执行入口打开了
+     * {@link org.yu.flow.util.SecretScope} 时与入口共享，嵌套调用的内部服务用到的值也会被脱敏。</p>
+     */
+    private Set<String> secretValues = org.yu.flow.util.SecretScope.currentOrNew();
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // 构造函数组
@@ -97,6 +104,7 @@ public class ExecutionContext {
         this.traceEnabled = traceEnabled;
         if (this.traceEnabled) {
             this.flowTrace = new FlowTrace();
+            this.flowTrace.setSecretValues(this.secretValues);
             this.flowTrace.setStepLogs(Collections.synchronizedList(new ArrayList<>()));
             this.flowTrace.setStartTime(System.currentTimeMillis());
             this.flowTrace.setTraceId(UUID.randomUUID().toString());
@@ -333,6 +341,7 @@ public class ExecutionContext {
         copy.sourceRef = this.sourceRef;
         copy.sourceName = this.sourceName;
         copy.snapshotLimits = this.snapshotLimits;
+        copy.secretValues = this.secretValues;
         return copy;
     }
 
@@ -346,7 +355,19 @@ public class ExecutionContext {
         readOnlyCtx.sourceRef = this.sourceRef;
         readOnlyCtx.sourceName = this.sourceName;
         readOnlyCtx.snapshotLimits = this.snapshotLimits;
+        readOnlyCtx.secretValues = this.secretValues;
         return readOnlyCtx;
+    }
+
+    /** 登记敏感值，落库前会被替换为掩码 */
+    public void registerSecret(String value) {
+        if (value != null && !value.isEmpty()) {
+            secretValues.add(value);
+        }
+    }
+
+    public Set<String> getSecretValues() {
+        return secretValues;
     }
 
     public String getInvokeSource() {

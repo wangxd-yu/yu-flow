@@ -9,6 +9,8 @@ public interface ReleaseManageService {
 
     List<FlowEnvDTO> listEnvs();
 
+    CurrentEnvDTO currentEnv();
+
     PublishGateResultDTO checkGate(String assetType, String assetId, String envCode);
 
     PageBean<RegressionSuiteDTO> pageSuites(String assetType, String assetId, int page, int size);

@@ -23,7 +23,7 @@ import java.util.List;
 @YuFlowApi
 @RestController
 @RequestMapping("/flow-api/mq-connection")
-@RequirePerm({"flow:mq:view", "flow:mq:write"})
+@RequirePerm({"flow:mq:view", "flow:mq:write", "flow:conn:write"})
 public class MqConnectionController {
 
     @Resource

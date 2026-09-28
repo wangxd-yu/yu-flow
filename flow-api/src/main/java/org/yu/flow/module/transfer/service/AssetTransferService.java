@@ -23,4 +23,10 @@ public interface AssetTransferService {
      * 实际写入。整包一个事务，任一条失败全部回滚；存在冲突项时直接拒绝。
      */
     TransferReportDTO importBundle(AssetBundle bundle, boolean overwriteExisting);
+
+    /**
+     * 发布包导入专用：调用方已按 {@code flow:release:import} 鉴权，不再逐类校验资产写权限
+     * （运维实施角色只持有导入权限，不具备编排写权限）。
+     */
+    TransferReportDTO importBundleAuthorized(AssetBundle bundle, boolean overwriteExisting);
 }

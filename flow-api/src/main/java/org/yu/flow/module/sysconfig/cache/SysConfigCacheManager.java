@@ -3,12 +3,11 @@ package org.yu.flow.module.sysconfig.cache;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.module.sysconfig.domain.SysConfigDO;
 import org.yu.flow.module.sysconfig.repository.SysConfigRepository;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
@@ -126,17 +125,9 @@ public class SysConfigCacheManager {
         return CONFIG_CACHE.size();
     }
 
+    /** 事务内推迟到提交后；同一事务多次调用只广播一次（全量刷新） */
     public void publishRefreshEvent() {
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    doPublishRefreshEvent();
-                }
-            });
-        } else {
-            doPublishRefreshEvent();
-        }
+        AfterCommitExecutor.runOnce("sys config cache refresh", this::doPublishRefreshEvent);
     }
 
     private void doPublishRefreshEvent() {

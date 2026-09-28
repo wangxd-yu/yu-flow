@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.engine.evaluator.ExecutionResult;
 import org.yu.flow.util.CamelCaseColumnMapRowMapper;
+import org.yu.flow.util.SecretScope;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -229,6 +230,14 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Override
     public Object executeApi(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams,
                              Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response) throws Exception {
+        try (SecretScope secrets = SecretScope.open()) {
+            return executeApiInScope(flowApiDO, queryParams, bodyParams, mergeParamsMap, pageable, response, secrets);
+        }
+    }
+
+    private Object executeApiInScope(FlowApiDO flowApiDO, Map<String, String> queryParams, Map<String, Object> bodyParams,
+                                     Map<String, Object> mergeParamsMap, Pageable pageable, HttpServletResponse response,
+                                     SecretScope secrets) throws Exception {
         long start = System.currentTimeMillis();
         String resolvedMode = resolveLogMode(flowApiDO);
         FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
@@ -275,6 +284,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                     logDO.setTraceData(null);
                 }
                 logDO.setCostTimeMs(cost);
+                maskSecrets(logDO, secrets);
                 flowExecutionLogService.saveLogAsync(logDO);
             }
         }
@@ -283,6 +293,13 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
     @Override
     public Object executeApi(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
                              HttpServletResponse response) throws Exception {
+        try (SecretScope secrets = SecretScope.open()) {
+            return executeApiInScope(flowApiDO, params, pageable, response, secrets);
+        }
+    }
+
+    private Object executeApiInScope(FlowApiDO flowApiDO, Map<String, Object> params, Pageable pageable,
+                                     HttpServletResponse response, SecretScope secrets) throws Exception {
         long start = System.currentTimeMillis();
         String resolvedMode = resolveLogMode(flowApiDO);
         FlowExecutionLogDO logDO = buildBaseLogDO(flowApiDO);
@@ -326,6 +343,7 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
                     logDO.setTraceData(null);
                 }
                 logDO.setCostTimeMs(cost);
+                maskSecrets(logDO, secrets);
                 flowExecutionLogService.saveLogAsync(logDO);
             }
         }
@@ -543,6 +561,17 @@ public class FlowApiServiceImpl implements FlowApiExecutionService, SqlExecutorS
         logDO.setServiceType(flowApiDO.getServiceType());
         logDO.setMethod(flowApiDO.getMethod());
         return logDO;
+    }
+
+    /** 执行日志落库前按值脱敏整条调用链用到的敏感环境变量（请求、响应、错误信息、轨迹） */
+    private static void maskSecrets(FlowExecutionLogDO logDO, SecretScope secrets) {
+        if (secrets.values().isEmpty()) {
+            return;
+        }
+        logDO.setRequestParams(secrets.mask(logDO.getRequestParams()));
+        logDO.setResponseBody(secrets.mask(logDO.getResponseBody()));
+        logDO.setErrorMsg(secrets.mask(logDO.getErrorMsg()));
+        logDO.setTraceData(secrets.mask(logDO.getTraceData()));
     }
 
     /**

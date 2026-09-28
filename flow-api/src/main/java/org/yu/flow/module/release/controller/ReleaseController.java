@@ -25,6 +25,12 @@ public class ReleaseController {
         return R.ok(releaseManageService.listEnvs());
     }
 
+    /** 本实例环境；所有登录用户可读，用于顶栏标识 */
+    @GetMapping("/current-env")
+    public R<CurrentEnvDTO> currentEnv() {
+        return R.ok(releaseManageService.currentEnv());
+    }
+
     @GetMapping("/gate/check")
     @RequirePerm("flow:release:view")
     public R<PublishGateResultDTO> checkGate(@RequestParam String assetType,

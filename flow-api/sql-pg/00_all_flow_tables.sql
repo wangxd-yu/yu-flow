@@ -1,5 +1,5 @@
 -- Yu Flow PostgreSQL / 瀚高 全量建表（由 sql-pg/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-08-20T02:57:14.656Z
+-- 生成时间: 2026-09-28T01:46:19.255Z
 -- 用法: 空库执行本文件 → 再执行 00_system_init.sql
 -- Boolean 映射列必须用 boolean，勿写成 smallint
 --
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS flow_db_connection (
   driver_class_name varchar(200) NOT NULL,
   url varchar(500) NOT NULL,
   username varchar(100) NOT NULL,
-  password varchar(100) NOT NULL,
+  password varchar(512) NOT NULL,
   initial_size integer DEFAULT 5,
   min_idle integer DEFAULT 5,
   max_active integer DEFAULT 20,
@@ -225,7 +225,7 @@ COMMENT ON COLUMN flow_db_connection.db_type IS '数据库类型(mysql/postgresq
 COMMENT ON COLUMN flow_db_connection.driver_class_name IS '驱动类名';
 COMMENT ON COLUMN flow_db_connection.url IS 'JDBC URL';
 COMMENT ON COLUMN flow_db_connection.username IS '用户名';
-COMMENT ON COLUMN flow_db_connection.password IS '密码';
+COMMENT ON COLUMN flow_db_connection.password IS '密码（AES 密文）';
 COMMENT ON COLUMN flow_db_connection.initial_size IS '初始连接数';
 COMMENT ON COLUMN flow_db_connection.min_idle IS '最小空闲连接';
 COMMENT ON COLUMN flow_db_connection.max_active IS '最大活动连接';
@@ -516,6 +516,50 @@ COMMENT ON COLUMN flow_log_oss_download.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_oss_download_object_id ON flow_log_oss_download (object_id);
 CREATE INDEX IF NOT EXISTS idx_flow_log_oss_download_create_time ON flow_log_oss_download (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_oss_download_result ON flow_log_oss_download (result);
+
+-- >>> flow_log_release_import.sql
+-- Table: flow_log_release_import
+-- 发布包导入记录（含导入前备份，用于一键回滚）
+CREATE TABLE IF NOT EXISTS flow_log_release_import (
+  id varchar(32) NOT NULL,
+  release_code varchar(64),
+  release_name varchar(128),
+  package_digest varchar(64),
+  source_env varchar(32),
+  target_env varchar(32),
+  status varchar(16) NOT NULL,
+  summary varchar(512),
+  error_message varchar(2000),
+  report_json text,
+  backup_json text,
+  asset_hashes text,
+  runtime_issues text,
+  imported_by varchar(64),
+  imported_time timestamp,
+  rolled_back_by varchar(64),
+  rolled_back_time timestamp,
+  PRIMARY KEY (id)
+);
+COMMENT ON TABLE flow_log_release_import IS '发布包导入记录';
+COMMENT ON COLUMN flow_log_release_import.id IS '雪花ID';
+COMMENT ON COLUMN flow_log_release_import.release_code IS '版本号';
+COMMENT ON COLUMN flow_log_release_import.release_name IS '版本名称';
+COMMENT ON COLUMN flow_log_release_import.package_digest IS '发布包 manifest SHA-256，可与来源环境版本单对账';
+COMMENT ON COLUMN flow_log_release_import.source_env IS '来源环境';
+COMMENT ON COLUMN flow_log_release_import.target_env IS '目标环境（本实例）';
+COMMENT ON COLUMN flow_log_release_import.status IS '状态：SUCCESS / FAILED / ROLLED_BACK';
+COMMENT ON COLUMN flow_log_release_import.summary IS '摘要';
+COMMENT ON COLUMN flow_log_release_import.error_message IS '失败原因';
+COMMENT ON COLUMN flow_log_release_import.report_json IS '导入报告 JSON';
+COMMENT ON COLUMN flow_log_release_import.backup_json IS '导入前受影响资产的完整状态 JSON（回滚依据）';
+COMMENT ON COLUMN flow_log_release_import.asset_hashes IS '导入后各资产内容指纹 JSON（类型:ID → 指纹），用于发现生产被直接修改';
+COMMENT ON COLUMN flow_log_release_import.runtime_issues IS '导入提交后的运行时自检问题（JSON 字符串数组），为空表示自检通过';
+COMMENT ON COLUMN flow_log_release_import.imported_by IS '导入人';
+COMMENT ON COLUMN flow_log_release_import.imported_time IS '导入时间';
+COMMENT ON COLUMN flow_log_release_import.rolled_back_by IS '回滚人';
+COMMENT ON COLUMN flow_log_release_import.rolled_back_time IS '回滚时间';
+CREATE INDEX IF NOT EXISTS idx_flow_log_release_import_imported_time ON flow_log_release_import (imported_time);
+CREATE INDEX IF NOT EXISTS idx_flow_log_release_import_package_digest ON flow_log_release_import (package_digest);
 
 -- >>> flow_log_service.sql
 -- Table: flow_log_service
@@ -1241,6 +1285,78 @@ COMMENT ON TABLE flow_regression_suite IS '回归测试套件';
 COMMENT ON COLUMN flow_regression_suite.asset_type IS 'API|TASK|SERVICE';
 CREATE INDEX IF NOT EXISTS idx_flow_regression_suite_asset_type_asset_id ON flow_regression_suite (asset_type, asset_id);
 
+-- >>> flow_release_item.sql
+-- Table: flow_release_item
+-- 版本单明细
+CREATE TABLE IF NOT EXISTS flow_release_item (
+  id varchar(32) NOT NULL,
+  release_id varchar(32) NOT NULL,
+  asset_type varchar(32) NOT NULL,
+  asset_id varchar(64) NOT NULL,
+  asset_name varchar(255),
+  asset_key varchar(128),
+  action varchar(16) NOT NULL,
+  origin varchar(16) NOT NULL,
+  content_hash varchar(64),
+  create_by varchar(64),
+  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT uk_flow_release_item_release_id_atype_aid UNIQUE (release_id, asset_type, asset_id)
+);
+COMMENT ON TABLE flow_release_item IS '版本单明细';
+COMMENT ON COLUMN flow_release_item.id IS '雪花ID';
+COMMENT ON COLUMN flow_release_item.release_id IS '版本单ID（flow_release.id）';
+COMMENT ON COLUMN flow_release_item.asset_type IS '资产类型：API / SERVICE / TASK / MQ_TASK / RESPONSE_TEMPLATE / PAGE / MODEL / SYS_MACRO / SYS_CONFIG / OPEN_PLATFORM / ALERT_RULE';
+COMMENT ON COLUMN flow_release_item.asset_id IS '资产ID';
+COMMENT ON COLUMN flow_release_item.asset_name IS '资产名称（冗余，资产删除后仍可显示）';
+COMMENT ON COLUMN flow_release_item.asset_key IS '按编码匹配的类型（全局宏/系统配置/开放平台）在目标环境的匹配键';
+COMMENT ON COLUMN flow_release_item.action IS '动作：UPSERT 新增或更新 / OFFLINE 下线';
+COMMENT ON COLUMN flow_release_item.origin IS '来源：MANUAL 手工加入 / DEPENDENCY 依赖补齐 / SCAN 变更扫描';
+COMMENT ON COLUMN flow_release_item.content_hash IS '冻结时的内容指纹（SHA-256），冻结后内容变化即视为漂移';
+COMMENT ON COLUMN flow_release_item.create_by IS '创建人';
+COMMENT ON COLUMN flow_release_item.create_time IS '创建时间';
+
+-- >>> flow_release.sql
+-- Table: flow_release
+-- 版本单：一轮上线要带到生产的资产清单
+CREATE TABLE IF NOT EXISTS flow_release (
+  id varchar(32) NOT NULL,
+  code varchar(64) NOT NULL,
+  name varchar(128),
+  status varchar(16) NOT NULL,
+  remark text,
+  source_env varchar(32),
+  frozen_by varchar(64),
+  frozen_time timestamp,
+  exported_by varchar(64),
+  exported_time timestamp,
+  package_digest varchar(64),
+  create_by varchar(64),
+  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
+  update_by varchar(64),
+  update_time timestamp,
+  PRIMARY KEY (id),
+  CONSTRAINT uk_flow_release_code UNIQUE (code)
+);
+COMMENT ON TABLE flow_release IS '版本单';
+COMMENT ON COLUMN flow_release.id IS '雪花ID';
+COMMENT ON COLUMN flow_release.code IS '版本号（全局唯一，如 v2026.10）';
+COMMENT ON COLUMN flow_release.name IS '版本名称';
+COMMENT ON COLUMN flow_release.status IS '状态：DRAFT 编辑中 / FROZEN 已冻结 / EXPORTED 已导出';
+COMMENT ON COLUMN flow_release.remark IS '发布说明（导出时写入包内 CHANGELOG.md）';
+COMMENT ON COLUMN flow_release.source_env IS '创建时的实例环境（flow_env.code）';
+COMMENT ON COLUMN flow_release.frozen_by IS '冻结人';
+COMMENT ON COLUMN flow_release.frozen_time IS '冻结时间';
+COMMENT ON COLUMN flow_release.exported_by IS '最近导出人';
+COMMENT ON COLUMN flow_release.exported_time IS '最近导出时间';
+COMMENT ON COLUMN flow_release.package_digest IS '最近导出包的 manifest SHA-256，用于与生产导入记录对账';
+COMMENT ON COLUMN flow_release.create_by IS '创建人';
+COMMENT ON COLUMN flow_release.create_time IS '创建时间';
+COMMENT ON COLUMN flow_release.update_by IS '更新人';
+COMMENT ON COLUMN flow_release.update_time IS '更新时间';
+CREATE INDEX IF NOT EXISTS idx_flow_release_status ON flow_release (status);
+CREATE INDEX IF NOT EXISTS idx_flow_release_create_time ON flow_release (create_time);
+
 -- >>> flow_response_template.sql
 -- Table: flow_response_template
 -- API 响应模板表
@@ -1350,6 +1466,33 @@ COMMENT ON COLUMN flow_sys_config.create_by IS '创建者';
 COMMENT ON COLUMN flow_sys_config.create_time IS '创建时间';
 COMMENT ON COLUMN flow_sys_config.update_by IS '更新者';
 COMMENT ON COLUMN flow_sys_config.update_time IS '更新时间';
+
+-- >>> flow_sys_env_variable.sql
+-- Table: flow_sys_env_variable
+-- 环境变量（每个环境各自维护，值不随发布包迁移）
+CREATE TABLE IF NOT EXISTS flow_sys_env_variable (
+  id varchar(32) NOT NULL,
+  code varchar(64) NOT NULL,
+  var_value varchar(4000),
+  secret boolean NOT NULL DEFAULT false,
+  remark varchar(512),
+  create_by varchar(64),
+  create_time timestamp DEFAULT CURRENT_TIMESTAMP,
+  update_by varchar(64),
+  update_time timestamp,
+  PRIMARY KEY (id),
+  CONSTRAINT uk_flow_sys_env_variable_code UNIQUE (code)
+);
+COMMENT ON TABLE flow_sys_env_variable IS '环境变量';
+COMMENT ON COLUMN flow_sys_env_variable.id IS '雪花ID';
+COMMENT ON COLUMN flow_sys_env_variable.code IS '变量名（大写字母开头，仅大写字母/数字/下划线），编排中以 $.env.CODE / ${env.CODE} 引用';
+COMMENT ON COLUMN flow_sys_env_variable.var_value IS '变量值；secret=true 时为 AES 密文';
+COMMENT ON COLUMN flow_sys_env_variable.secret IS '敏感变量（页面掩码显示，执行轨迹与三方日志脱敏）';
+COMMENT ON COLUMN flow_sys_env_variable.remark IS '说明（随发布包导出，提示目标环境该填什么）';
+COMMENT ON COLUMN flow_sys_env_variable.create_by IS '创建人';
+COMMENT ON COLUMN flow_sys_env_variable.create_time IS '创建时间';
+COMMENT ON COLUMN flow_sys_env_variable.update_by IS '更新人';
+COMMENT ON COLUMN flow_sys_env_variable.update_time IS '更新时间';
 
 -- >>> flow_sys_macro.sql
 -- Table: flow_sys_macro

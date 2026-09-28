@@ -473,6 +473,7 @@ const MqTaskManagement: React.FC = () => {
       listTitle="MQ 任务列表"
       emptyHint="订阅消息队列 Topic 触发编排流程，支持模拟触发与执行日志回放"
       metricsAssetType="MQ_TASK"
+      releaseAssetType="MQ_TASK"
       deepLinkParam="mqTaskId"
       canWrite={canWrite}
       fetchDetail={getMqTask}

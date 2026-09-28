@@ -8,6 +8,7 @@ import React from 'react';
 import { fetchAuthMe, mayBeLoggedIn } from '@/services/auth';
 import { clearAuthHint } from '@/utils/session';
 import UserHeaderActions from '@/components/UserHeaderActions';
+import CurrentEnvBadge from '@/components/flow/release/CurrentEnvBadge';
 
 // ============ Favicon 动态与多环境适配 ============
 (function () {
@@ -141,6 +142,7 @@ export const layout = ({
     },
     actionsRender: isLogin
       ? () => [
+          React.createElement(CurrentEnvBadge, { key: 'current-env' }),
           React.createElement(UserHeaderActions, {
             key: 'user-actions',
             displayName,

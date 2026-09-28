@@ -15,6 +15,7 @@ import org.yu.flow.module.open.repository.FlowOpenApiGrantRepository;
 import org.yu.flow.module.open.repository.FlowOpenCredentialRepository;
 import org.yu.flow.module.open.repository.FlowOpenPlatformRepository;
 import org.yu.flow.util.AesEncryptUtil;
+import org.yu.flow.util.AfterCommitExecutor;
 
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
@@ -95,13 +96,16 @@ public class OpenPlatformCache {
         grantsByPlatform.invalidateAll();
     }
 
+    /** 事务内调用时推迟到提交后，避免提交前被并发请求按旧数据重新加载进缓存 */
     public void publishRefresh() {
-        try {
-            stringRedisTemplate.convertAndSend(REFRESH_TOPIC, "REFRESH");
-        } catch (Exception e) {
-            log.warn("[OpenPlatformCache] 发布刷新失败: {}", e.getMessage());
-        }
-        invalidateAll();
+        AfterCommitExecutor.runOnce("open platform cache refresh", () -> {
+            try {
+                stringRedisTemplate.convertAndSend(REFRESH_TOPIC, "REFRESH");
+            } catch (Exception e) {
+                log.warn("[OpenPlatformCache] 发布刷新失败: {}", e.getMessage());
+            }
+            invalidateAll();
+        });
     }
 
     public void onRemoteRefresh() {

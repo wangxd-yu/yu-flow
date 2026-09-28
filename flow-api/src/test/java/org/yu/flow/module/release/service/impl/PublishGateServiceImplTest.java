@@ -21,6 +21,8 @@ import org.yu.flow.module.release.repository.FlowEnvRepository;
 import org.yu.flow.module.release.repository.FlowRegressionRunRepository;
 import org.yu.flow.module.release.repository.FlowRegressionSuiteRepository;
 import org.yu.flow.module.release.support.PublishGateException;
+import org.yu.flow.module.release.support.RegressionEvidenceContext;
+import org.yu.flow.module.release.support.ReleaseEnvironment;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 
@@ -69,6 +71,9 @@ class PublishGateServiceImplTest {
         // yuFlowProperties 是 @Resource 字段注入，用真实实例便于开关 allowIngressAuthNone
         props = new YuFlowProperties();
         ReflectionTestUtils.setField(service, "yuFlowProperties", props);
+        ReleaseEnvironment releaseEnvironment = new ReleaseEnvironment();
+        ReflectionTestUtils.setField(releaseEnvironment, "yuFlowProperties", props);
+        ReflectionTestUtils.setField(service, "releaseEnvironment", releaseEnvironment);
     }
 
     // ==================== 辅助 ====================
@@ -142,6 +147,20 @@ class PublishGateServiceImplTest {
     }
 
     @Test
+    @DisplayName("实例已配置 current-env：忽略请求里的 envCode，按实例环境检查")
+    void currentEnvConfigured_overridesRequestedEnv() {
+        props.getRelease().setCurrentEnv("prod");
+        when(flowApiRepository.existsById(ASSET_ID)).thenReturn(true);
+        when(flowEnvRepository.findByCode("PROD")).thenReturn(Optional.of(env(1, 0)));
+        when(flowApiRepository.findById(ASSET_ID)).thenReturn(Optional.of(api(null)));
+
+        PublishGateResultDTO result = service.check("API", ASSET_ID, "DEV");
+
+        assertEquals("PROD", result.getEnvCode());
+        verify(flowEnvRepository, never()).findByCode("DEV");
+    }
+
+    @Test
     @DisplayName("环境已停用：ENV_ENABLED FAIL")
     void envDisabled_gateFails() {
         when(flowApiRepository.existsById(ASSET_ID)).thenReturn(true);
@@ -209,6 +228,26 @@ class PublishGateServiceImplTest {
         assertTrue(result.isPassed());
         assertEquals("PASS", item(result, "REGRESSION_PASS").getStatus());
         assertEquals("PASS", item(result, "INGRESS_AUTH_NONE").getStatus());
+    }
+
+    @Test
+    @DisplayName("发布包导入期间：本环境无回归记录时认可包内来源环境回归结果")
+    void requireSuite_importedEvidence_gatePasses() {
+        when(flowApiRepository.existsById(ASSET_ID)).thenReturn(true);
+        when(flowEnvRepository.findByCode("DEV")).thenReturn(Optional.of(env(1, 1)));
+        when(flowApiRepository.findById(ASSET_ID)).thenReturn(Optional.of(api(null)));
+
+        PublishGateResultDTO result = RegressionEvidenceContext.runWith(
+                java.util.Map.of("API:" + ASSET_ID, "DEV 2026-09-27 10:00:00"),
+                () -> service.check("API", ASSET_ID, "DEV"));
+
+        assertTrue(result.isPassed());
+        PublishGateCheckItemDTO check = item(result, "REGRESSION_PASS");
+        assertEquals("PASS", check.getStatus());
+        assertTrue(check.getMessage().contains("来源环境回归"));
+        verifyNoInteractions(suiteRepository, runRepository);
+        // 导入流程之外证据不再生效
+        assertNull(RegressionEvidenceContext.find("API", ASSET_ID));
     }
 
     @Test

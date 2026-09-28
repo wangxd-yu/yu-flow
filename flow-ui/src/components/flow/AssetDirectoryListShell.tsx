@@ -6,9 +6,11 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { Button, message, Popconfirm } from 'antd';
-import { useLocation } from '@umijs/max';
+import { useAccess, useLocation } from '@umijs/max';
 import DirectoryTreeLayout, { type DirectoryBizType } from '@/components/DirectoryTreeLayout';
 import TableEmpty from '@/components/TableEmpty';
+import AddToReleaseModal from '@/components/flow/release/AddToReleaseModal';
+import useEditLocked from '@/components/flow/release/useEditLocked';
 import AssetExportModal from '@/components/flow/transfer/AssetExportModal';
 import AssetImportModal from '@/components/flow/transfer/AssetImportModal';
 import { batchAssetHealth, type AssetHealth } from '@/services/flow/assetMetrics';
@@ -90,6 +92,8 @@ export interface AssetDirectoryListShellProps<T extends { id: string; directoryI
    * <p>不传则不显示相关入口。</p>
    */
   transferAssetType?: 'SERVICE' | 'TASK';
+  /** 开启「加入版本单」批量操作，值为版本单资产类型；不传则不显示 */
+  releaseAssetType?: 'SERVICE' | 'TASK' | 'MQ_TASK';
   /** 表单弹层：仅在 visible 时渲染 */
   renderForm: (ctx: AssetFormContext<T>) => React.ReactNode;
   /** 页面级附加弹层（如手动调用 Modal），始终渲染 */
@@ -124,8 +128,12 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
     fitColumns = true,
     canWrite = true,
     transferAssetType,
+    releaseAssetType,
     children,
   } = props;
+  const access = useAccess() as Record<string, boolean>;
+  const canAddToRelease = !!releaseAssetType && !!access.canReleasePkgWrite;
+  const [releaseOpen, setReleaseOpen] = useState<boolean>(false);
 
   const location = useLocation();
   const actionRef = useRef<ActionType>();
@@ -138,6 +146,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
   const [formInitialTab, setFormInitialTab] = useState<string | undefined>();
   const [exportOpen, setExportOpen] = useState<boolean>(false);
   const [importOpen, setImportOpen] = useState<boolean>(false);
+  const editLocked = useEditLocked();
   // 空态区分：是否处于筛选（目录 / 搜索条件）
   const [emptyFiltered, setEmptyFiltered] = useState<boolean>(false);
 
@@ -233,7 +242,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
             className={fitColumns ? 'fh-table fh-table-fit' : 'fh-table'}
             headerTitle={`${listTitle} (${selectedDirectoryName || '全部'})`}
             tableLayout="fixed"
-            scroll={{ x: scrollX, y: 100000 }}
+            scroll={fitColumns ? { y: 100000 } : { x: scrollX, y: 100000 }}
             pagination={{
               defaultPageSize: 20,
               showSizeChanger: true,
@@ -256,6 +265,13 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
                   </Button>,
                 );
               }
+              if (canAddToRelease && selectedRowsState?.length > 0) {
+                actions.push(
+                  <Button key="addToRelease" onClick={() => setReleaseOpen(true)}>
+                    加入版本单
+                  </Button>,
+                );
+              }
               if (transferAssetType && selectedRowsState?.length > 0) {
                 actions.push(
                   <Button key="bundleExport" onClick={() => setExportOpen(true)}>
@@ -263,7 +279,7 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
                   </Button>,
                 );
               }
-              if (canWrite && transferAssetType) {
+              if (canWrite && transferAssetType && !editLocked) {
                 actions.push(
                   <Button key="bundleImport" onClick={() => setImportOpen(true)}>
                     导入资产包
@@ -353,6 +369,14 @@ function AssetDirectoryListShell<T extends { id: string; directoryId?: string }>
           },
         })}
 
+      {canAddToRelease && releaseAssetType && (
+        <AddToReleaseModal
+          open={releaseOpen}
+          assetType={releaseAssetType}
+          ids={selectedRowsState.map((r) => r.id).filter(Boolean)}
+          onCancel={() => setReleaseOpen(false)}
+        />
+      )}
       {transferAssetType && (
         <>
           <AssetExportModal

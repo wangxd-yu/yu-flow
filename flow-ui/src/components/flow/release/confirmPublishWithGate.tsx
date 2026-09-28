@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   checkPublishGate,
+  getCurrentEnv,
   listReleaseEnvs,
   type FlowEnv,
   type PublishGateResult,
@@ -46,11 +47,18 @@ export function confirmPublishWithGate(options: {
       const [loading, setLoading] = useState(false);
       const [open, setOpen] = useState(true);
       const [submitting, setSubmitting] = useState(false);
+      const [locked, setLocked] = useState(false);
 
       useEffect(() => {
         listReleaseEnvs()
           .then((list) => setEnvs(list?.length ? list : [{ id: 'dev', code: 'DEV', name: '开发' }]))
           .catch(() => setEnvs([{ id: 'dev', code: 'DEV', name: '开发' }]));
+        getCurrentEnv().then((cur) => {
+          if (cur?.locked) {
+            setLocked(true);
+            setCode(cur.code);
+          }
+        });
       }, []);
 
       useEffect(() => {
@@ -120,6 +128,7 @@ export function confirmPublishWithGate(options: {
                 style={{ width: 260 }}
                 value={code}
                 onChange={setCode}
+                disabled={locked}
                 options={envs.map((e) => ({
                   value: e.code,
                   label: `${e.name}（${e.code}）${e.requireSuitePass === 1 ? ' · 需回归' : ''}`,

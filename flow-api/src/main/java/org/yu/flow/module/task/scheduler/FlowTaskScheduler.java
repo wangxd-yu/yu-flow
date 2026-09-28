@@ -4,7 +4,9 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.util.FlowObjectMapperUtil;
+import org.yu.flow.util.SecretScope;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
@@ -114,10 +116,15 @@ public class FlowTaskScheduler {
      * 注册一个任务到调度器。
      * 若已存在同 taskId 的调度，先取消再重新注册。
      * <p>触发器 Cron 取自 {@code publishedSnapshot}，与运行 DSL 保持一致；草稿 Cron 不影响线上调度。
+     * <p>事务内调用时推迟到提交后执行，见 {@link AfterCommitExecutor}。
      *
      * @param task 任务定义
      */
     public void schedule(FlowTaskDO task) {
+        AfterCommitExecutor.run("schedule task " + (task != null ? task.getId() : null), () -> doSchedule(task));
+    }
+
+    private void doSchedule(FlowTaskDO task) {
         if (task == null || StrUtil.isBlank(task.getId())) {
             log.warn("[FlowTaskScheduler] 任务为空，跳过注册");
             return;
@@ -126,18 +133,18 @@ public class FlowTaskScheduler {
                 || StrUtil.isBlank(task.getPublishedSnapshot())) {
             log.info("[FlowTaskScheduler] 任务未发布，跳过注册: taskId={}, name={}",
                     task.getId(), task.getName());
-            cancel(task.getId());
+            doCancel(task.getId());
             return;
         }
         PublishedSnapshot snap = resolvePublishedSnapshot(task);
         String publishedCron = snap.cron();
         if (StrUtil.isBlank(publishedCron)) {
             log.warn("[FlowTaskScheduler] 发布快照中 Cron 为空，跳过注册: taskId={}", task.getId());
-            cancel(task.getId());
+            doCancel(task.getId());
             return;
         }
         // 幂等：先取消旧调度
-        cancel(task.getId());
+        doCancel(task.getId());
 
         try {
             CronTrigger trigger = new CronTrigger(publishedCron);
@@ -161,11 +168,21 @@ public class FlowTaskScheduler {
      * @param taskId 任务ID
      */
     public void cancel(String taskId) {
+        AfterCommitExecutor.run("cancel task " + taskId, () -> doCancel(taskId));
+    }
+
+    private void doCancel(String taskId) {
         ScheduledFuture<?> future = futures.remove(taskId);
         if (future != null) {
             future.cancel(false);
             log.info("[FlowTaskScheduler] 任务已取消: taskId={}", taskId);
         }
+    }
+
+    /** 本节点是否已注册该任务的调度 */
+    public boolean isScheduled(String taskId) {
+        ScheduledFuture<?> future = futures.get(taskId);
+        return future != null && !future.isCancelled();
     }
 
     /**
@@ -174,10 +191,12 @@ public class FlowTaskScheduler {
      * @param task 更新后的任务定义
      */
     public void reschedule(FlowTaskDO task) {
-        cancel(task.getId());
-        if (Boolean.TRUE.equals(task.getEnabled())) {
-            schedule(task);
-        }
+        AfterCommitExecutor.run("reschedule task " + task.getId(), () -> {
+            doCancel(task.getId());
+            if (Boolean.TRUE.equals(task.getEnabled())) {
+                doSchedule(task);
+            }
+        });
     }
 
     /**
@@ -202,7 +221,7 @@ public class FlowTaskScheduler {
         FlowTaskDO latestTask = flowTaskRepository.findById(taskId).orElse(null);
         if (latestTask == null) {
             log.warn("[FlowTaskScheduler] 任务不存在或已删除，跳过执行: taskId={}", taskId);
-            cancel(taskId);
+            doCancel(taskId);
             return;
         }
 
@@ -280,6 +299,12 @@ public class FlowTaskScheduler {
     }
 
     private boolean executeTaskWithTriggerType(FlowTaskDO latestTask, String triggerType) {
+        try (SecretScope secrets = SecretScope.open()) {
+            return executeInScope(latestTask, triggerType, secrets);
+        }
+    }
+
+    private boolean executeInScope(FlowTaskDO latestTask, String triggerType, SecretScope secrets) {
         long startTime = System.currentTimeMillis();
         String status = "RUNNING";
         String errorMsg = null;
@@ -351,8 +376,8 @@ public class FlowTaskScheduler {
                         .triggerType(triggerType)
                         .status(status)
                         .costTimeMs(costTimeMs)
-                        .errorMsg(errorMsg)
-                        .traceData(traceData)
+                        .errorMsg(secrets.mask(errorMsg))
+                        .traceData(secrets.mask(traceData))
                         .build();
                 flowTaskLogService.saveAsync(logDO);
             } catch (Exception e) {

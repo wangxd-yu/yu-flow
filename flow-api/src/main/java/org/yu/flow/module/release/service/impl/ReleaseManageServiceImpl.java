@@ -16,6 +16,7 @@ import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.exception.ValidationException;
+import org.yu.flow.log.audit.AuditDetail;
 import org.yu.flow.log.audit.service.AuditLogService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
@@ -24,6 +25,7 @@ import org.yu.flow.module.release.dto.*;
 import org.yu.flow.module.release.repository.*;
 import org.yu.flow.module.release.service.ReleaseManageService;
 import org.yu.flow.module.release.support.RegressionSecurity;
+import org.yu.flow.module.release.support.ReleaseEnvironment;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.domain.FlowTaskDO;
@@ -68,12 +70,26 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
     private AuditLogService auditLogService;
     @Resource
     private org.yu.flow.module.release.service.PublishGateService publishGateService;
+    @Resource
+    private ReleaseEnvironment releaseEnvironment;
+    @Resource
+    private org.yu.flow.module.release.support.AssetEditLockAspect assetEditLockAspect;
+    @Resource
+    private org.yu.flow.module.release.support.ReleaseSigning releaseSigning;
 
     @Override
     public List<FlowEnvDTO> listEnvs() {
         return flowEnvRepository.findByEnabledOrderBySortOrderAsc(1).stream()
                 .map(FlowEnvDTO::fromDO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public CurrentEnvDTO currentEnv() {
+        String code = releaseEnvironment.current();
+        String name = flowEnvRepository.findByCode(code).map(FlowEnvDO::getName).orElse(code);
+        return new CurrentEnvDTO(code, name, releaseEnvironment.isLocked(), assetEditLockAspect.isLocked(),
+                releaseSigning.key() != null, releaseSigning.required());
     }
 
     @Override
@@ -223,7 +239,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
         if (!Integer.valueOf(1).equals(suite.getEnabled())) {
             throw new ValidationException("套件已停用");
         }
-        String env = RegressionSecurity.normalizeEnvCode(envCode);
+        String env = releaseEnvironment.resolve(envCode);
         flowEnvRepository.findByCode(env)
                 .filter(e -> Integer.valueOf(1).equals(e.getEnabled()))
                 .orElseThrow(() -> new ValidationException("环境不可用: " + env));
@@ -297,8 +313,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
 
         try {
             auditLogService.record("REGRESSION_RUN", suite.getAssetType(), suite.getAssetId(),
-                    "{\"runId\":\"" + run.getId() + "\",\"env\":\"" + env
-                            + "\",\"status\":\"" + run.getStatus() + "\"}");
+                    AuditDetail.of("runId", run.getId(), "env", env, "status", run.getStatus()));
         } catch (Exception ignored) {
         }
 
@@ -461,7 +476,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
             throw new ValidationException("请求体不能为空");
         }
         String type = RegressionSecurity.normalizeAssetType(request.getAssetType());
-        String env = RegressionSecurity.normalizeEnvCode(request.getEnvCode());
+        String env = releaseEnvironment.resolve(request.getEnvCode());
         String missingPolicy = StrUtil.blankToDefault(request.getMissingSuitePolicy(), "SKIP")
                 .trim().toUpperCase(Locale.ROOT);
         if (!"SKIP".equals(missingPolicy) && !"FAIL".equals(missingPolicy)) {
@@ -547,9 +562,8 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
 
         try {
             auditLogService.record("REGRESSION_BATCH_RUN", type, ids.get(0),
-                    "{\"env\":\"" + env + "\",\"total\":" + ids.size()
-                            + ",\"passed\":" + passed + ",\"failed\":" + failed
-                            + ",\"skipped\":" + skipped + ",\"error\":" + error + "}");
+                    AuditDetail.of("env", env, "total", ids.size(), "passed", passed, "failed", failed,
+                            "skipped", skipped, "error", error));
         } catch (Exception ignored) {
         }
 

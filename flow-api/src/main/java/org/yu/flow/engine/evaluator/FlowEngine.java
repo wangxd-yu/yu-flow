@@ -15,6 +15,7 @@ import org.yu.flow.engine.model.step.*;
 import org.yu.flow.engine.service.SqlExecutorService;
 import org.yu.flow.module.api.service.FlowApiCrudService;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowExecutionService;
+import org.yu.flow.util.SecretScope;
 import org.yu.flow.util.ThrowableUtil;
 import org.springframework.stereotype.Component;
 import org.yu.flow.config.DemoModeGuard;
@@ -287,12 +288,21 @@ public class FlowEngine {
     }
 
     /**
-     * 执行流程（内部核心方法，支持全链路追踪和交互式调试）
+     * 执行流程（内部核心方法，支持全链路追踪和交互式调试）。
+     * <p>嵌套执行（如调用内部服务）复用外层的敏感值作用域，入口写日志时能脱敏整条调用链用到的值。</p>
      */
-    @SuppressWarnings("unchecked")
     private <T> T execute(String flowJson, Map<String, Object> args,
                           boolean traceEnabled, DebugSession debugSession,
                           String invokeSource, String sourceRef, String sourceName) throws JsonProcessingException {
+        try (SecretScope ignored = SecretScope.open()) {
+            return executeInScope(flowJson, args, traceEnabled, debugSession, invokeSource, sourceRef, sourceName);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T executeInScope(String flowJson, Map<String, Object> args,
+                                 boolean traceEnabled, DebugSession debugSession,
+                                 String invokeSource, String sourceRef, String sourceName) throws JsonProcessingException {
         FlowDefinition flowDefinition = resolveDefinition(flowJson);
 
         // 传递 traceEnabled 标记到上下文

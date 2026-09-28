@@ -1,6 +1,7 @@
 package org.yu.flow.module.sysmacro.cache;
 
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.module.sysmacro.domain.SysMacroDO;
 import org.yu.flow.module.sysmacro.repository.SysMacroRepository;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -8,8 +9,6 @@ import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
@@ -178,21 +177,11 @@ public class SysMacroCacheManager {
      * 触发 {@link #reloadAll()} 刷新本地缓存。</p>
      *
      * <p>发送失败时仅打日志，不影响业务主流程（降级策略：等待下次刷新或重启自动加载）。</p>
+     *
+     * <p>事务内推迟到提交后；同一事务多次调用只广播一次（全量刷新）。</p>
      */
     public void publishRefreshEvent() {
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            // 如果在事务中，注册同步器，在事务成功提交后发布
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    doPublishRefreshEvent();
-                }
-            });
-            log.debug("[SysMacroCacheManager] 检测到当前处于事务中，已注册事务提交后执行缓存刷新广播的回调。");
-        } else {
-            // 如果不在事务中，直接发布
-            doPublishRefreshEvent();
-        }
+        AfterCommitExecutor.runOnce("sys macro cache refresh", this::doPublishRefreshEvent);
     }
 
     /**

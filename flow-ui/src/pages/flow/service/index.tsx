@@ -353,6 +353,7 @@ const ServiceFlowManagement: React.FC = () => {
       emptyHint="沉淀可复用的编排流程，供接口 / 任务作为子流程调用"
       metricsAssetType="SERVICE"
       transferAssetType="SERVICE"
+      releaseAssetType="SERVICE"
       deepLinkParam="serviceId"
       canWrite={canWrite}
       fitColumns={false}

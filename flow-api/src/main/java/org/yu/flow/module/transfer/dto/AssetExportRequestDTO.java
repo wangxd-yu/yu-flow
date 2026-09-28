@@ -19,6 +19,22 @@ public class AssetExportRequestDTO {
 
     private List<String> taskIds;
 
+    private List<String> mqTaskIds;
+
+    private List<String> responseTemplateIds;
+
+    private List<String> pageIds;
+
+    private List<String> modelIds;
+
+    private List<String> sysMacroIds;
+
+    private List<String> sysConfigIds;
+
+    private List<String> openPlatformIds;
+
+    private List<String> alertRuleIds;
+
     /** 是否把 DSL 中引用到的其它接口 / 内部服务一并导出，默认 true */
     private Boolean includeDependencies;
 

@@ -9,6 +9,8 @@ import org.yu.flow.engine.model.FlowDefinition;
 import org.yu.flow.engine.model.step.HttpRequestStep;
 import org.yu.flow.log.third.domain.FlowThirdLogDO;
 import org.yu.flow.log.third.support.ThirdLogRecorder;
+import org.yu.flow.module.envvar.support.EnvVarRefs;
+import org.yu.flow.util.SecretMasker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,8 +20,11 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -87,6 +92,7 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
         try {
             // 1. 准备输入变量
             Map<String, Object> inputs = this.prepareInputs(step, context, flow);
+            injectEnvTemplateRefs(step, inputs, context);
 
             // 2. 构建 HttpUrl + SSRF 校验
             HttpUrl finalUrl = buildUrl(step, inputs);
@@ -202,9 +208,43 @@ public class HttpRequestStepExecutor extends AbstractStepExecutor<HttpRequestSte
         } finally {
             if (logging && logDO != null) {
                 logDO.setElapsedTime(System.currentTimeMillis() - startTime);
+                maskSecrets(logDO, context.getSecretValues());
                 ThirdLogRecorder.saveAsync(logDO);
             }
         }
+    }
+
+    /** URL / Header / Query / Body / 认证字段里的 {@code ${env.CODE}} */
+    private static void injectEnvTemplateRefs(HttpRequestStep step, Map<String, Object> inputs, ExecutionContext context) {
+        List<String> templates = new ArrayList<>();
+        templates.add(step.getUrl());
+        if (step.getHeaders() != null) {
+            templates.addAll(step.getHeaders().values());
+        }
+        if (step.getParams() != null) {
+            templates.addAll(step.getParams().values());
+        }
+        if (step.getBody() instanceof String bodyText) {
+            templates.add(bodyText);
+        }
+        templates.add(step.getAuthToken());
+        templates.add(step.getAuthUsername());
+        templates.add(step.getAuthPassword());
+        templates.add(step.getAuthApiKeyName());
+        templates.add(step.getAuthApiKeyValue());
+        EnvVarRefs.injectTemplateRefs(inputs, context, templates.toArray(new String[0]));
+    }
+
+    private static void maskSecrets(FlowThirdLogDO logDO, Set<String> secrets) {
+        if (secrets == null || secrets.isEmpty()) {
+            return;
+        }
+        logDO.setRequestUrl(SecretMasker.mask(logDO.getRequestUrl(), secrets));
+        logDO.setRequestParams(SecretMasker.mask(logDO.getRequestParams(), secrets));
+        logDO.setRequestHeaders(SecretMasker.mask(logDO.getRequestHeaders(), secrets));
+        logDO.setResponseBody(SecretMasker.mask(logDO.getResponseBody(), secrets));
+        logDO.setErrorMessage(SecretMasker.mask(logDO.getErrorMessage(), secrets));
+        logDO.setCurl(SecretMasker.mask(logDO.getCurl(), secrets));
     }
 
     /**

@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.module.envvar.support.EnvVarRefs;
 import org.yu.flow.module.transfer.dto.TransferRequirementDTO;
 import org.yu.flow.util.FlowObjectMapperUtil;
 
@@ -13,7 +14,7 @@ import java.util.Map;
 /**
  * 扫描 DSL，收集资产对目标环境外部资源的引用。
  *
- * <p>这些引用都是 code（数据源 code、MQ / OSS 连接 code），跨环境天然可用，
+ * <p>这些引用都是 code（数据源 code、MQ / OSS 连接 code、环境变量名），跨环境天然可用，
  * 但目标环境必须已经建好同 code 的资源，否则接口一跑就报「数据源未找到」。</p>
  */
 @Slf4j
@@ -33,6 +34,7 @@ public final class BundleRequirementScanner {
         if (StrUtil.isBlank(dsl)) {
             return;
         }
+        EnvVarRefs.scan(dsl).forEach(code -> add(acc, TransferRequirementDTO.KIND_ENV_VAR, code, assetName));
         try {
             walk(MAPPER.readTree(dsl), assetName, acc, 0);
         } catch (Exception e) {

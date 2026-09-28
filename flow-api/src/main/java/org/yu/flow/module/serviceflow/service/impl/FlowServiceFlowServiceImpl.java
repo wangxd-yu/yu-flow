@@ -76,6 +76,9 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     @Resource
     private org.yu.flow.module.release.service.PublishGateService publishGateService;
 
+    @Resource
+    private org.yu.flow.module.release.support.ReleaseEnvironment releaseEnvironment;
+
     @Override
     @Transactional
     public FlowServiceFlowDO save(FlowServiceFlowDO entity) {
@@ -251,7 +254,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
         flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        String env = org.yu.flow.module.release.support.RegressionSecurity.normalizeEnvCode(envCode);
+        String env = releaseEnvironment.resolve(envCode);
         auditLogService.record("SERVICE_PUBLISH", "SERVICE", id,
                 "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName())
                         + "\",\"env\":\"" + env + "\"}");

@@ -52,6 +52,8 @@ export default function access(initialState: InitialStateType) {
     canTemplate: can('sys:template:view', 'sys:template:write', '*'),
     canMacro: can('sys:macro:view', 'sys:macro:write', '*'),
     canConfig: can('sys:config:view', 'sys:config:write', '*'),
+    canEnv: can('sys:env:view', 'sys:env:write', '*'),
+    canEnvWrite: can('sys:env:write', '*'),
     canHost: can('sys:host:view', 'sys:host:write', '*'),
     canHostWrite: can('sys:host:write', '*'),
     canUser: can('sys:user:view', 'sys:user:write', '*'),
@@ -59,6 +61,19 @@ export default function access(initialState: InitialStateType) {
     canRole: can('sys:role:view', 'sys:role:write', '*'),
     canRoleWrite: can('sys:role:write', '*'),
     canDocs: can('docs:view', '*'),
+    canReleasePkg: can('flow:release:pkg:view', 'flow:release:pkg:edit', '*'),
+    canReleasePkgWrite: can('flow:release:pkg:edit', '*'),
+    canReleaseImport: can('flow:release:import', '*'),
+    canReleaseRollback: can('flow:release:rollback', '*'),
+    canReleaseImportLog: can('flow:release:import', 'flow:release:rollback', 'flow:release:pkg:view', '*'),
+    /** 版本发布父菜单：任一子权限 */
+    canReleaseGroup: can(
+      'flow:release:pkg:view',
+      'flow:release:pkg:edit',
+      'flow:release:import',
+      'flow:release:rollback',
+      '*',
+    ),
     /** 流程资产父菜单：任一子权限（含 MQ 任务；OSS 上传配置仅模块启用时计入） */
     canAssetGroup:
       can(
@@ -107,6 +122,8 @@ export default function access(initialState: InitialStateType) {
       'sys:macro:write',
       'sys:config:view',
       'sys:config:write',
+      'sys:env:view',
+      'sys:env:write',
       'sys:host:view',
       'sys:host:write',
       'sys:user:view',

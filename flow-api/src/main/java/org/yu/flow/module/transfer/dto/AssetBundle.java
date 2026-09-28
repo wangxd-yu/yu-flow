@@ -3,6 +3,12 @@ package org.yu.flow.module.transfer.dto;
 import lombok.Data;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
+import org.yu.flow.module.model.domain.FlowModelInfoDO;
+import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
+import org.yu.flow.module.page.domain.PageInfoDO;
+import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;
+import org.yu.flow.module.sysconfig.domain.SysConfigDO;
+import org.yu.flow.module.sysmacro.domain.SysMacroDO;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 
@@ -22,7 +28,11 @@ import java.util.List;
 public class AssetBundle {
 
     public static final String KIND = "yu-flow/asset-bundle";
-    public static final int SCHEMA_VERSION = 1;
+    /**
+     * 2：新增 mqTasks / responseTemplates / excelTemplates；
+     * 3：新增 pages / models / sysMacros / sysConfigs / openPlatforms / alertRules
+     */
+    public static final int SCHEMA_VERSION = 3;
 
     /** 包格式版本，导入时校验 */
     private Integer schemaVersion;
@@ -47,6 +57,28 @@ public class AssetBundle {
     private List<FlowServiceFlowDO> services = new ArrayList<>();
 
     private List<FlowTaskDO> tasks = new ArrayList<>();
+
+    private List<FlowMqTaskDO> mqTasks = new ArrayList<>();
+
+    /** 显式选中的响应模板；未随包的模板仍作为依赖在 {@link #requirements} 中列出 */
+    private List<ResponseTemplateDO> responseTemplates = new ArrayList<>();
+
+    private List<BundleExcelTemplate> excelTemplates = new ArrayList<>();
+
+    private List<PageInfoDO> pages = new ArrayList<>();
+
+    /** 只迁元数据，业务表结构由 DBA 按既有流程变更 */
+    private List<FlowModelInfoDO> models = new ArrayList<>();
+
+    /** 按 macroCode 匹配目标环境 */
+    private List<SysMacroDO> sysMacros = new ArrayList<>();
+
+    /** 按 configKey 匹配目标环境；敏感键导出与导入两侧都会拦截 */
+    private List<SysConfigDO> sysConfigs = new ArrayList<>();
+
+    private List<BundleOpenPlatform> openPlatforms = new ArrayList<>();
+
+    private List<BundleAlertRule> alertRules = new ArrayList<>();
 
     private List<BundleRegressionSuite> regressionSuites = new ArrayList<>();
 

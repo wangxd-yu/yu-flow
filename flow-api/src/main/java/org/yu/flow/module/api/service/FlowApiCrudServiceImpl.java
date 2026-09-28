@@ -8,6 +8,7 @@ import org.yu.flow.auto.dto.PageBean;
 import org.yu.flow.auto.util.JwtTokenUtil;
 import org.yu.flow.config.FlowApiCacheManager;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.domain.FlowApiExcelTemplateDO;
 import org.yu.flow.module.api.dto.BatchApplyDirPrefixResult;
@@ -97,6 +98,9 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
     @Resource
     private org.yu.flow.module.release.service.PublishGateService publishGateService;
+
+    @Resource
+    private org.yu.flow.module.release.support.ReleaseEnvironment releaseEnvironment;
 
     @Resource
     private OpenPlatformCache openPlatformCache;
@@ -1003,10 +1007,11 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         flowAssetVersionService.append(
                 AssetBizType.API, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
 
-        // 刷新缓存，线上生效
+        // 刷新缓存，线上生效；响应缓存 key 不含版本，不清掉会继续返回旧版本结果
+        evictResponseCacheAfterCommit(id);
         flowApiCacheManager.publishRefreshEvent();
         notifyRefIndex();
-        String env = org.yu.flow.module.release.support.RegressionSecurity.normalizeEnvCode(envCode);
+        String env = releaseEnvironment.resolve(envCode);
         auditLogService.record("API_PUBLISH", "API", id,
                 "{\"method\":\"" + StrUtil.nullToEmpty(api.getMethod())
                         + "\",\"url\":\"" + StrUtil.nullToEmpty(api.getUrl())
@@ -1030,7 +1035,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         api.setPublishedSnapshot(null);
         flowApiRepository.save(api);
 
-        apiResponseCacheService.evictAll(id);
+        evictResponseCacheAfterCommit(id);
         flowApiCacheManager.publishRefreshEvent();
         // 授权保留但网关 404；刷新开放缓存以便文档/授权视图尽快感知
         try {
@@ -1099,10 +1104,15 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         flowAssetVersionService.append(
                 AssetBizType.API, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
                 "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
-        apiResponseCacheService.evictAll(id);
+        evictResponseCacheAfterCommit(id);
         flowApiCacheManager.publishRefreshEvent();
         notifyRefIndex();
         return api;
+    }
+
+    /** 提交前清缓存，切换间隙的请求会把旧版本结果重新写回缓存 */
+    private void evictResponseCacheAfterCommit(String apiId) {
+        AfterCommitExecutor.run("evict api response cache " + apiId, () -> apiResponseCacheService.evictAll(apiId));
     }
 
     /**

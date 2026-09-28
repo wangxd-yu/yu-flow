@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
+import org.yu.flow.util.SecretMasker;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -76,7 +77,8 @@ public class DebugStatusDTO {
 
         FlowTrace active = session.getActiveTrace();
         attachPagedTrace(dto, active, offset, limit);
-        return dto;
+        // 挂起时的变量快照与步骤输出同样可能带出敏感环境变量
+        return active == null ? dto : SecretMasker.maskCopy(dto, active.getSecretValues());
     }
 
     private static void attachPagedTrace(DebugStatusDTO dto, FlowTrace source, int offset, int limit) {

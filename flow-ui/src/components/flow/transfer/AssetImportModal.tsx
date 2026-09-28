@@ -53,6 +53,7 @@ const ACTION_COLORS: Record<TransferAction, string> = {
   UPDATE: 'blue',
   SKIP: 'default',
   CONFLICT: 'red',
+  OFFLINE: 'volcano',
 };
 
 /** 统计卡片配色：与表格里的处理标签保持同一套语义色 */
@@ -61,6 +62,7 @@ const ACTION_ACCENTS: Record<TransferAction, string> = {
   UPDATE: '#1677ff',
   SKIP: '#8c8c8c',
   CONFLICT: '#ff4d4f',
+  OFFLINE: '#fa541c',
 };
 
 const ACTION_HINTS: Record<TransferAction, string> = {
@@ -68,6 +70,7 @@ const ACTION_HINTS: Record<TransferAction, string> = {
   UPDATE: '同 ID 已存在，将覆盖草稿',
   SKIP: '保留目标环境现状，不做改动',
   CONFLICT: '存在占用或校验不通过，需先处理',
+  OFFLINE: '撤销发布 / 停用，不删除数据',
 };
 
 const MAX_BUNDLE_BYTES = 20 * 1024 * 1024;
@@ -427,6 +430,7 @@ const AssetImportModal: React.FC<Props> = ({ open, onCancel, onSuccess }) => {
                       {missing.map((r) => (
                         <li key={`${r.kind}:${r.key}`}>
                           {REQUIREMENT_LABELS[r.kind] || r.kind}：<code>{r.key}</code>
+                          {r.remark ? ` ${r.remark}` : ''}
                           {r.usedBy?.length ? `（被 ${r.usedBy.join('、')} 引用）` : ''}
                         </li>
                       ))}

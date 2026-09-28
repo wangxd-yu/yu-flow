@@ -87,6 +87,34 @@ export async function listReleaseEnvs(): Promise<FlowEnv[]> {
   return (await request(`${BASE}/envs`, { method: 'GET' })) || [];
 }
 
+export interface CurrentEnv {
+  code: string;
+  name: string;
+  /** 部署时已配置 yu.flow.release.current-env：门禁/回归一律按本实例环境，前端不可选 */
+  locked: boolean;
+  /** 本实例锁定资产编辑，变更只能通过发布包导入 */
+  editLocked?: boolean;
+  /** 本实例配置了发布包签名密钥 */
+  signingEnabled?: boolean;
+  /** 本实例导入发布包必须带有效签名 */
+  signatureRequired?: boolean;
+}
+
+let currentEnvPromise: Promise<CurrentEnv | null> | null = null;
+
+/** 本实例环境，部署期固定，整个会话只取一次；失败不缓存以便下次重试 */
+export function getCurrentEnv(): Promise<CurrentEnv | null> {
+  if (!currentEnvPromise) {
+    currentEnvPromise = request<CurrentEnv>(`${BASE}/current-env`, { method: 'GET' })
+      .then((r) => r || null)
+      .catch(() => {
+        currentEnvPromise = null;
+        return null;
+      });
+  }
+  return currentEnvPromise;
+}
+
 export async function checkPublishGate(params: {
   assetType: string;
   assetId: string;

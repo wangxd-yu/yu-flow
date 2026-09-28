@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.util.ContentHashUtil;
+import org.yu.flow.util.SecretMasker;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -66,7 +67,7 @@ public final class TracePersistUtil {
     }
 
     /**
-     * 序列化并在超限时递进收缩，保证 DB 行可控。
+     * 序列化并在超限时递进收缩，保证 DB 行可控；本次执行登记过的敏感值按值脱敏。
      */
     public static String serializeForPersist(
             FlowTrace trace,
@@ -76,6 +77,19 @@ public final class TracePersistUtil {
         if (trace == null || mapper == null) {
             return null;
         }
+        return SecretMasker.mask(serializeWithinLimit(trace, dslContent, mapper, options), trace.getSecretValues());
+    }
+
+    /** 调试接口直接返回轨迹：同样按值脱敏本次执行用到的敏感值（返回副本，不改原对象） */
+    public static FlowTrace maskedForResponse(FlowTrace trace) {
+        return trace == null ? null : SecretMasker.maskCopy(trace, trace.getSecretValues());
+    }
+
+    private static String serializeWithinLimit(
+            FlowTrace trace,
+            String dslContent,
+            ObjectMapper mapper,
+            PersistOptions options) {
         PersistOptions opts = options != null ? options : PersistOptions.DEFAULTS;
         prepareForPersist(trace, dslContent, opts);
 

@@ -38,6 +38,20 @@ yu:
     # 引导管理员口令：必须通过环境变量注入，勿使用弱默认
     password: ${YU_FLOW_ADMIN_PASSWORD:}
     demo-mode: ${YU_FLOW_DEMO_MODE:false}
+    # 本实例所属环境（flow_env.code，如 DEV / PROD）。配置后发布门禁、回归按本实例环境判定，
+    # 前端顶栏显示环境标识；留空则保持按请求选择逻辑环境的旧行为
+    release:
+      current-env: ${YU_FLOW_CURRENT_ENV:}
+      # 发布包签名密钥（两套环境配置同一值）；配置后导出带签名、导入强制验签
+      signing-key: ${YU_FLOW_RELEASE_SIGNING_KEY:}
+      # 轮换期间仍认可的旧签名密钥（逗号分隔，只校验不签名）
+      previous-signing-keys: ${YU_FLOW_RELEASE_PREVIOUS_SIGNING_KEYS:}
+      # 导入是否必须带有效签名；留空时 PROD 或开启编辑锁的实例自动要求
+      require-signature: ${YU_FLOW_RELEASE_REQUIRE_SIGNATURE:}
+      # 保留导入前备份的成功导入记录条数，更早记录只留档不留备份
+      backup-retention: ${YU_FLOW_RELEASE_BACKUP_RETENTION:10}
+      # 锁定资产编辑：开启后本实例只能通过发布包导入变更编排资产（生产建议开启）
+      lock-asset-editing: ${YU_FLOW_LOCK_ASSET_EDITING:false}
     demo:
       max-steps: 200
       max-for-loop-items: 50
@@ -49,6 +63,9 @@ yu:
       strict-mode: true
       enable-trace: false
       groovy-script-cache-size: ${YU_FLOW_GROOVY_CACHE_SIZE:256}
+      # JavaScript 沙箱：单次求值语句数上限与墙钟超时（防死循环），≤0 不限制
+      script-statement-limit: ${YU_FLOW_SCRIPT_STATEMENT_LIMIT:2000000}
+      script-timeout-ms: ${YU_FLOW_SCRIPT_TIMEOUT_MS:10000}
       definition-cache-max-size: ${YU_FLOW_DEFINITION_CACHE_SIZE:256}
       definition-cache-expire-minutes: ${YU_FLOW_DEFINITION_CACHE_EXPIRE_MINUTES:60}
       pool-core-size: ${YU_FLOW_ENGINE_POOL_CORE:0}

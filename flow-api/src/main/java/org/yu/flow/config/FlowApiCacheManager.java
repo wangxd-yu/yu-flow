@@ -3,13 +3,12 @@ package org.yu.flow.config;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.AntPathMatcher;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 
@@ -329,21 +328,11 @@ public class FlowApiCacheManager {
      * 避免其他节点读取到未提交的数据导致缓存不一致。</p>
      *
      * <p>发送失败时仅打日志，不影响业务主流程（降级策略：等待下次刷新或重启自动加载）。</p>
+     *
+     * <p>刷新是全量重载，同一事务内多次调用（如整批导入发布）只在提交后广播一次。</p>
      */
     public void publishRefreshEvent() {
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            // 如果在事务中，注册同步器，在事务成功提交后再发布
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    doPublishRefreshEvent();
-                }
-            });
-            log.debug("[FlowApiCacheManager] 检测到当前处于事务中，已注册事务提交后执行缓存刷新广播的回调。");
-        } else {
-            // 如果不在事务中，直接发布
-            doPublishRefreshEvent();
-        }
+        AfterCommitExecutor.runOnce("flow api route refresh", this::doPublishRefreshEvent);
     }
 
     /**

@@ -18,6 +18,7 @@ import {
   createRegressionSuite,
   deleteRegressionCase,
   deleteRegressionSuite,
+  getCurrentEnv,
   getRegressionSuite,
   listReleaseEnvs,
   pageRegressionSuites,
@@ -51,6 +52,7 @@ export default function RegressionSuitePanel({
   const [activeSuite, setActiveSuite] = useState<RegressionSuite | null>(null);
   const [envs, setEnvs] = useState<FlowEnv[]>([]);
   const [envCode, setEnvCode] = useState('DEV');
+  const [envLocked, setEnvLocked] = useState(false);
   const [lastRun, setLastRun] = useState<RegressionRun | null>(null);
   const [caseModalOpen, setCaseModalOpen] = useState(false);
   const [caseForm] = Form.useForm();
@@ -74,6 +76,12 @@ export default function RegressionSuitePanel({
     listReleaseEnvs()
       .then((list) => setEnvs(list || []))
       .catch(() => setEnvs([]));
+    getCurrentEnv().then((cur) => {
+      if (cur?.locked) {
+        setEnvLocked(true);
+        setEnvCode(cur.code);
+      }
+    });
   }, [open, reload]);
 
   const openSuite = async (id: string) => {
@@ -146,6 +154,7 @@ export default function RegressionSuitePanel({
             style={{ width: 160 }}
             value={envCode}
             onChange={setEnvCode}
+            disabled={envLocked}
             options={(envs.length ? envs : [{ code: 'DEV', name: '开发' }]).map((e) => ({
               value: e.code,
               label: `${e.name}（${e.code}）`,

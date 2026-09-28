@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `flow_db_connection` (
   `driver_class_name` varchar(200) NOT NULL COMMENT '驱动类名',
   `url` varchar(500) NOT NULL COMMENT 'JDBC URL',
   `username` varchar(100) NOT NULL COMMENT '用户名',
-  `password` varchar(100) NOT NULL COMMENT '密码',
+  `password` varchar(512) NOT NULL COMMENT '密码（AES 密文）',
   `initial_size` int DEFAULT 5 COMMENT '初始连接数',
   `min_idle` int DEFAULT 5 COMMENT '最小空闲连接',
   `max_active` int DEFAULT 20 COMMENT '最大活动连接',

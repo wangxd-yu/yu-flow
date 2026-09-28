@@ -40,26 +40,26 @@ public class AlertController {
     }
 
     @PostMapping("/channels")
-    @RequirePerm("flow:alert:edit")
+    @RequirePerm({"flow:alert:edit", "flow:conn:write"})
     public R<AlertChannelDO> createChannel(@RequestBody SaveAlertChannelDTO dto) {
         return R.ok(alertManageService.createChannel(dto));
     }
 
     @PutMapping("/channels/{id}")
-    @RequirePerm("flow:alert:edit")
+    @RequirePerm({"flow:alert:edit", "flow:conn:write"})
     public R<AlertChannelDO> updateChannel(@PathVariable String id, @RequestBody SaveAlertChannelDTO dto) {
         return R.ok(alertManageService.updateChannel(id, dto));
     }
 
     @DeleteMapping("/channels/{id}")
-    @RequirePerm("flow:alert:edit")
+    @RequirePerm({"flow:alert:edit", "flow:conn:write"})
     public R<Void> deleteChannel(@PathVariable String id) {
         alertManageService.deleteChannel(id);
         return R.ok();
     }
 
     @PostMapping("/channels/{id}/test")
-    @RequirePerm("flow:alert:edit")
+    @RequirePerm({"flow:alert:edit", "flow:conn:write"})
     public R<Map<String, Object>> testChannel(@PathVariable String id) {
         boolean ok = alertManageService.testChannel(id);
         return R.ok(Map.of("success", ok));

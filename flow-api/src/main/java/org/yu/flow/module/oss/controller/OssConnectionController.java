@@ -21,7 +21,7 @@ import org.yu.flow.module.oss.config.ConditionalOnOssEnabled;
 @ConditionalOnOssEnabled
 @RestController
 @RequestMapping("/flow-api/oss/connections")
-@RequirePerm({"flow:oss:view", "flow:oss:write"})
+@RequirePerm({"flow:oss:view", "flow:oss:write", "flow:conn:write"})
 public class OssConnectionController {
 
     @Resource

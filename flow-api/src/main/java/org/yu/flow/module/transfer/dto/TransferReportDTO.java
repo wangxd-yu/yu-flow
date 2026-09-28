@@ -24,6 +24,8 @@ public class TransferReportDTO {
 
     private int conflictCount;
 
+    private int offlineCount;
+
     private String exportedAt;
 
     private String exportedBy;

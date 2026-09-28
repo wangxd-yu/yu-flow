@@ -49,6 +49,18 @@ public interface DynamicDataSourceService {
 
     boolean disableDataSource(String id);
 
+    /** 按编码查数据库类型（含停用）；不存在返回 null */
+    String findDbTypeByCode(String code);
+
+    /** 编码是否已存在（含停用） */
+    boolean existsByCode(String code);
+
+    /**
+     * 创建停用状态的占位数据源，供运维补填地址与账号后启用。
+     * <p>停用行不会被加载成连接池，空地址不会影响启动。</p>
+     */
+    boolean createPlaceholder(String code, String dbType);
+
     /**
      * 在指定数据源上执行操作（通过 code 定位缓存中的数据源）
      *

@@ -138,6 +138,37 @@ export default defineConfig({
       ],
     },
 
+    // ── 版本发布：版本单 → 导出发布包 → 目标环境导入 ──
+    {
+      name: '版本发布',
+      icon: 'RocketOutlined',
+      key: 'menu-release',
+      access: 'canReleaseGroup',
+      routes: [
+        {
+          name: '版本单',
+          icon: 'ProfileOutlined',
+          path: '/release/plans',
+          component: './release/plans',
+          access: 'canReleasePkg',
+        },
+        {
+          name: '发布包导入',
+          icon: 'ImportOutlined',
+          path: '/release/import',
+          component: './release/import',
+          access: 'canReleaseImport',
+        },
+        {
+          name: '导入记录',
+          icon: 'HistoryOutlined',
+          path: '/release/imports',
+          component: './release/imports',
+          access: 'canReleaseImportLog',
+        },
+      ],
+    },
+
     // ── 运行观测：运行 / 告警 / 开放 ──
     {
       name: '运行观测',
@@ -241,6 +272,13 @@ export default defineConfig({
           path: '/sys-config/manage',
           component: './SysConfig',
           access: 'canConfig',
+        },
+        {
+          name: '环境变量',
+          icon: 'EnvironmentOutlined',
+          path: '/sys-env/manage',
+          component: './SysEnvVariable',
+          access: 'canEnv',
         },
         {
           name: '宿主机配置',

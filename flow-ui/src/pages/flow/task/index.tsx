@@ -375,6 +375,7 @@ const TaskManagement: React.FC = () => {
       emptyHint="用 Cron 表达式定时执行编排流程，支持手动触发与执行日志"
       metricsAssetType="TASK"
       transferAssetType="TASK"
+      releaseAssetType="TASK"
       deepLinkParam="taskId"
       canWrite={canWrite}
       fitColumns={false}

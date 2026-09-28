@@ -7,8 +7,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
@@ -96,6 +95,17 @@ public class FlowReferenceIndex {
 
     public List<String> findApiReferenceLabels(String apiId) {
         return labelsOf("api:" + apiId);
+    }
+
+    /**
+     * 引用了目标的资产（草稿或发布快照中引用均算），返回副本。
+     *
+     * @param targetType api / service
+     */
+    public Set<SourceRef> findReferrers(String targetType, String targetId) {
+        ensureReady();
+        Set<SourceRef> set = reverse.get(targetType + ":" + targetId);
+        return set == null ? Set.of() : Set.copyOf(set);
     }
 
     private List<String> labelsOf(String targetKey) {
@@ -212,20 +222,12 @@ public class FlowReferenceIndex {
         }
     }
 
-    /** 事务提交后本节点全量重建并广播（DSL 变更后调用） */
+    /** 事务提交后本节点全量重建并广播（DSL 变更后调用）；同一事务多次调用只重建一次 */
     public void scheduleRebuildBroadcastAfterCommit() {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    rebuildAll();
-                    publishRefreshEvent();
-                }
-            });
-        } else {
+        AfterCommitExecutor.runOnce("asset reference index rebuild", () -> {
             rebuildAll();
             publishRefreshEvent();
-        }
+        });
     }
 
     public void publishRefreshEvent() {

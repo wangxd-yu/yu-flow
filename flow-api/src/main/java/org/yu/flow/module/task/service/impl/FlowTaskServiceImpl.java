@@ -79,6 +79,9 @@ public class FlowTaskServiceImpl implements FlowTaskService {
     @Resource
     private org.yu.flow.module.release.service.PublishGateService publishGateService;
 
+    @Resource
+    private org.yu.flow.module.release.support.ReleaseEnvironment releaseEnvironment;
+
     private void notifyRefIndex() {
         flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
     }
@@ -291,7 +294,7 @@ public class FlowTaskServiceImpl implements FlowTaskService {
             flowTaskScheduler.reschedule(saved);
         }
         notifyRefIndex();
-        String env = org.yu.flow.module.release.support.RegressionSecurity.normalizeEnvCode(envCode);
+        String env = releaseEnvironment.resolve(envCode);
         auditLogService.record("TASK_PUBLISH", "TASK", id,
                 "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName())
                         + "\",\"cron\":\"" + StrUtil.nullToEmpty(saved.getCron())

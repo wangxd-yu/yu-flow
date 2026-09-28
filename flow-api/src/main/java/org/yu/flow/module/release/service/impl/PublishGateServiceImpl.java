@@ -2,6 +2,7 @@ package org.yu.flow.module.release.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
+import org.yu.flow.log.audit.AuditDetail;
 import org.yu.flow.log.audit.service.AuditLogService;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.module.api.domain.FlowApiDO;
@@ -17,6 +18,8 @@ import org.yu.flow.module.release.repository.FlowRegressionRunRepository;
 import org.yu.flow.module.release.repository.FlowRegressionSuiteRepository;
 import org.yu.flow.module.release.service.PublishGateService;
 import org.yu.flow.module.release.support.PublishGateException;
+import org.yu.flow.module.release.support.RegressionEvidenceContext;
+import org.yu.flow.module.release.support.ReleaseEnvironment;
 import org.yu.flow.module.release.support.RegressionSecurity;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
@@ -54,10 +57,13 @@ public class PublishGateServiceImpl implements PublishGateService {
     @Resource
     private YuFlowProperties yuFlowProperties;
 
+    @Resource
+    private ReleaseEnvironment releaseEnvironment;
+
     @Override
     public PublishGateResultDTO check(String assetType, String assetId, String envCode) {
         String type = RegressionSecurity.normalizeAssetType(assetType);
-        String env = RegressionSecurity.normalizeEnvCode(envCode);
+        String env = releaseEnvironment.resolve(envCode);
         if (StrUtil.isBlank(assetId)) {
             return PublishGateResultDTO.builder()
                     .assetType(type)
@@ -89,7 +95,15 @@ public class PublishGateServiceImpl implements PublishGateService {
 
         FlowEnvDO envDO = envOpt.orElse(null);
         boolean requireSuite = envDO != null && Integer.valueOf(1).equals(envDO.getRequireSuitePass());
-        if (!requireSuite) {
+        String importedEvidence = requireSuite ? RegressionEvidenceContext.find(type, assetId) : null;
+        if (importedEvidence != null) {
+            checks.add(PublishGateCheckItemDTO.builder()
+                    .code("REGRESSION_PASS")
+                    .name("回归通过")
+                    .status("PASS")
+                    .message("认可发布包携带的来源环境回归结果：" + importedEvidence)
+                    .build());
+        } else if (!requireSuite) {
             checks.add(PublishGateCheckItemDTO.builder()
                     .code("REGRESSION_PASS")
                     .name("回归通过")
@@ -181,8 +195,7 @@ public class PublishGateServiceImpl implements PublishGateService {
         if (!result.isPassed()) {
             try {
                 auditLogService.record("PUBLISH_GATE_BLOCKED", assetType, assetId,
-                        "{\"env\":\"" + result.getEnvCode() + "\",\"msg\":\""
-                                + StrUtil.nullToEmpty(result.getMessage()).replace("\"", "'") + "\"}");
+                        AuditDetail.of("env", result.getEnvCode(), "msg", StrUtil.nullToEmpty(result.getMessage())));
             } catch (Exception ignored) {
             }
             throw new PublishGateException(result);

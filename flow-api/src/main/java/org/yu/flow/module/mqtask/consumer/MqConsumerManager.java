@@ -32,7 +32,9 @@ import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskLogDO;
 import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
 import org.yu.flow.module.mqtask.service.FlowMqTaskLogService;
+import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.util.FlowObjectMapperUtil;
+import org.yu.flow.util.SecretScope;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
@@ -153,10 +155,15 @@ public class MqConsumerManager {
      * 注册一个任务的消费订阅。
      * 若已存在同 taskId 的订阅，先取消再重新订阅。
      * <p>订阅配置取自 {@code publishedSnapshot}，与运行 DSL 保持一致；草稿配置不影响线上订阅。
+     * <p>事务内调用时推迟到提交后执行，见 {@link AfterCommitExecutor}。
      *
      * @param task 任务定义
      */
     public void subscribe(FlowMqTaskDO task) {
+        AfterCommitExecutor.run("subscribe mq task " + (task != null ? task.getId() : null), () -> doSubscribe(task));
+    }
+
+    private void doSubscribe(FlowMqTaskDO task) {
         if (task == null || StrUtil.isBlank(task.getId())) {
             log.warn("[MqConsumerManager] 任务为空，跳过订阅");
             return;
@@ -169,17 +176,17 @@ public class MqConsumerManager {
                 || StrUtil.isBlank(task.getPublishedSnapshot())) {
             log.info("[MqConsumerManager] 任务未发布，跳过订阅: taskId={}, name={}",
                     task.getId(), task.getName());
-            cancel(task.getId());
+            doCancel(task.getId());
             return;
         }
         PublishedSnapshot snap = resolvePublishedSnapshot(task);
         if (StrUtil.isBlank(snap.connectionCode()) || StrUtil.isBlank(snap.topic())) {
             log.warn("[MqConsumerManager] 发布快照缺少连接编码或 topic，跳过订阅: taskId={}", task.getId());
-            cancel(task.getId());
+            doCancel(task.getId());
             return;
         }
         // 幂等：先取消旧订阅
-        cancel(task.getId());
+        doCancel(task.getId());
 
         try {
             MqConnectionSpec spec = mqConnectionService.buildSpec(snap.connectionCode());
@@ -205,6 +212,10 @@ public class MqConsumerManager {
      * @param taskId 任务ID
      */
     public void cancel(String taskId) {
+        AfterCommitExecutor.run("cancel mq task " + taskId, () -> doCancel(taskId));
+    }
+
+    private void doCancel(String taskId) {
         MqSubscription subscription = subscriptions.remove(taskId);
         if (subscription != null) {
             try {
@@ -222,10 +233,12 @@ public class MqConsumerManager {
      * @param task 更新后的任务定义
      */
     public void resubscribe(FlowMqTaskDO task) {
-        cancel(task.getId());
-        if (Boolean.TRUE.equals(task.getEnabled())) {
-            subscribe(task);
-        }
+        AfterCommitExecutor.run("resubscribe mq task " + task.getId(), () -> {
+            doCancel(task.getId());
+            if (Boolean.TRUE.equals(task.getEnabled())) {
+                doSubscribe(task);
+            }
+        });
     }
 
     /** 订阅是否在运行（管理页展示消费状态） */
@@ -290,7 +303,7 @@ public class MqConsumerManager {
             FlowMqTaskDO latestTask = flowMqTaskRepository.findById(taskId).orElse(null);
             if (latestTask == null) {
                 log.warn("[MqConsumerManager] 任务不存在或已删除，取消订阅: taskId={}", taskId);
-                cancel(taskId);
+                doCancel(taskId);
                 return;
             }
             // 消息级幂等：Redis 锁按 messageId 去重；Redis 不可用降级放行
@@ -378,8 +391,17 @@ public class MqConsumerManager {
                 result.status(), result.errorMsg(), result.traceData(), result.costTimeMs());
     }
 
+    /** 错误信息与轨迹按值脱敏本次执行用到的敏感环境变量；死信转发的说明基于脱敏后的错误信息 */
     private ExecuteResult executeOnce(FlowMqTaskDO latestTask, MqMessage message, String triggerType,
                                       PublishedSnapshot snap, String publishedName) {
+        try (SecretScope secrets = SecretScope.open()) {
+            ExecuteResult r = executeOnceInScope(latestTask, message, triggerType, snap, publishedName);
+            return new ExecuteResult(r.status(), secrets.mask(r.errorMsg()), secrets.mask(r.traceData()), r.costTimeMs());
+        }
+    }
+
+    private ExecuteResult executeOnceInScope(FlowMqTaskDO latestTask, MqMessage message, String triggerType,
+                                             PublishedSnapshot snap, String publishedName) {
         long startTime = System.currentTimeMillis();
         String status = "RUNNING";
         String errorMsg = null;

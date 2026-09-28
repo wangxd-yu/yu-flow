@@ -17,6 +17,8 @@ public interface SysMacroRepository extends JpaRepository<SysMacroDO, String>,
      */
     boolean existsByMacroCode(String macroCode);
 
+    java.util.Optional<SysMacroDO> findByMacroCode(String macroCode);
+
     /**
      * 判断宏编码是否已被其他记录占用（更新时唯一性校验，排除自身）
      */

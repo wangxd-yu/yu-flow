@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS flow_db_connection (
   driver_class_name varchar(200) NOT NULL,
   url varchar(500) NOT NULL,
   username varchar(100) NOT NULL,
-  password varchar(100) NOT NULL,
+  password varchar(512) NOT NULL,
   initial_size integer DEFAULT 5,
   min_idle integer DEFAULT 5,
   max_active integer DEFAULT 20,
@@ -32,7 +32,7 @@ COMMENT ON COLUMN flow_db_connection.db_type IS '数据库类型(mysql/postgresq
 COMMENT ON COLUMN flow_db_connection.driver_class_name IS '驱动类名';
 COMMENT ON COLUMN flow_db_connection.url IS 'JDBC URL';
 COMMENT ON COLUMN flow_db_connection.username IS '用户名';
-COMMENT ON COLUMN flow_db_connection.password IS '密码';
+COMMENT ON COLUMN flow_db_connection.password IS '密码（AES 密文）';
 COMMENT ON COLUMN flow_db_connection.initial_size IS '初始连接数';
 COMMENT ON COLUMN flow_db_connection.min_idle IS '最小空闲连接';
 COMMENT ON COLUMN flow_db_connection.max_active IS '最大活动连接';

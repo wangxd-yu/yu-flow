@@ -15,8 +15,13 @@ import org.yu.flow.module.sysmacro.cache.CachedMacro;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 
+import org.yu.flow.module.envvar.support.EnvVarRefs;
+import org.yu.flow.util.SecretMasker;
+
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,6 +75,7 @@ public abstract class AbstractStepExecutor<T extends Step> implements StepExecut
             contextData = new HashMap<>();
         }
 
+        Set<String> secretInputs = new HashSet<>();
         for (Map.Entry<String, Object> entry : inputsConfig.entrySet()) {
             String varName = entry.getKey();
             Object config = entry.getValue();
@@ -85,6 +91,17 @@ public abstract class AbstractStepExecutor<T extends Step> implements StepExecut
                 if (pathObj instanceof String) {
                     extractPath = (String) pathObj;
                 }
+            }
+
+            String envCode = EnvVarRefs.inputPathCode(extractPath);
+            // 环境变量不进上下文变量表，否则整张表会随 globalInputs 写进执行轨迹；画布里真有 id=env 的节点时让给节点
+            if (envCode != null && (flow == null || flow.getStep(EnvVarRefs.ENV_ROOT) == null)) {
+                String value = EnvVarRefs.resolve(envCode, context);
+                inputs.put(varName, value);
+                if (context.getSecretValues().contains(value)) {
+                    secretInputs.add(varName);
+                }
+                continue;
             }
 
             if (extractPath != null && !extractPath.isEmpty()) {
@@ -109,7 +126,9 @@ public abstract class AbstractStepExecutor<T extends Step> implements StepExecut
         }
 
         if (context.isTraceEnabled()) {
-            context.putCache("TRACE_INPUTS_" + step.getId(), new HashMap<>(inputs));
+            Map<String, Object> traceInputs = new HashMap<>(inputs);
+            secretInputs.forEach(name -> traceInputs.put(name, SecretMasker.MASK));
+            context.putCache("TRACE_INPUTS_" + step.getId(), traceInputs);
         }
 
         return inputs;

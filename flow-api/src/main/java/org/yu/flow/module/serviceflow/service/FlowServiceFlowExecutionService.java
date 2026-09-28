@@ -22,6 +22,7 @@ import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
 import org.yu.flow.module.metrics.MetricsOutcome;
+import org.yu.flow.util.SecretScope;
 
 import jakarta.annotation.Resource;
 import java.util.HashMap;
@@ -77,6 +78,14 @@ public class FlowServiceFlowExecutionService {
             String triggerType,
             boolean requireEnabled
     ) {
+        // 被流程调用时复用调用方的作用域：服务日志与调用方日志都能脱敏整条链路用到的敏感值
+        try (SecretScope secrets = SecretScope.open()) {
+            return executeInScope(serviceId, input, triggerType, requireEnabled, secrets);
+        }
+    }
+
+    private Object executeInScope(String serviceId, Map<String, Object> input, String triggerType,
+                                  boolean requireEnabled, SecretScope secrets) {
         FlowServiceFlowDO svc = flowServiceFlowRepository.findById(serviceId).orElse(null);
         if (svc == null) {
             throw new FlowException("SERVICE_NOT_FOUND", "内部服务不存在: " + serviceId);
@@ -206,8 +215,8 @@ public class FlowServiceFlowExecutionService {
                             .triggerType(trig)
                             .status(status)
                             .costTimeMs(cost)
-                            .errorMsg(errorMsg)
-                            .traceData(traceData)
+                            .errorMsg(secrets.mask(errorMsg))
+                            .traceData(secrets.mask(traceData))
                             .build());
                 } catch (Exception e) {
                     log.error("[ServiceFlow] 日志写入失败: serviceId={}, error={}", svc.getId(), e.getMessage());

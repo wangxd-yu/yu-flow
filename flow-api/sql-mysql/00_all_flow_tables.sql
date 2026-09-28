@@ -1,5 +1,5 @@
 -- Yu Flow MySQL 全量建表（由 sql-mysql/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-08-20T02:57:14.645Z
+-- 生成时间: 2026-09-28T01:46:19.243Z
 -- 用法: 先执行本文件，再执行 00_system_init.sql
 
 -- >>> flow_alert_channel.sql
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS `flow_db_connection` (
   `driver_class_name` varchar(200) NOT NULL COMMENT '驱动类名',
   `url` varchar(500) NOT NULL COMMENT 'JDBC URL',
   `username` varchar(100) NOT NULL COMMENT '用户名',
-  `password` varchar(100) NOT NULL COMMENT '密码',
+  `password` varchar(512) NOT NULL COMMENT '密码（AES 密文）',
   `initial_size` int DEFAULT 5 COMMENT '初始连接数',
   `min_idle` int DEFAULT 5 COMMENT '最小空闲连接',
   `max_active` int DEFAULT 20 COMMENT '最大活动连接',
@@ -331,6 +331,32 @@ CREATE TABLE IF NOT EXISTS `flow_log_oss_download` (
   KEY `idx_flow_log_oss_download_create_time` (`create_time`),
   KEY `idx_flow_log_oss_download_result` (`result`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='OSS 隐私下载审计';
+
+-- >>> flow_log_release_import.sql
+-- Table: flow_log_release_import
+-- 发布包导入记录（含导入前备份，用于一键回滚）
+CREATE TABLE IF NOT EXISTS `flow_log_release_import` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `release_code` varchar(64) COMMENT '版本号',
+  `release_name` varchar(128) COMMENT '版本名称',
+  `package_digest` varchar(64) COMMENT '发布包 manifest SHA-256，可与来源环境版本单对账',
+  `source_env` varchar(32) COMMENT '来源环境',
+  `target_env` varchar(32) COMMENT '目标环境（本实例）',
+  `status` varchar(16) NOT NULL COMMENT '状态：SUCCESS / FAILED / ROLLED_BACK',
+  `summary` varchar(512) COMMENT '摘要',
+  `error_message` varchar(2000) COMMENT '失败原因',
+  `report_json` mediumtext COMMENT '导入报告 JSON',
+  `backup_json` longtext COMMENT '导入前受影响资产的完整状态 JSON（回滚依据）',
+  `asset_hashes` mediumtext COMMENT '导入后各资产内容指纹 JSON（类型:ID → 指纹），用于发现生产被直接修改',
+  `runtime_issues` text COMMENT '导入提交后的运行时自检问题（JSON 字符串数组），为空表示自检通过',
+  `imported_by` varchar(64) COMMENT '导入人',
+  `imported_time` datetime COMMENT '导入时间',
+  `rolled_back_by` varchar(64) COMMENT '回滚人',
+  `rolled_back_time` datetime COMMENT '回滚时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_flow_log_release_import_imported_time` (`imported_time`),
+  KEY `idx_flow_log_release_import_package_digest` (`package_digest`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布包导入记录';
 
 -- >>> flow_log_service.sql
 -- Table: flow_log_service
@@ -804,6 +830,50 @@ CREATE TABLE IF NOT EXISTS `flow_regression_suite` (
   KEY `idx_flow_regression_suite_asset_type_asset_id` (`asset_type`, `asset_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回归测试套件';
 
+-- >>> flow_release_item.sql
+-- Table: flow_release_item
+-- 版本单明细
+CREATE TABLE IF NOT EXISTS `flow_release_item` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `release_id` varchar(32) NOT NULL COMMENT '版本单ID（flow_release.id）',
+  `asset_type` varchar(32) NOT NULL COMMENT '资产类型：API / SERVICE / TASK / MQ_TASK / RESPONSE_TEMPLATE / PAGE / MODEL / SYS_MACRO / SYS_CONFIG / OPEN_PLATFORM / ALERT_RULE',
+  `asset_id` varchar(64) NOT NULL COMMENT '资产ID',
+  `asset_name` varchar(255) COMMENT '资产名称（冗余，资产删除后仍可显示）',
+  `asset_key` varchar(128) COMMENT '按编码匹配的类型（全局宏/系统配置/开放平台）在目标环境的匹配键',
+  `action` varchar(16) NOT NULL COMMENT '动作：UPSERT 新增或更新 / OFFLINE 下线',
+  `origin` varchar(16) NOT NULL COMMENT '来源：MANUAL 手工加入 / DEPENDENCY 依赖补齐 / SCAN 变更扫描',
+  `content_hash` varchar(64) COMMENT '冻结时的内容指纹（SHA-256），冻结后内容变化即视为漂移',
+  `create_by` varchar(64) COMMENT '创建人',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_flow_release_item_release_id_atype_aid` (`release_id`, `asset_type`, `asset_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='版本单明细';
+
+-- >>> flow_release.sql
+-- Table: flow_release
+-- 版本单：一轮上线要带到生产的资产清单
+CREATE TABLE IF NOT EXISTS `flow_release` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `code` varchar(64) NOT NULL COMMENT '版本号（全局唯一，如 v2026.10）',
+  `name` varchar(128) COMMENT '版本名称',
+  `status` varchar(16) NOT NULL COMMENT '状态：DRAFT 编辑中 / FROZEN 已冻结 / EXPORTED 已导出',
+  `remark` text COMMENT '发布说明（导出时写入包内 CHANGELOG.md）',
+  `source_env` varchar(32) COMMENT '创建时的实例环境（flow_env.code）',
+  `frozen_by` varchar(64) COMMENT '冻结人',
+  `frozen_time` datetime COMMENT '冻结时间',
+  `exported_by` varchar(64) COMMENT '最近导出人',
+  `exported_time` datetime COMMENT '最近导出时间',
+  `package_digest` varchar(64) COMMENT '最近导出包的 manifest SHA-256，用于与生产导入记录对账',
+  `create_by` varchar(64) COMMENT '创建人',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` varchar(64) COMMENT '更新人',
+  `update_time` datetime COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_flow_release_code` (`code`),
+  KEY `idx_flow_release_status` (`status`),
+  KEY `idx_flow_release_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='版本单';
+
 -- >>> flow_response_template.sql
 -- Table: flow_response_template
 -- API 响应模板表
@@ -870,6 +940,23 @@ CREATE TABLE IF NOT EXISTS `flow_sys_config` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_flow_sys_config_config_key` (`config_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统配置表 (System Configuration)';
+
+-- >>> flow_sys_env_variable.sql
+-- Table: flow_sys_env_variable
+-- 环境变量（每个环境各自维护，值不随发布包迁移）
+CREATE TABLE IF NOT EXISTS `flow_sys_env_variable` (
+  `id` varchar(32) NOT NULL COMMENT '雪花ID',
+  `code` varchar(64) NOT NULL COMMENT '变量名（大写字母开头，仅大写字母/数字/下划线），编排中以 $.env.CODE / ${env.CODE} 引用',
+  `var_value` varchar(4000) COMMENT '变量值；secret=1 时为 AES 密文',
+  `secret` tinyint(1) NOT NULL DEFAULT 0 COMMENT '敏感变量：0=否, 1=是（页面掩码显示，执行轨迹与三方日志脱敏）',
+  `remark` varchar(512) COMMENT '说明（随发布包导出，提示目标环境该填什么）',
+  `create_by` varchar(64) COMMENT '创建人',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` varchar(64) COMMENT '更新人',
+  `update_time` datetime COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_flow_sys_env_variable_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='环境变量';
 
 -- >>> flow_sys_macro.sql
 -- Table: flow_sys_macro

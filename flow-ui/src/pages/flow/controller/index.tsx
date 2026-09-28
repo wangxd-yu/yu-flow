@@ -33,8 +33,10 @@ import {
 } from '@/services/flow/flowController';
 import ApiConfigForm from './components/ControllerForm';
 import ApiCopyModal from './components/ApiCopyModal';
+import AddToReleaseModal from '@/components/flow/release/AddToReleaseModal';
 import AssetExportModal from '@/components/flow/transfer/AssetExportModal';
 import AssetImportModal from '@/components/flow/transfer/AssetImportModal';
+import useEditLocked from '@/components/flow/release/useEditLocked';
 import ApiDataViewDrawer from './components/ApiDataViewDrawer';
 import HostApiImportModal from './components/HostApiImportModal';
 import DirectoryTreeLayout from '@/components/DirectoryTreeLayout';
@@ -158,6 +160,7 @@ const AutoApiConfigList: React.FC = () => {
   const location = useLocation();
   const access = useAccess();
   const canWrite = !!(access as any)?.canApiWrite;
+  const canAddToRelease = !!(access as any)?.canReleasePkgWrite;
   const [hostImportOpen, setHostImportOpen] = useState(false);
   const [hostImportDirectoryId, setHostImportDirectoryId] = useState<string | undefined>();
   const actionRef = useRef<ActionType>();
@@ -260,6 +263,8 @@ const AutoApiConfigList: React.FC = () => {
   const [copySource, setCopySource] = useState<FlowController | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const editLocked = useEditLocked();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -907,16 +912,20 @@ const AutoApiConfigList: React.FC = () => {
                     >
                       新建接口
                     </Button>,
-                    <Button
-                      key="host-import"
-                      icon={<CloudServerOutlined />}
-                      onClick={() => openHostImport(selectedDirectoryId)}
-                    >
-                      从宿主导入
-                    </Button>,
-                    <Button key="bundle-import" onClick={() => setImportOpen(true)}>
-                      导入资产包
-                    </Button>,
+                    ...(editLocked
+                      ? []
+                      : [
+                          <Button
+                            key="host-import"
+                            icon={<CloudServerOutlined />}
+                            onClick={() => openHostImport(selectedDirectoryId)}
+                          >
+                            从宿主导入
+                          </Button>,
+                          <Button key="bundle-import" onClick={() => setImportOpen(true)}>
+                            导入资产包
+                          </Button>,
+                        ]),
                   ]
                 : []
             }
@@ -982,6 +991,7 @@ const AutoApiConfigList: React.FC = () => {
                     </a>
                   )}
                   {canWrite && <a onClick={() => openBatchApplyDirPrefix()}>按目录前缀重写</a>}
+                  {canAddToRelease && <a onClick={() => setReleaseOpen(true)}>加入版本单</a>}
                   <a onClick={() => setExportOpen(true)}>批量导出</a>
                 </Space>
               );
@@ -1099,6 +1109,14 @@ const AutoApiConfigList: React.FC = () => {
           actionRef.current?.reload();
         }}
       />
+      {canAddToRelease && (
+        <AddToReleaseModal
+          open={releaseOpen}
+          assetType="API"
+          ids={selectedRowsState.map((r) => r.id).filter(Boolean)}
+          onCancel={() => setReleaseOpen(false)}
+        />
+      )}
       <AssetExportModal
         open={exportOpen}
         assetType="API"
