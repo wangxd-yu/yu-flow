@@ -24,6 +24,8 @@
         <netty.version>4.2.18.Final</netty.version>
         <log4j2.version>2.26.1</log4j2.version>
         <skipTests>true</skipTests>
+        <!-- JaCoCo prepare-agent 会往这里追加 -javaagent；jacoco.skip=true 时保持为空串，surefire 仍能引用 -->
+        <argLine></argLine>
     </properties>
 
     <dependencies>
@@ -194,11 +196,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.redisson</groupId>
-            <artifactId>redisson</artifactId>
-            <version>4.7.0</version>
-        </dependency>
 
         <!-- mq: RabbitMQ / Kafka 客户端（按 MQ 连接配置动态构建，全局自动装配已在启动类排除） -->
         <dependency>
@@ -337,6 +334,8 @@
                 <configuration>
                     <!-- 默认跳过测试，可通过命令行 -DskipTests=false 启用 -->
                     <skipTests>${skipTests}</skipTests>
+                    <!-- JDK 22+：GraalVM Truffle 触发的 native access / sun.misc.Unsafe 警告，与运行时启动参数一致 -->
+                    <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:+EnableDynamicAgentLoading</argLine>
                 </configuration>
             </plugin>
 
@@ -346,6 +345,12 @@
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.5.0</version>
                 <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <!-- JDK 22+：GraalVM Truffle 调用 System::load，java -jar 启动时免去 native access 警告 -->
+                            <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                        </manifestEntries>
+                    </archive>
                     <excludes>
                         <!-- 排除 classpath 根目录的 application.yml -->
                         <exclude>application.yml</exclude>
@@ -445,6 +450,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <classifier>exec</classifier>
+                    <jvmArguments>--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow</jvmArguments>
                 </configuration>
             </plugin>
 

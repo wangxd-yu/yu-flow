@@ -7,8 +7,8 @@
 *拖拽节点 → 编排逻辑 → 一键发布 API，彻底告别重复的 CRUD 和繁琐的 BFF 层开发*
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![Java](https://img.shields.io/badge/Java-8+-orange.svg)](https://www.oracle.com/java/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://www.oracle.com/java/)
 [![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://reactjs.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/wangxd-yu/yu-flow/pulls)
 
@@ -90,9 +90,9 @@ Yu Flow 被设计为一个极其轻量的组件。**只需引入一个 JAR 包**
 ## 🚀 快速开始
 
 ### 准备工作
-- Java 8+
+- Java 25（主线 `main`；Java 17 / Spring Boot 3 见 `support/java17-springboot3` 分支，仅接安全修复）
 - Node.js 18+ (如果需要本地编译前端)
-- MySQL 5.7+ / 8.0+
+- MySQL 8.0+ 或 PostgreSQL / 瀚高（建表脚本见 `flow-api/sql-mysql`、`flow-api/sql-pg`）
 - Redis 6.0+
 
 ### 1. 源码本地运行
@@ -104,8 +104,9 @@ cd yu-flow
 
 # 2. 启动后端 (准备好 MySQL 和 Redis)
 cd flow-api
-# 请先在 application.yml 中配置好您的数据库和 Redis 连接
-mvn spring-boot:run
+# 复制 src/main/resources/application-local.yml.example 为 application-local.yml，
+# 填好数据库、Redis、管理员口令与 AES/JWT 密钥（也可全部用环境变量注入，见 application.yml 注释）
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 
 # 3. 启动前端控制台 (新开终端)
 cd ../flow-ui
