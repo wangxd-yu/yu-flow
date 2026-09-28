@@ -30,3 +30,5 @@ yu:
     privacy:
       # 库内密文 SM4：16 字节明文或 32 位 hex；未配置则 *_encrypt 失败关闭为 ****
       # at-rest-sm4-key: change-me-sm4-16
+      # 登录后 GET /flow-api/dev/privacy-session 签发 X-Privacy-Key（Apifox 联调）
+      dev-session-enabled: true

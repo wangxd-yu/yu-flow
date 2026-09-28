@@ -140,12 +140,19 @@ public class LoginSm2CryptoService {
     }
 
     /**
-     * 供单测：用当前公钥加密载荷（C1C3C2），输出与 sm-crypto 相近的无 04 前缀 hex。
+     * 用当前公钥加密 UTF-8 载荷（C1C3C2），输出与 sm-crypto 一致的无 {@code 04} 前缀 hex。
      */
-    public String encryptForTest(String payload) {
+    public String encryptUtf8(String payload) {
         byte[] cipher = sm2.encrypt(payload.getBytes(StandardCharsets.UTF_8), KeyType.PublicKey);
         String hex = HexUtil.encodeHexStr(cipher);
         return hex.startsWith("04") ? hex.substring(2) : hex;
+    }
+
+    /**
+     * 供单测：同 {@link #encryptUtf8(String)}。
+     */
+    public String encryptForTest(String payload) {
+        return encryptUtf8(payload);
     }
 
     private String parseAndValidatePayload(String payload) {

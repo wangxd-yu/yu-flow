@@ -677,6 +677,16 @@ const json = unwrapPrivacyTree(await res.json(), session.sm4KeyHex);
         表示「谁看什么」已命中明文，但传输会话没建立。
         <Text code>resolved=MASK</Text> 才是规则没勾上运营明文。不要用 curl 无头结果去判断库内 SM4 配错了。
       </Paragraph>
+      <Paragraph>
+        Apifox 等跑不了国密的客户端：登录管理端后
+        <Text code>GET /flow-api/dev/privacy-session</Text>
+        （需 <Text code>Flow-Authorization</Text>），把返回的
+        <Text code>headerValue</Text> 贴到已发布 JSON 的
+        <Text code>X-Privacy-Key</Text>，用 <Text code>sm4KeyHex</Text> 拆
+        <Text code>__p</Text> 信封。生产 profile 与演示模式返回 404；
+        <Text code>dev</Text> / <Text code>local</Text> / <Text code>test</Text> 默认开放。
+        不要把 <Text code>sm4KeyHex</Text> 写入仓库。
+      </Paragraph>
 
       <Title level={5} id="auth-privacy-host">3.2.4 宿主接入清单</Title>
       <Paragraph>
