@@ -85,6 +85,8 @@ const TreeNodeTitle: React.FC<{
   onHostImport?: (directoryId: string) => void;
 }> = ({ nodeData, selected, expanded, onAdd, onRename, onDelete, onCreateApi, onHostImport }) => {
   const dirId = nodeData.key as string;
+  // 条件拼接的菜单项会让 antd 的 MenuProps['items'] 丢失上下文类型，这里显式标注点击参数
+  type MenuClickInfo = { domEvent: { stopPropagation: () => void } };
 
   const menuItems: MenuProps['items'] = [
     onCreateApi
@@ -92,7 +94,7 @@ const TreeNodeTitle: React.FC<{
           key: 'create-api',
           icon: <ApiOutlined />,
           label: '新建接口',
-          onClick: ({ domEvent }) => {
+          onClick: ({ domEvent }: MenuClickInfo) => {
             domEvent.stopPropagation();
             onCreateApi(dirId);
           },
@@ -103,7 +105,7 @@ const TreeNodeTitle: React.FC<{
           key: 'host-import',
           icon: <CloudServerOutlined />,
           label: '从宿主导入',
-          onClick: ({ domEvent }) => {
+          onClick: ({ domEvent }: MenuClickInfo) => {
             domEvent.stopPropagation();
             onHostImport(dirId);
           },
@@ -115,7 +117,7 @@ const TreeNodeTitle: React.FC<{
           key: 'add-dir',
           icon: <PlusOutlined />,
           label: '新建子目录',
-          onClick: ({ domEvent }) => {
+          onClick: ({ domEvent }: MenuClickInfo) => {
             domEvent.stopPropagation();
             onAdd?.(dirId);
           },
@@ -125,7 +127,7 @@ const TreeNodeTitle: React.FC<{
           key: 'edit-dir',
           icon: <EditOutlined />,
           label: '编辑目录',
-          onClick: ({ domEvent }) => {
+          onClick: ({ domEvent }: MenuClickInfo) => {
             domEvent.stopPropagation();
             onRename?.(dirId);
           },
@@ -135,7 +137,7 @@ const TreeNodeTitle: React.FC<{
           icon: <DeleteOutlined />,
           danger: true,
           label: '删除目录',
-          onClick: ({ domEvent }) => {
+          onClick: ({ domEvent }: MenuClickInfo) => {
             domEvent.stopPropagation();
             Modal.confirm({
               title: '确认删除该目录？',

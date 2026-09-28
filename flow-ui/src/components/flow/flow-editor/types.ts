@@ -54,7 +54,8 @@ export type DslNodeType =
   | 'systemMethod'
   | 'tryCatch'
   | 'redis'
-  | 'jsonMap';
+  | 'jsonMap'
+  | 'oss';         // MinIO / S3 对象存储 put/get/delete/list/presignGet
 
 // ── 各节点 Data 定义 ──────────────────────────────────────────────
 
@@ -599,6 +600,17 @@ export const NODE_TYPE_CONFIGS: Record<DslNodeType, NodeTypeConfig> = {
     defaultPorts: [
       { id: 'in:payload', group: 'absolute-in-solid' },
       { id: 'out', group: 'absolute-out-solid' },
+    ],
+  },
+  oss: {
+    type: 'oss',
+    label: '对象存储 (OSS)',
+    category: '调用节点',
+    color: '#722ed1',
+    defaultPorts: [
+      { id: 'in:payload', group: 'absolute-in-solid' },
+      { id: 'success', group: 'absolute-out-solid' },
+      { id: 'fail', group: 'absolute-out-hollow' },
     ],
   },
 };

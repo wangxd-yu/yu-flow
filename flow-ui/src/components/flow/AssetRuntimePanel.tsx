@@ -216,7 +216,7 @@ async function fetchRecentLogs(assetType: MetricsAssetType, assetId: string): Pr
       costMs: r.costMs,
       createTime: r.createTime,
       subtitle: [r.method, r.path].filter(Boolean).join(' '),
-      errorMsg: r.errorMessage || r.errorCode,
+      errorMsg: r.errorCode,
     };
   });
 }

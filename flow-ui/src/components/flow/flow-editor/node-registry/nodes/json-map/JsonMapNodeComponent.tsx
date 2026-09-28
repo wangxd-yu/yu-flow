@@ -145,17 +145,18 @@ export const JsonMapNodeComponent: React.FC<{ node: Node }> = ({ node }) => {
             outlineCss={outlineCss}
             backgroundColor={theme.bodyBg}
         >
-            <PayloadEntryChrome node={node} hasPayload={hasPayload} />
-            <NodeHeader
-                icon={ICON}
-                title={data.__label || 'JsonMap'}
-                theme={theme}
-                height={HEADER_HEIGHT}
-                node={node}
-                nodeId={node.id}
-                onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
-                onTitleChange={(t) => sync({ __label: t })}
-            />
+            <PayloadEntryChrome hasPayload={hasPayload} primaryColor={theme.primary}>
+                <NodeHeader
+                    icon={ICON}
+                    title={data.__label || 'JsonMap'}
+                    theme={theme}
+                    height={HEADER_HEIGHT}
+                    node={node}
+                    nodeId={node.id}
+                    onNodeIdChange={(id) => commitFlowNodeIdChange(node, id)}
+                    onTitleChange={(t) => sync({ __label: t })}
+                />
+            </PayloadEntryChrome>
             {!isCompact && (
                 <div style={{ padding: `0 8px ${VAR_PADDING / 2}px`, flex: 1 }} onMouseDown={(e) => e.stopPropagation()}>
                     {rows.map((row, idx) => (

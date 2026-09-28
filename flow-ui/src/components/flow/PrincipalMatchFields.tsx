@@ -307,7 +307,7 @@ export function PrincipalMatchFields<T extends PrincipalMatch>(props: {
           ]}
           onChange={(e) => {
             const principals = e.target.value as PrincipalKind;
-            const next: Partial<T> = { principals };
+            const next = { principals } as Partial<T>;
             if (principals !== 'MATCH') {
               next.userTypes = [];
               next.roles = [];
