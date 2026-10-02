@@ -197,6 +197,19 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- 可观测：/actuator/health 探活 + /actuator/prometheus 指标（访问控制见 ActuatorAccessFilter）。
+             optional：宿主以依赖方式嵌入时不被强制带入 Actuator，需要时由宿主自行引入 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- mq: RabbitMQ / Kafka 客户端（按 MQ 连接配置动态构建，全局自动装配已在启动类排除） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

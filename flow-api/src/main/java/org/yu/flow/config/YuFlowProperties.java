@@ -139,6 +139,11 @@ public class YuFlowProperties {
      */
     private Release release = new Release();
 
+    /**
+     * 可观测（Actuator 端点访问控制）配置组。
+     */
+    private Observability observability = new Observability();
+
     // ==================== Getters & Setters ====================
 
     public boolean isEnabled() {
@@ -283,6 +288,38 @@ public class YuFlowProperties {
 
     public void setRelease(Release release) {
         this.release = release;
+    }
+
+    public Observability getObservability() {
+        return observability;
+    }
+
+    public void setObservability(Observability observability) {
+        this.observability = observability;
+    }
+
+    // ==================== 内部配置组：Observability ====================
+
+    /**
+     * 可观测配置：Actuator 端点的访问控制。
+     *
+     * <p>对应 YAML 路径：{@code yu.flow.observability.*}</p>
+     */
+    public static class Observability {
+
+        /**
+         * 访问 health 以外 Actuator 端点（如 prometheus）所需的 Bearer 令牌（建议通过 YU_FLOW_METRICS_TOKEN 注入）。
+         * <p>留空时这些端点一律返回 404；health 始终可匿名访问且只返回状态。</p>
+         */
+        private String metricsToken;
+
+        public String getMetricsToken() {
+            return metricsToken;
+        }
+
+        public void setMetricsToken(String metricsToken) {
+            this.metricsToken = metricsToken;
+        }
     }
 
     /**

@@ -29,6 +29,18 @@ spring:
       password: ${SPRING_DATA_REDIS_PASSWORD:}
       database: 0
 
+# 可观测：只开放 health / info / prometheus；health 匿名但不带明细，其余须 YU_FLOW_METRICS_TOKEN（见 ActuatorAccessFilter）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
 # yu-flow Unified Configuration
 yu:
   flow:
@@ -52,6 +64,9 @@ yu:
       backup-retention: ${YU_FLOW_RELEASE_BACKUP_RETENTION:10}
       # 锁定资产编辑：开启后本实例只能通过发布包导入变更编排资产（生产建议开启）
       lock-asset-editing: ${YU_FLOW_LOCK_ASSET_EDITING:false}
+    observability:
+      # 访问 /actuator/prometheus 等端点的 Bearer 令牌；留空则这些端点返回 404（health 不受影响）
+      metrics-token: ${YU_FLOW_METRICS_TOKEN:}
     demo:
       max-steps: 200
       max-for-loop-items: 50
