@@ -1,0 +1,15 @@
+{
+  "total": 358,
+  "rules": {
+    "@typescript-eslint/no-loop-func": 2,
+    "@typescript-eslint/no-unused-expressions": 4,
+    "@typescript-eslint/no-unused-vars": 161,
+    "@typescript-eslint/no-use-before-define": 38,
+    "eqeqeq": 118,
+    "no-promise-executor-return": 1,
+    "no-useless-escape": 6,
+    "react/button-has-type": 18,
+    "react/no-children-prop": 2,
+    "react/no-unescaped-entities": 8
+  }
+}

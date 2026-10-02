@@ -12,7 +12,8 @@ overrides:
   cross-spawn: '>=7.0.5'
   axios: '>=1.12.0'
   fast-uri: '>=3.1.1'
-  brace-expansion: '>=2.1.2'
+  brace-expansion@<2: ^1.1.21
+  brace-expansion@>=2 <3: ^2.1.7
   js-yaml: '>=4.3.0'
   immutable: '>=4.3.9'
   node-fetch: '>=2.6.7'
@@ -52,7 +53,7 @@ overrides:
 
 patchedDependencies:
   '@umijs/bundler-webpack@4.6.37':
-    hash: 3debedc289c2d912d82cdd8330ce50abf3497594cc6cc159e9aba193c72cb33b
+    hash: uw3pasupd3kyttcyy5cq3ztulq
     path: patches/@umijs__bundler-webpack@4.6.37.patch
 
 importers:
@@ -133,10 +134,10 @@ importers:
         version: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-ui@6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(encoding@0.1.13)(office-viewer@0.3.14(echarts@6.1.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       amis-editor:
         specifier: ^6.13.0
-        version: 6.13.0(84a5ebb442b21fb43b07333b810de802)
+        version: 6.13.0(hm6fdrcmspidatt4phpsapbnui)
       amis-editor-core:
         specifier: ^6.13.0
-        version: 6.13.0(3bc73dda31f157fba6623b493f057cf3)
+        version: 6.13.0(2xzhhws6ahbxswipx6gsrkpu24)
       amis-ui:
         specifier: ^6.13.0
         version: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2906,10 +2907,6 @@ packages:
   balanced-match@2.0.0:
     resolution: {integrity: sha512-1ugUSr8BHXRnK23KfuYS+gVMC3LB8QGH9W1iGtDPsNWoQbgtXSExkBu2aDR4epiGWZOjZsj6lDl/N/AqqTC3UA==}
 
-  balanced-match@4.0.4:
-    resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
-    engines: {node: 18 || 20 || >=22}
-
   base16@1.0.0:
     resolution: {integrity: sha512-pNdYkNPiJUnEhnfXV56+sQy8+AaPcG3POZAUnwr4EeqCUZFz4u2PePbo3e5Gj4ziYPCWGUZT9RHisvJKnwFuBQ==}
 
@@ -2965,9 +2962,11 @@ packages:
     resolution: {integrity: sha512-z0M+byMThzQmD9NILRniCUXYsYpjwnlO8N5uCFaCqIOpqRsJCrQL9NK3JsD67CN5a08nF5oIL2bD6loTdHOuKw==}
     engines: {node: '>= 5.10.0'}
 
-  brace-expansion@5.0.8:
-    resolution: {integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==}
-    engines: {node: 20 || >=22}
+  brace-expansion@1.1.21:
+    resolution: {integrity: sha512-9zeA+KLZNNzglF2TPKRQEDyx6Yby7daAkuy8MiPzpXPsYDWi/DRM8jmwUDxokQjYqBpv5DgPiwD4h4ZZSy1Ujw==}
+
+  brace-expansion@2.1.7:
+    resolution: {integrity: sha512-uZbew1NqdmPDTMJ8ah1y+b+9QEJrfkXFk3RcTQw3X0jW/xRUvFKsg1CfQdSYGdTbXZWExtU3J3ccxtnfw1Fi0g==}
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -3253,6 +3252,9 @@ packages:
 
   compute-scroll-into-view@3.1.1:
     resolution: {integrity: sha512-VRhuHOLoKYOy4UbilLbUzbYg93XLjv2PncJC50EuTWPA3gaja1UjBsUP/D/9/juV3vQFr6XBEzn9KCAHdUvOHw==}
+
+  concat-map@0.0.1:
+    resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
   connect-history-api-fallback@2.0.0:
     resolution: {integrity: sha512-U73+6lQFmfiNPrYbXqr6kZ1i1wiRqXnp2nhMsINseWXO8lDau0LGEffJ8kQi4EjLZympVgRdvqjAgiZ1tgzDDA==}
@@ -11043,7 +11045,7 @@ snapshots:
   '@umijs/bundler-utoopack@4.6.37(resolve-url-loader@5.0.0)(styled-jsx@5.1.7(@babel/core@7.29.0)(react@18.3.1))(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)':
     dependencies:
       '@umijs/bundler-utils': 4.6.37
-      '@umijs/bundler-webpack': 4.6.37(patch_hash=3debedc289c2d912d82cdd8330ce50abf3497594cc6cc159e9aba193c72cb33b)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
+      '@umijs/bundler-webpack': 4.6.37(patch_hash=uw3pasupd3kyttcyy5cq3ztulq)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
       '@utoo/pack': 1.3.7(less-loader@11.1.0(less@4.1.3)(webpack@5.105.4))(less@4.1.3)(postcss@8.5.22)(resolve-url-loader@5.0.0)(sass-loader@13.2.0(sass@1.54.0)(webpack@5.105.4))(sass@1.54.0)(styled-jsx@5.1.7(@babel/core@7.29.0)(react@18.3.1))
       compression: 1.8.1
       connect-history-api-fallback: 2.0.0
@@ -11100,7 +11102,7 @@ snapshots:
       - tsx
       - yaml
 
-  '@umijs/bundler-webpack@4.6.37(patch_hash=3debedc289c2d912d82cdd8330ce50abf3497594cc6cc159e9aba193c72cb33b)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)':
+  '@umijs/bundler-webpack@4.6.37(patch_hash=uw3pasupd3kyttcyy5cq3ztulq)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)':
     dependencies:
       '@svgr/core': 6.5.1
       '@svgr/plugin-jsx': 6.5.1(@svgr/core@6.5.1)
@@ -11404,7 +11406,7 @@ snapshots:
       '@umijs/bundler-utils': 4.6.37
       '@umijs/bundler-utoopack': 4.6.37(resolve-url-loader@5.0.0)(styled-jsx@5.1.7(@babel/core@7.29.0)(react@18.3.1))(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
       '@umijs/bundler-vite': 4.6.37(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.22.1)(postcss@8.5.22)(rollup@3.30.0)(sass@1.54.0)(terser@5.46.1)(yaml@2.9.0)
-      '@umijs/bundler-webpack': 4.6.37(patch_hash=3debedc289c2d912d82cdd8330ce50abf3497594cc6cc159e9aba193c72cb33b)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
+      '@umijs/bundler-webpack': 4.6.37(patch_hash=uw3pasupd3kyttcyy5cq3ztulq)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
       '@umijs/core': 4.6.37
       '@umijs/did-you-know': 1.0.4
       '@umijs/es-module-parser': 0.0.7
@@ -11859,12 +11861,12 @@ snapshots:
       - encoding
       - react-native
 
-  amis-editor-core@6.13.0(3bc73dda31f157fba6623b493f057cf3):
+  amis-editor-core@6.13.0(2xzhhws6ahbxswipx6gsrkpu24):
     dependencies:
       amis: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-ui@6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(encoding@0.1.13)(office-viewer@0.3.14(echarts@6.1.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       amis-core: 6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)
       amis-formula: 6.13.0
-      amis-theme-editor-helper: 2.0.27(1b5f58b44425b013f028cf41b3cac8e6)
+      amis-theme-editor-helper: 2.0.27(6ixp7wzbman5g7k7nbsvbz7um4)
       amis-ui: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       axios: 1.18.1
       deep-diff: 1.0.2
@@ -11887,15 +11889,15 @@ snapshots:
       - react-native
       - supports-color
 
-  amis-editor@6.13.0(84a5ebb442b21fb43b07333b810de802):
+  amis-editor@6.13.0(hm6fdrcmspidatt4phpsapbnui):
     dependencies:
       '@webcomponents/webcomponentsjs': 2.8.0
       amis: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-ui@6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(encoding@0.1.13)(office-viewer@0.3.14(echarts@6.1.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       amis-core: 6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)
-      amis-editor-core: 6.13.0(3bc73dda31f157fba6623b493f057cf3)
+      amis-editor-core: 6.13.0(2xzhhws6ahbxswipx6gsrkpu24)
       amis-formula: 6.13.0
       amis-postcss: 1.0.0
-      amis-theme-editor-helper: 2.0.27(1b5f58b44425b013f028cf41b3cac8e6)
+      amis-theme-editor-helper: 2.0.27(6ixp7wzbman5g7k7nbsvbz7um4)
       amis-ui: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       i18n-runtime: 1.0.13(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)
       lodash: 4.18.1
@@ -11919,7 +11921,7 @@ snapshots:
 
   amis-postcss@1.0.0: {}
 
-  amis-theme-editor-helper@2.0.27(1b5f58b44425b013f028cf41b3cac8e6):
+  amis-theme-editor-helper@2.0.27(6ixp7wzbman5g7k7nbsvbz7um4):
     dependencies:
       amis: 6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-ui@6.13.0(@types/react@18.3.28)(amis-core@6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1))(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(encoding@0.1.13)(office-viewer@0.3.14(echarts@6.1.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       amis-core: 6.13.0(@types/react@18.3.28)(amis-formula@6.13.0)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)
@@ -12458,8 +12460,6 @@ snapshots:
 
   balanced-match@2.0.0: {}
 
-  balanced-match@4.0.4: {}
-
   base16@1.0.0: {}
 
   base64-arraybuffer@1.0.2: {}
@@ -12516,9 +12516,14 @@ snapshots:
     dependencies:
       big-integer: 1.6.52
 
-  brace-expansion@5.0.8:
+  brace-expansion@1.1.21:
     dependencies:
-      balanced-match: 4.0.4
+      balanced-match: 1.0.2
+      concat-map: 0.0.1
+
+  brace-expansion@2.1.7:
+    dependencies:
+      balanced-match: 1.0.2
 
   braces@3.0.3:
     dependencies:
@@ -12842,6 +12847,8 @@ snapshots:
   compute-scroll-into-view@1.0.20: {}
 
   compute-scroll-into-view@3.1.1: {}
+
+  concat-map@0.0.1: {}
 
   connect-history-api-fallback@2.0.0: {}
 
@@ -15616,15 +15623,15 @@ snapshots:
 
   minimatch@3.1.5:
     dependencies:
-      brace-expansion: 5.0.8
+      brace-expansion: 1.1.21
 
   minimatch@5.1.9:
     dependencies:
-      brace-expansion: 5.0.8
+      brace-expansion: 2.1.7
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 5.0.8
+      brace-expansion: 2.1.7
 
   minimist-options@4.1.0:
     dependencies:
@@ -18505,7 +18512,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.29.2
       '@umijs/bundler-utils': 4.6.37
-      '@umijs/bundler-webpack': 4.6.37(patch_hash=3debedc289c2d912d82cdd8330ce50abf3497594cc6cc159e9aba193c72cb33b)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
+      '@umijs/bundler-webpack': 4.6.37(patch_hash=uw3pasupd3kyttcyy5cq3ztulq)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)
       '@umijs/core': 4.6.37
       '@umijs/lint': 4.6.37(eslint@8.35.0)(jest@30.3.0(@types/node@25.5.0))(stylelint@14.8.2)(typescript@5.9.3)
       '@umijs/preset-umi': 4.6.37(@types/node@25.5.0)(@types/react@18.3.28)(jiti@2.6.1)(lightningcss@1.22.1)(resolve-url-loader@5.0.0)(rollup@3.30.0)(sass@1.54.0)(styled-jsx@5.1.7(@babel/core@7.29.0)(react@18.3.1))(terser@5.46.1)(type-fest@4.41.0)(typescript@5.9.3)(webpack@5.105.4)(yaml@2.9.0)

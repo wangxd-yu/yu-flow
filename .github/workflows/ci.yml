@@ -97,6 +97,11 @@ jobs:
         working-directory: flow-ui
         run: pnpm install --frozen-lockfile
 
+      # ESLint 棘轮：存量错误见 flow-ui/lint-baseline.json，任何规则只许减少不许增加
+      - name: Lint
+        working-directory: flow-ui
+        run: pnpm lint
+
       - name: TypeScript Check
         working-directory: flow-ui
         run: pnpm type-check
