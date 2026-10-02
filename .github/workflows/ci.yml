@@ -1,6 +1,6 @@
 # Yu-Flow 质量门禁 CI
 # 后端：mvn clean verify （编译 + 全量单测 + Jacoco 覆盖率门禁检查）
-# 前端：pnpm type-check + pnpm build
+# 前端：pnpm type-check + 单测 + pnpm build
 name: CI
 
 on:
@@ -14,10 +14,10 @@ jobs:
     name: Backend · mvn test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
@@ -61,7 +61,7 @@ jobs:
 
       - name: Upload Surefire Reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports
           path: flow-api/target/surefire-reports/
@@ -69,7 +69,7 @@ jobs:
 
       - name: Upload JaCoCo Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jacoco-report
           path: flow-api/target/site/jacoco/
@@ -79,16 +79,17 @@ jobs:
     name: Frontend · pnpm build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      # pnpm 版本取自 flow-ui/package.json 的 packageManager，与本地及 lockfile v9 一致
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          package_json_file: flow-ui/package.json
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '18'
+          node-version: '22'
           cache: pnpm
           cache-dependency-path: flow-ui/pnpm-lock.yaml
 
@@ -98,7 +99,11 @@ jobs:
 
       - name: TypeScript Check
         working-directory: flow-ui
-        run: npx tsc --noEmit
+        run: pnpm type-check
+
+      - name: Unit Tests
+        working-directory: flow-ui
+        run: pnpm test
 
       - name: Build
         working-directory: flow-ui

@@ -1,6 +1,10 @@
 {
   "private": true,
   "author": "yu <657716219@qq.com>",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=18.20"
+  },
   "scripts": {
     "build": "max build",
     "dev": "max dev",
