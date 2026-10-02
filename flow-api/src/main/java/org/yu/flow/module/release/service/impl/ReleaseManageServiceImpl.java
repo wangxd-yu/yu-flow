@@ -30,6 +30,7 @@ import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
+import org.yu.flow.util.SecretMasker;
 
 import jakarta.annotation.Resource;
 import jakarta.persistence.criteria.Predicate;
@@ -373,7 +374,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
             if (StrUtil.isNotBlank(c.getExpectTraceStatus())
                     && !c.getExpectTraceStatus().equalsIgnoreCase(status)) {
                 rc.setStatus("FAILED");
-                rc.setMessage("期望 trace.status=" + c.getExpectTraceStatus() + "，实际=" + status);
+                rc.setMessage(maskOf(trace, "期望 trace.status=" + c.getExpectTraceStatus() + "，实际=" + status));
                 rc.setDetailJson(truncDetail(status, trace));
                 return finish(rc, start);
             }
@@ -381,12 +382,13 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
             if (StrUtil.isNotBlank(c.getExpectJsonPath())) {
                 RegressionSecurity.validateJsonPath(c.getExpectJsonPath());
                 Object actual = readJsonPath(trace, c.getExpectJsonPath());
-                String actualStr = actual == null ? "null" : String.valueOf(actual);
-                String expect = c.getExpectValue() == null ? "" : c.getExpectValue();
-                if (!Objects.equals(actualStr, expect)) {
+                String actualRaw = actual == null ? "null" : String.valueOf(actual);
+                String expectRaw = c.getExpectValue() == null ? "" : c.getExpectValue();
+                if (!Objects.equals(actualRaw, expectRaw)) {
                     rc.setStatus("FAILED");
-                    rc.setMessage("JSONPath 断言失败: " + c.getExpectJsonPath()
-                            + " 期望=" + expect + " 实际=" + RegressionSecurity.truncate(actualStr, 120));
+                    rc.setMessage(maskOf(trace, "JSONPath 断言失败: " + c.getExpectJsonPath()
+                            + " 期望=" + maskOf(trace, expectRaw)
+                            + " 实际=" + RegressionSecurity.truncate(maskOf(trace, actualRaw), 120)));
                     rc.setDetailJson(truncDetail(status, trace));
                     return finish(rc, start);
                 }
@@ -395,7 +397,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
             if ("error".equalsIgnoreCase(status) && StrUtil.isBlank(c.getExpectTraceStatus())) {
                 rc.setStatus("FAILED");
                 rc.setMessage(RegressionSecurity.truncate(
-                        StrUtil.blankToDefault(trace != null ? trace.getErrorMsg() : null, "执行失败"),
+                        maskOf(trace, StrUtil.blankToDefault(trace != null ? trace.getErrorMsg() : null, "执行失败")),
                         RegressionSecurity.MAX_DETAIL_CHARS));
                 rc.setDetailJson(truncDetail(status, trace));
                 return finish(rc, start);
@@ -456,13 +458,21 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
         }
     }
 
+    /** 回归结果会落库，按本次执行登记的敏感值替换后再保存 */
+    private static String maskOf(FlowTrace trace, String text) {
+        if (text == null || trace == null || trace.getSecretValues() == null || trace.getSecretValues().isEmpty()) {
+            return text;
+        }
+        return SecretMasker.mask(text, trace.getSecretValues());
+    }
+
     private String truncDetail(String status, FlowTrace trace) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("status", status);
         if (trace != null && StrUtil.isNotBlank(trace.getErrorMsg())) {
-            m.put("errorMsg", RegressionSecurity.truncate(trace.getErrorMsg(), 200));
+            m.put("errorMsg", RegressionSecurity.truncate(maskOf(trace, trace.getErrorMsg()), 200));
         }
-        return RegressionSecurity.truncate(JSONUtil.toJsonStr(m), 2000);
+        return RegressionSecurity.truncate(maskOf(trace, JSONUtil.toJsonStr(m)), 2000);
     }
 
     private FlowRegressionRunCaseDO finish(FlowRegressionRunCaseDO rc, long start) {

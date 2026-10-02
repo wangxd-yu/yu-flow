@@ -137,9 +137,14 @@ public class ReleasePlanServiceImpl implements ReleasePlanService {
     public ReleaseDTO get(String id) {
         FlowReleaseDO release = require(id);
         ReleaseDTO dto = ReleaseDTO.fromDO(release);
+        List<FlowReleaseItemDO> rows = items(id);
+        Map<String, AssetInfo> infos = assetResolver.describeAll(rows.stream()
+                .map(item -> new AssetRef(item.getAssetType(), item.getAssetId()))
+                .toList());
         List<ReleaseItemDTO> items = new ArrayList<>();
-        for (FlowReleaseItemDO item : items(id)) {
-            items.add(toItemDTO(release, item, assetResolver.describe(item.getAssetType(), item.getAssetId())));
+        for (FlowReleaseItemDO item : rows) {
+            items.add(toItemDTO(release, item,
+                    infos.get(ReleaseAssetResolver.refKey(item.getAssetType(), item.getAssetId()))));
         }
         dto.setItems(items);
         dto.setItemCount(items.size());

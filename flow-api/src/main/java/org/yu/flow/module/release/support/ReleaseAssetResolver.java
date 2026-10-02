@@ -39,6 +39,9 @@ import org.yu.flow.util.ContentHashUtil;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -133,6 +136,55 @@ public class ReleaseAssetResolver {
             throw new IllegalArgumentException("不支持的资产类型: " + type);
         }
         return t;
+    }
+
+    /** 与 {@link #describeAll} 的结果键一致 */
+    public static String refKey(String type, String id) {
+        return normalizeType(type) + "\0" + id;
+    }
+
+    /**
+     * 按类型各查一次，供版本单详情等批量展示。不存在的资产不出现在结果里。
+     */
+    public Map<String, AssetInfo> describeAll(Collection<AssetRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, List<String>> idsByType = new LinkedHashMap<>();
+        for (AssetRef ref : refs) {
+            if (ref == null || StrUtil.isBlank(ref.id())) {
+                continue;
+            }
+            idsByType.computeIfAbsent(normalizeType(ref.type()), key -> new ArrayList<>()).add(ref.id());
+        }
+        Map<String, AssetInfo> out = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : idsByType.entrySet()) {
+            List<String> ids = entry.getValue().stream().distinct().toList();
+            switch (entry.getKey()) {
+                case API -> putAll(out, flowApiRepository.findAllById(ids).stream()
+                        .filter(a -> !HostCatalogReserved.isReservedId(a.getId()))
+                        .map(this::ofApi).toList());
+                case SERVICE -> putAll(out, flowServiceFlowRepository.findAllById(ids).stream().map(this::ofService).toList());
+                case TASK -> putAll(out, flowTaskRepository.findAllById(ids).stream().map(this::ofTask).toList());
+                case MQ_TASK -> putAll(out, flowMqTaskRepository.findAllById(ids).stream().map(this::ofMqTask).toList());
+                case RESPONSE_TEMPLATE -> putAll(out, responseTemplateRepository.findAllById(ids).stream().map(this::ofTemplate).toList());
+                case PAGE -> putAll(out, pageInfoRepository.findAllById(ids).stream().map(this::ofPage).toList());
+                case MODEL -> putAll(out, flowModelInfoRepository.findAllById(ids).stream().map(this::ofModel).toList());
+                case SYS_MACRO -> putAll(out, sysMacroRepository.findAllById(ids).stream().map(this::ofMacro).toList());
+                case SYS_CONFIG -> putAll(out, sysConfigRepository.findAllById(ids).stream().map(this::ofConfig).toList());
+                case OPEN_PLATFORM -> putAll(out, flowOpenPlatformRepository.findAllById(ids).stream().map(this::ofOpenPlatform).toList());
+                case ALERT_RULE -> putAll(out, alertRuleRepository.findAllById(ids).stream().map(this::ofAlertRule).toList());
+                default -> {
+                }
+            }
+        }
+        return out;
+    }
+
+    private static void putAll(Map<String, AssetInfo> out, List<AssetInfo> infos) {
+        for (AssetInfo info : infos) {
+            out.put(refKey(info.type(), info.id()), info);
+        }
     }
 
     /** 资产不存在（含已删除）返回 null */

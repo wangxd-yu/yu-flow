@@ -17,6 +17,7 @@ import org.yu.flow.module.release.domain.FlowReleaseItemDO;
 import org.yu.flow.module.release.dto.AddOfflineItemsDTO;
 import org.yu.flow.module.release.dto.AddReleaseItemsDTO;
 import org.yu.flow.module.release.dto.ReleaseCompareDTO;
+import org.yu.flow.module.release.dto.ReleaseDTO;
 import org.yu.flow.module.release.support.ReleaseSigning;
 import org.yu.flow.module.release.dto.ReleaseCheckResultDTO;
 import org.yu.flow.module.release.repository.FlowRegressionRunRepository;
@@ -31,6 +32,7 @@ import org.yu.flow.module.transfer.service.AssetTransferService;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -86,6 +88,23 @@ class ReleasePlanServiceImplTest {
     private void addItem(String type, String id, String hash) {
         items.add(FlowReleaseItemDO.builder().id("i-" + id).releaseId("r1").assetType(type).assetId(id)
                 .assetName("接口" + id).action("UPSERT").origin("MANUAL").contentHash(hash).build());
+    }
+
+    @Test
+    void getLoadsAssetsInOneBatch() {
+        addItem(ReleaseAssetResolver.API, "a", "h-a");
+        addItem(ReleaseAssetResolver.API, "b", "h-b");
+        when(assetResolver.describeAll(any())).thenReturn(Map.of(
+                ReleaseAssetResolver.refKey(ReleaseAssetResolver.API, "a"), api("a", true, false, "h-a"),
+                ReleaseAssetResolver.refKey(ReleaseAssetResolver.API, "b"), api("b", true, false, "h-b")));
+
+        ReleaseDTO dto = service.get("r1");
+
+        assertEquals(2, dto.getItemCount());
+        assertEquals("接口a", dto.getItems().get(0).getAssetName());
+        assertEquals("接口b", dto.getItems().get(1).getAssetName());
+        verify(assetResolver, times(1)).describeAll(any());
+        verify(assetResolver, never()).describe(any(), any());
     }
 
     @Test
