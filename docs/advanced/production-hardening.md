@@ -37,6 +37,10 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 限流降级策略 | `ingress.rate-limit-fail-open`（默认 `true`） | 高危环境改 `false`（Redis 故障时拒绝），并保障 Redis 高可用 |
 | 脚本引擎语言面 | `yu.flow.security.script-allowed-languages`（默认 `aviator,spel,javascript`） | `groovy` / `python` 逃逸面较大，默认禁用；确需开放请显式加入白名单并限制编辑权限 |
 | HttpRequest `ignoreSsl` | `yu.flow.security.allow-ignore-ssl`（默认 `true`） | 生产设 `YU_FLOW_ALLOW_IGNORE_SSL=false` 一刀切禁用跳过证书校验；确需自签名请配置受信 CA |
+| 实例环境 | `YU_FLOW_CURRENT_ENV` | 生产设 `PROD`，发布门禁和顶栏环境按本实例判定 |
+| 发布包签名 | `YU_FLOW_RELEASE_SIGNING_KEY` | 开发与生产配同一个值；生产导入强制验签。轮换时旧密钥放 `YU_FLOW_RELEASE_PREVIOUS_SIGNING_KEYS` |
+| 锁定资产编辑 | `YU_FLOW_LOCK_ASSET_EDITING` | 生产设 `true`，编排资产只能通过发布包导入变更 |
+| 指标端点 | `YU_FLOW_METRICS_TOKEN` | 配置后 `/actuator/prometheus` 需要 `Authorization: Bearer`；留空则该端点返回 404。`/actuator/health` 匿名且不带明细 |
 | 宿主登录探测 | `HostAuthenticationProbe` Bean | 嵌入时覆盖为宿主 Session；默认校验管理端 JWT |
 | 管理端进程内双层 | `yu.flow.security.management-require-host-auth` | **默认 false**；加强时设 true，并覆盖 Probe。宿主 Security 外层与本开关独立 |
 | 管理端登录策略 | 宿主登录 + Flow JWT | **不**静默换发 Flow JWT，须单独登录 Flow |
@@ -59,6 +63,12 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<host>/<已发布业务path>
 
 # 3. 开放入口未授权访问被拒
 curl -s -o /dev/null -w '%{http_code}\n' https://<host>/flow-api/open/<path>
+
+# 4. 健康检查匿名且不带明细（应 200，响应里没有 components；上下文路径默认 /flow）
+curl -s https://<host>/flow/actuator/health
+
+# 5. 未带令牌时指标端点不可见（未配置 YU_FLOW_METRICS_TOKEN 应 404，配了但没带令牌应 401）
+curl -s -o /dev/null -w '%{http_code}\n' https://<host>/flow/actuator/prometheus
 ```
 
 ## 相关文档
@@ -68,3 +78,4 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<host>/flow-api/open/<path>
 - [第三方开放平台接入](./open-platform-integration.md)
 - [权限与安全](./security.md)
 - [演示模式安全管控](../manual/demo-mode.md)
+- [版本发布与跨环境](../manual/release-publish.md)

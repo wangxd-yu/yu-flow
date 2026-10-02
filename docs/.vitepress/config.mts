@@ -38,6 +38,7 @@ export default defineConfig({
             { text: '全局参数', link: '/manual/global-params' },
             { text: '执行大盘与只读回放', link: '/manual/execution-trace' },
             { text: '环境发布门禁与回归', link: '/manual/release-gate' },
+            { text: '版本发布与跨环境', link: '/manual/release-publish' },
             { text: '演示模式安全管控', link: '/manual/demo-mode' }
           ]
         }

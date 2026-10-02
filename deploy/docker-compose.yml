@@ -1,0 +1,92 @@
+# 本地试运行：MySQL + Redis + 内嵌前端的 Yu Flow。
+# 用法（在 deploy 目录里执行，这样会读到同目录的 .env）：
+#   copy .env.example .env
+#   填好口令后执行 docker compose up -d --build
+# 从仓库根目录执行时要显式带上 env 文件：
+#   docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+# 数据库和 Redis 只绑在本机回环地址。这是试用编排，生产不要用 root，也不要对外发布数据库端口。
+# 数据卷已存在后再改 MYSQL_ROOT_PASSWORD 不会改掉库里的口令，需要同时改库或删掉数据卷重建。
+
+name: yu-flow
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?在 deploy/.env 设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-flow}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../flow-api/sql-mysql/00_all_flow_tables.sql:/yu-flow-sql/00_all_flow_tables.sql:ro
+      - ../flow-api/sql-mysql/00_system_init.sql:/yu-flow-sql/00_system_init.sql:ro
+      - ./mysql/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  flow:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: yu-flow:local
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SERVER_PORT: "11281"
+      SERVER_SERVLET_CONTEXT_PATH: /flow
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-flow}?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true"
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:?在 deploy/.env 设置 MYSQL_ROOT_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      YU_FLOW_ADMIN_USERNAME: ${YU_FLOW_ADMIN_USERNAME:-admin}
+      YU_FLOW_ADMIN_PASSWORD: ${YU_FLOW_ADMIN_PASSWORD:?在 deploy/.env 设置 YU_FLOW_ADMIN_PASSWORD}
+      YU_FLOW_JWT_SECRET: ${YU_FLOW_JWT_SECRET:?在 deploy/.env 设置至少 32 字符的 YU_FLOW_JWT_SECRET}
+      YU_FLOW_AES_SECRET: ${YU_FLOW_AES_SECRET:?在 deploy/.env 设置恰好 16/24/32 字符的 YU_FLOW_AES_SECRET}
+      YU_FLOW_FAIL_ON_INSECURE_DEFAULTS: "true"
+      YU_FLOW_CURRENT_ENV: ${YU_FLOW_CURRENT_ENV:-DEV}
+      YU_FLOW_METRICS_TOKEN: ${YU_FLOW_METRICS_TOKEN:-}
+      JAVA_OPTS: "${JAVA_OPTS:--XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError}"
+    ports:
+      - "${FLOW_PORT:-11281}:11281"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:11281/flow/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:

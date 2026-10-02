@@ -1,6 +1,7 @@
 *.iml
 .idea/
 target/
+.flattened-pom.xml
 
 # Compiled class file
 *.class

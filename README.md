@@ -90,39 +90,60 @@ Yu Flow 被设计为一个极其轻量的组件。**只需引入一个 JAR 包**
 ## 🚀 快速开始
 
 ### 准备工作
-- Java 25（主线 `main`；Java 17 / Spring Boot 3 见 `support/java17-springboot3` 分支，仅接安全修复）
-- Node.js 18+ (如果需要本地编译前端)
-- MySQL 8.0+ 或 PostgreSQL / 瀚高（建表脚本见 `flow-api/sql-mysql`、`flow-api/sql-pg`）
-- Redis 6.0+
+- Docker（试用整套系统）或 JDK 25（源码运行 / 嵌入宿主）
+- Node.js 22（本地编译前端；最低 18.20）
+- 源码运行时另需 MySQL 8 或 PostgreSQL / 瀚高，以及 Redis 6+
 
-### 1. 源码本地运行
+### 1. Docker 试用
 
 ```bash
-# 1. 克隆仓库
 git clone https://github.com/wangxd-yu/yu-flow.git
-cd yu-flow
+cd yu-flow/deploy
+cp .env.example .env
+# 编辑 .env，填上数据库口令、管理员口令、JWT 密钥（至少 32 字符）和 AES 密钥（恰好 16/24/32 字符）
+docker compose up -d --build
+```
 
-# 2. 启动后端 (准备好 MySQL 和 Redis)
+浏览器打开 `http://localhost:11281/flow/`，用 `.env` 里的管理员账号登录。健康检查地址是 `http://localhost:11281/flow/actuator/health`。本机端口被占用时，在 `.env` 里改 `FLOW_PORT` / `MYSQL_PORT` / `REDIS_PORT`。
+
+### 2. 源码本地运行
+
+```bash
 cd flow-api
 # 复制 src/main/resources/application-local.yml.example 为 application-local.yml，
-# 填好数据库、Redis、管理员口令与 AES/JWT 密钥（也可全部用环境变量注入，见 application.yml 注释）
+# 填好数据库口令、管理员口令与 AES/JWT 密钥（也可全部用环境变量注入，见 application.yml 注释）
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 
-# 3. 启动前端控制台 (新开终端)
+# 新开终端启动前端
 cd ../flow-ui
 pnpm install
 pnpm dev
 ```
-打开浏览器访问 `http://localhost:8000` 即可开始编排！
 
-### 2. 生产环境一键打包
-Yu Flow 支持将前端产物内嵌至后端的 Fat JAR 中，实现极简部署。
+浏览器访问 `http://localhost:8000`。
+
+### 3. 打成一个可执行包
+
+前端会打进 Spring Boot 的可执行 jar，部署时不需要单独的 Node 进程。
 
 ```bash
-# 执行打包脚本 (自动编译前端并打包进 Spring Boot)
-bash 脚本/deploy_to_server.sh 
-# 或者手动执行 mvn clean package -P ui
+cd flow-api
+mvn clean package -DskipTests -Djacoco.skip=true -P ui
 ```
+
+产物是 `flow-api/target/*-exec.jar`。发布 tag（`v*`）时，GitHub Actions 会构建同一份镜像推到 GHCR，并把 jar、SBOM 和建表脚本附到 GitHub Release。
+
+### 4. 嵌入已有 Spring Boot 应用
+
+```xml
+<dependency>
+    <groupId>org.yu</groupId>
+    <artifactId>yu-flow-api-java25-springboot4</artifactId>
+    <version>2.0-SNAPSHOT</version>
+</dependency>
+```
+
+宿主使用 JDK 25、Spring Boot 4.1。版本号由 `revision` 属性决定，发布时与 tag 对齐。建表脚本在 `flow-api/sql-mysql`（或 `sql-pg`）：先 `00_all_flow_tables.sql`，再 `00_system_init.sql`。口令和密钥用环境变量注入，不要写进仓库。
 
 ---
 
@@ -136,7 +157,7 @@ bash 脚本/deploy_to_server.sh
                         │ REST API (JWT)
 ┌───────────────────────▼──────────────────────────────┐
 │                    flow-api (后端)                   │
-│              Spring Boot 2.7 · JPA · Redis           │
+│              Spring Boot 4.1 · JPA · Redis           │
 │  ┌────────────────────────────────────────────────┐  │
 │  │              FlowEngine 核心引擎               │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐        │  │
