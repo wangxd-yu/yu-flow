@@ -144,6 +144,11 @@ public class YuFlowProperties {
      */
     private Observability observability = new Observability();
 
+    /**
+     * 元数据库迁移。MySQL / PostgreSQL 默认启动时执行；瀚高不走 Flyway。
+     */
+    private Db db = new Db();
+
     // ==================== Getters & Setters ====================
 
     public boolean isEnabled() {
@@ -298,6 +303,14 @@ public class YuFlowProperties {
         this.observability = observability;
     }
 
+    public Db getDb() {
+        return db;
+    }
+
+    public void setDb(Db db) {
+        this.db = db;
+    }
+
     // ==================== 内部配置组：Observability ====================
 
     /**
@@ -319,6 +332,28 @@ public class YuFlowProperties {
 
         public void setMetricsToken(String metricsToken) {
             this.metricsToken = metricsToken;
+        }
+    }
+
+    // ==================== 内部配置组：Db ====================
+
+    /**
+     * 元数据库迁移。对应 {@code yu.flow.db.*}。
+     */
+    public static class Db {
+
+        /**
+         * 启动时是否用 Flyway 迁移元数据库。瀚高连接始终跳过，与本开关无关。
+         * 嵌入宿主且表结构由宿主负责时设为 false。
+         */
+        private boolean autoMigrate = true;
+
+        public boolean isAutoMigrate() {
+            return autoMigrate;
+        }
+
+        public void setAutoMigrate(boolean autoMigrate) {
+            this.autoMigrate = autoMigrate;
         }
     }
 

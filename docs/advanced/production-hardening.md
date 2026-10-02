@@ -41,6 +41,7 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 发布包签名 | `YU_FLOW_RELEASE_SIGNING_KEY` | 开发与生产配同一个值；生产导入强制验签。轮换时旧密钥放 `YU_FLOW_RELEASE_PREVIOUS_SIGNING_KEYS` |
 | 锁定资产编辑 | `YU_FLOW_LOCK_ASSET_EDITING` | 生产设 `true`，编排资产只能通过发布包导入变更 |
 | 指标端点 | `YU_FLOW_METRICS_TOKEN` | 配置后 `/actuator/prometheus` 需要 `Authorization: Bearer`；留空则该端点返回 404。`/actuator/health` 匿名且不带明细 |
+| 自动迁移 | `YU_FLOW_DB_AUTO_MIGRATE` | MySQL / PostgreSQL 默认启动时迁移。库里已有 `flow_*` 表则只登记基线，不重跑历史脚本。瀚高始终跳过，继续手工执行 `sql-pg`。宿主自己管表时设 `false` |
 | 宿主登录探测 | `HostAuthenticationProbe` Bean | 嵌入时覆盖为宿主 Session；默认校验管理端 JWT |
 | 管理端进程内双层 | `yu.flow.security.management-require-host-auth` | **默认 false**；加强时设 true，并覆盖 Probe。宿主 Security 外层与本开关独立 |
 | 管理端登录策略 | 宿主登录 + Flow JWT | **不**静默换发 Flow JWT，须单独登录 Flow |

@@ -22,6 +22,15 @@ spring:
     # 禁止将真实口令写入仓库；本地可设环境变量或复制 application-local.yml.example
     password: ${SPRING_DATASOURCE_PASSWORD:}
 
+  flyway:
+    # 实际是否执行、用哪套脚本，见 YuFlowFlywayConfig（瀚高跳过；已有 flow_* 表只登记基线）
+    enabled: ${YU_FLOW_DB_AUTO_MIGRATE:true}
+    table: flow_schema_history
+    baseline-on-migrate: false
+    baseline-version: 2026.10.02.00
+    locations: classpath:db/flyway/mysql
+    # 建表注释里有 ${env.CODE} 这种字样，不能当成 Flyway 占位符
+    placeholder-replacement: false
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
@@ -67,6 +76,9 @@ yu:
     observability:
       # 访问 /actuator/prometheus 等端点的 Bearer 令牌；留空则这些端点返回 404（health 不受影响）
       metrics-token: ${YU_FLOW_METRICS_TOKEN:}
+    db:
+      # MySQL / PostgreSQL 启动时迁移。瀚高忽略此项，继续手工执行 sql-pg。宿主自管表结构时设 false
+      auto-migrate: ${YU_FLOW_DB_AUTO_MIGRATE:true}
     demo:
       max-steps: 200
       max-for-loop-items: 50

@@ -104,7 +104,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-浏览器打开 `http://localhost:11281/flow/`，用 `.env` 里的管理员账号登录。健康检查地址是 `http://localhost:11281/flow/actuator/health`。本机端口被占用时，在 `.env` 里改 `FLOW_PORT` / `MYSQL_PORT` / `REDIS_PORT`。
+浏览器打开 `http://localhost:11281/flow/`，用 `.env` 里的管理员账号登录。健康检查地址是 `http://localhost:11281/flow/actuator/health`。本机端口被占用时，在 `.env` 里改 `FLOW_PORT` / `MYSQL_PORT` / `REDIS_PORT`。MySQL 空库会在启动时自动建表；已经有 `flow_*` 表的库只登记迁移基线。瀚高不走自动迁移，仍用 `flow-api/sql-pg` 手工执行。
 
 ### 2. 源码本地运行
 
