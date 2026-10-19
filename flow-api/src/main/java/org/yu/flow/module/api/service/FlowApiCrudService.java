@@ -1,6 +1,6 @@
 package org.yu.flow.module.api.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.dto.BatchApplyDirPrefixResult;
 import org.yu.flow.module.api.dto.FlowApiCopyDTO;

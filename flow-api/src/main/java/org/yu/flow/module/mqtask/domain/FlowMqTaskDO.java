@@ -34,7 +34,7 @@ public class FlowMqTaskDO implements Serializable {
     @Id
     @Column(name = "id", nullable = false)
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     /** 任务名称 */

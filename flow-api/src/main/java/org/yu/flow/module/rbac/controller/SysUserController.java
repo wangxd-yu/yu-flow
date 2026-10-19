@@ -1,7 +1,7 @@
 package org.yu.flow.module.rbac.controller;
 
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.rbac.dto.SaveSysUserDTO;
 import org.yu.flow.module.rbac.dto.SysRoleDTO;

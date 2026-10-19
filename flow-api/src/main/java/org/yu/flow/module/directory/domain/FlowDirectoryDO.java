@@ -30,7 +30,7 @@ public class FlowDirectoryDO {
     @Id
     @Column(name = "id", nullable = false)
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     /** 父节点ID，NULL 表示根节点 */

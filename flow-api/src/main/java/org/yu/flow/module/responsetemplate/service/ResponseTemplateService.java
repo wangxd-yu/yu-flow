@@ -1,6 +1,6 @@
 package org.yu.flow.module.responsetemplate.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;
 import org.yu.flow.module.responsetemplate.dto.ResponseTemplateDTO;
 import org.yu.flow.module.responsetemplate.dto.SaveResponseTemplateDTO;

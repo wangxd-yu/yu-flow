@@ -3,7 +3,7 @@ package org.yu.flow.module.api.privacy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.yu.flow.config.YuFlowProperties;
-import org.yu.flow.login.sm2.LoginSm2CryptoService;
+import org.yu.flow.module.auth.sm2.LoginSm2CryptoService;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;

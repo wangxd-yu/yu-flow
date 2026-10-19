@@ -2,7 +2,7 @@ package org.yu.flow.module.rbac.controller;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.dto.R;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.rbac.dto.AuthMeDTO;

@@ -34,7 +34,7 @@ import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
 import org.yu.flow.module.mqtask.service.FlowMqTaskLogService;
 import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.util.FlowObjectMapperUtil;
-import org.yu.flow.log.trace.RequestIds;
+import org.yu.flow.util.trace.RequestIds;
 import org.yu.flow.util.SecretScope;
 
 import jakarta.annotation.PreDestroy;

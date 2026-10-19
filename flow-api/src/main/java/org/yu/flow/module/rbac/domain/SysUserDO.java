@@ -22,7 +22,7 @@ public class SysUserDO {
 
     @Id
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     @Column(nullable = false, unique = true, length = 64)

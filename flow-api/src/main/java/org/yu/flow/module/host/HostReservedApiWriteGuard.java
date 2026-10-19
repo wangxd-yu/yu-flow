@@ -2,7 +2,7 @@ package org.yu.flow.module.host;
 
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Component;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.rbac.service.RbacService;
 

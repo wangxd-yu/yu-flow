@@ -11,7 +11,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.exception.FlowException;
-import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.release.domain.FlowReleaseDO;
 import org.yu.flow.module.release.domain.FlowReleaseItemDO;
 import org.yu.flow.module.release.dto.AddOfflineItemsDTO;

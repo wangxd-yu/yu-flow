@@ -1,6 +1,6 @@
 package org.yu.flow.module.sysconfig.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.sysconfig.domain.SysConfigDO;
 import org.yu.flow.module.sysconfig.dto.SaveSysConfigDTO;
 import org.yu.flow.module.sysconfig.dto.SysConfigDTO;

@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
-import org.yu.flow.log.trace.RequestIds;
+import org.yu.flow.util.trace.RequestIds;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -29,7 +29,7 @@ public class FlowMqTaskLogDO {
 
     @Id
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     /** 关联 MQ 任务ID */

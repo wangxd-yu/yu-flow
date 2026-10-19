@@ -2,7 +2,7 @@ package org.yu.flow.module.page.service;
 import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.page.query.PageInfoQueryDTO;
 import org.yu.flow.module.page.domain.PageInfoDO;
 import org.yu.flow.module.page.dto.PageInfoDTO;

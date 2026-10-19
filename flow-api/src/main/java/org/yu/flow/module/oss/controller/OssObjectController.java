@@ -5,7 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.host.FlowHostAuthSupport;
 import org.yu.flow.module.host.FlowHostDataScope;

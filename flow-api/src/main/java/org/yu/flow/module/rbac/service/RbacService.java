@@ -1,6 +1,6 @@
 package org.yu.flow.module.rbac.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.rbac.dto.AuthMeDTO;
 import org.yu.flow.module.rbac.dto.SaveSysRoleDTO;
 import org.yu.flow.module.rbac.dto.SaveSysUserDTO;

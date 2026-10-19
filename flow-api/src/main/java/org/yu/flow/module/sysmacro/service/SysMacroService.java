@@ -1,6 +1,6 @@
 package org.yu.flow.module.sysmacro.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.sysmacro.domain.SysMacroDO;
 import org.yu.flow.module.sysmacro.dto.SysMacroDTO;
 import org.yu.flow.module.sysmacro.dto.SaveSysMacroDTO;

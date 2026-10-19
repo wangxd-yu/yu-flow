@@ -29,7 +29,7 @@ public class FlowMetricsMetaDO {
 
     @Id
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     @Column(name = "asset_type", nullable = false, length = 16)

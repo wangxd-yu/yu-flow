@@ -1,8 +1,8 @@
 package org.yu.flow.config;
 
 import org.junit.jupiter.api.Test;
-import org.yu.flow.auto.druid.DynamicSqlParser;
-import org.yu.flow.auto.dto.SqlAndParams;
+import org.yu.flow.engine.sql.DynamicSqlParser;
+import org.yu.flow.dto.SqlAndParams;
 import org.yu.flow.exception.SchemaValidationException;
 
 import java.math.BigDecimal;

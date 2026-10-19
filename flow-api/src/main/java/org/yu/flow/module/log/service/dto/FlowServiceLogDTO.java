@@ -1,0 +1,42 @@
+package org.yu.flow.module.log.service.dto;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.Data;
+import org.yu.flow.module.log.service.domain.FlowServiceLogDO;
+
+import java.time.LocalDateTime;
+
+@Data
+public class FlowServiceLogDTO {
+
+    private String id;
+    private String serviceId;
+    private String serviceName;
+    private String triggerType;
+    private String status;
+    private Long costTimeMs;
+    private String errorMsg;
+    private String traceData;
+
+    /** 请求 ID（响应头 X-Request-Id） */
+    private String requestId;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime createTime;
+
+    public static FlowServiceLogDTO fromDO(FlowServiceLogDO entity) {
+        if (entity == null) return null;
+        FlowServiceLogDTO dto = new FlowServiceLogDTO();
+        dto.setId(entity.getId());
+        dto.setServiceId(entity.getServiceId());
+        dto.setServiceName(entity.getServiceName());
+        dto.setTriggerType(entity.getTriggerType());
+        dto.setStatus(entity.getStatus());
+        dto.setCostTimeMs(entity.getCostTimeMs());
+        dto.setErrorMsg(entity.getErrorMsg());
+        dto.setTraceData(entity.getTraceData());
+        dto.setRequestId(entity.getRequestId());
+        dto.setCreateTime(entity.getCreateTime());
+        return dto;
+    }
+}

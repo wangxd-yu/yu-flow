@@ -3,7 +3,7 @@ package org.yu.flow.module.host;
 import cn.hutool.core.exceptions.ValidateException;
 import cn.hutool.core.util.StrUtil;
 import jakarta.servlet.http.HttpServletRequest;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.module.rbac.dto.AuthMeDTO;
 import org.yu.flow.module.rbac.service.RbacService;
 

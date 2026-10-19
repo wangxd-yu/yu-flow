@@ -4,7 +4,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.module.release.dto.AddOfflineItemsDTO;

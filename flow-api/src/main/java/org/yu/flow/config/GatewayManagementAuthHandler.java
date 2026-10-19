@@ -4,7 +4,7 @@ import cn.hutool.core.exceptions.ValidateException;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.util.UrlPathHelper;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.dto.R;
 import org.yu.flow.dto.ResultCode;
 import org.yu.flow.module.open.auth.HostAuthenticationProbe;

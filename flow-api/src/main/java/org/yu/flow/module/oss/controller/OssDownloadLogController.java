@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.oss.dto.OssDownloadLogDTO;
 import org.yu.flow.module.oss.query.OssDownloadLogQueryDTO;

@@ -1,6 +1,6 @@
 package org.yu.flow.engine.evaluator;
 
-import org.yu.flow.auto.util.FlowSystemParamsUtil;
+import org.yu.flow.util.FlowSystemParamsUtil;
 import org.yu.flow.engine.evaluator.spel.MacroSpelContexts;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.engine.util.SpELUtils;

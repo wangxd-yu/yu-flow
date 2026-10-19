@@ -35,7 +35,7 @@ public class OssObjectDO implements Serializable {
     @Id
     @Column(name = "id", nullable = false)
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     @Column(name = "profile_code", length = 64)

@@ -1,6 +1,6 @@
 package org.yu.flow.module.task.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.dto.FlowTaskDTO;
 import org.yu.flow.module.task.query.FlowTaskQueryDTO;

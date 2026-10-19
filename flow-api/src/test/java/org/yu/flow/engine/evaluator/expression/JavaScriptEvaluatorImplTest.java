@@ -210,7 +210,7 @@ class JavaScriptEvaluatorImplTest {
                     .macroType("VARIABLE")
                     .scope("ALL")
                     .build();
-            Expression expr = SPEL_PARSER.parseExpression("T(org.yu.flow.auto.util.SnowIdGenerator).getId()");
+            Expression expr = SPEL_PARSER.parseExpression("T(org.yu.flow.util.SnowIdGenerator).getId()");
             macros.put("SNOWFLAKE", new CachedMacro(macroDO, expr));
 
             when(mockManager.getAllCachedMacros()).thenReturn(Collections.unmodifiableMap(macros));

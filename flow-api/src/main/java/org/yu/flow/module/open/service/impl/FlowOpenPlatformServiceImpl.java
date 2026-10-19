@@ -9,7 +9,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings;
 import org.yu.flow.exception.FlowException;
@@ -27,7 +27,7 @@ import org.yu.flow.module.open.repository.FlowOpenApiGrantRepository;
 import org.yu.flow.module.open.repository.FlowOpenCredentialRepository;
 import org.yu.flow.module.open.repository.FlowOpenPlatformRepository;
 import org.yu.flow.module.open.service.FlowOpenPlatformService;
-import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.open.support.IpAllowlistUtil;
 import org.yu.flow.util.AesEncryptUtil;
 

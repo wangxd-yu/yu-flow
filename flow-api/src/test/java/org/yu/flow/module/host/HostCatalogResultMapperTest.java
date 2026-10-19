@@ -1,7 +1,7 @@
 package org.yu.flow.module.host;
 
 import org.junit.jupiter.api.Test;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.host.dto.HostIdentityCatalogItemDTO;
 

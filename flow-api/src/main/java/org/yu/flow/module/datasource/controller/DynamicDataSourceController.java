@@ -3,7 +3,7 @@ import org.yu.flow.config.DemoModeGuard;
 
 import org.yu.flow.annotation.YuFlowApi;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.datasource.domain.DataSourceDO;
 import org.yu.flow.module.datasource.dto.TestConnectionDTO;

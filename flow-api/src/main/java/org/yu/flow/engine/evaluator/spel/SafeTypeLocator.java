@@ -9,6 +9,7 @@ import org.springframework.expression.spel.support.StandardTypeLocator;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -38,9 +39,17 @@ public final class SafeTypeLocator implements TypeLocator {
             "java.lang.Short",
             "java.lang.Number",
             "org.yu.flow.engine.evaluator.expression.",
-            "org.yu.flow.auto.util.SnowIdGenerator",
-            "org.yu.flow.auto.util.FlowSystemParamsUtil"
+            "org.yu.flow.util.SnowIdGenerator",
+            "org.yu.flow.util.FlowSystemParamsUtil"
     ));
+
+    /**
+     * 2.0.0 之前这两个类在 {@code org.yu.flow.auto.util}。系统宏、编排脚本和旧版导出的发布包里存的是旧类名，
+     * 基线脚本的种子也是旧类名（改了会让 Flyway 校验和不一致），所以旧名继续解析到新类。
+     */
+    private static final Map<String, String> MOVED_TYPES = Map.of(
+            "org.yu.flow.auto.util.SnowIdGenerator", "org.yu.flow.util.SnowIdGenerator",
+            "org.yu.flow.auto.util.FlowSystemParamsUtil", "org.yu.flow.util.FlowSystemParamsUtil");
 
     /**
      * Hutool 仅放行纯计算/编解码工具；禁止 FileUtil / HttpUtil / RuntimeUtil 等旁路出站与本地 IO。
@@ -80,7 +89,7 @@ public final class SafeTypeLocator implements TypeLocator {
         if (typeName == null || typeName.isBlank()) {
             throw new SpelEvaluationException(SpelMessage.TYPE_NOT_FOUND, typeName);
         }
-        String name = typeName.trim();
+        String name = MOVED_TYPES.getOrDefault(typeName.trim(), typeName.trim());
         String simple = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1) : name;
         if (DENY_SIMPLE.contains(simple)) {
             throw new SpelEvaluationException(SpelMessage.TYPE_NOT_FOUND, typeName);

@@ -17,7 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-import org.yu.flow.auto.dto.SqlAndParams;
+import org.yu.flow.dto.SqlAndParams;
 import org.yu.flow.engine.service.SqlExecutorService;
 import org.springframework.data.domain.Pageable;
 

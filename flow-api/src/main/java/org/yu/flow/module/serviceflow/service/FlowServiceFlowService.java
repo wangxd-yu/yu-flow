@@ -1,6 +1,6 @@
 package org.yu.flow.module.serviceflow.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.dto.FlowServiceFlowDTO;
 import org.yu.flow.module.serviceflow.query.FlowServiceFlowQueryDTO;

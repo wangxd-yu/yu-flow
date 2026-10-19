@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.yu.flow.log.trace.MdcContext;
+import org.yu.flow.util.trace.MdcContext;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;

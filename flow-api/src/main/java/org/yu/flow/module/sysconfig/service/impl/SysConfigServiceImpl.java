@@ -3,7 +3,7 @@ import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.ProdSecurityGuard;
 
 import cn.hutool.core.util.StrUtil;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.sysconfig.cache.SysConfigCacheManager;
 import org.yu.flow.module.sysconfig.domain.SysConfigDO;
 import org.yu.flow.module.sysconfig.dto.SaveSysConfigDTO;
@@ -11,7 +11,7 @@ import org.yu.flow.module.sysconfig.dto.SysConfigDTO;
 import org.yu.flow.module.sysconfig.query.SysConfigQueryDTO;
 import org.yu.flow.module.sysconfig.repository.SysConfigRepository;
 import org.yu.flow.module.sysconfig.service.SysConfigService;
-import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;

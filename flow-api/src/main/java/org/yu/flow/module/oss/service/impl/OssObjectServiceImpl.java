@@ -20,7 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.exception.FlowException;

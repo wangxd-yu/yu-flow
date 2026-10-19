@@ -5,7 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.env.StandardEnvironment;
 import org.yu.flow.config.YuFlowProperties;
-import org.yu.flow.login.sm2.LoginSm2CryptoService;
+import org.yu.flow.module.auth.sm2.LoginSm2CryptoService;
 import org.yu.flow.module.api.dto.PrivacyDevSessionDTO;
 
 import java.lang.reflect.Field;

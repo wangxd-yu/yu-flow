@@ -3,7 +3,7 @@ package org.yu.flow.module.task.controller;
 import org.yu.flow.module.rbac.support.RequirePerm;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;

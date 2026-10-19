@@ -3,7 +3,7 @@ package org.yu.flow.module.release.support;
 import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.config.FlowApiCacheManager;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;

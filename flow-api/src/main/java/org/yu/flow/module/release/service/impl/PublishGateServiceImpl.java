@@ -2,8 +2,8 @@ package org.yu.flow.module.release.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Service;
-import org.yu.flow.log.audit.AuditDetail;
-import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.module.log.audit.AuditDetail;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;

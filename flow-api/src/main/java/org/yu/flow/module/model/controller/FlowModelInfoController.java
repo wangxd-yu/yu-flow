@@ -4,8 +4,8 @@ import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.annotation.YuFlowApi;
 
 import lombok.extern.slf4j.Slf4j;
-import org.yu.flow.auto.dto.BatchMoveDTO;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.BatchMoveDTO;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.model.domain.FlowModelInfoDO;
 import org.yu.flow.module.model.dto.FlowModelInfoDTO;

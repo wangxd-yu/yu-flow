@@ -3,7 +3,7 @@ package org.yu.flow.config;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.util.UrlPathHelper;
-import org.yu.flow.log.execution.service.FlowExecutionLogService;
+import org.yu.flow.module.log.execution.service.FlowExecutionLogService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.support.HostBindingConfig;
 import org.yu.flow.module.api.support.PublishedApiSnapshot;
@@ -71,8 +71,8 @@ class GatewayWrapForwardHandler {
             }
             if (shouldWriteWrapLog(flowApiDO, success) && flowExecutionLogService != null) {
                 try {
-                    org.yu.flow.log.execution.domain.FlowExecutionLogDO logDO =
-                            new org.yu.flow.log.execution.domain.FlowExecutionLogDO();
+                    org.yu.flow.module.log.execution.domain.FlowExecutionLogDO logDO =
+                            new org.yu.flow.module.log.execution.domain.FlowExecutionLogDO();
                     logDO.setApiId(flowApiDO.getId());
                     logDO.setApiName(PublishedApiSnapshot.resolveName(flowApiDO));
                     logDO.setUrl(PublishedApiSnapshot.resolveUrl(flowApiDO));

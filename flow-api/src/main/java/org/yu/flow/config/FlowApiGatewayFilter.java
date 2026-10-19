@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
-import org.yu.flow.auto.service.FlowApiExecutionService;
+import org.yu.flow.module.api.runtime.FlowApiExecutionService;
 import org.yu.flow.config.response.ResponseStrategyResolver;
 import org.yu.flow.config.response.ResponseTransformer;
 import org.yu.flow.dto.R;
@@ -121,7 +121,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 YuFlowRuntimeSettings yuFlowRuntimeSettings,
                                 ApiDataViewService apiDataViewService,
                                 RbacService rbacService,
-                                org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService) {
+                                org.yu.flow.module.log.execution.service.FlowExecutionLogService flowExecutionLogService) {
         this(flowProperties, flowApiService, flowApiCacheManager, schemaValidatorService,
                 contractParamTypeConverter, responseStrategyResolver, responseTransformer,
                 apiResponseCacheService, openAuthService, assetMetricsRecorder, hostAuthenticationProbe,
@@ -145,7 +145,7 @@ public class FlowApiGatewayFilter extends OncePerRequestFilter {
                                 YuFlowRuntimeSettings yuFlowRuntimeSettings,
                                 ApiDataViewService apiDataViewService,
                                 RbacService rbacService,
-                                org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService,
+                                org.yu.flow.module.log.execution.service.FlowExecutionLogService flowExecutionLogService,
                                 PrivacyFieldInterceptor privacyFieldInterceptor) {
         this.flowProperties = flowProperties;
         this.flowApiCacheManager = flowApiCacheManager;

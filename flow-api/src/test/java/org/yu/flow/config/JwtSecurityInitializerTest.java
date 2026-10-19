@@ -3,7 +3,7 @@ package org.yu.flow.config;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 

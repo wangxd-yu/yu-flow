@@ -7,7 +7,7 @@ import cn.hutool.crypto.symmetric.SM4;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.yu.flow.config.YuFlowProperties;
-import org.yu.flow.login.sm2.LoginSm2CryptoService;
+import org.yu.flow.module.auth.sm2.LoginSm2CryptoService;
 
 import jakarta.annotation.Resource;
 import java.nio.charset.StandardCharsets;

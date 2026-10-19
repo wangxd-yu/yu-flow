@@ -1,6 +1,6 @@
 package org.yu.flow.module.mq.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.mq.domain.MqConnectionDO;
 import org.yu.flow.module.mq.dto.MqConnectionDTO;
 import org.yu.flow.module.mq.provider.MqConnectionSpec;

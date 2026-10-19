@@ -16,7 +16,7 @@ import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.Ordered;
-import org.yu.flow.auto.service.FlowApiExecutionService;
+import org.yu.flow.module.api.runtime.FlowApiExecutionService;
 import org.yu.flow.config.response.ResponseStrategyResolver;
 import org.yu.flow.config.response.ResponseTransformer;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
@@ -97,7 +97,7 @@ public class FlowAutoConfiguration {
             org.yu.flow.module.sysconfig.support.YuFlowRuntimeSettings yuFlowRuntimeSettings,
             org.yu.flow.module.api.service.ApiDataViewService apiDataViewService,
             org.yu.flow.module.rbac.service.RbacService rbacService,
-            org.yu.flow.log.execution.service.FlowExecutionLogService flowExecutionLogService,
+            org.yu.flow.module.log.execution.service.FlowExecutionLogService flowExecutionLogService,
             org.yu.flow.module.api.privacy.PrivacyFieldInterceptor privacyFieldInterceptor) {
 
         FlowApiGatewayFilter filter = new FlowApiGatewayFilter(flowProperties, flowApiService, flowApiCacheManager,

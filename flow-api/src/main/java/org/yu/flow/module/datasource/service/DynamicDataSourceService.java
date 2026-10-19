@@ -1,7 +1,7 @@
 package org.yu.flow.module.datasource.service;
 
 import org.yu.flow.module.datasource.domain.DataSourceDO;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.datasource.dto.TestConnectionDTO;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;

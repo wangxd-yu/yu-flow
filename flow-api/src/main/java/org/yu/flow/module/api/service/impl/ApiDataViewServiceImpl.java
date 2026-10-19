@@ -13,10 +13,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.yu.flow.auto.druid.DynamicSqlParser;
-import org.yu.flow.auto.dto.PageBean;
-import org.yu.flow.auto.dto.SqlAndParams;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.engine.sql.DynamicSqlParser;
+import org.yu.flow.dto.PageBean;
+import org.yu.flow.dto.SqlAndParams;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.YuFlowProperties;
@@ -635,7 +635,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
                               HttpServletResponse response) throws Exception {
         String sql = sqlAndParams.getSql();
         // 去掉已有 limit，避免只导出一页
-        sql = org.yu.flow.auto.util.RegularSqlParseUtil.removeLimitAndOffset(sql);
+        sql = org.yu.flow.util.RegularSqlParseUtil.removeLimitAndOffset(sql);
         dataSourceWallGuard.assertSqlAllowed(datasource, sql);
 
         String finalSql = sql;
@@ -837,7 +837,7 @@ public class ApiDataViewServiceImpl implements ApiDataViewService {
             return one == null ? new ArrayList<>() : new ArrayList<>(List.of(one));
         }
 
-        String sql = org.yu.flow.auto.util.RegularSqlParseUtil.removeLimitAndOffset(sqlAndParams.getSql());
+        String sql = org.yu.flow.util.RegularSqlParseUtil.removeLimitAndOffset(sqlAndParams.getSql());
         dataSourceWallGuard.assertSqlAllowed(api.getDatasource(), sql);
         String finalSql = sql;
         List<Map<String, Object>> rows = new ArrayList<>();

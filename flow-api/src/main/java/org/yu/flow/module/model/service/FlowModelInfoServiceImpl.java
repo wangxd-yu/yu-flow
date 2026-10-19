@@ -3,7 +3,7 @@ import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.Constants;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.model.domain.FlowModelInfoDO;
 import org.yu.flow.module.model.dto.FlowModelInfoDTO;
 import org.yu.flow.module.model.dto.SaveModelDTO;

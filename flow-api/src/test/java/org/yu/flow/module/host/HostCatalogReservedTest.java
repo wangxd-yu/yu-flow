@@ -88,7 +88,7 @@ class HostCatalogReservedTest {
     void snowIdGeneratorKeepsAssignedId() {
         FlowApiDO api = new FlowApiDO();
         api.setId(HostCatalogReserved.DIR_USER_TYPE);
-        org.yu.flow.auto.util.SnowIdGenerator gen = new org.yu.flow.auto.util.SnowIdGenerator();
+        org.yu.flow.util.SnowIdGenerator gen = new org.yu.flow.util.SnowIdGenerator();
         assertEquals(HostCatalogReserved.DIR_USER_TYPE, gen.generate(null, api));
     }
 }

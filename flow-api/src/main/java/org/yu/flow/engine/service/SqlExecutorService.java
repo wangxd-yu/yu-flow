@@ -1,6 +1,6 @@
 package org.yu.flow.engine.service;
 
-import org.yu.flow.auto.dto.SqlAndParams;
+import org.yu.flow.dto.SqlAndParams;
 import org.springframework.data.domain.Pageable;
 
 /**

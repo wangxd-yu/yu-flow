@@ -1,6 +1,6 @@
 package org.yu.flow.module.open.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.open.domain.FlowOpenPlatformDO;
 import org.yu.flow.module.open.dto.FlowOpenCredentialDTO;
 import org.yu.flow.module.open.dto.FlowOpenPlatformDTO;

@@ -16,7 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.exception.FlowException;
-import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.service.FlowApiCrudService;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;

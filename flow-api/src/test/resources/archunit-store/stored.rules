@@ -1,0 +1,5 @@
+#
+#Mon Oct 19 19:14:46 CST 2026
+classes\ that\ reside\ in\ a\ package\ 'org.yu.flow.module..'\ should\ not\ depend\ on\ repositories\ or\ service\ implementations\ of\ other\ modules,\ because\ \u8DE8\u6A21\u5757\u8D70\u5BF9\u65B9\u7684\ service\ \u63A5\u53E3\uFF1B\u5B9E\u4F53\u548C\ DTO\ \u53EF\u4EE5\u5171\u7528=1f1d803c-b1ce-454c-b8e7-66d94ea14f42
+no\ classes\ that\ are\ annotated\ with\ @RestController\ or\ are\ annotated\ with\ @Controller\ should\ depend\ on\ classes\ that\ are\ assignable\ to\ org.springframework.data.repository.Repository,\ because\ \u63A7\u5236\u5668\u7ECF\u7531\ service\ \u8BBF\u95EE\u6570\u636E=f8b2531d-1b71-4d45-bb7c-178a4f6185f9
+no\ classes\ that\ reside\ in\ a\ package\ 'org.yu.flow.engine..'\ should\ depend\ on\ classes\ that\ reside\ in\ a\ package\ 'org.yu.flow.module..',\ because\ \u5F15\u64CE\u4E0D\u611F\u77E5\u7BA1\u7406\u7AEF\u4E1A\u52A1\u6A21\u5757\uFF0C\u9700\u8981\u7684\u80FD\u529B\u901A\u8FC7\ engine\ \u91CC\u7684\u63A5\u53E3\u6CE8\u5165=bd1bca4c-51f5-4bc1-8f5f-cf73fa418a73

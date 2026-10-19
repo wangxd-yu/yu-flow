@@ -1,6 +1,6 @@
 package org.yu.flow.module.alert.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.alert.domain.AlertChannelDO;
 import org.yu.flow.module.alert.domain.AlertRuleDO;
 import org.yu.flow.module.alert.dto.*;

@@ -1,6 +1,6 @@
 package org.yu.flow.module.oss.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.oss.domain.OssUploadProfileDO;
 import org.yu.flow.module.oss.dto.OssUploadProfileDTO;
 import org.yu.flow.module.oss.query.OssUploadProfileQueryDTO;

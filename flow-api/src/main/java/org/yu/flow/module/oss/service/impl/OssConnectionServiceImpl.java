@@ -11,7 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.oss.client.MinioClientFactory;

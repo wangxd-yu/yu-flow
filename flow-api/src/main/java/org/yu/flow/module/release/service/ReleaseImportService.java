@@ -1,6 +1,6 @@
 package org.yu.flow.module.release.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.release.dto.ReleaseImportLogDTO;
 import org.yu.flow.module.release.dto.ReleaseInspectResultDTO;
 import org.yu.flow.module.release.support.ReleaseDiffCalculator;

@@ -222,7 +222,7 @@ INSERT INTO `flow_sys_macro` (`id`, `macro_code`, `macro_name`, `macro_type`, `e
 ('4', 'DATE_TIME', '标准日期时间', 'VARIABLE', 'T(java.time.LocalDateTime).now().format(T(java.time.format.DateTimeFormatter).ofPattern(''yyyy-MM-dd HH:mm:ss''))', 'ALL', 'String', 1, '格式：yyyy-MM-dd HH:mm:ss', NULL, 'SYSTEM_INIT', '2026-03-27 00:18:42', 'SYSTEM_INIT', '2026-03-27 00:45:34'),
 ('5', 'DATE', '当前日期', 'VARIABLE', 'T(java.time.LocalDateTime).now().format(T(java.time.format.DateTimeFormatter).ofPattern(''yyyy-MM-dd''))', 'ALL', 'String', 1, '格式：yyyy-MM-dd', NULL, 'SYSTEM_INIT', '2026-03-27 00:18:42', 'SYSTEM_INIT', '2026-03-27 00:45:34'),
 ('6', 'TIME', '当前时间', 'VARIABLE', 'T(java.time.LocalDateTime).now().format(T(java.time.format.DateTimeFormatter).ofPattern(''HH:mm:ss''))', 'ALL', 'String', 1, '格式：HH:mm:ss', NULL, 'SYSTEM_INIT', '2026-03-27 00:18:42', 'SYSTEM_INIT', '2026-03-27 00:45:34'),
-('7', 'SNOWFLAKE', '雪花算法ID', 'VARIABLE', 'T(org.yu.flow.auto.util.SnowIdGenerator).getId()', 'ALL', 'String', 1, '基于雪花算法生成分布式唯一ID字符串', NULL, 'SYSTEM_INIT', '2026-03-27 00:18:42', 'SYSTEM_INIT', '2026-04-02 00:12:05'),
+('7', 'SNOWFLAKE', '雪花算法ID', 'VARIABLE', 'T(org.yu.flow.util.SnowIdGenerator).getId()', 'ALL', 'String', 1, '基于雪花算法生成分布式唯一ID字符串', NULL, 'SYSTEM_INIT', '2026-03-27 00:18:42', 'SYSTEM_INIT', '2026-04-02 00:12:05'),
 ('8', 'GET_ENV', '获取环境配置', 'FUNCTION', '@environment.getProperty(#p0)', 'ALL', 'String', 1, '动态获取 Spring Environment 配置项，如 spring.datasource.url。调用方式：宏编码 GET_ENV，上下文参数 {p0: "配置key"}', 'p0', 'SYSTEM_INIT', '2026-03-27 00:45:34', NULL, '2026-03-27 00:45:34')
 ON DUPLICATE KEY UPDATE id = VALUES(id);
 

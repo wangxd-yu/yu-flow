@@ -1,6 +1,6 @@
 package org.yu.flow.module.mqtask.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.dto.FlowMqTaskDTO;
 import org.yu.flow.module.mqtask.query.FlowMqTaskQueryDTO;

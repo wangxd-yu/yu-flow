@@ -28,7 +28,7 @@ public class SysEnvVariableDO {
     @Id
     @Column(name = "id", nullable = false, length = 32)
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     /** 变量名，大写字母开头，仅大写字母 / 数字 / 下划线 */

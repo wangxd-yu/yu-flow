@@ -9,7 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.yu.flow.config.YuFlowProperties;
-import org.yu.flow.log.audit.service.AuditLogService;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.release.domain.FlowEnvDO;

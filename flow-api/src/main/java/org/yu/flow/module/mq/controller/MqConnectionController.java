@@ -3,7 +3,7 @@ package org.yu.flow.module.mq.controller;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.mq.domain.MqConnectionDO;
 import org.yu.flow.module.mq.dto.MqConnectionDTO;

@@ -20,7 +20,7 @@ public class FlowRegressionRunDO {
 
     @Id
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     @Column(length = 64)
     private String id;
 

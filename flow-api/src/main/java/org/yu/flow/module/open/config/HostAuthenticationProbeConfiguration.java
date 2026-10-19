@@ -4,7 +4,7 @@ import cn.hutool.core.exceptions.ValidateException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.module.open.auth.HostAuthenticationProbe;
 
 /**

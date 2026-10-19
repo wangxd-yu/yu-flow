@@ -30,7 +30,7 @@ public class FlowReleaseDO {
     @Id
     @Column(name = "id", nullable = false, length = 32)
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     /** 版本号，全局唯一，如 v2026.10 */

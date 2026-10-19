@@ -5,7 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.yu.flow.annotation.YuFlowApi;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.dto.R;
 import org.yu.flow.engine.evaluator.FlowEngine;

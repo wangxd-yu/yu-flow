@@ -3,7 +3,7 @@ package org.yu.flow.module.api.privacy;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.host.FlowHostPrincipal;
 import org.yu.flow.module.host.PrivacyAccessRule;

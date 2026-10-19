@@ -23,7 +23,7 @@ public class FlowOpenApiGrantDO {
 
     @Id
     @GeneratedValue(generator = "snow_id")
-    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.auto.util.SnowIdGenerator")
+    @GenericGenerator(name = "snow_id", strategy = "org.yu.flow.util.SnowIdGenerator")
     private String id;
 
     @Column(name = "platform_id", nullable = false, length = 32)

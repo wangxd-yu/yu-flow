@@ -8,7 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.yu.flow.auto.service.FlowApiExecutionService;
+import org.yu.flow.module.api.runtime.FlowApiExecutionService;
 import org.yu.flow.config.response.ResponseStrategyResolver;
 import org.yu.flow.config.response.ResponseTransformer;
 import org.yu.flow.config.response.ResponseWrapperContext;

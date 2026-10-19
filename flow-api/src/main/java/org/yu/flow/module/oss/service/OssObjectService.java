@@ -3,7 +3,7 @@ package org.yu.flow.module.oss.service;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.multipart.MultipartFile;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.host.FlowHostDataScope;
 import org.yu.flow.module.host.FlowHostPrincipal;
 import org.yu.flow.module.oss.dto.OssObjectDTO;

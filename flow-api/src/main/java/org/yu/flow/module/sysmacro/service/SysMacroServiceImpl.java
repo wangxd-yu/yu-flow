@@ -3,7 +3,7 @@ import org.yu.flow.config.DemoModeGuard;
 
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 import org.yu.flow.module.sysmacro.domain.SysMacroDO;
 import org.yu.flow.module.sysmacro.dto.SysMacroDTO;

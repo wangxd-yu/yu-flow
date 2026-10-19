@@ -10,7 +10,7 @@ import org.yu.flow.engine.evaluator.FlowEngine;
 import org.yu.flow.engine.model.ExecutionLog;
 import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
-import org.yu.flow.auto.util.JwtTokenUtil;
+import org.yu.flow.util.JwtTokenUtil;
 
 import jakarta.annotation.Resource;
 import java.time.LocalTime;

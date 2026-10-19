@@ -1,0 +1,51 @@
+package org.yu.flow.module.log.execution.dto;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.Data;
+import org.yu.flow.module.log.execution.domain.FlowExecutionLogDO;
+
+import java.time.LocalDateTime;
+
+@Data
+public class FlowExecutionLogDTO {
+    private String id;
+    private String apiId;
+    private String apiName;
+    private String url;
+    private String serviceType;
+    private String method;
+    private String requestParams;
+    private String responseBody;
+    private String status;
+    private String errorMsg;
+    private Long costTimeMs;
+    private String traceData;
+
+    /** 请求 ID（响应头 X-Request-Id） */
+    private String requestId;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime createTime;
+
+    public static FlowExecutionLogDTO fromDO(FlowExecutionLogDO entity) {
+        if (entity == null) {
+            return null;
+        }
+        FlowExecutionLogDTO dto = new FlowExecutionLogDTO();
+        dto.setId(entity.getId());
+        dto.setApiId(entity.getApiId());
+        dto.setApiName(entity.getApiName());
+        dto.setUrl(entity.getUrl());
+        dto.setServiceType(entity.getServiceType());
+        dto.setMethod(entity.getMethod());
+        dto.setRequestParams(entity.getRequestParams());
+        dto.setResponseBody(entity.getResponseBody());
+        dto.setStatus(entity.getStatus());
+        dto.setErrorMsg(entity.getErrorMsg());
+        dto.setCostTimeMs(entity.getCostTimeMs());
+        dto.setTraceData(entity.getTraceData());
+        dto.setRequestId(entity.getRequestId());
+        dto.setCreateTime(entity.getCreateTime());
+        return dto;
+    }
+}

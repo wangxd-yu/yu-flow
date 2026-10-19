@@ -3,7 +3,7 @@ package org.yu.flow.module.responsetemplate.controller;
 import org.yu.flow.module.rbac.support.RequirePerm;
 import org.yu.flow.annotation.YuFlowApi;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.dto.R;
 import org.yu.flow.module.responsetemplate.cache.ResponseTemplateCacheManager;
 import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;

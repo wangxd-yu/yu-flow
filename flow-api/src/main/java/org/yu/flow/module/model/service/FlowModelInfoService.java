@@ -1,6 +1,6 @@
 package org.yu.flow.module.model.service;
 
-import org.yu.flow.auto.dto.PageBean;
+import org.yu.flow.dto.PageBean;
 import org.yu.flow.module.model.domain.FlowModelInfoDO;
 import org.yu.flow.module.model.dto.FlowModelInfoDTO;
 import org.yu.flow.module.model.dto.SaveModelDTO;
