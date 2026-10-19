@@ -8,6 +8,7 @@ import org.yu.flow.engine.evaluator.expression.SafeSpelExpressionEngine;
 import org.yu.flow.engine.evaluator.expression.SimpleExpressionEngine;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -38,10 +39,11 @@ import org.yu.flow.module.api.cache.ApiResponseCacheService;
 @ConditionalOnProperty(prefix = "yu.flow", name = "enabled", havingValue = "true", matchIfMissing = true)
 @ComponentScan(
         basePackages = "org.yu.flow",
-        excludeFilters = @ComponentScan.Filter(
-                type = FilterType.REGEX,
-                pattern = "org\\.yu\\.flow\\.module\\.oss\\..*"
-        )
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "org\\.yu\\.flow\\.module\\.oss\\..*"),
+                // 运行期不排除任何类；测试时排除测试类与 @TestConfiguration（同 @SpringBootApplication 的默认扫描）
+                @ComponentScan.Filter(type = FilterType.CUSTOM, classes = TypeExcludeFilter.class)
+        }
 )
 @EnableConfigurationProperties(YuFlowProperties.class)
 @EnableJpaRepositories(basePackages = {"org.yu.flow"})

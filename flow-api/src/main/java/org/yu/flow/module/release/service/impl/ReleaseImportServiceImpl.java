@@ -5,10 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import org.yu.flow.module.alert.repository.AlertRuleRepository;
-import org.yu.flow.module.open.cache.OpenPlatformCache;
-import org.yu.flow.module.open.repository.FlowOpenPlatformRepository;
-import org.yu.flow.module.page.repository.PageInfoRepository;
 import org.yu.flow.module.log.audit.AuditDetail;
 import org.yu.flow.module.release.support.AssetEditLock;
 import org.yu.flow.module.release.support.ModelTableInspector;
@@ -134,15 +130,6 @@ public class ReleaseImportServiceImpl implements ReleaseImportService {
     private ReleasePlaceholderCreator placeholderCreator;
     @Resource
     private ReleaseAssetResolver assetResolver;
-    @Resource
-    private PageInfoRepository pageInfoRepository;
-    @Resource
-    private AlertRuleRepository alertRuleRepository;
-    @Resource
-    private FlowOpenPlatformRepository flowOpenPlatformRepository;
-    @Resource
-    private OpenPlatformCache openPlatformCache;
-
     @Resource
     private AssetTransferService assetTransferService;
     @Resource
@@ -311,12 +298,8 @@ public class ReleaseImportServiceImpl implements ReleaseImportService {
     }
 
     private boolean isOnlineHere(ReleasePackageFormat.ReleaseEntry e) {
-        if (ReleaseAssetResolver.OPEN_PLATFORM.equals(e.getAssetType())) {
-            return flowOpenPlatformRepository.findByCode(e.getAssetKey())
-                    .map(p -> Integer.valueOf(1).equals(p.getStatus())).orElse(false);
-        }
         return ReleaseAssetResolver.OFFLINE_TYPES.contains(e.getAssetType())
-                && assetResolver.isOnline(e.getAssetType(), e.getAssetId());
+                && assetResolver.isOnlineHere(e.getAssetType(), e.getAssetId(), e.getAssetKey());
     }
 
     /**
@@ -581,32 +564,9 @@ public class ReleaseImportServiceImpl implements ReleaseImportService {
     private int offlineAll(List<ReleasePackageFormat.ReleaseEntry> offline) {
         int count = 0;
         for (ReleasePackageFormat.ReleaseEntry e : offline) {
-            if (!isOnlineHere(e)) {
-                continue;
+            if (isOnlineHere(e) && assetResolver.takeOffline(e.getAssetType(), e.getAssetId(), e.getAssetKey())) {
+                count++;
             }
-            switch (e.getAssetType()) {
-                case ReleaseAssetResolver.API -> flowApiCrudService.unpublish(e.getAssetId());
-                case ReleaseAssetResolver.SERVICE -> flowServiceFlowService.unpublish(e.getAssetId());
-                case ReleaseAssetResolver.TASK -> flowTaskService.unpublish(e.getAssetId());
-                case ReleaseAssetResolver.MQ_TASK -> flowMqTaskService.unpublish(e.getAssetId());
-                case ReleaseAssetResolver.PAGE -> pageInfoRepository.findById(e.getAssetId()).ifPresent(p -> {
-                    p.setStatus(0);
-                    pageInfoRepository.save(p);
-                });
-                case ReleaseAssetResolver.ALERT_RULE -> alertRuleRepository.findById(e.getAssetId()).ifPresent(r -> {
-                    r.setEnabled(0);
-                    alertRuleRepository.save(r);
-                });
-                case ReleaseAssetResolver.OPEN_PLATFORM -> flowOpenPlatformRepository.findByCode(e.getAssetKey()).ifPresent(p -> {
-                    p.setStatus(0);
-                    flowOpenPlatformRepository.save(p);
-                    openPlatformCache.publishRefresh();
-                });
-                default -> {
-                    continue;
-                }
-            }
-            count++;
         }
         return count;
     }

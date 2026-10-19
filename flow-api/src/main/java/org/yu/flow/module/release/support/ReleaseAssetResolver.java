@@ -1,41 +1,10 @@
 package org.yu.flow.module.release.support;
 
 import cn.hutool.core.util.StrUtil;
-import jakarta.annotation.Resource;
-import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
-import org.yu.flow.module.alert.domain.AlertRuleDO;
-import org.yu.flow.module.alert.repository.AlertRuleRepository;
-import org.yu.flow.module.api.domain.FlowApiDO;
-import org.yu.flow.module.model.domain.FlowModelInfoDO;
-import org.yu.flow.module.model.repository.FlowModelInfoRepository;
-import org.yu.flow.module.open.domain.FlowOpenPlatformDO;
-import org.yu.flow.module.open.repository.FlowOpenApiGrantRepository;
-import org.yu.flow.module.open.repository.FlowOpenPlatformRepository;
-import org.yu.flow.module.page.domain.PageInfoDO;
-import org.yu.flow.module.page.repository.PageInfoRepository;
-import org.yu.flow.module.sysconfig.domain.SysConfigDO;
-import org.yu.flow.module.sysconfig.repository.SysConfigRepository;
-import org.yu.flow.module.sysmacro.domain.SysMacroDO;
-import org.yu.flow.module.sysmacro.repository.SysMacroRepository;
 import org.yu.flow.module.transfer.support.ConfigAssetTransfer;
-import org.yu.flow.module.transfer.support.ConfigTransferPolicy;
-import org.yu.flow.module.api.repository.FlowApiRepository;
-import org.yu.flow.module.assetref.FlowDslReferenceScanner;
-import org.yu.flow.module.assetversion.UnpublishedChangeDetector;
-import org.yu.flow.module.host.HostCatalogReserved;
-import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
-import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
-import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;
-import org.yu.flow.module.responsetemplate.repository.ResponseTemplateRepository;
-import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
-import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
-import org.yu.flow.module.task.domain.FlowTaskDO;
-import org.yu.flow.module.task.repository.FlowTaskRepository;
-import org.yu.flow.util.ContentHashUtil;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -49,6 +18,8 @@ import java.util.Set;
 
 /**
  * 版本单可纳入的资产：查询、发布状态、内容指纹、直接依赖。
+ *
+ * <p>每种资产的查询与展示由所在模块的 {@link ReleaseAssetType} 实现提供，这里按类型分派。</p>
  */
 @Component
 public class ReleaseAssetResolver {
@@ -78,6 +49,9 @@ public class ReleaseAssetResolver {
     /** 在目标环境按编码而非 ID 匹配的类型 */
     public static final Set<String> KEYED_TYPES = Set.of(SYS_MACRO, SYS_CONFIG, OPEN_PLATFORM);
 
+    /** 有草稿 / 发布快照之分的类型 */
+    private static final Set<String> PUBLISHABLE_TYPES = Set.of(API, SERVICE, TASK, MQ_TASK);
+
     public static final Map<String, String> LABELS = Map.ofEntries(
             Map.entry(API, "接口"),
             Map.entry(SERVICE, "内部服务"),
@@ -105,30 +79,20 @@ public class ReleaseAssetResolver {
                             List<AssetRef> dependencies) {
     }
 
-    @Resource
-    private FlowApiRepository flowApiRepository;
-    @Resource
-    private FlowServiceFlowRepository flowServiceFlowRepository;
-    @Resource
-    private FlowTaskRepository flowTaskRepository;
-    @Resource
-    private FlowMqTaskRepository flowMqTaskRepository;
-    @Resource
-    private ResponseTemplateRepository responseTemplateRepository;
-    @Resource
-    private PageInfoRepository pageInfoRepository;
-    @Resource
-    private FlowModelInfoRepository flowModelInfoRepository;
-    @Resource
-    private SysMacroRepository sysMacroRepository;
-    @Resource
-    private SysConfigRepository sysConfigRepository;
-    @Resource
-    private FlowOpenPlatformRepository flowOpenPlatformRepository;
-    @Resource
-    private FlowOpenApiGrantRepository flowOpenApiGrantRepository;
-    @Resource
-    private AlertRuleRepository alertRuleRepository;
+    private final Map<String, ReleaseAssetType<?>> types = new HashMap<>();
+
+    public ReleaseAssetResolver(List<ReleaseAssetType<?>> assetTypes) {
+        for (ReleaseAssetType<?> t : assetTypes) {
+            if (types.put(t.type(), t) != null) {
+                throw new IllegalStateException("资产类型 " + t.type() + " 有多个实现");
+            }
+        }
+        for (String type : TYPES) {
+            if (!types.containsKey(type)) {
+                throw new IllegalStateException("资产类型 " + type + " 缺少 ReleaseAssetType 实现");
+            }
+        }
+    }
 
     public static String normalizeType(String type) {
         String t = StrUtil.trimToEmpty(type).toUpperCase(Locale.ROOT);
@@ -141,6 +105,15 @@ public class ReleaseAssetResolver {
     /** 与 {@link #describeAll} 的结果键一致 */
     public static String refKey(String type, String id) {
         return normalizeType(type) + "\0" + id;
+    }
+
+    /** 该类型的实现；类型不认识时返回 null */
+    public ReleaseAssetType<?> typeOf(String type) {
+        return types.get(StrUtil.trimToEmpty(type).toUpperCase(Locale.ROOT));
+    }
+
+    private ReleaseAssetType<?> require(String type) {
+        return types.get(normalizeType(type));
     }
 
     /**
@@ -159,32 +132,15 @@ public class ReleaseAssetResolver {
         }
         Map<String, AssetInfo> out = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : idsByType.entrySet()) {
-            List<String> ids = entry.getValue().stream().distinct().toList();
-            switch (entry.getKey()) {
-                case API -> putAll(out, flowApiRepository.findAllById(ids).stream()
-                        .filter(a -> !HostCatalogReserved.isReservedId(a.getId()))
-                        .map(this::ofApi).toList());
-                case SERVICE -> putAll(out, flowServiceFlowRepository.findAllById(ids).stream().map(this::ofService).toList());
-                case TASK -> putAll(out, flowTaskRepository.findAllById(ids).stream().map(this::ofTask).toList());
-                case MQ_TASK -> putAll(out, flowMqTaskRepository.findAllById(ids).stream().map(this::ofMqTask).toList());
-                case RESPONSE_TEMPLATE -> putAll(out, responseTemplateRepository.findAllById(ids).stream().map(this::ofTemplate).toList());
-                case PAGE -> putAll(out, pageInfoRepository.findAllById(ids).stream().map(this::ofPage).toList());
-                case MODEL -> putAll(out, flowModelInfoRepository.findAllById(ids).stream().map(this::ofModel).toList());
-                case SYS_MACRO -> putAll(out, sysMacroRepository.findAllById(ids).stream().map(this::ofMacro).toList());
-                case SYS_CONFIG -> putAll(out, sysConfigRepository.findAllById(ids).stream().map(this::ofConfig).toList());
-                case OPEN_PLATFORM -> putAll(out, flowOpenPlatformRepository.findAllById(ids).stream().map(this::ofOpenPlatform).toList());
-                case ALERT_RULE -> putAll(out, alertRuleRepository.findAllById(ids).stream().map(this::ofAlertRule).toList());
-                default -> {
-                }
+            for (AssetInfo info : describeAll(types.get(entry.getKey()), entry.getValue().stream().distinct().toList())) {
+                out.put(refKey(info.type(), info.id()), info);
             }
         }
         return out;
     }
 
-    private static void putAll(Map<String, AssetInfo> out, List<AssetInfo> infos) {
-        for (AssetInfo info : infos) {
-            out.put(refKey(info.type(), info.id()), info);
-        }
+    private static <T> List<AssetInfo> describeAll(ReleaseAssetType<T> t, List<String> ids) {
+        return t.findAllById(ids).stream().filter(t::visible).map(t::describe).toList();
     }
 
     /** 资产不存在（含已删除）返回 null */
@@ -192,47 +148,49 @@ public class ReleaseAssetResolver {
         if (StrUtil.isBlank(id)) {
             return null;
         }
-        return switch (normalizeType(type)) {
-            case API -> flowApiRepository.findById(id)
-                    .filter(a -> !HostCatalogReserved.isReservedId(a.getId()))
-                    .map(this::ofApi).orElse(null);
-            case SERVICE -> flowServiceFlowRepository.findById(id).map(this::ofService).orElse(null);
-            case TASK -> flowTaskRepository.findById(id).map(this::ofTask).orElse(null);
-            case MQ_TASK -> flowMqTaskRepository.findById(id).map(this::ofMqTask).orElse(null);
-            case RESPONSE_TEMPLATE -> responseTemplateRepository.findById(id).map(this::ofTemplate).orElse(null);
-            case PAGE -> pageInfoRepository.findById(id).map(this::ofPage).orElse(null);
-            case MODEL -> flowModelInfoRepository.findById(id).map(this::ofModel).orElse(null);
-            case SYS_MACRO -> sysMacroRepository.findById(id).map(this::ofMacro).orElse(null);
-            case SYS_CONFIG -> sysConfigRepository.findById(id).map(this::ofConfig).orElse(null);
-            case OPEN_PLATFORM -> flowOpenPlatformRepository.findById(id).map(this::ofOpenPlatform).orElse(null);
-            case ALERT_RULE -> alertRuleRepository.findById(id).map(this::ofAlertRule).orElse(null);
-            default -> null;
-        };
+        return describe(require(type), id);
+    }
+
+    private static <T> AssetInfo describe(ReleaseAssetType<T> t, String id) {
+        return t.findById(id).filter(t::visible).map(t::describe).orElse(null);
+    }
+
+    /** 资产行是否存在（不论是否参与版本管理） */
+    public boolean exists(String type, String id) {
+        return StrUtil.isNotBlank(id) && require(type).findById(id).isPresent();
     }
 
     /** 按编码匹配的类型返回编码（宏编码 / 配置键 / 平台编码），其余返回 null */
     public String keyOf(String type, String id) {
-        return switch (normalizeType(type)) {
-            case SYS_MACRO -> sysMacroRepository.findById(id).map(SysMacroDO::getMacroCode).orElse(null);
-            case SYS_CONFIG -> sysConfigRepository.findById(id).map(SysConfigDO::getConfigKey).orElse(null);
-            case OPEN_PLATFORM -> flowOpenPlatformRepository.findById(id).map(FlowOpenPlatformDO::getCode).orElse(null);
-            default -> null;
-        };
+        String t = normalizeType(type);
+        return KEYED_TYPES.contains(t) ? keyOf(types.get(t), id) : null;
+    }
+
+    private static <T> String keyOf(ReleaseAssetType<T> t, String id) {
+        return t.findById(id).map(t::keyOf).orElse(null);
     }
 
     /** 资产当前是否「在线」：已发布 / 页面已发布 / 规则或平台已启用 */
     public boolean isOnline(String type, String id) {
-        return switch (normalizeType(type)) {
-            case API, SERVICE, TASK, MQ_TASK -> {
-                AssetInfo info = describe(type, id);
-                yield info != null && info.published();
-            }
-            case PAGE -> pageInfoRepository.findById(id).map(p -> Integer.valueOf(1).equals(p.getStatus())).orElse(false);
-            case OPEN_PLATFORM -> flowOpenPlatformRepository.findById(id)
-                    .map(p -> Integer.valueOf(1).equals(p.getStatus())).orElse(false);
-            case ALERT_RULE -> alertRuleRepository.findById(id).map(r -> Integer.valueOf(1).equals(r.getEnabled())).orElse(false);
-            default -> false;
-        };
+        String t = normalizeType(type);
+        return OFFLINE_TYPES.contains(t) && isOnline(types.get(t), id);
+    }
+
+    private static <T> boolean isOnline(ReleaseAssetType<T> t, String id) {
+        return t.findById(id).filter(t::visible).map(t::online).orElse(false);
+    }
+
+    /** 导入目标环境里这一项当前是否在线：按编码匹配的类型用 key 找，其余用 id */
+    public boolean isOnlineHere(String type, String id, String key) {
+        String t = normalizeType(type);
+        if (!OFFLINE_TYPES.contains(t)) {
+            return false;
+        }
+        return KEYED_TYPES.contains(t) ? isOnlineByKey(types.get(t), key) : isOnline(types.get(t), id);
+    }
+
+    private static <T> boolean isOnlineByKey(ReleaseAssetType<T> t, String key) {
+        return StrUtil.isNotBlank(key) && t.findByKey(key).filter(t::visible).map(t::online).orElse(false);
     }
 
     /**
@@ -241,209 +199,49 @@ public class ReleaseAssetResolver {
      */
     public List<AssetInfo> changedSince(String type, LocalDateTime since, int limit) {
         PageRequest page = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "updateTime"));
-        return switch (normalizeType(type)) {
-            case API -> flowApiRepository.findAll(this.<FlowApiDO>publishedAfter(since), page).stream()
-                    .filter(a -> !HostCatalogReserved.isReservedId(a.getId())).map(this::ofApi).toList();
-            case SERVICE -> flowServiceFlowRepository.findAll(this.<FlowServiceFlowDO>publishedAfter(since), page)
-                    .stream().map(this::ofService).toList();
-            case TASK -> flowTaskRepository.findAll(this.<FlowTaskDO>publishedAfter(since), page)
-                    .stream().map(this::ofTask).toList();
-            case MQ_TASK -> flowMqTaskRepository.findAll(this.<FlowMqTaskDO>publishedAfter(since), page)
-                    .stream().map(this::ofMqTask).toList();
-            case RESPONSE_TEMPLATE -> responseTemplateRepository.findAll(this.<ResponseTemplateDO>updatedAfter(since), page)
-                    .stream().map(this::ofTemplate).toList();
-            case PAGE -> pageInfoRepository.findAll(this.<PageInfoDO>updatedAfter(since), page)
-                    .stream().map(this::ofPage).toList();
-            case MODEL -> flowModelInfoRepository.findAll(this.<FlowModelInfoDO>updatedAfter(since), page)
-                    .stream().map(this::ofModel).toList();
-            case SYS_MACRO -> sysMacroRepository.findAll(this.<SysMacroDO>updatedAfter(since), page)
-                    .stream().map(this::ofMacro).toList();
-            case SYS_CONFIG -> sysConfigRepository.findAll(this.<SysConfigDO>updatedAfter(since), page)
-                    .stream().map(this::ofConfig).toList();
-            case OPEN_PLATFORM -> flowOpenPlatformRepository.findAll(this.<FlowOpenPlatformDO>updatedAfter(since), page)
-                    .stream().map(this::ofOpenPlatform).toList();
-            case ALERT_RULE -> alertRuleRepository.findAll(this.<AlertRuleDO>updatedAfter(since), page)
-                    .stream().map(this::ofAlertRule).toList();
-            default -> List.of();
-        };
+        return changedSince(require(type), since, page);
+    }
+
+    private static <T> List<AssetInfo> changedSince(ReleaseAssetType<T> t, LocalDateTime since, PageRequest page) {
+        return t.changedSince(since, page).stream().filter(t::visible).map(t::describe).toList();
     }
 
     /** 可发布资产的最近发布时间；未发布或不适用返回 null */
     public LocalDateTime publishTime(String type, String id) {
-        return switch (normalizeType(type)) {
-            case API -> flowApiRepository.findById(id).map(FlowApiDO::getPublishTime).orElse(null);
-            case SERVICE -> flowServiceFlowRepository.findById(id).map(FlowServiceFlowDO::getPublishTime).orElse(null);
-            case TASK -> flowTaskRepository.findById(id).map(FlowTaskDO::getPublishTime).orElse(null);
-            case MQ_TASK -> flowMqTaskRepository.findById(id).map(FlowMqTaskDO::getPublishTime).orElse(null);
-            default -> null;
-        };
+        String t = normalizeType(type);
+        return PUBLISHABLE_TYPES.contains(t) ? publishTime(types.get(t), id) : null;
+    }
+
+    private static <T> LocalDateTime publishTime(ReleaseAssetType<T> t, String id) {
+        return t.findById(id).map(t::publishTime).orElse(null);
     }
 
     public List<AssetInfo> search(String type, String keyword) {
         String kw = StrUtil.trimToNull(keyword);
         PageRequest page = PageRequest.of(0, SEARCH_LIMIT, Sort.by(Sort.Direction.DESC, "updateTime"));
-        return switch (normalizeType(type)) {
-            case API -> flowApiRepository.findAll(likeAny(kw, "name", "url"), page).stream()
-                    .filter(a -> !HostCatalogReserved.isReservedId(a.getId()))
-                    .map(this::ofApi).toList();
-            case SERVICE -> flowServiceFlowRepository.findAll(this.<FlowServiceFlowDO>likeAny(kw, "name"), page)
-                    .stream().map(this::ofService).toList();
-            case TASK -> flowTaskRepository.findAll(this.<FlowTaskDO>likeAny(kw, "name"), page)
-                    .stream().map(this::ofTask).toList();
-            case MQ_TASK -> flowMqTaskRepository.findAll(this.<FlowMqTaskDO>likeAny(kw, "name", "topic"), page)
-                    .stream().map(this::ofMqTask).toList();
-            case RESPONSE_TEMPLATE -> responseTemplateRepository
-                    .findAll(this.<ResponseTemplateDO>likeAny(kw, "templateName"), page)
-                    .stream().map(this::ofTemplate).toList();
-            case PAGE -> pageInfoRepository.findAll(this.<PageInfoDO>likeAny(kw, "name", "routePath"), page)
-                    .stream().map(this::ofPage).toList();
-            case MODEL -> flowModelInfoRepository.findAll(this.<FlowModelInfoDO>likeAny(kw, "name", "tableName"), page)
-                    .stream().map(this::ofModel).toList();
-            case SYS_MACRO -> sysMacroRepository.findAll(this.<SysMacroDO>likeAny(kw, "macroCode", "macroName"), page)
-                    .stream().map(this::ofMacro).toList();
-            case SYS_CONFIG -> sysConfigRepository.findAll(this.<SysConfigDO>likeAny(kw, "configKey", "remark"), page)
-                    .stream().map(this::ofConfig).toList();
-            case OPEN_PLATFORM -> flowOpenPlatformRepository.findAll(this.<FlowOpenPlatformDO>likeAny(kw, "name", "code"), page)
-                    .stream().map(this::ofOpenPlatform).toList();
-            case ALERT_RULE -> alertRuleRepository.findAll(this.<AlertRuleDO>likeAny(kw, "name"), page)
-                    .stream().map(this::ofAlertRule).toList();
-            default -> List.of();
-        };
+        return search(require(type), kw, page);
     }
 
-    private <T> Specification<T> publishedAfter(LocalDateTime since) {
-        return (root, query, cb) -> cb.and(cb.equal(root.get("publishStatus"), 1),
-                cb.greaterThan(root.get("publishTime"), since));
-    }
-
-    private <T> Specification<T> updatedAfter(LocalDateTime since) {
-        return (root, query, cb) -> cb.greaterThan(root.get("updateTime"), since);
-    }
-
-    private <T> Specification<T> likeAny(String keyword, String... fields) {
-        return (root, query, cb) -> {
-            if (keyword == null) {
-                return cb.conjunction();
-            }
-            String pattern = "%" + keyword.toLowerCase(Locale.ROOT) + "%";
-            List<Predicate> ors = new ArrayList<>();
-            for (String f : fields) {
-                ors.add(cb.like(cb.lower(root.get(f)), pattern));
-            }
-            return cb.or(ors.toArray(new Predicate[0]));
-        };
-    }
-
-    private AssetInfo ofApi(FlowApiDO a) {
-        boolean published = isPublished(a.getPublishStatus(), a.getPublishedSnapshot());
-        List<AssetRef> deps = dslDeps(published ? a.getPublishedSnapshot() : a.getDslContent());
-        if (StrUtil.isNotBlank(a.getTemplateId())) {
-            deps.add(new AssetRef(RESPONSE_TEMPLATE, a.getTemplateId()));
-        }
-        String detail = StrUtil.nullToEmpty(a.getMethod()).toUpperCase(Locale.ROOT) + " " + StrUtil.nullToEmpty(a.getUrl());
-        return new AssetInfo(API, a.getId(), a.getName(), detail.trim(), true, published,
-                UnpublishedChangeDetector.apiHasUnpublishedChanges(a), hashIf(published, a.getPublishedSnapshot()), deps);
-    }
-
-    private AssetInfo ofService(FlowServiceFlowDO s) {
-        boolean published = isPublished(s.getPublishStatus(), s.getPublishedSnapshot());
-        return new AssetInfo(SERVICE, s.getId(), s.getName(), null, true, published,
-                UnpublishedChangeDetector.serviceHasUnpublishedChanges(s), hashIf(published, s.getPublishedSnapshot()),
-                dslDeps(published ? s.getPublishedSnapshot() : s.getDslContent()));
-    }
-
-    private AssetInfo ofTask(FlowTaskDO t) {
-        boolean published = isPublished(t.getPublishStatus(), t.getPublishedSnapshot());
-        return new AssetInfo(TASK, t.getId(), t.getName(), t.getCron(), true, published,
-                UnpublishedChangeDetector.taskHasUnpublishedChanges(t), hashIf(published, t.getPublishedSnapshot()),
-                dslDeps(published ? t.getPublishedSnapshot() : t.getDslContent()));
-    }
-
-    private AssetInfo ofMqTask(FlowMqTaskDO t) {
-        boolean published = isPublished(t.getPublishStatus(), t.getPublishedSnapshot());
-        return new AssetInfo(MQ_TASK, t.getId(), t.getName(), t.getConnectionCode() + " / " + t.getTopic(), true,
-                published, UnpublishedChangeDetector.mqTaskHasUnpublishedChanges(t),
-                hashIf(published, t.getPublishedSnapshot()),
-                dslDeps(published ? t.getPublishedSnapshot() : t.getDslContent()));
-    }
-
-    private AssetInfo ofTemplate(ResponseTemplateDO t) {
-        String hash = ContentHashUtil.sha256Hex(StrUtil.nullToEmpty(t.getSuccessWrapper()) + "\u0000"
-                + StrUtil.nullToEmpty(t.getPageWrapper()) + "\u0000" + StrUtil.nullToEmpty(t.getFailWrapper()));
-        return new AssetInfo(RESPONSE_TEMPLATE, t.getId(), t.getTemplateName(), t.getRemark(), false, false, false,
-                hash, new ArrayList<>());
-    }
-
-    private AssetInfo ofPage(PageInfoDO p) {
-        return configInfo(PAGE, p.getId(), p.getName(), p.getRoutePath(), p.getName(), p.getRoutePath(), p.getJson(),
-                String.valueOf(p.getStatus()));
-    }
-
-    private AssetInfo ofModel(FlowModelInfoDO m) {
-        return configInfo(MODEL, m.getId(), m.getName(), m.getDatasource() + " / " + m.getTableName(),
-                m.getName(), m.getTableName(), m.getDatasource(), m.getFieldsSchema(), String.valueOf(m.getStatus()));
-    }
-
-    private AssetInfo ofMacro(SysMacroDO m) {
-        return configInfo(SYS_MACRO, m.getId(), m.getMacroCode() + " · " + StrUtil.nullToEmpty(m.getMacroName()),
-                m.getMacroType(), m.getMacroName(), m.getMacroType(), m.getExpression(), m.getScope(),
-                m.getReturnType(), m.getMacroParams(), String.valueOf(m.getStatus()));
-    }
-
-    /** 列表只展示分组与说明，不回显配置值：只读角色也能搜索资产 */
-    private AssetInfo ofConfig(SysConfigDO c) {
-        String detail = StrUtil.nullToEmpty(c.getConfigGroup())
-                + (StrUtil.isBlank(c.getRemark()) ? "" : " · " + StrUtil.maxLength(c.getRemark(), 40))
-                + (ConfigTransferPolicy.rejectReason(c.getConfigKey(), c.getConfigGroup()) != null ? "（不随包迁移）" : "");
-        return configInfo(SYS_CONFIG, c.getId(), c.getConfigKey(), detail.trim(), c.getConfigValue(), c.getValueType(),
-                c.getConfigGroup(), String.valueOf(c.getStatus()));
+    private static <T> List<AssetInfo> search(ReleaseAssetType<T> t, String keyword, PageRequest page) {
+        return t.search(keyword, page).stream().filter(t::visible).map(t::describe).toList();
     }
 
     /** 系统配置不能随包迁移的原因；允许迁移或配置不存在返回 null */
     public String configRejectReason(String id) {
-        return sysConfigRepository.findById(id)
-                .map(c -> ConfigTransferPolicy.rejectReason(c.getConfigKey(), c.getConfigGroup()))
-                .orElse(null);
+        return rejectReason(require(SYS_CONFIG), id);
     }
 
-    private AssetInfo ofOpenPlatform(FlowOpenPlatformDO p) {
-        StringBuilder grants = new StringBuilder();
-        flowOpenApiGrantRepository.findByPlatformId(p.getId()).stream()
-                .map(g -> g.getApiId() + "=" + StrUtil.nullToEmpty(g.getAllowMethods()))
-                .sorted().forEach(g -> grants.append(g).append(';'));
-        return configInfo(OPEN_PLATFORM, p.getId(), p.getName(), p.getCode(), p.getName(), p.getContact(),
-                p.getRemark(), String.valueOf(p.getOpenCallLogEnabled()), String.valueOf(p.getRateLimitQps()), grants.toString());
+    private static <T> String rejectReason(ReleaseAssetType<T> t, String id) {
+        return t.findById(id).map(t::transferRejectReason).orElse(null);
     }
 
-    private AssetInfo ofAlertRule(AlertRuleDO r) {
-        return configInfo(ALERT_RULE, r.getId(), r.getName(), r.getWindow() + " / " + r.getMinHealth(), r.getName(),
-                r.getScopeAssetTypes(), r.getWindow(), r.getMinHealth(), String.valueOf(r.getTopN()), r.getChannelIds(),
-                String.valueOf(r.getIntervalMinutes()), String.valueOf(r.getDedupMinutes()));
-    }
-
-    /** 无发布概念的资产：指纹取业务字段拼接 */
-    private static AssetInfo configInfo(String type, String id, String name, String detail, String... hashParts) {
-        StringBuilder sb = new StringBuilder();
-        for (String part : hashParts) {
-            sb.append(StrUtil.nullToEmpty(part)).append('\u0000');
-        }
-        return new AssetInfo(type, id, name, detail, false, false, false, ContentHashUtil.sha256Hex(sb.toString()),
-                new ArrayList<>());
-    }
-
-    private static List<AssetRef> dslDeps(String content) {
-        List<AssetRef> deps = new ArrayList<>();
-        for (FlowDslReferenceScanner.OutboundRef ref : FlowDslReferenceScanner.scan(content)) {
-            deps.add(new AssetRef("service".equals(ref.targetType()) ? SERVICE : API, ref.targetId()));
-        }
-        return deps;
-    }
-
-    private static boolean isPublished(Integer status, String snapshot) {
-        return status != null && status == 1 && StrUtil.isNotBlank(snapshot);
-    }
-
-    private static String hashIf(boolean published, String snapshot) {
-        return published ? ContentHashUtil.sha256Hex(snapshot) : null;
+    /**
+     * 下线一个资产（按 ID 匹配的类型用 id，按编码匹配的类型用 key）。
+     *
+     * @return 该类型不支持下线或资产不存在时返回 false
+     */
+    public boolean takeOffline(String type, String id, String key) {
+        ReleaseAssetType<?> t = typeOf(type);
+        return t != null && t.takeOffline(id, key);
     }
 }
