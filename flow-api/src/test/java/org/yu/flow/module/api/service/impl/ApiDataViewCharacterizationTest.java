@@ -19,12 +19,16 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.yu.flow.config.ContractParamTypeConverter;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.config.YuFlowProperties;
 import org.yu.flow.exception.ValidationException;
+import org.yu.flow.module.api.dataview.ApiDataPreviewer;
+import org.yu.flow.module.api.dataview.ApiDataViewSupport;
+import org.yu.flow.module.api.dataview.ApiExcelExportLinks;
+import org.yu.flow.module.api.dataview.ApiExcelExporter;
+import org.yu.flow.module.api.dataview.ApiExcelTemplateManager;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.domain.FlowApiExcelTemplateDO;
 import org.yu.flow.module.api.dto.ApiDataExportRequestDTO;
@@ -114,18 +118,16 @@ class ApiDataViewCharacterizationTest {
         YuFlowProperties props = new YuFlowProperties();
         props.getSecurity().setJwtSecretKey("characterization-test-signing-key-0123456789");
 
-        service = new ApiDataViewServiceImpl();
-        ReflectionTestUtils.setField(service, "flowApiRepository", flowApiRepository);
-        ReflectionTestUtils.setField(service, "excelTemplateRepository", excelTemplateRepository);
-        ReflectionTestUtils.setField(service, "sqlExecutorService",
-                new ApiSqlExecutor(dynamicDataSourceService, dataSourceWallGuard, demoModeGuard));
-        ReflectionTestUtils.setField(service, "dynamicDataSourceService", dynamicDataSourceService);
-        ReflectionTestUtils.setField(service, "contractParamTypeConverter", new ContractParamTypeConverter());
-        ReflectionTestUtils.setField(service, "demoModeGuard", demoModeGuard);
-        ReflectionTestUtils.setField(service, "dataSourceWallGuard", dataSourceWallGuard);
-        ReflectionTestUtils.setField(service, "yuFlowProperties", props);
-        ReflectionTestUtils.setField(service, "privacyFieldInterceptor", privacyFieldInterceptor);
-        ReflectionTestUtils.setField(service, "flowHostPrincipalProvider", flowHostPrincipalProvider);
+        ApiSqlExecutor sqlExecutor = new ApiSqlExecutor(dynamicDataSourceService, dataSourceWallGuard, demoModeGuard);
+        ApiDataViewSupport support = new ApiDataViewSupport(flowApiRepository, new ContractParamTypeConverter(),
+                privacyFieldInterceptor, flowHostPrincipalProvider);
+        ApiExcelExporter exporter = new ApiExcelExporter(support, sqlExecutor, dynamicDataSourceService,
+                dataSourceWallGuard, excelTemplateRepository, demoModeGuard);
+        service = new ApiDataViewServiceImpl(
+                new ApiDataPreviewer(support, sqlExecutor),
+                exporter,
+                new ApiExcelExportLinks(support, exporter, demoModeGuard, props),
+                new ApiExcelTemplateManager(flowApiRepository, excelTemplateRepository, demoModeGuard));
     }
 
     @AfterEach
