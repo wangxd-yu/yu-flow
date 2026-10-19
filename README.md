@@ -129,11 +129,13 @@ pnpm dev
 ```bash
 cd flow-api
 mvn clean package -DskipTests -Djacoco.skip=true -P ui
-# 需要 Python 脚本节点时再加 with-python（GraalPy 体积大，默认不打包）
-mvn clean package -DskipTests -Djacoco.skip=true -P ui,with-python
+# 可选能力默认不打包，需要时加 profile：
+#   with-python     Python 脚本节点（GraalPy，约 +105 MB）
+#   with-ip2region  登录日志的 IP 归属地（离线库，约 +11 MB；不带时地区记为「未知」）
+mvn clean package -DskipTests -Djacoco.skip=true -P ui,with-python,with-ip2region
 ```
 
-产物是 `flow-api/target/*-exec.jar`。镜像同理：`docker build --build-arg MAVEN_PROFILES=with-python ...`。发布 tag（`v*`）时，GitHub Actions 会构建同一份镜像推到 GHCR，并把 jar、SBOM 和建表脚本附到 GitHub Release。
+产物是 `flow-api/target/*-exec.jar`（默认约 230 MB）。镜像同理：`docker build --build-arg MAVEN_PROFILES=with-python,with-ip2region ...`。发布 tag（`v*`）时，GitHub Actions 会构建同一份镜像推到 GHCR，并把 jar、SBOM 和建表脚本附到 GitHub Release。
 
 ### 4. 嵌入已有 Spring Boot 应用
 

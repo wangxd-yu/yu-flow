@@ -10,6 +10,7 @@ import org.yu.flow.login.dto.LoginDto;
 import org.yu.flow.login.sm2.LoginSm2CryptoService;
 import org.yu.flow.security.AuthCookieSupport;
 import org.yu.flow.auto.util.JwtTokenUtil;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,9 +23,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
-import net.dreamlu.mica.ip2region.core.Ip2regionSearcher;
-import net.dreamlu.mica.ip2region.core.IpInfo;
 
 /**
  * 登录 Controller
@@ -47,8 +45,8 @@ public class FlowLoginController {
     @Resource
     private LoginSm2CryptoService loginSm2CryptoService;
 
-    @Resource
-    private Ip2regionSearcher ip2regionSearcher;
+    @Autowired(required = false)
+    private IpRegionResolver ipRegionResolver;
 
     /**
      * 获取登录图形验证码（无需鉴权）。
@@ -110,23 +108,10 @@ public class FlowLoginController {
         String token = loginService.login(loginDto);
         long duration = System.currentTimeMillis() - startTime;
 
-        // 解析 IP 地理位置
-        String region = "未知";
-        try {
-            if (ip2regionSearcher != null) {
-                IpInfo ipInfo = ip2regionSearcher.memorySearch(ip);
-                if (ipInfo != null) {
-                    region = formatRegion(ipInfo.getAddress());
-                }
-            }
-        } catch (Exception e) {
-            log.error("IP region lookup failed for IP: {}", ip, e);
-        }
-
         LoginLogDO logDO = LoginLogDO.builder()
                 .account(loginDto != null ? loginDto.getUsername() : null)
                 .ip(ip)
-                .region(region)
+                .region(resolveRegion(ip))
                 .userAgent(userAgent)
                 .duration(duration)
                 .createTime(LocalDateTime.now())
@@ -154,17 +139,10 @@ public class FlowLoginController {
 
     private void saveFailLog(LoginDto loginDto, String ip, String userAgent, long duration, String msg) {
         try {
-            String region = "未知";
-            if (ip2regionSearcher != null) {
-                IpInfo ipInfo = ip2regionSearcher.memorySearch(ip);
-                if (ipInfo != null) {
-                    region = formatRegion(ipInfo.getAddress());
-                }
-            }
             LoginLogDO logDO = LoginLogDO.builder()
                     .account(loginDto != null ? loginDto.getUsername() : null)
                     .ip(ip)
-                    .region(region)
+                    .region(resolveRegion(ip))
                     .userAgent(userAgent)
                     .duration(duration)
                     .status(0)
@@ -177,29 +155,17 @@ public class FlowLoginController {
         }
     }
 
-    /**
-     * 格式化 IP 地区信息，去除无用“0”值和连续重复部分
-     */
-    private String formatRegion(String rawAddress) {
-        if (rawAddress == null || rawAddress.isEmpty()) {
+    private String resolveRegion(String ip) {
+        if (ipRegionResolver == null) {
             return "未知";
         }
-        String[] parts = rawAddress.split("\\|");
-        StringBuilder sb = new StringBuilder();
-        String lastPart = null;
-        for (String part : parts) {
-            if (part != null && !part.isEmpty() && !"0".equals(part) && !"null".equalsIgnoreCase(part)) {
-                if (part.equals(lastPart)) {
-                    continue;
-                }
-                if (sb.length() > 0) {
-                    sb.append("-");
-                }
-                sb.append(part);
-                lastPart = part;
-            }
+        try {
+            String region = ipRegionResolver.resolve(ip);
+            return region == null || region.isEmpty() ? "未知" : region;
+        } catch (Exception e) {
+            log.error("IP region lookup failed for IP: {}", ip, e);
+            return "未知";
         }
-        return sb.length() == 0 ? "未知" : sb.toString();
     }
 
     /**

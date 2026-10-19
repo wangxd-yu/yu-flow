@@ -28,6 +28,8 @@
         <skipTests>true</skipTests>
         <!-- JaCoCo prepare-agent 会往这里追加 -javaagent；jacoco.skip=true 时保持为空串，surefire 仍能引用 -->
         <argLine></argLine>
+        <!-- 不打进可执行包的依赖 groupId（逗号分隔，net.dreamlu 只有 ip2region 用）；-Pwith-ip2region 时清空 -->
+        <exec.exclude.groupIds>net.dreamlu</exec.exclude.groupIds>
     </properties>
 
     <dependencies>
@@ -319,16 +321,19 @@
             <version>2.0.7</version>
         </dependency>
 
-        <!-- mica-ip2region IP 离线解析库 (集成 xdb/db，免手动下载) -->
+        <!-- 登录日志 IP 归属地离线库，内置 IPv4 + IPv6 数据（压缩后约 11 MB）。
+             可执行包默认不带，用 -Pwith-ip2region 打包；嵌入宿主需要时自行引入 -->
         <dependency>
             <groupId>net.dreamlu</groupId>
             <artifactId>mica-ip2region</artifactId>
             <version>4.1.1</version>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>net.dreamlu</groupId>
             <artifactId>mica-core</artifactId>
             <version>4.1.1</version>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 
@@ -543,12 +548,18 @@
                     <jvmArguments>--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow</jvmArguments>
                     <!-- optional 依赖不传递给嵌入宿主，但可执行包要带上（Actuator、Prometheus、MinIO） -->
                     <includeOptional>true</includeOptional>
+                    <!-- provided 依赖也会被打进 BOOT-INF/lib，编译期工具要显式排除 -->
                     <excludes>
                         <exclude>
                             <groupId>org.springframework.boot</groupId>
                             <artifactId>spring-boot-configuration-processor</artifactId>
                         </exclude>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
                     </excludes>
+                    <excludeGroupIds>${exec.exclude.groupIds}</excludeGroupIds>
                 </configuration>
             </plugin>
 
@@ -585,6 +596,13 @@
                     <version>25.3.4.1</version>
                 </dependency>
             </dependencies>
+        </profile>
+        <!-- 登录日志 IP 归属地：mvn package -Pwith-ip2region。不带时登录日志的地区记为「未知」 -->
+        <profile>
+            <id>with-ip2region</id>
+            <properties>
+                <exec.exclude.groupIds></exec.exclude.groupIds>
+            </properties>
         </profile>
         <profile>
             <id>ui</id>
