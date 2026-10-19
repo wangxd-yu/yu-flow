@@ -158,8 +158,9 @@ $.evaluate_xxx.out  → 计算结果
 
 **语言扩展说明：**
 
+- 默认只开放 Aviator、SpEL、JavaScript。Groovy、Python 要先在「系统配置」的 `SCRIPT_ALLOWED_LANGUAGES` 里加上（没有这行配置时用 `YU_FLOW_SCRIPT_ALLOWED_LANGUAGES`），否则执行时报 `SCRIPT_LANGUAGE_DISABLED`。
 - **Groovy**：依赖随包提供；脚本编译结果有界缓存；`spring.getBean` 受 `yu.flow.security.script-allowed-beans` 白名单约束。
-- **Python**：可选能力。未安装 GraalPy 时应用可正常启动；执行 Python 节点时静默返回 `null`，不阻断进程启动。
+- **Python**：可选能力，构建时加 `-Pwith-python` 才打包 GraalPy。没打包时应用照常启动，白名单含 python 会在启动日志报错；执行 Python 节点返回 `null`。
 
 **异常类型：**
 

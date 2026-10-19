@@ -48,7 +48,7 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 入站限流 | `ingress.default-rate-limit-enabled`（默认 `false`） | 公网直连场景建议开启并压测 QPS 阈值 |
 | 限流降级策略 | `ingress.rate-limit-fail-open`（默认 `true`） | 高危环境改 `false`（Redis 故障时拒绝），并保障 Redis 高可用。也可以只对个别接口设：接口「入站防护 → 限流」里选「Redis 故障时：拒绝」 |
 | 限流算法 | 令牌桶，每秒补充 QPS 个令牌 | 接口可设「突发」（桶容量），留空等于 QPS。多节点共用 Redis 里同一个桶 |
-| 脚本引擎语言面 | `yu.flow.security.script-allowed-languages`（默认 `aviator,spel,javascript`） | `groovy` / `python` 逃逸面较大，默认禁用；确需开放请显式加入白名单并限制编辑权限 |
+| 脚本引擎语言面 | `yu.flow.security.script-allowed-languages`（默认 `aviator,spel,javascript`），系统配置 `SCRIPT_ALLOWED_LANGUAGES` 优先 | `groovy` / `python` 逃逸面较大，默认禁用；确需开放请显式加入白名单并限制编辑权限。2026-10-19 起升级时，系统配置仍是旧默认值、且编排里没用过 Groovy 的库会自动去掉 `groovy` |
 | HttpRequest `ignoreSsl` | `yu.flow.security.allow-ignore-ssl`（默认 `true`） | 生产设 `YU_FLOW_ALLOW_IGNORE_SSL=false` 一刀切禁用跳过证书校验；确需自签名请配置受信 CA |
 | 实例环境 | `YU_FLOW_CURRENT_ENV` | 生产设 `PROD`，发布门禁和顶栏环境按本实例判定 |
 | 发布包签名 | `YU_FLOW_RELEASE_SIGNING_KEY` | 开发与生产配同一个值；生产导入强制验签。轮换时旧密钥放 `YU_FLOW_RELEASE_PREVIOUS_SIGNING_KEYS` |

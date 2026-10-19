@@ -91,14 +91,19 @@ class YuFlowFlywayBaselineIT {
                 YuFlowFlywayMigrator.apply(flyway, dataSource, true));
         assertTrue(count(dataSource, "select count(*) from flow_sys_role") > 0);
         assertRequestIdColumns(dataSource);
+        assertEquals("aviator,spel,javascript", scriptLanguages(dataSource));
 
-        // 老库：有 flow_* 表、没有迁移记录、也还没有 request_id 列
+        // 老库：有 flow_* 表、没有迁移记录、也还没有 request_id 列；白名单是旧默认值且已有接口在用 Groovy
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("drop table " + YuFlowFlywayMigrator.HISTORY_TABLE);
             for (String table : REQUEST_ID_TABLES) {
                 statement.execute("alter table " + table + " drop column request_id");
             }
+            statement.execute("update flow_sys_config set config_value = 'aviator,spel,javascript,groovy'"
+                    + " where config_key = 'SCRIPT_ALLOWED_LANGUAGES'");
+            statement.execute("insert into flow_api_info (id, dsl_content)"
+                    + " values ('it-groovy', '{\"data\":{\"language\":\"Groovy\"}}')");
         }
         for (String table : REQUEST_ID_TABLES) {
             assertFalse(hasColumn(dataSource, table, "request_id"));
@@ -113,8 +118,19 @@ class YuFlowFlywayBaselineIT {
                 "select count(*) from " + YuFlowFlywayMigrator.HISTORY_TABLE
                         + " where version = '" + YuFlowFlywayMigrator.BASELINE_VERSION + "'"));
         assertRequestIdColumns(dataSource);
+        assertEquals("aviator,spel,javascript,groovy", scriptLanguages(dataSource), "在用 Groovy 的库不能被收紧");
         assertEquals(0, count(dataSource,
                 "select count(*) from " + YuFlowFlywayMigrator.HISTORY_TABLE + " where success = false"));
+    }
+
+    private static String scriptLanguages(DataSource dataSource) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(
+                     "select config_value from flow_sys_config where config_key = 'SCRIPT_ALLOWED_LANGUAGES'")) {
+            assertTrue(result.next(), "缺少 SCRIPT_ALLOWED_LANGUAGES 种子");
+            return result.getString(1);
+        }
     }
 
     private static void assertRequestIdColumns(DataSource dataSource) throws Exception {
