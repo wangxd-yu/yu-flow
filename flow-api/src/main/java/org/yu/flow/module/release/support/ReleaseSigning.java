@@ -1,5 +1,6 @@
 package org.yu.flow.module.release.support;
 
+import org.yu.flow.config.properties.ReleaseProperties;
 import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -36,7 +37,7 @@ public class ReleaseSigning {
 
     /** 签名用的当前密钥；未配置返回 null */
     public String key() {
-        YuFlowProperties.Release release = release();
+        ReleaseProperties release = release();
         String key = release == null ? null : release.getSigningKey();
         return StrUtil.isBlank(key) ? null : key;
     }
@@ -47,7 +48,7 @@ public class ReleaseSigning {
         if (key() != null) {
             keys.add(key());
         }
-        YuFlowProperties.Release release = release();
+        ReleaseProperties release = release();
         if (release != null && release.getPreviousSigningKeys() != null) {
             release.getPreviousSigningKeys().stream().filter(StrUtil::isNotBlank).map(String::trim).forEach(keys::add);
         }
@@ -58,7 +59,7 @@ public class ReleaseSigning {
      * 本实例导入时是否必须带有效签名：显式配置优先，否则 PROD 或开启了编辑锁时必须签名。
      */
     public boolean required() {
-        YuFlowProperties.Release release = release();
+        ReleaseProperties release = release();
         if (release != null && release.getRequireSignature() != null) {
             return release.getRequireSignature();
         }
@@ -93,7 +94,7 @@ public class ReleaseSigning {
         return INVALID;
     }
 
-    private YuFlowProperties.Release release() {
+    private ReleaseProperties release() {
         return yuFlowProperties == null ? null : yuFlowProperties.getRelease();
     }
 }

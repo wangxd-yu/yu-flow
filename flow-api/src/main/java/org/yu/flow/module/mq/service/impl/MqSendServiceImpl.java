@@ -1,5 +1,6 @@
 package org.yu.flow.module.mq.service.impl;
 
+import org.yu.flow.config.properties.MqProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.yu.flow.config.DemoModeGuard;
@@ -41,7 +42,7 @@ public class MqSendServiceImpl implements MqSendService {
                              Map<String, Object> headers, String message) {
         demoModeGuard.checkMqSend(topic);
 
-        YuFlowProperties.Mq mqProps = yuFlowProperties.getMq();
+        MqProperties mqProps = yuFlowProperties.getMq();
         int maxBytes = mqProps.getMaxMessageBytes();
         if (maxBytes > 0 && message != null
                 && message.getBytes(StandardCharsets.UTF_8).length > maxBytes) {

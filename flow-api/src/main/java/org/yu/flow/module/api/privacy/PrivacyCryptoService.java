@@ -1,5 +1,6 @@
 package org.yu.flow.module.api.privacy;
 
+import org.yu.flow.config.properties.PrivacyProperties;
 import cn.hutool.core.util.HexUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.symmetric.AES;
@@ -168,7 +169,7 @@ public class PrivacyCryptoService {
     }
 
     private byte[] yamlSm4Key() {
-        YuFlowProperties.Privacy privacy = yuFlowProperties == null ? null : yuFlowProperties.getPrivacy();
+        PrivacyProperties privacy = yuFlowProperties == null ? null : yuFlowProperties.getPrivacy();
         String configured = privacy == null ? null : StrUtil.trim(privacy.getAtRestSm4Key());
         byte[] key = parseAtRestKey(configured, PrivacyDecryptAlg.SM4);
         if (StrUtil.isNotBlank(configured) && key == null) {

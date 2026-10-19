@@ -1,5 +1,6 @@
 package org.yu.flow.engine.evaluator;
 
+import org.yu.flow.config.properties.EngineProperties;
 import org.yu.flow.engine.model.*;
 
 import cn.hutool.core.util.StrUtil;
@@ -145,7 +146,7 @@ public class FlowEngine {
         }
     }
 
-    private void applyEnginePoolConfig(YuFlowProperties.Engine engine) {
+    private void applyEnginePoolConfig(EngineProperties engine) {
         int cpu = Runtime.getRuntime().availableProcessors();
         int core = engine.getPoolCoreSize() > 0 ? engine.getPoolCoreSize() : Math.max(2, cpu * 2);
         int max = engine.getPoolMaxSize() > 0 ? engine.getPoolMaxSize() : Math.max(core, cpu * 4);

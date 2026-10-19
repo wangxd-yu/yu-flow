@@ -1,5 +1,6 @@
 package org.yu.flow.module.metrics;
 
+import org.yu.flow.config.properties.MetricsProperties;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -28,7 +29,7 @@ public class AssetMetricsRecorder {
     public void record(MetricsAssetType assetType, String assetId, MetricsOutcome outcome,
                        long costMs, String triggerType) {
         try {
-            YuFlowProperties.Metrics cfg = metricsCfg();
+            MetricsProperties cfg = metricsCfg();
             if (cfg == null || !cfg.isEnabled()) {
                 return;
             }
@@ -118,7 +119,7 @@ public class AssetMetricsRecorder {
         }
     }
 
-    private YuFlowProperties.Metrics metricsCfg() {
+    private MetricsProperties metricsCfg() {
         return yuFlowProperties == null ? null : yuFlowProperties.getMetrics();
     }
 }

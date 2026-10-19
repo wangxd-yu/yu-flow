@@ -1,5 +1,7 @@
 package org.yu.flow.config;
 
+import org.yu.flow.config.properties.EngineProperties;
+import org.yu.flow.config.properties.TaskProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,7 +27,7 @@ public class AsyncConfig {
 
     @Bean("flowAsyncExecutor")
     public Executor flowAsyncExecutor(YuFlowProperties properties) {
-        YuFlowProperties.Task task = properties.getTask();
+        TaskProperties task = properties.getTask();
         int core = Math.max(1, task.getAsyncCorePoolSize());
         int max = Math.max(core, task.getAsyncMaxPoolSize());
         int queue = Math.max(1, task.getAsyncQueueCapacity());
@@ -67,7 +69,7 @@ public class AsyncConfig {
      */
     @Bean(name = "flowEngineExecutor", destroyMethod = "shutdown")
     public ExecutorService flowEngineExecutor(YuFlowProperties properties) {
-        YuFlowProperties.Engine engine = properties.getEngine();
+        EngineProperties engine = properties.getEngine();
         int cpu = Runtime.getRuntime().availableProcessors();
         int core = engine.getPoolCoreSize() > 0 ? engine.getPoolCoreSize() : Math.max(2, cpu * 2);
         int max = engine.getPoolMaxSize() > 0 ? engine.getPoolMaxSize() : Math.max(core, cpu * 4);

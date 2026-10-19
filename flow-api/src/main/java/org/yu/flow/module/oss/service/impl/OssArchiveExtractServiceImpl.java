@@ -1,5 +1,6 @@
 package org.yu.flow.module.oss.service.impl;
 
+import org.yu.flow.config.properties.OssProperties;
 import cn.hutool.core.util.StrUtil;
 import io.minio.GetObjectResponse;
 import jakarta.annotation.PostConstruct;
@@ -88,7 +89,7 @@ public class OssArchiveExtractServiceImpl implements OssArchiveExtractService {
     @PostConstruct
     public void init() {
         int pool = 2;
-        YuFlowProperties.Oss.Extract cfg = extractCfg();
+        OssProperties.Extract cfg = extractCfg();
         if (cfg != null && cfg.getPoolSize() > 0) {
             pool = Math.min(8, Math.max(1, cfg.getPoolSize()));
         }
@@ -441,7 +442,7 @@ public class OssArchiveExtractServiceImpl implements OssArchiveExtractService {
     }
 
     private String evaluateSkipReason(OssObjectDO object, OssUploadProfileDO profile) {
-        YuFlowProperties.Oss.Extract cfg = extractCfg();
+        OssProperties.Extract cfg = extractCfg();
         if (cfg != null && !cfg.isEnabled()) {
             return "全局压缩包展开已关闭";
         }
@@ -455,7 +456,7 @@ public class OssArchiveExtractServiceImpl implements OssArchiveExtractService {
     }
 
     private Limits resolveLimits(OssUploadProfileDO profile) {
-        YuFlowProperties.Oss.Extract cfg = extractCfg();
+        OssProperties.Extract cfg = extractCfg();
         int maxEntries = DEFAULT_MAX_ENTRIES;
         long maxUncompressed = DEFAULT_MAX_UNCOMPRESSED;
         double maxRatio = DEFAULT_MAX_RATIO;
@@ -480,7 +481,7 @@ public class OssArchiveExtractServiceImpl implements OssArchiveExtractService {
         return new Limits(maxEntries, maxUncompressed, maxRatio);
     }
 
-    private YuFlowProperties.Oss.Extract extractCfg() {
+    private OssProperties.Extract extractCfg() {
         return yuFlowProperties.getOss() != null ? yuFlowProperties.getOss().getExtract() : null;
     }
 

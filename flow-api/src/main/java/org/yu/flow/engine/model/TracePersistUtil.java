@@ -1,5 +1,6 @@
 package org.yu.flow.engine.model;
 
+import org.yu.flow.config.properties.EngineProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.yu.flow.config.YuFlowProperties;
@@ -24,7 +25,7 @@ public final class TracePersistUtil {
     }
 
     public record PersistOptions(boolean failedStepsOnly, int maxBytes) {
-        public static PersistOptions from(YuFlowProperties.Engine engine) {
+        public static PersistOptions from(EngineProperties engine) {
             if (engine == null) {
                 return new PersistOptions(false, 512 * 1024);
             }

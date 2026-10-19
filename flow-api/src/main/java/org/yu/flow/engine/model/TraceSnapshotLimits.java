@@ -1,5 +1,6 @@
 package org.yu.flow.engine.model;
 
+import org.yu.flow.config.properties.EngineProperties;
 import org.yu.flow.config.YuFlowProperties;
 
 /**
@@ -13,7 +14,7 @@ public record TraceSnapshotLimits(
 ) {
     public static final TraceSnapshotLimits DEFAULTS = new TraceSnapshotLimits(6, 32, 1024, 64);
 
-    public static TraceSnapshotLimits from(YuFlowProperties.Engine engine) {
+    public static TraceSnapshotLimits from(EngineProperties engine) {
         if (engine == null) {
             return DEFAULTS;
         }

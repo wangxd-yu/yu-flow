@@ -1,15 +1,27 @@
 package org.yu.flow.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
+import org.yu.flow.config.properties.DbProperties;
+import org.yu.flow.config.properties.DemoProperties;
+import org.yu.flow.config.properties.EngineProperties;
+import org.yu.flow.config.properties.IngressProperties;
+import org.yu.flow.config.properties.MailProperties;
+import org.yu.flow.config.properties.MetricsProperties;
+import org.yu.flow.config.properties.MqProperties;
+import org.yu.flow.config.properties.ObservabilityProperties;
+import org.yu.flow.config.properties.OpenProperties;
+import org.yu.flow.config.properties.OssProperties;
+import org.yu.flow.config.properties.PrivacyProperties;
+import org.yu.flow.config.properties.ReleaseProperties;
+import org.yu.flow.config.properties.SecurityProperties;
+import org.yu.flow.config.properties.TaskProperties;
 import org.springframework.util.ClassUtils;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * yu-flow 引擎统一配置属性树。
  *
- * <p>所有配置项均收拢在 {@code yu.flow.*} 前缀下，通过内部静态类进行语义分组，
+ * <p>所有配置项均收拢在 {@code yu.flow.*} 前缀下，各配置组拆在 {@code org.yu.flow.config.properties} 包里，
  * 确保在 IDE 中获得完整的自动补全与文档提示。</p>
  *
  * <h3>YAML 配置示例</h3>
@@ -80,74 +92,88 @@ public class YuFlowProperties {
     /**
      * 流程引擎核心配置组。
      */
-    private Engine engine = new Engine();
+    @NestedConfigurationProperty
+    private EngineProperties engine = new EngineProperties();
 
     /**
      * 安全加密相关配置组。
      */
-    private Security security = new Security();
+    @NestedConfigurationProperty
+    private SecurityProperties security = new SecurityProperties();
 
     /**
      * 接口出站隐私拦截（库内密文解密 / 脱敏 / 传输 SM4）。
      */
-    private Privacy privacy = new Privacy();
+    @NestedConfigurationProperty
+    private PrivacyProperties privacy = new PrivacyProperties();
 
     /**
      * 演示模式安全限制配置组。
      * <p>仅在 {@code demoMode=true} 时生效。</p>
      */
-    private Demo demo = new Demo();
+    @NestedConfigurationProperty
+    private DemoProperties demo = new DemoProperties();
 
     /**
      * 定时任务相关配置组。
      */
-    private Task task = new Task();
+    @NestedConfigurationProperty
+    private TaskProperties task = new TaskProperties();
 
     /**
      * 资产运行计量配置组。
      */
-    private Metrics metrics = new Metrics();
+    @NestedConfigurationProperty
+    private MetricsProperties metrics = new MetricsProperties();
 
     /**
      * 第三方开放平台配置组。
      */
-    private Open open = new Open();
+    @NestedConfigurationProperty
+    private OpenProperties open = new OpenProperties();
 
     /**
      * 已发布 API 入站防护（全局默认；可按接口 securityConfig 覆盖）。
      */
-    private Ingress ingress = new Ingress();
+    @NestedConfigurationProperty
+    private IngressProperties ingress = new IngressProperties();
 
     /**
      * SMTP 邮件（告警 / 后续流程编排节点共用）。
      * 运行时优先读系统配置 MAIL_*；库中无键/停用时回退本段。
      */
-    private Mail mail = new Mail();
+    @NestedConfigurationProperty
+    private MailProperties mail = new MailProperties();
 
     /**
      * 消息队列（MQ 触发 / 发送节点）配置组。
      */
-    private Mq mq = new Mq();
+    @NestedConfigurationProperty
+    private MqProperties mq = new MqProperties();
 
     /**
      * 对象存储（MinIO / S3 兼容）配置组。
      */
-    private Oss oss = new Oss();
+    @NestedConfigurationProperty
+    private OssProperties oss = new OssProperties();
 
     /**
      * 版本管理与跨环境发布配置组。
      */
-    private Release release = new Release();
+    @NestedConfigurationProperty
+    private ReleaseProperties release = new ReleaseProperties();
 
     /**
      * 可观测（Actuator 端点访问控制）配置组。
      */
-    private Observability observability = new Observability();
+    @NestedConfigurationProperty
+    private ObservabilityProperties observability = new ObservabilityProperties();
 
     /**
      * 元数据库迁移。MySQL / PostgreSQL 默认启动时执行；瀚高不走 Flyway。
      */
-    private Db db = new Db();
+    @NestedConfigurationProperty
+    private DbProperties db = new DbProperties();
 
     // ==================== Getters & Setters ====================
 
@@ -199,162 +225,116 @@ public class YuFlowProperties {
         this.password = password;
     }
 
-    public Engine getEngine() {
+    public EngineProperties getEngine() {
         return engine;
     }
 
-    public void setEngine(Engine engine) {
+    public void setEngine(EngineProperties engine) {
         this.engine = engine;
     }
 
-    public Security getSecurity() {
+    public SecurityProperties getSecurity() {
         return security;
     }
 
-    public void setSecurity(Security security) {
+    public void setSecurity(SecurityProperties security) {
         this.security = security;
     }
 
-    public Privacy getPrivacy() {
+    public PrivacyProperties getPrivacy() {
         return privacy;
     }
 
-    public void setPrivacy(Privacy privacy) {
+    public void setPrivacy(PrivacyProperties privacy) {
         this.privacy = privacy;
     }
 
-    public Demo getDemo() {
+    public DemoProperties getDemo() {
         return demo;
     }
 
-    public void setDemo(Demo demo) {
+    public void setDemo(DemoProperties demo) {
         this.demo = demo;
     }
 
-    public Task getTask() {
+    public TaskProperties getTask() {
         return task;
     }
 
-    public void setTask(Task task) {
+    public void setTask(TaskProperties task) {
         this.task = task;
     }
 
-    public Metrics getMetrics() {
+    public MetricsProperties getMetrics() {
         return metrics;
     }
 
-    public void setMetrics(Metrics metrics) {
+    public void setMetrics(MetricsProperties metrics) {
         this.metrics = metrics;
     }
 
-    public Open getOpen() {
+    public OpenProperties getOpen() {
         return open;
     }
 
-    public void setOpen(Open open) {
+    public void setOpen(OpenProperties open) {
         this.open = open;
     }
 
-    public Ingress getIngress() {
+    public IngressProperties getIngress() {
         return ingress;
     }
 
-    public void setIngress(Ingress ingress) {
+    public void setIngress(IngressProperties ingress) {
         this.ingress = ingress;
     }
 
-    public Mail getMail() {
+    public MailProperties getMail() {
         return mail;
     }
 
-    public void setMail(Mail mail) {
+    public void setMail(MailProperties mail) {
         this.mail = mail;
     }
 
-    public Mq getMq() {
+    public MqProperties getMq() {
         return mq;
     }
 
-    public void setMq(Mq mq) {
+    public void setMq(MqProperties mq) {
         this.mq = mq;
     }
 
-    public Oss getOss() {
+    public OssProperties getOss() {
         return oss;
     }
 
-    public void setOss(Oss oss) {
+    public void setOss(OssProperties oss) {
         this.oss = oss;
     }
 
-    public Release getRelease() {
+    public ReleaseProperties getRelease() {
         return release;
     }
 
-    public void setRelease(Release release) {
+    public void setRelease(ReleaseProperties release) {
         this.release = release;
     }
 
-    public Observability getObservability() {
+    public ObservabilityProperties getObservability() {
         return observability;
     }
 
-    public void setObservability(Observability observability) {
+    public void setObservability(ObservabilityProperties observability) {
         this.observability = observability;
     }
 
-    public Db getDb() {
+    public DbProperties getDb() {
         return db;
     }
 
-    public void setDb(Db db) {
+    public void setDb(DbProperties db) {
         this.db = db;
-    }
-
-    // ==================== 内部配置组：Observability ====================
-
-    /**
-     * 可观测配置：Actuator 端点的访问控制。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.observability.*}</p>
-     */
-    public static class Observability {
-
-        /**
-         * 访问 health 以外 Actuator 端点（如 prometheus）所需的 Bearer 令牌（建议通过 YU_FLOW_METRICS_TOKEN 注入）。
-         * <p>留空时这些端点一律返回 404；health 始终可匿名访问且只返回状态。</p>
-         */
-        private String metricsToken;
-
-        public String getMetricsToken() {
-            return metricsToken;
-        }
-
-        public void setMetricsToken(String metricsToken) {
-            this.metricsToken = metricsToken;
-        }
-    }
-
-    // ==================== 内部配置组：Db ====================
-
-    /**
-     * 元数据库迁移。对应 {@code yu.flow.db.*}。
-     */
-    public static class Db {
-
-        /**
-         * 启动时是否用 Flyway 迁移元数据库。瀚高连接始终跳过，与本开关无关。
-         * 嵌入宿主且表结构由宿主负责时设为 false。
-         */
-        private boolean autoMigrate = true;
-
-        public boolean isAutoMigrate() {
-            return autoMigrate;
-        }
-
-        public void setAutoMigrate(boolean autoMigrate) {
-            this.autoMigrate = autoMigrate;
-        }
     }
 
     /**
@@ -365,1602 +345,5 @@ public class YuFlowProperties {
     public boolean isOssModuleActive() {
         return oss != null && oss.isEnabled()
                 && ClassUtils.isPresent("io.minio.MinioClient", YuFlowProperties.class.getClassLoader());
-    }
-
-    // ==================== 内部配置组：Engine ====================
-
-    /**
-     * 流程引擎核心配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.engine.*}</p>
-     */
-    public static class Engine {
-
-        /**
-         * 表达式引擎类型。
-         * <ul>
-         *   <li>{@code simple} —— 简化引擎（推荐），安全、快速、支持布尔表达式和路径访问</li>
-         *   <li>{@code spel} —— Spring Expression Language，功能强大但有安全风险</li>
-         * </ul>
-         */
-        private String expressionEngine = "simple";
-
-        /**
-         * 是否启用严格模式。
-         * <p>开启后会在流程执行前验证所有节点配置的完整性。</p>
-         */
-        private boolean strictMode = true;
-
-        /**
-         * 是否启用执行追踪。
-         * <p>开启后会记录每个节点的执行详情，便于调试但会影响性能。</p>
-         */
-        private boolean enableTrace = false;
-
-        /**
-         * Groovy 已编译脚本缓存上限。超过上限时关闭并淘汰最早的类加载器。
-         */
-        private int groovyScriptCacheSize = 256;
-
-        /**
-         * 单次 JavaScript 求值允许执行的语句数上限，超过即终止（防死循环）；≤0 不限制。
-         */
-        private long scriptStatementLimit = 2_000_000L;
-
-        /**
-         * 单次 JavaScript 求值的墙钟超时（毫秒），到时强制取消；≤0 不限制。
-         */
-        private long scriptTimeoutMs = 10_000L;
-
-        /**
-         * DSL → FlowDefinition 编译缓存上限（按内容 SHA-256 去重）。
-         */
-        private int definitionCacheMaxSize = 256;
-
-        /**
-         * DSL 编译缓存：多久未访问后过期（分钟）。
-         */
-        private long definitionCacheExpireMinutes = 60;
-
-        /** Trace 变量快照最大嵌套深度 */
-        private int traceSnapshotMaxDepth = 6;
-
-        /** Trace 快照中集合最大元素数 */
-        private int traceSnapshotMaxCollectionSize = 32;
-
-        /** Trace 快照中单个字符串最大长度 */
-        private int traceSnapshotMaxStringLength = 1024;
-
-        /** Trace 快照中 Map 最大条目数 */
-        private int traceSnapshotMaxMapEntries = 64;
-
-        /**
-         * 落库时是否仅保留失败步的 inputs/outputs（成功步只留状态与耗时）。
-         */
-        private boolean tracePersistFailedStepsOnly = false;
-
-        /**
-         * traceData JSON 最大字节数；超出则递进收缩。
-         */
-        private int traceDataMaxBytes = 512 * 1024;
-
-        /**
-         * 引擎并行池 core 大小。≤0 表示 {@code CPU * 2}。
-         */
-        private int poolCoreSize = 0;
-
-        /**
-         * 引擎并行池 max 大小。≤0 表示 {@code CPU * 4}。
-         */
-        private int poolMaxSize = 0;
-
-        /** 引擎并行池有界队列容量 */
-        private int poolQueueCapacity = 1024;
-
-        /**
-         * For 节点同时在途分支上限（Semaphore）。≤0 不限制（仅受线程池约束）。
-         */
-        private int forMaxInFlight = 64;
-
-        /**
-         * CALL 用 ResolvedContent 缓存上限（按 publishedSnapshot 内容 hash）。
-         */
-        private int resolvedContentCacheMaxSize = 256;
-
-        /**
-         * 全局默认日志策略模式（资产级 logMode=SYSTEM_DEFAULT 时继承此值）。
-         * <ul>
-         *   <li>{@code ERROR_ONLY} — 默认推荐：仅报错时记录，成本低、排障有保障</li>
-         *   <li>{@code ALL}        — 全量记录所有请求（高存储成本，适合联调阶段）</li>
-         *   <li>{@code OFF}        — 完全关闭，不记录任何日志</li>
-         * </ul>
-         */
-        private String defaultLogMode = "ERROR_ONLY";
-
-        public String getDefaultLogMode() {
-            return defaultLogMode;
-        }
-
-        public void setDefaultLogMode(String defaultLogMode) {
-            this.defaultLogMode = defaultLogMode;
-        }
-
-        public String getExpressionEngine() {
-            return expressionEngine;
-        }
-
-        public void setExpressionEngine(String expressionEngine) {
-            this.expressionEngine = expressionEngine;
-        }
-
-        public boolean isStrictMode() {
-            return strictMode;
-        }
-
-        public void setStrictMode(boolean strictMode) {
-            this.strictMode = strictMode;
-        }
-
-        public boolean isEnableTrace() {
-            return enableTrace;
-        }
-
-        public void setEnableTrace(boolean enableTrace) {
-            this.enableTrace = enableTrace;
-        }
-
-        public long getScriptStatementLimit() {
-            return scriptStatementLimit;
-        }
-
-        public void setScriptStatementLimit(long scriptStatementLimit) {
-            this.scriptStatementLimit = scriptStatementLimit;
-        }
-
-        public long getScriptTimeoutMs() {
-            return scriptTimeoutMs;
-        }
-
-        public void setScriptTimeoutMs(long scriptTimeoutMs) {
-            this.scriptTimeoutMs = scriptTimeoutMs;
-        }
-
-        public int getGroovyScriptCacheSize() {
-            return groovyScriptCacheSize;
-        }
-
-        public void setGroovyScriptCacheSize(int groovyScriptCacheSize) {
-            this.groovyScriptCacheSize = groovyScriptCacheSize;
-        }
-
-        public int getDefinitionCacheMaxSize() {
-            return definitionCacheMaxSize;
-        }
-
-        public void setDefinitionCacheMaxSize(int definitionCacheMaxSize) {
-            this.definitionCacheMaxSize = definitionCacheMaxSize;
-        }
-
-        public long getDefinitionCacheExpireMinutes() {
-            return definitionCacheExpireMinutes;
-        }
-
-        public void setDefinitionCacheExpireMinutes(long definitionCacheExpireMinutes) {
-            this.definitionCacheExpireMinutes = definitionCacheExpireMinutes;
-        }
-
-        public int getTraceSnapshotMaxDepth() {
-            return traceSnapshotMaxDepth;
-        }
-
-        public void setTraceSnapshotMaxDepth(int traceSnapshotMaxDepth) {
-            this.traceSnapshotMaxDepth = traceSnapshotMaxDepth;
-        }
-
-        public int getTraceSnapshotMaxCollectionSize() {
-            return traceSnapshotMaxCollectionSize;
-        }
-
-        public void setTraceSnapshotMaxCollectionSize(int traceSnapshotMaxCollectionSize) {
-            this.traceSnapshotMaxCollectionSize = traceSnapshotMaxCollectionSize;
-        }
-
-        public int getTraceSnapshotMaxStringLength() {
-            return traceSnapshotMaxStringLength;
-        }
-
-        public void setTraceSnapshotMaxStringLength(int traceSnapshotMaxStringLength) {
-            this.traceSnapshotMaxStringLength = traceSnapshotMaxStringLength;
-        }
-
-        public int getTraceSnapshotMaxMapEntries() {
-            return traceSnapshotMaxMapEntries;
-        }
-
-        public void setTraceSnapshotMaxMapEntries(int traceSnapshotMaxMapEntries) {
-            this.traceSnapshotMaxMapEntries = traceSnapshotMaxMapEntries;
-        }
-
-        public boolean isTracePersistFailedStepsOnly() {
-            return tracePersistFailedStepsOnly;
-        }
-
-        public void setTracePersistFailedStepsOnly(boolean tracePersistFailedStepsOnly) {
-            this.tracePersistFailedStepsOnly = tracePersistFailedStepsOnly;
-        }
-
-        public int getTraceDataMaxBytes() {
-            return traceDataMaxBytes;
-        }
-
-        public void setTraceDataMaxBytes(int traceDataMaxBytes) {
-            this.traceDataMaxBytes = traceDataMaxBytes;
-        }
-
-        public int getPoolCoreSize() {
-            return poolCoreSize;
-        }
-
-        public void setPoolCoreSize(int poolCoreSize) {
-            this.poolCoreSize = poolCoreSize;
-        }
-
-        public int getPoolMaxSize() {
-            return poolMaxSize;
-        }
-
-        public void setPoolMaxSize(int poolMaxSize) {
-            this.poolMaxSize = poolMaxSize;
-        }
-
-        public int getPoolQueueCapacity() {
-            return poolQueueCapacity;
-        }
-
-        public void setPoolQueueCapacity(int poolQueueCapacity) {
-            this.poolQueueCapacity = poolQueueCapacity;
-        }
-
-        public int getForMaxInFlight() {
-            return forMaxInFlight;
-        }
-
-        public void setForMaxInFlight(int forMaxInFlight) {
-            this.forMaxInFlight = forMaxInFlight;
-        }
-
-        public int getResolvedContentCacheMaxSize() {
-            return resolvedContentCacheMaxSize;
-        }
-
-        public void setResolvedContentCacheMaxSize(int resolvedContentCacheMaxSize) {
-            this.resolvedContentCacheMaxSize = resolvedContentCacheMaxSize;
-        }
-    }
-
-    // ==================== 内部配置组：Security ====================
-
-    /**
-     * 安全与加密相关配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.security.*}</p>
-     */
-    public static class Security {
-
-        /**
-         * AES 对称加密密钥。
-         * <p>用于数据源密码等敏感信息的加解密，长度必须为 16 / 24 / 32 字节。</p>
-         * <p><b>生产环境强烈建议通过环境变量注入：</b></p>
-         * <pre>
-         * yu:
-         *   flow:
-         *     security:
-         *       aes-secret-key: ${YU_FLOW_AES_SECRET:flow-secure-keys}
-         * </pre>
-         */
-        private String aesSecretKey = "flow-secure-keys";
-
-        /**
-         * 管理端 JWT HMAC 密钥。
-         * <p>生产必须通过 {@code YU_FLOW_JWT_SECRET} 覆盖，禁止使用历史默认值 {@code ss-flow-699}。</p>
-         */
-        private String jwtSecretKey = "ss-flow-699";
-
-        /**
-         * 管理端 JWT 有效期（秒），默认 2 小时。
-         */
-        private long jwtExpireSeconds = 7200L;
-
-        /**
-         * Groovy / 系统宏 SpEL 可通过 getBean / @bean 获取的 Bean 名称白名单。
-         * 默认空列表；宏侧另内置允许 {@code environment}。
-         */
-        private List<String> scriptAllowedBeans = new ArrayList<>();
-
-        /**
-         * Evaluate / Switch 等节点允许使用的脚本语言白名单。
-         * <p>默认 {@code aviator, spel, javascript}（保障预置演示流程可用）；
-         * {@code groovy}、{@code python} 逃逸面较大，需显式加入白名单。
-         * 置空列表表示不限制（不建议）。</p>
-         */
-        private List<String> scriptAllowedLanguages =
-                new ArrayList<>(List.of("aviator", "spel", "javascript"));
-
-        /**
-         * 为 true 时：JWT/AES 仍为历史默认值则拒绝启动；弱默认管理员口令亦拒绝启动。
-         * 本地开发可设 {@code YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=false}。
-         */
-        private boolean failOnInsecureDefaults = true;
-
-        /**
-         * 出站 HTTP（流程 HttpRequest / Webhook）是否拒绝私网与环回地址。
-         * 默认 false（内网集成常见）；公网多租户可设 true。
-         */
-        private boolean blockPrivateOutbound = true;
-
-        /**
-         * 是否允许 yml 账号在 RBAC 库用户鉴权失败后兜底登录（仅紧急运维）。
-         * 生产建议 false。
-         */
-        private boolean allowYmlAdminFallback = false;
-
-        /**
-         * 是否允许接口 {@code securityConfig.authMode=NONE}（匿名可调业务 API）。
-         * 默认 false；仅应急可设 {@code YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true}。
-         */
-        private boolean allowIngressAuthNone = false;
-
-        /**
-         * 是否允许 HttpRequest 节点 {@code ignoreSsl=true}（跳过证书与主机名校验）。
-         * <p>默认 true（内网自签名常见）；生产建议设
-         * {@code YU_FLOW_ALLOW_IGNORE_SSL=false} 一刀切禁用。</p>
-         */
-        private boolean allowIgnoreSsl = true;
-
-        /**
-         * 本实例环境为 PROD 时，发现不安全档位仍允许启动（只打 ERROR 日志）。
-         * <p>默认 false：PROD 下这些档位会让启动失败，系统配置与发布包也不能把它们改回不安全值。
-         * 见 {@link ProdSecurityGuard}。</p>
-         */
-        private boolean allowInsecureProd = false;
-
-        /**
-         * 管理端 {@code /flow-api/**}（已通过管理端 JWT 后）是否再要求
-         * {@link org.yu.flow.module.open.auth.HostAuthenticationProbe} 通过。
-         * <p>默认 {@code false}；仅需加强防护时开启。开启后嵌入宿主应覆盖 Probe
-         * 读自身 Session/SecurityContext，形成「宿主已登录 + Flow JWT」双层鉴权。</p>
-         * <p>不覆盖 login / captcha / open / 签名下载。不做宿主登录后静默换发 Flow JWT。</p>
-         */
-        private boolean managementRequireHostAuth = false;
-
-        /**
-         * 登录口令 SM2 私钥（hex，D 值）。与 {@link #sm2PublicKey} 成对；
-         * 均留空则进程启动时生成临时密钥（多节点须通过环境变量固定）。
-         */
-        private String sm2PrivateKey = "";
-
-        /**
-         * 登录口令 SM2 公钥（hex，未压缩 {@code 04||X||Y}，130 字符）。
-         */
-        private String sm2PublicKey = "";
-
-        /**
-         * 登录 SM2 密文有效期（秒）。载荷内时间戳超出此窗则拒绝。
-         */
-        private long sm2PasswordTtlSeconds = 300L;
-
-        public String getAesSecretKey() {
-            return aesSecretKey;
-        }
-
-        public void setAesSecretKey(String aesSecretKey) {
-            this.aesSecretKey = aesSecretKey;
-        }
-
-        public String getJwtSecretKey() {
-            return jwtSecretKey;
-        }
-
-        public void setJwtSecretKey(String jwtSecretKey) {
-            this.jwtSecretKey = jwtSecretKey;
-        }
-
-        public long getJwtExpireSeconds() {
-            return jwtExpireSeconds;
-        }
-
-        public void setJwtExpireSeconds(long jwtExpireSeconds) {
-            this.jwtExpireSeconds = jwtExpireSeconds;
-        }
-
-        public List<String> getScriptAllowedBeans() {
-            return scriptAllowedBeans;
-        }
-
-        public void setScriptAllowedBeans(List<String> scriptAllowedBeans) {
-            this.scriptAllowedBeans = scriptAllowedBeans == null ? new ArrayList<>() : scriptAllowedBeans;
-        }
-
-        public List<String> getScriptAllowedLanguages() {
-            return scriptAllowedLanguages;
-        }
-
-        public void setScriptAllowedLanguages(List<String> scriptAllowedLanguages) {
-            this.scriptAllowedLanguages = scriptAllowedLanguages == null
-                    ? new ArrayList<>() : scriptAllowedLanguages;
-        }
-
-        public boolean isFailOnInsecureDefaults() {
-            return failOnInsecureDefaults;
-        }
-
-        public void setFailOnInsecureDefaults(boolean failOnInsecureDefaults) {
-            this.failOnInsecureDefaults = failOnInsecureDefaults;
-        }
-
-        public boolean isBlockPrivateOutbound() {
-            return blockPrivateOutbound;
-        }
-
-        public void setBlockPrivateOutbound(boolean blockPrivateOutbound) {
-            this.blockPrivateOutbound = blockPrivateOutbound;
-        }
-
-        public boolean isAllowYmlAdminFallback() {
-            return allowYmlAdminFallback;
-        }
-
-        public void setAllowYmlAdminFallback(boolean allowYmlAdminFallback) {
-            this.allowYmlAdminFallback = allowYmlAdminFallback;
-        }
-
-        public boolean isAllowIngressAuthNone() {
-            return allowIngressAuthNone;
-        }
-
-        public void setAllowIngressAuthNone(boolean allowIngressAuthNone) {
-            this.allowIngressAuthNone = allowIngressAuthNone;
-        }
-
-        public boolean isAllowIgnoreSsl() {
-            return allowIgnoreSsl;
-        }
-
-        public void setAllowIgnoreSsl(boolean allowIgnoreSsl) {
-            this.allowIgnoreSsl = allowIgnoreSsl;
-        }
-
-        public boolean isAllowInsecureProd() {
-            return allowInsecureProd;
-        }
-
-        public void setAllowInsecureProd(boolean allowInsecureProd) {
-            this.allowInsecureProd = allowInsecureProd;
-        }
-
-        public boolean isManagementRequireHostAuth() {
-            return managementRequireHostAuth;
-        }
-
-        public void setManagementRequireHostAuth(boolean managementRequireHostAuth) {
-            this.managementRequireHostAuth = managementRequireHostAuth;
-        }
-
-        public String getSm2PrivateKey() {
-            return sm2PrivateKey;
-        }
-
-        public void setSm2PrivateKey(String sm2PrivateKey) {
-            this.sm2PrivateKey = sm2PrivateKey;
-        }
-
-        public String getSm2PublicKey() {
-            return sm2PublicKey;
-        }
-
-        public void setSm2PublicKey(String sm2PublicKey) {
-            this.sm2PublicKey = sm2PublicKey;
-        }
-
-        public long getSm2PasswordTtlSeconds() {
-            return sm2PasswordTtlSeconds;
-        }
-
-        public void setSm2PasswordTtlSeconds(long sm2PasswordTtlSeconds) {
-            this.sm2PasswordTtlSeconds = sm2PasswordTtlSeconds;
-        }
-    }
-
-    // ==================== 内部配置组：Demo ====================
-
-    /**
-     * 演示模式安全限制配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.demo.*}</p>
-     * <pre>
-     * yu:
-     *   flow:
-     *     demo-mode: true
-     *     demo:
-     *       max-steps: 200
-     *       max-for-loop-items: 50
-     * </pre>
-     */
-    public static class Demo {
-
-        /**
-         * 单次流程执行允许的最大步骤数。
-         * <p>用于防止死循环和过于复杂的流程编排。
-         * 执行步骤数超过此值时，引擎将强制终止流程并报错。</p>
-         */
-        private int maxSteps = 200;
-
-        /**
-         * For / ForEach 循环节点允许的最大输入数组元素数。
-         * <p>防止传入巨大数组导致线程池耗尽或内存溢出。</p>
-         */
-        private int maxForLoopItems = 50;
-
-        /**
-         * Delay 节点允许的最大等待毫秒数（演示模式）。
-         */
-        private long maxDelayMs = 5000L;
-
-        public int getMaxSteps() {
-            return maxSteps;
-        }
-
-        public void setMaxSteps(int maxSteps) {
-            this.maxSteps = maxSteps;
-        }
-
-        public int getMaxForLoopItems() {
-            return maxForLoopItems;
-        }
-
-        public void setMaxForLoopItems(int maxForLoopItems) {
-            this.maxForLoopItems = maxForLoopItems;
-        }
-
-        public long getMaxDelayMs() {
-            return maxDelayMs;
-        }
-
-        public void setMaxDelayMs(long maxDelayMs) {
-            this.maxDelayMs = maxDelayMs;
-        }
-    }
-
-    // ==================== 内部配置组：Task ====================
-
-    /**
-     * 定时任务相关配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.task.*}</p>
-     * <pre>
-     * yu:
-     *   flow:
-     *     task:
-     *       lock-ttl-minutes: 30
-     *       lock-renew-interval-seconds: 60
-     *       scheduler-pool-size: 4
-     * </pre>
-     */
-    public static class Task {
-
-        /**
-         * 分布式执行锁 TTL（分钟）。
-         * <p>Cron 触发时通过 Redis 抢锁，防止多节点重复执行；超时后锁自动释放。</p>
-         */
-        private int lockTtlMinutes = 30;
-
-        /**
-         * 锁心跳续期间隔（秒）。≤0 关闭续期。
-         * <p>建议为 TTL 的 1/2～1/3，长任务执行期间可防止 TTL 提前丢失导致双跑。</p>
-         */
-        private int lockRenewIntervalSeconds = 60;
-
-        /** Cron / 手动触发共用的 TaskScheduler 池大小 */
-        private int schedulerPoolSize = 4;
-
-        /** flowAsyncExecutor 核心线程数 */
-        private int asyncCorePoolSize = 4;
-
-        /** flowAsyncExecutor 最大线程数 */
-        private int asyncMaxPoolSize = 8;
-
-        /** flowAsyncExecutor 队列容量 */
-        private int asyncQueueCapacity = 200;
-
-        public int getLockTtlMinutes() {
-            return lockTtlMinutes;
-        }
-
-        public void setLockTtlMinutes(int lockTtlMinutes) {
-            this.lockTtlMinutes = lockTtlMinutes;
-        }
-
-        public int getLockRenewIntervalSeconds() {
-            return lockRenewIntervalSeconds;
-        }
-
-        public void setLockRenewIntervalSeconds(int lockRenewIntervalSeconds) {
-            this.lockRenewIntervalSeconds = lockRenewIntervalSeconds;
-        }
-
-        public int getSchedulerPoolSize() {
-            return schedulerPoolSize;
-        }
-
-        public void setSchedulerPoolSize(int schedulerPoolSize) {
-            this.schedulerPoolSize = schedulerPoolSize;
-        }
-
-        public int getAsyncCorePoolSize() {
-            return asyncCorePoolSize;
-        }
-
-        public void setAsyncCorePoolSize(int asyncCorePoolSize) {
-            this.asyncCorePoolSize = asyncCorePoolSize;
-        }
-
-        public int getAsyncMaxPoolSize() {
-            return asyncMaxPoolSize;
-        }
-
-        public void setAsyncMaxPoolSize(int asyncMaxPoolSize) {
-            this.asyncMaxPoolSize = asyncMaxPoolSize;
-        }
-
-        public int getAsyncQueueCapacity() {
-            return asyncQueueCapacity;
-        }
-
-        public void setAsyncQueueCapacity(int asyncQueueCapacity) {
-            this.asyncQueueCapacity = asyncQueueCapacity;
-        }
-    }
-
-    // ==================== 内部配置组：Metrics ====================
-
-    /**
-     * 资产运行计量配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.metrics.*}</p>
-     */
-    public static class Metrics {
-
-        /** 总开关；关闭后 Recorder 直接 no-op */
-        private boolean enabled = true;
-
-        /** 是否将服务 DEBUG 触发计入生产计量 */
-        private boolean includeDebug = false;
-
-        /** Redis 分钟桶 TTL（小时） */
-        private int redisTtlHours = 3;
-
-        /** MySQL 分钟汇总保留天数；≤0 表示不清理 */
-        private int retainDays = 90;
-
-        /** Flush 间隔（秒） */
-        private int flushIntervalSeconds = 30;
-
-        /** Flush 分布式锁 TTL（秒） */
-        private int flushLockTtlSeconds = 55;
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public boolean isIncludeDebug() {
-            return includeDebug;
-        }
-
-        public void setIncludeDebug(boolean includeDebug) {
-            this.includeDebug = includeDebug;
-        }
-
-        public int getRedisTtlHours() {
-            return redisTtlHours;
-        }
-
-        public void setRedisTtlHours(int redisTtlHours) {
-            this.redisTtlHours = redisTtlHours;
-        }
-
-        public int getRetainDays() {
-            return retainDays;
-        }
-
-        public void setRetainDays(int retainDays) {
-            this.retainDays = retainDays;
-        }
-
-        public int getFlushIntervalSeconds() {
-            return flushIntervalSeconds;
-        }
-
-        public void setFlushIntervalSeconds(int flushIntervalSeconds) {
-            this.flushIntervalSeconds = flushIntervalSeconds;
-        }
-
-        public int getFlushLockTtlSeconds() {
-            return flushLockTtlSeconds;
-        }
-
-        public void setFlushLockTtlSeconds(int flushLockTtlSeconds) {
-            this.flushLockTtlSeconds = flushLockTtlSeconds;
-        }
-    }
-
-    // ==================== 内部配置组：Open ====================
-
-    /**
-     * 第三方开放平台配置。
-     *
-     * <p>对应 YAML：{@code yu.flow.open.*}</p>
-     */
-    public static class Open {
-
-        /** 总开关；关闭后 /flow-api/open/** 返回 404 */
-        private boolean enabled = true;
-
-        /** 开放入口前缀（不含尾斜杠） */
-        private String entryPrefix = "/flow-api/open";
-
-        /** 签名时钟偏差秒数 */
-        private int skewSeconds = 300;
-
-        /** 是否允许 X-Yu-App-Secret 明文头（无签名时）；默认 false，演示可环境变量打开 */
-        private boolean allowPlainSecret = false;
-
-        /** 轮换后旧密钥宽限期（小时）；≤0 表示立即失效 */
-        private int rotateGraceHours = 24;
-
-        /** 全局入站摘要日志开关；平台 openCallLogEnabled=0 时可单独关闭 */
-        private boolean callLogEnabled = true;
-
-        /** HMAC 是否纳入 body SHA-256（空 body 用空串） */
-        private boolean includeBodyHash = true;
-
-        /**
-         * nonce 写入 Redis 失败时是否拒绝请求。
-         * 生产建议 true；本地无 Redis 时可 false（存在重放风险）。
-         */
-        private boolean nonceFailClosed = true;
-
-        /**
-         * 是否允许第三方用 AppKey 直打「真实发布 path」（凭证头分流）。
-         * 默认 false：仅认 {@code /flow-api/open/{path}} 前缀入口。
-         */
-        private boolean allowDirectPath = false;
-
-        /**
-         * 已发布 API 且无 AppKey、且 ingress 关闭时，是否强制
-         * {@link org.yu.flow.module.open.auth.HostAuthenticationProbe}。
-         * 默认 true；独立部署默认 Probe 校验管理端 JWT。
-         */
-        private boolean requireHostAuth = true;
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public String getEntryPrefix() {
-            return entryPrefix;
-        }
-
-        public void setEntryPrefix(String entryPrefix) {
-            this.entryPrefix = entryPrefix;
-        }
-
-        public int getSkewSeconds() {
-            return skewSeconds;
-        }
-
-        public void setSkewSeconds(int skewSeconds) {
-            this.skewSeconds = skewSeconds;
-        }
-
-        public boolean isAllowPlainSecret() {
-            return allowPlainSecret;
-        }
-
-        public void setAllowPlainSecret(boolean allowPlainSecret) {
-            this.allowPlainSecret = allowPlainSecret;
-        }
-
-        public int getRotateGraceHours() {
-            return rotateGraceHours;
-        }
-
-        public void setRotateGraceHours(int rotateGraceHours) {
-            this.rotateGraceHours = rotateGraceHours;
-        }
-
-        public boolean isCallLogEnabled() {
-            return callLogEnabled;
-        }
-
-        public void setCallLogEnabled(boolean callLogEnabled) {
-            this.callLogEnabled = callLogEnabled;
-        }
-
-        public boolean isIncludeBodyHash() {
-            return includeBodyHash;
-        }
-
-        public void setIncludeBodyHash(boolean includeBodyHash) {
-            this.includeBodyHash = includeBodyHash;
-        }
-
-        public boolean isNonceFailClosed() {
-            return nonceFailClosed;
-        }
-
-        public void setNonceFailClosed(boolean nonceFailClosed) {
-            this.nonceFailClosed = nonceFailClosed;
-        }
-
-        public boolean isAllowDirectPath() {
-            return allowDirectPath;
-        }
-
-        public void setAllowDirectPath(boolean allowDirectPath) {
-            this.allowDirectPath = allowDirectPath;
-        }
-
-        public boolean isRequireHostAuth() {
-            return requireHostAuth;
-        }
-
-        public void setRequireHostAuth(boolean requireHostAuth) {
-            this.requireHostAuth = requireHostAuth;
-        }
-    }
-
-    // ==================== 内部配置组：Privacy ====================
-
-    /**
-     * 接口出站隐私拦截。对应 YAML：{@code yu.flow.privacy.*}
-     */
-    public static class Privacy {
-
-        /**
-         * 库内密文字段 SM4 密钥：16 字节明文或 32 位 hex。
-         * 生产通过 {@code YU_FLOW_PRIVACY_AT_REST_SM4_KEY} 注入。
-         */
-        private String atRestSm4Key = "";
-
-        /**
-         * 已发布 JSON 接口的明文档是否再套传输 SM4（{@code X-Privacy-Key}）。
-         * 运行时优先读系统参数 {@code PRIVACY_WRAP_TRANSPORT}，本字段仅作 yml 兜底。
-         * {@code true}（默认）：无会话密钥则 REVEAL 降级为 MASK。
-         * {@code false}：命中明文规则时响应里直接给明文，供内网或调试；生产不建议关。
-         */
-        private boolean wrapTransport = true;
-
-        /**
-         * 是否开放 {@code GET /flow-api/dev/privacy-session}（签发 {@code X-Privacy-Key} + {@code sm4KeyHex}）。
-         * <p>生产 profile（{@code prod}/{@code production}）与 {@code demo-mode} 一律拒绝，忽略本项。
-         * {@code dev}/{@code local}/{@code test} 即使本项为 {@code false} 也会开放。其它环境显式设
-         * {@code YU_FLOW_PRIVACY_DEV_SESSION=true}。</p>
-         */
-        private boolean devSessionEnabled = false;
-
-        public String getAtRestSm4Key() {
-            return atRestSm4Key;
-        }
-
-        public void setAtRestSm4Key(String atRestSm4Key) {
-            this.atRestSm4Key = atRestSm4Key;
-        }
-
-        public boolean isWrapTransport() {
-            return wrapTransport;
-        }
-
-        public void setWrapTransport(boolean wrapTransport) {
-            this.wrapTransport = wrapTransport;
-        }
-
-        public boolean isDevSessionEnabled() {
-            return devSessionEnabled;
-        }
-
-        public void setDevSessionEnabled(boolean devSessionEnabled) {
-            this.devSessionEnabled = devSessionEnabled;
-        }
-    }
-
-    // ==================== 内部配置组：Ingress ====================
-
-    /**
-     * 已发布 API 入站防护全局默认。
-     *
-     * <p>对应 YAML：{@code yu.flow.ingress.*}</p>
-     * <p>{@code enabled=false} 时信任宿主网关（与历史行为一致）；开放入口 {@code /flow-api/open/**} 不受影响。</p>
-     */
-    public static class Ingress {
-
-        /** 总开关；关闭则不启用入站兜底（此时网关仍会对已匹配动态 API 要求管理端 JWT） */
-        private boolean enabled = true;
-
-        /** 默认鉴权：NONE | HOST | OPEN（安全默认 HOST=需管理端登录态） */
-        private String defaultAuthMode = "HOST";
-
-        /** 默认是否启用防重放（仅 OPEN 鉴权生效） */
-        private boolean defaultAntiReplay = true;
-
-        /** 默认是否启用限流 */
-        private boolean defaultRateLimitEnabled = false;
-
-        /** 默认限流 QPS（秒级固定窗口） */
-        private int defaultRateLimitQps = 100;
-
-        /** 默认 IP 白名单（空=不限制） */
-        private String defaultIpAllowlist = "";
-
-        /**
-         * 默认接口执行超时（毫秒）。≤0 表示不限制。
-         * 可被接口 securityConfig.timeoutMs 覆盖。
-         */
-        private int defaultTimeoutMs = 30000;
-
-        /** 限流 Redis 失败时是否 fail-open */
-        private boolean rateLimitFailOpen = true;
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public String getDefaultAuthMode() {
-            return defaultAuthMode;
-        }
-
-        public void setDefaultAuthMode(String defaultAuthMode) {
-            this.defaultAuthMode = defaultAuthMode;
-        }
-
-        public boolean isDefaultAntiReplay() {
-            return defaultAntiReplay;
-        }
-
-        public void setDefaultAntiReplay(boolean defaultAntiReplay) {
-            this.defaultAntiReplay = defaultAntiReplay;
-        }
-
-        public boolean isDefaultRateLimitEnabled() {
-            return defaultRateLimitEnabled;
-        }
-
-        public void setDefaultRateLimitEnabled(boolean defaultRateLimitEnabled) {
-            this.defaultRateLimitEnabled = defaultRateLimitEnabled;
-        }
-
-        public int getDefaultRateLimitQps() {
-            return defaultRateLimitQps;
-        }
-
-        public void setDefaultRateLimitQps(int defaultRateLimitQps) {
-            this.defaultRateLimitQps = defaultRateLimitQps;
-        }
-
-        public String getDefaultIpAllowlist() {
-            return defaultIpAllowlist;
-        }
-
-        public void setDefaultIpAllowlist(String defaultIpAllowlist) {
-            this.defaultIpAllowlist = defaultIpAllowlist;
-        }
-
-        public int getDefaultTimeoutMs() {
-            return defaultTimeoutMs;
-        }
-
-        public void setDefaultTimeoutMs(int defaultTimeoutMs) {
-            this.defaultTimeoutMs = defaultTimeoutMs;
-        }
-
-        public boolean isRateLimitFailOpen() {
-            return rateLimitFailOpen;
-        }
-
-        public void setRateLimitFailOpen(boolean rateLimitFailOpen) {
-            this.rateLimitFailOpen = rateLimitFailOpen;
-        }
-    }
-
-    // ==================== 内部配置组：Mail ====================
-
-    /**
-     * SMTP 邮件发送。对应 YAML：{@code yu.flow.mail.*}
-     * <p>系统配置 MAIL_* 优先于本段。</p>
-     */
-    public static class Mail {
-        private boolean enabled = false;
-        private String host = "";
-        private int port = 465;
-        private String username = "";
-        private String password = "";
-        /** 发件人地址；空则用 username */
-        private String from = "";
-        private boolean ssl = true;
-        private boolean starttls = false;
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public String getHost() {
-            return host;
-        }
-
-        public void setHost(String host) {
-            this.host = host;
-        }
-
-        public int getPort() {
-            return port;
-        }
-
-        public void setPort(int port) {
-            this.port = port;
-        }
-
-        public String getUsername() {
-            return username;
-        }
-
-        public void setUsername(String username) {
-            this.username = username;
-        }
-
-        public String getPassword() {
-            return password;
-        }
-
-        public void setPassword(String password) {
-            this.password = password;
-        }
-
-        public String getFrom() {
-            return from;
-        }
-
-        public void setFrom(String from) {
-            this.from = from;
-        }
-
-        public boolean isSsl() {
-            return ssl;
-        }
-
-        public void setSsl(boolean ssl) {
-            this.ssl = ssl;
-        }
-
-        public boolean isStarttls() {
-            return starttls;
-        }
-
-        public void setStarttls(boolean starttls) {
-            this.starttls = starttls;
-        }
-    }
-
-    // ==================== 内部配置组：Release ====================
-
-    /**
-     * 版本管理与跨环境发布配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.release.*}</p>
-     * <pre>
-     * yu:
-     *   flow:
-     *     release:
-     *       current-env: PROD
-     * </pre>
-     */
-    public static class Release {
-
-        /**
-         * 本实例所属环境，取值为 {@code flow_env.code}（如 DEV / PROD）。
-         * <p>配置后发布门禁、回归运行一律按本实例环境判定，忽略请求里的 envCode，
-         * 并写入导出的发布包头；留空则沿用按请求选择逻辑环境的旧行为（默认 DEV）。</p>
-         */
-        private String currentEnv;
-
-        /**
-         * 发布包 HMAC-SHA256 签名密钥，两套环境配置同一个值（建议通过环境变量注入）。
-         * <p>配置后导出的包会带签名；导入时要求签名存在且校验通过，未签名或被篡改的包一律拒收。</p>
-         */
-        private String signingKey;
-
-        /**
-         * 密钥轮换期间仍认可的旧签名密钥，只用于校验、不用于签名。
-         * <p>轮换步骤：两套环境先把旧密钥移到这里、配置新 {@link #signingKey}，在途的旧包导入完后再删掉旧密钥。</p>
-         */
-        private List<String> previousSigningKeys = new ArrayList<>();
-
-        /**
-         * 导入是否必须带有效签名。留空时自动判断：本实例环境为 PROD 或开启了 {@link #lockAssetEditing} 时必须签名。
-         * <p>未签名时包内摘要只能发现损坏，发现不了有意篡改（任何人都能重算摘要）。</p>
-         */
-        private Boolean requireSignature;
-
-        /**
-         * 保留导入前备份的成功导入记录条数（按导入时间倒序），更早记录的备份会被清空，记录本身保留。
-         * <p>只有最近一次导入可以回滚，更早的备份只用于留档；≤0 表示不清理。</p>
-         */
-        private int backupRetention = 10;
-
-        /**
-         * 锁定资产编辑：开启后本实例不允许直接新增 / 修改 / 删除 / 发布编排资产，
-         * 所有变更只能通过发布包导入（生产环境建议开启）。
-         */
-        private boolean lockAssetEditing = false;
-
-        public String getCurrentEnv() {
-            return currentEnv;
-        }
-
-        public void setCurrentEnv(String currentEnv) {
-            this.currentEnv = currentEnv;
-        }
-
-        public String getSigningKey() {
-            return signingKey;
-        }
-
-        public void setSigningKey(String signingKey) {
-            this.signingKey = signingKey;
-        }
-
-        public List<String> getPreviousSigningKeys() {
-            return previousSigningKeys;
-        }
-
-        public void setPreviousSigningKeys(List<String> previousSigningKeys) {
-            this.previousSigningKeys = previousSigningKeys;
-        }
-
-        public Boolean getRequireSignature() {
-            return requireSignature;
-        }
-
-        public void setRequireSignature(Boolean requireSignature) {
-            this.requireSignature = requireSignature;
-        }
-
-        public int getBackupRetention() {
-            return backupRetention;
-        }
-
-        public void setBackupRetention(int backupRetention) {
-            this.backupRetention = backupRetention;
-        }
-
-        public boolean isLockAssetEditing() {
-            return lockAssetEditing;
-        }
-
-        public void setLockAssetEditing(boolean lockAssetEditing) {
-            this.lockAssetEditing = lockAssetEditing;
-        }
-    }
-
-    // ==================== 内部配置组：Mq ====================
-
-    /**
-     * 消息队列（MQ 触发 / 发送节点）配置。
-     *
-     * <p>对应 YAML 路径：{@code yu.flow.mq.*}</p>
-     * <pre>
-     * yu:
-     *   flow:
-     *     mq:
-     *       consumer-enabled: true
-     *       dedup-ttl-seconds: 300
-     *       send-timeout-ms: 10000
-     *       max-message-bytes: 1048576
-     * </pre>
-     */
-    public static class Mq {
-
-        /**
-         * 是否启动 MQ 消费（MqConsumerManager 总开关）。
-         * <p>多实例部署时仅一个实例开启即可避免重复消费竞争；
-         * 消息级幂等由 Redis 锁按 messageId 兜底。</p>
-         */
-        private boolean consumerEnabled = true;
-
-        /** 消费幂等锁 TTL（秒），按 messageId 去重 */
-        private int dedupTtlSeconds = 300;
-
-        /** 发送超时（毫秒） */
-        private long sendTimeoutMs = 10000;
-
-        /** 消息体大小上限（字节），≤0 不限制。默认 1MB */
-        private int maxMessageBytes = 1048576;
-
-        /** 日志留存的原始报文最大字符数，超出截断；<=0 不记录报文 */
-        private int logBodyMaxChars = 8192;
-
-        /** 原始报文落库全局默认：FULL / MASK / OFF */
-        private String logPayloadMode = "FULL";
-
-        /** 积压查询缓存秒数（Kafka lag / Rabbit 队列深度） */
-        private int backlogCacheSeconds = 60;
-
-        public boolean isConsumerEnabled() {
-            return consumerEnabled;
-        }
-
-        public void setConsumerEnabled(boolean consumerEnabled) {
-            this.consumerEnabled = consumerEnabled;
-        }
-
-        public int getDedupTtlSeconds() {
-            return dedupTtlSeconds;
-        }
-
-        public void setDedupTtlSeconds(int dedupTtlSeconds) {
-            this.dedupTtlSeconds = dedupTtlSeconds;
-        }
-
-        public long getSendTimeoutMs() {
-            return sendTimeoutMs;
-        }
-
-        public void setSendTimeoutMs(long sendTimeoutMs) {
-            this.sendTimeoutMs = sendTimeoutMs;
-        }
-
-        public int getMaxMessageBytes() {
-            return maxMessageBytes;
-        }
-
-        public void setMaxMessageBytes(int maxMessageBytes) {
-            this.maxMessageBytes = maxMessageBytes;
-        }
-
-        public int getLogBodyMaxChars() {
-            return logBodyMaxChars;
-        }
-
-        public void setLogBodyMaxChars(int logBodyMaxChars) {
-            this.logBodyMaxChars = logBodyMaxChars;
-        }
-
-        public String getLogPayloadMode() {
-            return logPayloadMode;
-        }
-
-        public void setLogPayloadMode(String logPayloadMode) {
-            this.logPayloadMode = logPayloadMode;
-        }
-
-        public int getBacklogCacheSeconds() {
-            return backlogCacheSeconds;
-        }
-
-        public void setBacklogCacheSeconds(int backlogCacheSeconds) {
-            this.backlogCacheSeconds = backlogCacheSeconds;
-        }
-    }
-
-    // ==================== 内部配置组：Oss ====================
-
-    /**
-     * 对象存储配置。对应 YAML：{@code yu.flow.oss.*}
-     */
-    public static class Oss {
-
-        /**
-         * 是否启用 OSS 模块自动装配。
-         * <p>依赖 {@code io.minio:minio}；宿主未引入该依赖或设为 {@code false} 时跳过 OSS Bean。</p>
-         */
-        private boolean enabled = true;
-
-        /** 全局单文件上传硬顶（字节），默认 50MB */
-        private long maxUploadBytes = 50L * 1024 * 1024;
-
-        /** 连接未配置时的隐私下载模式：STREAM / PRESIGN */
-        private String privateDownloadMode = "STREAM";
-
-        /** 连接未配置时的预签名有效期（秒） */
-        private int presignExpireSeconds = 300;
-
-        /** 软删对象物理清理间隔（分钟） */
-        private int cleanupIntervalMinutes = 30;
-
-        /** 打包下载最大文件数 */
-        private int packMaxFiles = 50;
-
-        /** 打包下载总大小上限（字节），默认 200MB */
-        private long packMaxBytes = 200L * 1024 * 1024;
-
-        /** 分片上传会话 TTL（分钟） */
-        private int multipartSessionTtlMinutes = 120;
-
-        /** 预签名直传总开关：关闭后所有场景的 presign 接口直接拒绝 */
-        private boolean presignUploadEnabled = true;
-
-        /** 预签名上传 URL 有效期（秒），默认 1 小时 */
-        private int presignPutExpireSeconds = 3600;
-
-        /** 预签名直传单文件硬顶（字节），默认 5GB；直传不经过网关，故不受 max-upload-bytes 约束 */
-        private long presignMaxUploadBytes = 5L * 1024 * 1024 * 1024;
-
-        /** 预签名待确认（PENDING）台账的存活时长（分钟），超时按放弃处理并清理 */
-        private int presignPendingTtlMinutes = 120;
-
-        /** 全局用户容量配额（字节），0=关闭 */
-        private long userQuotaMaxBytes = 0;
-
-        /** 全局用户文件数配额，0=关闭 */
-        private int userQuotaMaxFiles = 0;
-
-        /** 缩略图生成配置 */
-        private Thumbnail thumbnail = new Thumbnail();
-
-        /** zip 异步展开配置 */
-        private Extract extract = new Extract();
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public long getMaxUploadBytes() {
-            return maxUploadBytes;
-        }
-
-        public void setMaxUploadBytes(long maxUploadBytes) {
-            this.maxUploadBytes = maxUploadBytes;
-        }
-
-        public String getPrivateDownloadMode() {
-            return privateDownloadMode;
-        }
-
-        public void setPrivateDownloadMode(String privateDownloadMode) {
-            this.privateDownloadMode = privateDownloadMode;
-        }
-
-        public int getPresignExpireSeconds() {
-            return presignExpireSeconds;
-        }
-
-        public void setPresignExpireSeconds(int presignExpireSeconds) {
-            this.presignExpireSeconds = presignExpireSeconds;
-        }
-
-        public int getCleanupIntervalMinutes() {
-            return cleanupIntervalMinutes;
-        }
-
-        public void setCleanupIntervalMinutes(int cleanupIntervalMinutes) {
-            this.cleanupIntervalMinutes = cleanupIntervalMinutes;
-        }
-
-        public int getPackMaxFiles() {
-            return packMaxFiles;
-        }
-
-        public void setPackMaxFiles(int packMaxFiles) {
-            this.packMaxFiles = packMaxFiles;
-        }
-
-        public long getPackMaxBytes() {
-            return packMaxBytes;
-        }
-
-        public void setPackMaxBytes(long packMaxBytes) {
-            this.packMaxBytes = packMaxBytes;
-        }
-
-        public int getMultipartSessionTtlMinutes() {
-            return multipartSessionTtlMinutes;
-        }
-
-        public void setMultipartSessionTtlMinutes(int multipartSessionTtlMinutes) {
-            this.multipartSessionTtlMinutes = multipartSessionTtlMinutes;
-        }
-
-        public boolean isPresignUploadEnabled() {
-            return presignUploadEnabled;
-        }
-
-        public void setPresignUploadEnabled(boolean presignUploadEnabled) {
-            this.presignUploadEnabled = presignUploadEnabled;
-        }
-
-        public int getPresignPutExpireSeconds() {
-            return presignPutExpireSeconds;
-        }
-
-        public void setPresignPutExpireSeconds(int presignPutExpireSeconds) {
-            this.presignPutExpireSeconds = presignPutExpireSeconds;
-        }
-
-        public long getPresignMaxUploadBytes() {
-            return presignMaxUploadBytes;
-        }
-
-        public void setPresignMaxUploadBytes(long presignMaxUploadBytes) {
-            this.presignMaxUploadBytes = presignMaxUploadBytes;
-        }
-
-        public int getPresignPendingTtlMinutes() {
-            return presignPendingTtlMinutes;
-        }
-
-        public void setPresignPendingTtlMinutes(int presignPendingTtlMinutes) {
-            this.presignPendingTtlMinutes = presignPendingTtlMinutes;
-        }
-
-        public long getUserQuotaMaxBytes() {
-            return userQuotaMaxBytes;
-        }
-
-        public void setUserQuotaMaxBytes(long userQuotaMaxBytes) {
-            this.userQuotaMaxBytes = userQuotaMaxBytes;
-        }
-
-        public int getUserQuotaMaxFiles() {
-            return userQuotaMaxFiles;
-        }
-
-        public void setUserQuotaMaxFiles(int userQuotaMaxFiles) {
-            this.userQuotaMaxFiles = userQuotaMaxFiles;
-        }
-
-        public Thumbnail getThumbnail() {
-            return thumbnail;
-        }
-
-        public void setThumbnail(Thumbnail thumbnail) {
-            this.thumbnail = thumbnail != null ? thumbnail : new Thumbnail();
-        }
-
-        public Extract getExtract() {
-            return extract;
-        }
-
-        public void setExtract(Extract extract) {
-            this.extract = extract != null ? extract : new Extract();
-        }
-
-        /**
-         * 缩略图生成配置。对应 YAML：{@code yu.flow.oss.thumbnail.*}
-         */
-        public static class Thumbnail {
-
-            /** 全局开关，默认开启 */
-            private boolean enabled = true;
-
-            /** 缩略图最长边（像素） */
-            private int maxEdge = 256;
-
-            /** 参与缩略图的源文件大小上限（字节），默认 20MB */
-            private long maxSourceBytes = 20L * 1024 * 1024;
-
-            /** JPEG 压缩质量 0~1 */
-            private float jpegQuality = 0.85f;
-
-            public boolean isEnabled() {
-                return enabled;
-            }
-
-            public void setEnabled(boolean enabled) {
-                this.enabled = enabled;
-            }
-
-            public int getMaxEdge() {
-                return maxEdge;
-            }
-
-            public void setMaxEdge(int maxEdge) {
-                this.maxEdge = maxEdge;
-            }
-
-            public long getMaxSourceBytes() {
-                return maxSourceBytes;
-            }
-
-            public void setMaxSourceBytes(long maxSourceBytes) {
-                this.maxSourceBytes = maxSourceBytes;
-            }
-
-            public float getJpegQuality() {
-                return jpegQuality;
-            }
-
-            public void setJpegQuality(float jpegQuality) {
-                this.jpegQuality = jpegQuality;
-            }
-        }
-
-        /**
-         * zip 异步展开。对应 YAML：{@code yu.flow.oss.extract.*}
-         */
-        public static class Extract {
-
-            /** 全局开关，默认开启；场景仍需单独打开 */
-            private boolean enabled = true;
-
-            /** 单包最多处理的文件条目（不含目录） */
-            private int maxEntries = 200;
-
-            /** 单包解压后总字节上限，默认 512MB */
-            private long maxUncompressedBytes = 512L * 1024 * 1024;
-
-            /** 未压缩/压缩包体积比上限，用于抑制 zip bomb */
-            private double maxRatio = 100d;
-
-            /** 展开线程池大小 */
-            private int poolSize = 2;
-
-            public boolean isEnabled() {
-                return enabled;
-            }
-
-            public void setEnabled(boolean enabled) {
-                this.enabled = enabled;
-            }
-
-            public int getMaxEntries() {
-                return maxEntries;
-            }
-
-            public void setMaxEntries(int maxEntries) {
-                this.maxEntries = maxEntries;
-            }
-
-            public long getMaxUncompressedBytes() {
-                return maxUncompressedBytes;
-            }
-
-            public void setMaxUncompressedBytes(long maxUncompressedBytes) {
-                this.maxUncompressedBytes = maxUncompressedBytes;
-            }
-
-            public double getMaxRatio() {
-                return maxRatio;
-            }
-
-            public void setMaxRatio(double maxRatio) {
-                this.maxRatio = maxRatio;
-            }
-
-            public int getPoolSize() {
-                return poolSize;
-            }
-
-            public void setPoolSize(int poolSize) {
-                this.poolSize = poolSize;
-            }
-        }
     }
 }

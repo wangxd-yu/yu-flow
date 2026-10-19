@@ -1,5 +1,6 @@
 package org.yu.flow.config;
 
+import org.yu.flow.config.properties.SecurityProperties;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -23,7 +24,7 @@ public class JwtSecurityInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        YuFlowProperties.Security security = yuFlowProperties.getSecurity();
+        SecurityProperties security = yuFlowProperties.getSecurity();
         String secret = security != null ? security.getJwtSecretKey() : null;
         long expire = security != null ? security.getJwtExpireSeconds() : 7200L;
         JwtTokenUtil.init(secret, expire);

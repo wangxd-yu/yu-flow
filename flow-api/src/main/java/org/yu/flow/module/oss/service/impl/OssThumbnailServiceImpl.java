@@ -1,5 +1,6 @@
 package org.yu.flow.module.oss.service.impl;
 
+import org.yu.flow.config.properties.OssProperties;
 import cn.hutool.core.util.StrUtil;
 import io.minio.GetObjectResponse;
 import jakarta.annotation.PostConstruct;
@@ -116,7 +117,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
         if (object == null || StrUtil.isBlank(object.getId())) {
             return;
         }
-        YuFlowProperties.Oss.Thumbnail cfg = yuFlowProperties.getOss().getThumbnail();
+        OssProperties.Thumbnail cfg = yuFlowProperties.getOss().getThumbnail();
         String skipReason = evaluateSkipReason(object, profile, cfg);
         if (skipReason != null) {
             object.setThumbStatus(THUMB_SKIPPED);
@@ -156,7 +157,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
             return;
         }
 
-        YuFlowProperties.Oss.Thumbnail cfg = yuFlowProperties.getOss().getThumbnail();
+        OssProperties.Thumbnail cfg = yuFlowProperties.getOss().getThumbnail();
         OssUploadProfileDO profile = StrUtil.isNotBlank(object.getProfileCode())
                 ? ossUploadProfileRepository.findByCode(object.getProfileCode()).orElse(null)
                 : null;
@@ -288,7 +289,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
     }
 
     private String evaluateSkipReason(OssObjectDO object, OssUploadProfileDO profile,
-                                      YuFlowProperties.Oss.Thumbnail cfg) {
+                                      OssProperties.Thumbnail cfg) {
         if (cfg == null || !cfg.isEnabled()) {
             return "全局缩略图功能已关闭";
         }
@@ -306,7 +307,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
         return null;
     }
 
-    private static int resolveMaxEdge(OssUploadProfileDO profile, YuFlowProperties.Oss.Thumbnail cfg) {
+    private static int resolveMaxEdge(OssUploadProfileDO profile, OssProperties.Thumbnail cfg) {
         if (profile != null && profile.getThumbnailMaxEdge() != null && profile.getThumbnailMaxEdge() > 0) {
             return profile.getThumbnailMaxEdge();
         }
@@ -314,7 +315,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
         return global > 0 ? global : 256;
     }
 
-    private static long resolveMaxSourceBytes(OssUploadProfileDO profile, YuFlowProperties.Oss.Thumbnail cfg) {
+    private static long resolveMaxSourceBytes(OssUploadProfileDO profile, OssProperties.Thumbnail cfg) {
         if (profile != null && profile.getThumbnailMaxSourceBytes() != null
                 && profile.getThumbnailMaxSourceBytes() > 0) {
             return profile.getThumbnailMaxSourceBytes();
@@ -322,7 +323,7 @@ public class OssThumbnailServiceImpl implements OssThumbnailService {
         return cfg != null ? cfg.getMaxSourceBytes() : 0;
     }
 
-    private static double resolveJpegQuality(OssUploadProfileDO profile, YuFlowProperties.Oss.Thumbnail cfg) {
+    private static double resolveJpegQuality(OssUploadProfileDO profile, OssProperties.Thumbnail cfg) {
         if (profile != null && profile.getThumbnailJpegQuality() != null) {
             double q = profile.getThumbnailJpegQuality();
             if (q > 0 && q <= 1) {

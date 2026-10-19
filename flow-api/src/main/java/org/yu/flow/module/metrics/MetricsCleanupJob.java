@@ -1,5 +1,6 @@
 package org.yu.flow.module.metrics;
 
+import org.yu.flow.config.properties.MetricsProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -59,7 +60,7 @@ public class MetricsCleanupJob {
     }
 
     public void cleanupOnce() {
-        YuFlowProperties.Metrics cfg = yuFlowProperties == null ? null : yuFlowProperties.getMetrics();
+        MetricsProperties cfg = yuFlowProperties == null ? null : yuFlowProperties.getMetrics();
         if (cfg == null || !cfg.isEnabled() || cfg.getRetainDays() <= 0) {
             return;
         }

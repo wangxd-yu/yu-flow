@@ -1,5 +1,7 @@
 package org.yu.flow.engine.log;
 
+import org.yu.flow.config.properties.EngineProperties;
+
 /**
  * 日志策略模式枚举。
  *
@@ -29,7 +31,7 @@ public final class LogMode {
      * 全局默认为空或不合法时最终兜底为 {@code ERROR_ONLY}。</p>
      *
      * @param rawMode       资产配置的 logMode 原始值（可为 null）
-     * @param globalDefault 全局默认模式（来自 YuFlowProperties.Engine.defaultLogMode）
+     * @param globalDefault 全局默认模式（来自 EngineProperties.defaultLogMode）
      * @return 解析后的有效模式，保证是 OFF / ERROR_ONLY / ALL 三者之一
      */
     public static String resolve(String rawMode, String globalDefault) {

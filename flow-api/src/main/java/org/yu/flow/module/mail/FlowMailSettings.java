@@ -1,5 +1,6 @@
 package org.yu.flow.module.mail;
 
+import org.yu.flow.config.properties.MailProperties;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Component;
 import org.yu.flow.config.YuFlowProperties;
@@ -28,7 +29,7 @@ public class FlowMailSettings {
     private YuFlowProperties yuFlowProperties;
 
     public boolean isEnabled() {
-        YuFlowProperties.Mail yml = yuFlowProperties.getMail();
+        MailProperties yml = yuFlowProperties.getMail();
         return Boolean.TRUE.equals(sysConfigCacheManager.getBoolConfig(ENABLED, yml != null && yml.isEnabled()));
     }
 
@@ -55,12 +56,12 @@ public class FlowMailSettings {
     }
 
     public boolean isSsl() {
-        YuFlowProperties.Mail yml = yuFlowProperties.getMail();
+        MailProperties yml = yuFlowProperties.getMail();
         return Boolean.TRUE.equals(sysConfigCacheManager.getBoolConfig(SSL, yml == null || yml.isSsl()));
     }
 
     public boolean isStarttls() {
-        YuFlowProperties.Mail yml = yuFlowProperties.getMail();
+        MailProperties yml = yuFlowProperties.getMail();
         return Boolean.TRUE.equals(sysConfigCacheManager.getBoolConfig(STARTTLS, yml != null && yml.isStarttls()));
     }
 
@@ -73,27 +74,27 @@ public class FlowMailSettings {
     }
 
     private String ymlHost() {
-        YuFlowProperties.Mail m = yuFlowProperties.getMail();
+        MailProperties m = yuFlowProperties.getMail();
         return m == null ? "" : StrUtil.nullToEmpty(m.getHost());
     }
 
     private int ymlPort() {
-        YuFlowProperties.Mail m = yuFlowProperties.getMail();
+        MailProperties m = yuFlowProperties.getMail();
         return m == null ? 465 : m.getPort();
     }
 
     private String ymlUsername() {
-        YuFlowProperties.Mail m = yuFlowProperties.getMail();
+        MailProperties m = yuFlowProperties.getMail();
         return m == null ? "" : StrUtil.nullToEmpty(m.getUsername());
     }
 
     private String ymlPassword() {
-        YuFlowProperties.Mail m = yuFlowProperties.getMail();
+        MailProperties m = yuFlowProperties.getMail();
         return m == null ? "" : StrUtil.nullToEmpty(m.getPassword());
     }
 
     private String ymlFrom() {
-        YuFlowProperties.Mail m = yuFlowProperties.getMail();
+        MailProperties m = yuFlowProperties.getMail();
         return m == null ? "" : StrUtil.nullToEmpty(m.getFrom());
     }
 }

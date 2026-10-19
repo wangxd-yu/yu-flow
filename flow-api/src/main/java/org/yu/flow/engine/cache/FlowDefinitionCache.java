@@ -1,5 +1,6 @@
 package org.yu.flow.engine.cache;
 
+import org.yu.flow.config.properties.EngineProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -28,7 +29,7 @@ public class FlowDefinitionCache {
     private final FlowParser parser = new FlowParser();
 
     public FlowDefinitionCache(YuFlowProperties properties) {
-        YuFlowProperties.Engine engine = properties.getEngine();
+        EngineProperties engine = properties.getEngine();
         int maxSize = Math.max(16, engine.getDefinitionCacheMaxSize());
         long expireMinutes = Math.max(1, engine.getDefinitionCacheExpireMinutes());
         this.cache = Caffeine.newBuilder()

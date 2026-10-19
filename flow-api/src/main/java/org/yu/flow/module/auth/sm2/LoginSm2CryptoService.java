@@ -1,5 +1,6 @@
 package org.yu.flow.module.auth.sm2;
 
+import org.yu.flow.config.properties.SecurityProperties;
 import cn.hutool.core.util.HexUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
@@ -45,7 +46,7 @@ public class LoginSm2CryptoService {
 
     @PostConstruct
     public void init() {
-        YuFlowProperties.Security security = properties.getSecurity();
+        SecurityProperties security = properties.getSecurity();
         this.passwordTtlSeconds = security != null && security.getSm2PasswordTtlSeconds() > 0
                 ? security.getSm2PasswordTtlSeconds()
                 : 300L;

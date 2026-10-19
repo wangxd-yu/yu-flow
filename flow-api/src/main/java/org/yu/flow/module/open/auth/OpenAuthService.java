@@ -1,5 +1,6 @@
 package org.yu.flow.module.open.auth;
 
+import org.yu.flow.config.properties.OpenProperties;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +52,7 @@ public class OpenAuthService {
      */
     public OpenAuthContext authenticate(HttpServletRequest request, String realPath, String method,
                                         boolean antiReplay) {
-        YuFlowProperties.Open cfg = yuFlowRuntimeSettings.resolveOpen();
+        OpenProperties cfg = yuFlowRuntimeSettings.resolveOpen();
         String appKey = header(request, HDR_APP_KEY);
         if (StrUtil.isBlank(appKey)) {
             throw OpenAuthException.missing();
@@ -161,7 +162,7 @@ public class OpenAuthService {
 
     private void verifyHmac(HttpServletRequest request, String realPath, String method,
                             OpenPlatformCache.CachedCredential cred, String signature,
-                            YuFlowProperties.Open cfg, boolean antiReplay) {
+                            OpenProperties cfg, boolean antiReplay) {
         String ts = header(request, HDR_TIMESTAMP);
         String nonce = header(request, HDR_NONCE);
         if (StrUtil.isBlank(ts) || StrUtil.isBlank(nonce)) {
@@ -206,7 +207,7 @@ public class OpenAuthService {
         }
     }
 
-    private static String resolveBodyHash(HttpServletRequest request, YuFlowProperties.Open cfg) {
+    private static String resolveBodyHash(HttpServletRequest request, OpenProperties cfg) {
         if (!cfg.isIncludeBodyHash()) {
             return "";
         }

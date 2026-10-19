@@ -1,5 +1,6 @@
 package org.yu.flow.config;
 
+import org.yu.flow.config.properties.SecurityProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ class JwtSecurityInitializerTest {
     void setUp() {
         initializer = new JwtSecurityInitializer();
         properties = new YuFlowProperties();
-        properties.setSecurity(new YuFlowProperties.Security());
+        properties.setSecurity(new SecurityProperties());
         // 重置为默认弱密钥，模拟未配置环境变量的场景
         JwtTokenUtil.init(JwtTokenUtil.LEGACY_DEFAULT_SECRET, 7200L);
     }

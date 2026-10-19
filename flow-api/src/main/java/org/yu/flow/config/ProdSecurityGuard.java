@@ -1,5 +1,7 @@
 package org.yu.flow.config;
 
+import org.yu.flow.config.properties.ReleaseProperties;
+import org.yu.flow.config.properties.SecurityProperties;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -90,7 +92,7 @@ public class ProdSecurityGuard implements SmartInitializingSingleton {
     /** 当前生效值下的全部问题（系统配置覆盖 yml 的项按系统配置算） */
     public List<Finding> findings() {
         List<Finding> out = new ArrayList<>();
-        YuFlowProperties.Security sec = properties.getSecurity();
+        SecurityProperties sec = properties.getSecurity();
         if (sec != null) {
             if (!sec.isFailOnInsecureDefaults()) {
                 out.add(new Finding(true, "关闭了弱默认密钥 / 口令启动拦截", "设 YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=true"));
@@ -136,7 +138,7 @@ public class ProdSecurityGuard implements SmartInitializingSingleton {
         if ("FULL".equalsIgnoreCase(runtimeSettings.getMqLogPayloadMode())) {
             out.add(new Finding(false, "MQ 原始报文全文落库", "含个人信息时改为 MASK 或 OFF（YU_FLOW_MQ_LOG_PAYLOAD_MODE）"));
         }
-        YuFlowProperties.Release release = properties.getRelease();
+        ReleaseProperties release = properties.getRelease();
         if (release != null && StrUtil.isBlank(release.getSigningKey())) {
             out.add(new Finding(false, "没有配置发布包签名密钥，生产导入要求验签，导入会失败", "设 YU_FLOW_RELEASE_SIGNING_KEY（与开发环境相同）"));
         }

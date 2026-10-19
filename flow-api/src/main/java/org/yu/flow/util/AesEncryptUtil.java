@@ -1,5 +1,6 @@
 package org.yu.flow.util;
 
+import org.yu.flow.config.properties.SecurityProperties;
 import cn.hutool.crypto.SecureUtil;
 import cn.hutool.crypto.symmetric.AES;
 import org.slf4j.Logger;
@@ -19,7 +20,7 @@ import java.util.Base64;
 /**
  * AES 对称加密工具（用于数据源密码等敏感信息的加解密）。
  *
- * <p>密钥通过 {@link YuFlowProperties.Security#getAesSecretKey()} 获取，
+ * <p>密钥通过 {@link SecurityProperties#getAesSecretKey()} 获取，
  * 对应 YAML 配置路径：{@code yu.flow.security.aes-secret-key}。</p>
  *
  * <p>新密文为 AES-GCM（随机 IV + 校验标签，格式 {@code g1:Base64(IV‖密文‖标签)}）：同一明文每次密文不同，

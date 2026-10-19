@@ -1,5 +1,6 @@
 package org.yu.flow.module.metrics;
 
+import org.yu.flow.config.properties.MetricsProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -44,7 +45,7 @@ public class MetricsFlushJob {
 
     @PostConstruct
     public void init() {
-        YuFlowProperties.Metrics cfg = cfg();
+        MetricsProperties cfg = cfg();
         int interval = cfg == null ? 30 : Math.max(10, cfg.getFlushIntervalSeconds());
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "metrics-flush-scheduler");
@@ -71,7 +72,7 @@ public class MetricsFlushJob {
     }
 
     public void flushOnce() {
-        YuFlowProperties.Metrics cfg = cfg();
+        MetricsProperties cfg = cfg();
         if (cfg == null || !cfg.isEnabled()) {
             return;
         }
@@ -274,7 +275,7 @@ public class MetricsFlushJob {
         }
     }
 
-    private YuFlowProperties.Metrics cfg() {
+    private MetricsProperties cfg() {
         return yuFlowProperties == null ? null : yuFlowProperties.getMetrics();
     }
 }

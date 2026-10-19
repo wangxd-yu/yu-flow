@@ -1,5 +1,9 @@
 package org.yu.flow.module.sysconfig.support;
 
+import org.yu.flow.config.properties.IngressProperties;
+import org.yu.flow.config.properties.OpenProperties;
+import org.yu.flow.config.properties.PrivacyProperties;
+import org.yu.flow.config.properties.SecurityProperties;
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Component;
@@ -119,8 +123,8 @@ public class YuFlowRuntimeSettings {
     /**
      * 供鉴权链路使用的 Open 视图：热字段来自系统配置，前缀仍来自 yml。
      */
-    public YuFlowProperties.Open resolveOpen() {
-        YuFlowProperties.Open o = new YuFlowProperties.Open();
+    public OpenProperties resolveOpen() {
+        OpenProperties o = new OpenProperties();
         o.setEnabled(isOpenEnabled());
         o.setEntryPrefix(getOpenEntryPrefix());
         o.setAllowPlainSecret(isOpenAllowPlainSecret());
@@ -144,7 +148,7 @@ public class YuFlowRuntimeSettings {
      * 是否允许运行时/配置将入站鉴权设为 NONE。仅 yml/环境变量，不走系统配置热更。
      */
     public boolean isAllowIngressAuthNone() {
-        YuFlowProperties.Security sec = yuFlowProperties.getSecurity();
+        SecurityProperties sec = yuFlowProperties.getSecurity();
         return sec != null && sec.isAllowIngressAuthNone();
     }
 
@@ -252,18 +256,18 @@ public class YuFlowRuntimeSettings {
         return sysConfigCacheManager.getConfig(key);
     }
 
-    private YuFlowProperties.Open openYml() {
-        YuFlowProperties.Open open = yuFlowProperties != null ? yuFlowProperties.getOpen() : null;
-        return open != null ? open : new YuFlowProperties.Open();
+    private OpenProperties openYml() {
+        OpenProperties open = yuFlowProperties != null ? yuFlowProperties.getOpen() : null;
+        return open != null ? open : new OpenProperties();
     }
 
-    private YuFlowProperties.Ingress ingressYml() {
-        YuFlowProperties.Ingress ingress = yuFlowProperties != null ? yuFlowProperties.getIngress() : null;
-        return ingress != null ? ingress : new YuFlowProperties.Ingress();
+    private IngressProperties ingressYml() {
+        IngressProperties ingress = yuFlowProperties != null ? yuFlowProperties.getIngress() : null;
+        return ingress != null ? ingress : new IngressProperties();
     }
 
-    private YuFlowProperties.Privacy privacyYml() {
-        YuFlowProperties.Privacy privacy = yuFlowProperties != null ? yuFlowProperties.getPrivacy() : null;
-        return privacy != null ? privacy : new YuFlowProperties.Privacy();
+    private PrivacyProperties privacyYml() {
+        PrivacyProperties privacy = yuFlowProperties != null ? yuFlowProperties.getPrivacy() : null;
+        return privacy != null ? privacy : new PrivacyProperties();
     }
 }
