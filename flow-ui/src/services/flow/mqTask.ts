@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import type { AssetVersionItem } from '@/components/flow/AssetVersionHistoryDrawer';
 
 // ── 数据类型 ──
 
@@ -133,6 +134,17 @@ export async function republishMqTask(id: string) {
 
 export async function rollbackMqTask(id: string) {
   return request<FlowMqTask>(`/flow-api/mq-task/${id}/rollback`, { method: 'PUT' });
+}
+
+// ── 历史版本 ──
+
+export async function listMqTaskVersions(id: string) {
+  return request<AssetVersionItem[]>(`/flow-api/mq-task/${id}/versions`, { method: 'GET' });
+}
+
+/** 回退到历史版本并直接上线；启停与日志开关保持当前值 */
+export async function restoreMqTaskVersion(id: string, versionId: string) {
+  return request<FlowMqTask>(`/flow-api/mq-task/${id}/versions/${versionId}/restore`, { method: 'POST' });
 }
 
 // ── 模拟触发 / 调试 ──

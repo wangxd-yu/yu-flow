@@ -8,6 +8,7 @@ public final class AssetBizType {
     public static final String API = "api";
     public static final String TASK = "task";
     public static final String SERVICE = "service";
+    public static final String MQ_TASK = "mq_task";
 
     public static final String SOURCE_PUBLISH = "publish";
     public static final String SOURCE_ROLLBACK = "rollback";

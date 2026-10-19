@@ -14,6 +14,7 @@ import org.yu.flow.engine.model.FlowTrace;
 import org.yu.flow.engine.model.TracePersistUtil;
 import org.yu.flow.util.SecretScope;
 import org.yu.flow.module.api.dto.FlowDebugRequestDTO;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.mqtask.consumer.MqConsumerManager;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.dto.FlowMqTaskDTO;
@@ -166,6 +167,16 @@ public class FlowMqTaskController {
     @PutMapping("/{id}/republish")
     public R<FlowMqTaskDO> republish(@PathVariable String id) {
         return R.ok(flowMqTaskService.publish(id));
+    }
+
+    @GetMapping("/{id}/versions")
+    public R<List<FlowAssetVersionDTO>> listVersions(@PathVariable String id) {
+        return R.ok(flowMqTaskService.listVersions(id));
+    }
+
+    @PostMapping("/{id}/versions/{versionId}/restore")
+    public R<FlowMqTaskDO> restoreVersion(@PathVariable String id, @PathVariable String versionId) {
+        return R.ok(flowMqTaskService.restoreVersion(id, versionId));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

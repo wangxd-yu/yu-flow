@@ -1,6 +1,7 @@
 package org.yu.flow.module.mqtask.service;
 
 import org.yu.flow.dto.PageBean;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.dto.FlowMqTaskDTO;
 import org.yu.flow.module.mqtask.query.FlowMqTaskQueryDTO;
@@ -49,4 +50,10 @@ public interface FlowMqTaskService {
 
     /** 草稿回滚到已发布快照 */
     FlowMqTaskDO rollbackToPublished(String id);
+
+    /** 发布历史（新到旧） */
+    List<FlowAssetVersionDTO> listVersions(String id);
+
+    /** 回退到某个历史版本并直接上线；启停与日志开关保持当前值 */
+    FlowMqTaskDO restoreVersion(String id, String versionId);
 }

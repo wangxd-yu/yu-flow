@@ -17,7 +17,15 @@ import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
+import org.yu.flow.module.assetref.FlowReferenceIndex;
+import org.yu.flow.module.assetversion.AssetBizType;
+import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
+import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
+import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
+import org.yu.flow.module.log.audit.AuditDetail;
+import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.mqtask.consumer.MqConsumerManager;
+import org.yu.flow.util.JwtTokenUtil;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.dto.FlowMqTaskDTO;
 import org.yu.flow.module.mqtask.query.FlowMqTaskQueryDTO;
@@ -69,6 +77,15 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
 
     @Resource
     private DemoModeGuard demoModeGuard;
+
+    @Resource
+    private FlowAssetVersionService flowAssetVersionService;
+
+    @Resource
+    private FlowReferenceIndex flowReferenceIndex;
+
+    @Resource
+    private AuditLogService auditLogService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // CRUD
@@ -284,9 +301,16 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         task.setPublishTime(now);
         task.setUpdateTime(now);
         FlowMqTaskDO saved = flowMqTaskRepository.save(task);
+        flowAssetVersionService.append(AssetBizType.MQ_TASK, id, snapshot, AssetBizType.SOURCE_PUBLISH, null,
+                JwtTokenUtil.currentUsername());
         if (isSubscribable(saved)) {
             mqConsumerManager.resubscribe(saved);
         }
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        auditLogService.record("MQ_TASK_PUBLISH", "MQ_TASK", id, AuditDetail.of(
+                "name", StrUtil.nullToEmpty(saved.getName()),
+                "connectionCode", StrUtil.nullToEmpty(saved.getConnectionCode()),
+                "topic", StrUtil.nullToEmpty(saved.getTopic())));
         return saved;
     }
 
@@ -300,6 +324,7 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
         task.setUpdateTime(LocalDateTime.now());
         FlowMqTaskDO saved = flowMqTaskRepository.save(task);
         mqConsumerManager.cancel(id);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
         return saved;
     }
 
@@ -318,17 +343,54 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
             task.setUpdateTime(LocalDateTime.now());
         }
         FlowMqTaskDO saved = flowMqTaskRepository.save(task);
-        if (isSubscribable(saved)) {
-            mqConsumerManager.resubscribe(saved);
-        } else {
-            mqConsumerManager.cancel(id);
-        }
+        refreshSubscription(saved);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
+        return saved;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FlowAssetVersionDTO> listVersions(String id) {
+        FlowMqTaskDO task = requireTask(id);
+        return flowAssetVersionService.list(AssetBizType.MQ_TASK, id, task.getPublishedSnapshot());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public FlowMqTaskDO restoreVersion(String id, String versionId) {
+        demoModeGuard.checkModifyOrDelete(id, DEMO_TARGET);
+        FlowMqTaskDO task = requireTask(id);
+        FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.MQ_TASK, id);
+        // 只恢复内容；启停与日志开关保持当前值，避免回到旧版本时意外重新订阅
+        Boolean keepEnabled = task.getEnabled();
+        Boolean keepLogEnabled = task.getLogEnabled();
+        LocalDateTime now = LocalDateTime.now();
+        applySnapshotToDraft(task, version.getSnapshot());
+        task.setEnabled(keepEnabled);
+        task.setLogEnabled(keepLogEnabled);
+        task.setPublishedSnapshot(version.getSnapshot());
+        task.setPublishStatus(1);
+        task.setPublishTime(now);
+        task.setUpdateTime(now);
+        FlowMqTaskDO saved = flowMqTaskRepository.save(task);
+        flowAssetVersionService.append(AssetBizType.MQ_TASK, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
+                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
+        refreshSubscription(saved);
+        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
         return saved;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // 工具方法
     // ─────────────────────────────────────────────────────────────────────────
+
+    private void refreshSubscription(FlowMqTaskDO task) {
+        if (isSubscribable(task)) {
+            mqConsumerManager.resubscribe(task);
+        } else {
+            mqConsumerManager.cancel(task.getId());
+        }
+    }
 
     private static boolean isSubscribable(FlowMqTaskDO task) {
         return task != null

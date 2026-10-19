@@ -240,7 +240,9 @@ public class ReleaseImportBackupManager {
         }
         for (Entry<FlowMqTaskDO> e : backup.getMqTasks()) {
             if (ReleaseImportBackup.ACTIVE.equals(e.getState())) {
-                mqConsumerManager.resubscribe(flowMqTaskRepository.save(e.getRow()));
+                FlowMqTaskDO row = flowMqTaskRepository.save(e.getRow());
+                appendVersion(AssetBizType.MQ_TASK, row.getId(), row.getPublishStatus(), row.getPublishedSnapshot(), remark, user);
+                mqConsumerManager.resubscribe(row);
             } else {
                 flowMqTaskRepository.deleteById(e.getId());
                 mqConsumerManager.cancel(e.getId());

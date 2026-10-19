@@ -1,5 +1,5 @@
 -- Yu Flow MySQL 全量建表（由 sql-mysql/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-10-19T09:03:45.396Z
+-- 生成时间: 2026-10-19T12:04:28.546Z
 -- 用法: 先执行本文件，再执行 00_system_init.sql
 
 -- >>> flow_alert_channel.sql
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS `flow_api_info` (
 -- 资产发布历史版本
 CREATE TABLE IF NOT EXISTS `flow_asset_version` (
   `id` varchar(32) NOT NULL COMMENT '雪花ID',
-  `biz_type` varchar(16) NOT NULL COMMENT '资产类型：api / task / service',
+  `biz_type` varchar(16) NOT NULL COMMENT '资产类型：api / task / service / mq_task',
   `asset_id` varchar(32) NOT NULL COMMENT '资产ID',
   `version_no` int NOT NULL COMMENT '同资产内递增版本号',
   `snapshot` mediumtext NOT NULL COMMENT '发布快照 JSON（与各模块 published_snapshot 同构）',
