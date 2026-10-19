@@ -29,7 +29,10 @@ import {
   queryMqTaskLogPage,
   getMqTaskLog,
   clearMqTaskLog,
+  listMqTaskVersions,
+  restoreMqTaskVersion,
 } from '@/services/flow/mqTask';
+import AssetVersionHistoryDrawer, { HistoryVersionButton } from '@/components/flow/AssetVersionHistoryDrawer';
 import MqSimulateModal from './MqSimulateModal';
 import { queryMqConnectionOptions, queryMqTopics } from '@/services/flow/mqConnection';
 import AssetRuntimePanel from '@/components/flow/AssetRuntimePanel';
@@ -517,6 +520,7 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
   const [debugReplayTrace, setDebugReplayTrace] = useState<any>(null);
   const [debugModalOpen, setDebugModalOpen] = useState(false);
   const [simulateOpen, setSimulateOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [debugTopic, setDebugTopic] = useState('');
   const [debugBody, setDebugBody] = useState('{\n  "demo": true\n}');
   const [debugHeadersJson, setDebugHeadersJson] = useState('{}');
@@ -825,6 +829,13 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
             模拟触发
           </Button>
         </Tooltip>
+      )}
+
+      {isEdit && (
+        <HistoryVersionButton
+          disabled={!initialValues.id}
+          onClick={() => setHistoryOpen(true)}
+        />
       )}
 
       {canWrite && isEdit && publishStatus === 1 && hasUnpublishedChanges && (
@@ -1207,6 +1218,25 @@ const MqTaskForm: React.FC<MqTaskFormProps> = ({
       >
         {renderTabContent()}
       </PageContainer>
+
+      {initialValues.id && (
+        <AssetVersionHistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          readOnly={!canWrite}
+          title={name || initialValues.name}
+          loadVersions={async () => {
+            const res = await listMqTaskVersions(initialValues.id!);
+            return (Array.isArray(res) ? res : (res as any)?.data) || [];
+          }}
+          restoreVersion={async (versionId) => {
+            await restoreMqTaskVersion(initialValues.id!, versionId);
+          }}
+          onRestored={async () => {
+            applyDetail(unwrapTask(await getMqTask(initialValues.id!)));
+          }}
+        />
+      )}
 
       <Modal
         title="MQ 调试运行 - 触发器参数配置"
