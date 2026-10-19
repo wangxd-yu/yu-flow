@@ -390,12 +390,14 @@ const SysMacroManage: React.FC = () => {
           placeholder="如 sys_user_id"
           colProps={{ span: 12 }}
           disabled={!!currentRow?.id} // 编码一般不允许修改
+          rules={[{ required: true, message: '请输入宏编码' }]}
         />
         <ProFormText
           name="macroName"
           label="宏名称"
           placeholder="如 当前登录用户 ID"
           colProps={{ span: 12 }}
+          rules={[{ required: true, message: '请输入宏名称' }]}
         />
 
         <ProFormSelect
@@ -424,6 +426,7 @@ const SysMacroManage: React.FC = () => {
           placeholder="String, Number, Boolean 等"
           tooltip="用于前端 JS 解析时的类型推导提示"
           colProps={{ span: 24 }}
+          rules={[{ required: true, message: '请输入返回值类型' }]}
         />
 
         <ProFormTextArea
@@ -432,6 +435,7 @@ const SysMacroManage: React.FC = () => {
           placeholder="@userContext.getUserId()"
           tooltip="Spring Expression Language 表达式，支持引用容器中的 Bean"
           colProps={{ span: 24 }}
+          rules={[{ required: true, message: '请输入表达式' }]}
           fieldProps={{
             onChange: handleExpressionChange,
             rows: 4,
