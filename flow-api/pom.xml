@@ -59,10 +59,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 6.2.5 起把内置的 SCRAM 类挪到 com.highgo.jdbc.shaded；6.2.2 与官方 postgresql 驱动同包同名，
+             会让 PostgreSQL 的 scram-sha-256 认证抛 NoSuchMethodError -->
         <dependency>
             <groupId>com.highgo</groupId>
             <artifactId>HgdbJdbc</artifactId>
-            <version>6.2.2</version>
+            <version>6.2.5</version>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -175,6 +177,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
@@ -280,12 +287,8 @@
             <artifactId>js-language</artifactId>
             <version>25.3.4.1</version>
         </dependency>
-        <!-- python-resources 带标准库（json 等），并依赖 python-language。 -->
-        <dependency>
-            <groupId>org.graalvm.python</groupId>
-            <artifactId>python-resources</artifactId>
-            <version>25.3.4.1</version>
-        </dependency>
+        <!-- GraalPy（python-resources 带标准库并依赖 python-language）是可执行包体积的大头，
+             默认不打包；需要 Python 脚本时用 -Pwith-python，见文件末尾 profile -->
 
         <!-- Boot 4.1.1 托管 Groovy 5 -->
         <dependency>
@@ -380,6 +383,23 @@
                     <!-- JDK 22+：GraalVM Truffle 触发的 native access / sun.misc.Unsafe 警告，与运行时启动参数一致 -->
                     <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:+EnableDynamicAgentLoading</argLine>
                 </configuration>
+            </plugin>
+            <!-- *IT 集成测试（Testcontainers，需要 Docker）：mvn verify -DskipTests=false 时执行 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <skipTests>${skipTests}</skipTests>
+                    <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:+EnableDynamicAgentLoading</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- 配置 maven-jar-plugin 排除 application.yml -->
@@ -555,6 +575,17 @@
     </build>
 
     <profiles>
+        <!-- Python 脚本节点：mvn package -Pwith-python。不带时 Python 节点返回 null，白名单含 python 会在启动日志报错 -->
+        <profile>
+            <id>with-python</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.graalvm.python</groupId>
+                    <artifactId>python-resources</artifactId>
+                    <version>25.3.4.1</version>
+                </dependency>
+            </dependencies>
+        </profile>
         <profile>
             <id>ui</id>
             <build>

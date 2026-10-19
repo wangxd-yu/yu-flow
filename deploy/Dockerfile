@@ -17,11 +17,13 @@ RUN --mount=type=cache,id=yu-flow-pnpm,target=/pnpm-store \
 FROM maven:3.9.15-eclipse-temurin-25 AS api
 WORKDIR /src/flow-api
 ARG REVISION=2.0-SNAPSHOT
+# 额外的 Maven profile，逗号分隔；需要 Python 脚本节点时 --build-arg MAVEN_PROFILES=with-python
+ARG MAVEN_PROFILES=
 COPY flow-api/pom.xml ./
 COPY flow-api/src ./src
 COPY --from=ui /src/flow-ui/dist ./src/main/resources/META-INF/resources/flow-ui
 RUN --mount=type=cache,id=yu-flow-m2,target=/root/.m2 \
-    mvn -B -q package -DskipTests -Djacoco.skip=true -Drevision="${REVISION}" \
+    mvn -B -q package -DskipTests -Djacoco.skip=true -Drevision="${REVISION}" ${MAVEN_PROFILES:+-P${MAVEN_PROFILES}} \
     && cp target/*-exec.jar /app.jar
 
 # 只导出可执行包，供发布流水线取出 jar。本阶段不能放在最后，否则默认镜像会变成空壳

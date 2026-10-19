@@ -6,6 +6,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mysql.MySQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -27,10 +28,23 @@ class YuFlowFlywayBaselineIT {
             .withUsername("root")
             .withPassword("test");
 
+    /** 默认 scram-sha-256 认证；能连上说明瀚高驱动没有再遮住官方驱动的 SCRAM 实现 */
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
+            .withDatabaseName("flow")
+            .withUsername("flow")
+            .withPassword("test");
+
     @Test
     void mysqlEmptyDatabaseThenExistingTables() throws Exception {
         assertBaseline(dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword()),
                 "classpath:db/flyway/mysql");
+    }
+
+    @Test
+    void postgresEmptyDatabaseThenExistingTables() throws Exception {
+        assertBaseline(dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()),
+                "classpath:db/flyway/postgresql");
     }
 
     private static void assertBaseline(DataSource dataSource, String location) throws Exception {
