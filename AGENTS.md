@@ -14,11 +14,11 @@ You are working in the **yu-flow** open-source repository (production-grade embe
 
 ### Intentionally omitted
 
-- **“No backward compatibility / delete obsolete without migration”** is **not** adopted here. This is a shipped OSS/production codebase: prefer clean versioned evolution (Flyway, documented breaking changes, Pro sync). Do not pile silent compatibility shims without an explicit product decision; do not casually break published APIs or DB contracts.
+- **“No backward compatibility / delete obsolete without migration”** is **not** adopted here. This is a shipped OSS/production codebase: prefer clean versioned evolution (Flyway, documented breaking changes). Do not pile silent compatibility shims without an explicit product decision; do not casually break published APIs or DB contracts.
 
 ## Repo conventions (short)
 
-- OSS first, then Pro (`code-sync-strategy`). Commit messages in Chinese when committing.
+- Single edition: all work lands in this repo. The former `yu-flow-pro` repo is no longer maintained (since 2026-10-19); do not sync to it. Commit messages in Chinese when committing.
 - Backend: `org.yu.flow.module.*`, JPA + `LocalDateTime`, skills under `.agents/skills/`.
 - Frontend: Umi/React/Amis; match existing patterns.
 - Security defaults are fail-closed; do not weaken ingress/RBAC without an explicit request.
