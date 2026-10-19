@@ -517,6 +517,12 @@ public class FlowDirectoryServiceImpl implements FlowDirectoryService {
         if (merged.getRateLimitQps() == null && layer.getRateLimitQps() != null) {
             merged.setRateLimitQps(layer.getRateLimitQps());
         }
+        if (merged.getRateLimitBurst() == null && layer.getRateLimitBurst() != null) {
+            merged.setRateLimitBurst(layer.getRateLimitBurst());
+        }
+        if (merged.getRateLimitFailOpen() == null && layer.getRateLimitFailOpen() != null) {
+            merged.setRateLimitFailOpen(layer.getRateLimitFailOpen());
+        }
         if (merged.getIpAllowlist() == null && layer.getIpAllowlist() != null) {
             merged.setIpAllowlist(layer.getIpAllowlist());
         }

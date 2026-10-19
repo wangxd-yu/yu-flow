@@ -73,6 +73,12 @@ public class IngressSecurityResolver {
                 dirCfg != null ? dirCfg.getRateLimitQps() : null,
                 yuFlowRuntimeSettings.getIngressDefaultRateLimitQps());
 
+        Integer rateLimitBurst = firstNonNull(apiCfg.getRateLimitBurst(),
+                dirCfg != null ? dirCfg.getRateLimitBurst() : null);
+        // 接口、目录都没设时为 null，由 IngressSecurityGuard 读全局开关（系统配置可热改）
+        Boolean rateLimitFailOpen = firstNonNull(apiCfg.getRateLimitFailOpen(),
+                dirCfg != null ? dirCfg.getRateLimitFailOpen() : null);
+
         String ipAllowlist;
         if (apiCfg.getIpAllowlist() != null) {
             ipAllowlist = apiCfg.getIpAllowlist();
@@ -82,7 +88,8 @@ public class IngressSecurityResolver {
             ipAllowlist = StrUtil.nullToEmpty(yuFlowRuntimeSettings.getIngressDefaultIpAllowlist());
         }
 
-        return new EffectiveSecurity(authMode, antiReplay, rateLimitEnabled, rateLimitQps, ipAllowlist, timeoutMs,
+        return new EffectiveSecurity(authMode, antiReplay, rateLimitEnabled, rateLimitQps,
+                rateLimitBurst == null ? 0 : rateLimitBurst, rateLimitFailOpen, ipAllowlist, timeoutMs,
                 resolveCallerPolicy(apiCfg, dirCfg));
     }
 

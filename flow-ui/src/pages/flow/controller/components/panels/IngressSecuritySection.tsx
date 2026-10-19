@@ -9,8 +9,15 @@ import {
   ProFormDependency,
   ProFormDigit,
   ProFormRadio,
+  ProFormSelect,
   ProFormText,
 } from '@ant-design/pro-components';
+
+const RATE_LIMIT_FAIL_OPTIONS = [
+  { label: 'Redis 故障时：继承全局', value: 'INHERIT' },
+  { label: 'Redis 故障时：放行', value: 'OPEN' },
+  { label: 'Redis 故障时：拒绝', value: 'CLOSED' },
+];
 
 const AUTH_OPTIONS = [
   { label: '继承全局', value: 'INHERIT' },
@@ -84,7 +91,7 @@ const IngressSecuritySection: React.FC = () => {
         <Col span={24}>
           <Form.Item
             label="限流"
-            extra="关闭「覆盖」时继承全局 default-rate-limit-*"
+            extra="关闭「覆盖」时继承全局 default-rate-limit-*。令牌桶：每秒补充 QPS 个，突发为桶容量（留空等于 QPS）"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <Form.Item name="secRateLimitOverride" valuePropName="checked" noStyle>
@@ -103,6 +110,22 @@ const IngressSecuritySection: React.FC = () => {
                         min={1}
                         max={100000}
                         fieldProps={{ precision: 0, style: { width: 120 } }}
+                        formItemProps={{ style: { marginBottom: 0 } }}
+                      />
+                      <ProFormDigit
+                        name="secRateLimitBurst"
+                        label="突发"
+                        min={1}
+                        max={1000000}
+                        placeholder="同 QPS"
+                        fieldProps={{ precision: 0, style: { width: 120 } }}
+                        formItemProps={{ style: { marginBottom: 0 } }}
+                      />
+                      <ProFormSelect
+                        name="secRateLimitFailMode"
+                        options={RATE_LIMIT_FAIL_OPTIONS}
+                        allowClear={false}
+                        fieldProps={{ style: { width: 190 } }}
                         formItemProps={{ style: { marginBottom: 0 } }}
                       />
                     </>

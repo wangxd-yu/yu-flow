@@ -11,6 +11,9 @@ import {
 
 export type CallerMatchMode = 'ALL' | 'ANY';
 
+/** Redis 故障时：继承全局 / 放行 / 拒绝 */
+export type RateLimitFailMode = 'INHERIT' | 'OPEN' | 'CLOSED';
+
 export interface CallerPolicyForm {
   secCallerEnabled: boolean;
   secCallerRules: CallerAccessRule[];
@@ -23,6 +26,9 @@ export interface SecurityFormDefaults extends CallerPolicyForm {
   secRateLimitOverride: boolean;
   secRateLimitEnabled: boolean;
   secRateLimitQps: number;
+  /** 令牌桶容量；空表示等于 QPS */
+  secRateLimitBurst: number | null;
+  secRateLimitFailMode: RateLimitFailMode;
   secIpOverride: boolean;
   secIpAllowlist: string;
   secTimeoutOverride: boolean;
@@ -39,6 +45,9 @@ export interface SecurityConfig {
   antiReplay: boolean | null;
   rateLimitEnabled: boolean | null;
   rateLimitQps: number | null;
+  rateLimitBurst: number | null;
+  /** true=Redis 故障时放行，false=拒绝，null=继承 */
+  rateLimitFailOpen: boolean | null;
   ipAllowlist: string | null;
   timeoutMs: number | null;
   callerPolicy?: ApiCallerPolicy | null;
@@ -51,6 +60,8 @@ const DEFAULTS: SecurityFormDefaults = {
   secRateLimitOverride: false,
   secRateLimitEnabled: false,
   secRateLimitQps: 100,
+  secRateLimitBurst: null,
+  secRateLimitFailMode: 'INHERIT',
   secIpOverride: false,
   secIpAllowlist: '',
   secTimeoutOverride: false,
@@ -59,6 +70,8 @@ const DEFAULTS: SecurityFormDefaults = {
   secCallerRules: [],
 };
 
+const isSet = (v: unknown) => v !== null && v !== undefined;
+
 /** 将 securityConfig JSON 还原为表单字段 */
 export function parseSecurityConfigToForm(raw?: string | object | null): SecurityFormDefaults {
   if (!raw) return { ...DEFAULTS };
@@ -66,18 +79,25 @@ export function parseSecurityConfigToForm(raw?: string | object | null): Securit
     const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw;
     const authMode = cfg?.authMode || 'INHERIT';
     const cp = cfg?.callerPolicy || {};
+    let failMode: RateLimitFailMode = 'INHERIT';
+    if (cfg?.rateLimitFailOpen === true) failMode = 'OPEN';
+    else if (cfg?.rateLimitFailOpen === false) failMode = 'CLOSED';
     return {
       secAuthMode: ['INHERIT', 'NONE', 'HOST', 'OPEN'].includes(authMode) ? authMode : 'INHERIT',
-      secAntiReplayOverride: cfg?.antiReplay !== null && cfg?.antiReplay !== undefined,
+      secAntiReplayOverride: isSet(cfg?.antiReplay),
       secAntiReplay: cfg?.antiReplay !== false,
       secRateLimitOverride:
-        (cfg?.rateLimitEnabled !== null && cfg?.rateLimitEnabled !== undefined)
-        || (cfg?.rateLimitQps !== null && cfg?.rateLimitQps !== undefined),
+        isSet(cfg?.rateLimitEnabled)
+        || isSet(cfg?.rateLimitQps)
+        || isSet(cfg?.rateLimitBurst)
+        || isSet(cfg?.rateLimitFailOpen),
       secRateLimitEnabled: !!cfg?.rateLimitEnabled,
       secRateLimitQps: typeof cfg?.rateLimitQps === 'number' ? cfg.rateLimitQps : 100,
-      secIpOverride: cfg?.ipAllowlist !== null && cfg?.ipAllowlist !== undefined,
+      secRateLimitBurst: typeof cfg?.rateLimitBurst === 'number' ? cfg.rateLimitBurst : null,
+      secRateLimitFailMode: failMode,
+      secIpOverride: isSet(cfg?.ipAllowlist),
       secIpAllowlist: typeof cfg?.ipAllowlist === 'string' ? cfg.ipAllowlist : '',
-      secTimeoutOverride: cfg?.timeoutMs !== null && cfg?.timeoutMs !== undefined,
+      secTimeoutOverride: isSet(cfg?.timeoutMs),
       secTimeoutMs: typeof cfg?.timeoutMs === 'number' ? cfg.timeoutMs : 30000,
       secCallerEnabled: !!cp?.enabled,
       secCallerRules: parseCallerAccessRules(cp),
@@ -98,14 +118,17 @@ export function buildSecurityConfigFromForm(formValues: Record<string, any>): Se
     enabled: callerEnabled,
     rules: callerEnabled ? rules : [],
   };
+  const rateOverride = !!formValues.secRateLimitOverride;
+  const failMode: RateLimitFailMode = formValues.secRateLimitFailMode || 'INHERIT';
 
   return {
     authMode,
     antiReplay: formValues.secAntiReplayOverride ? !!formValues.secAntiReplay : null,
-    rateLimitEnabled: formValues.secRateLimitOverride ? !!formValues.secRateLimitEnabled : null,
-    rateLimitQps: formValues.secRateLimitOverride
-      ? (formValues.secRateLimitQps ?? 100)
-      : null,
+    rateLimitEnabled: rateOverride ? !!formValues.secRateLimitEnabled : null,
+    rateLimitQps: rateOverride ? (formValues.secRateLimitQps ?? 100) : null,
+    rateLimitBurst:
+      rateOverride && typeof formValues.secRateLimitBurst === 'number' ? formValues.secRateLimitBurst : null,
+    rateLimitFailOpen: rateOverride && failMode !== 'INHERIT' ? failMode === 'OPEN' : null,
     ipAllowlist: formValues.secIpOverride
       ? (formValues.secIpAllowlist ?? '')
       : null,

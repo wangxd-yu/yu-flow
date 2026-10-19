@@ -11,6 +11,10 @@ public final class EffectiveSecurity {
     private final boolean antiReplay;
     private final boolean rateLimitEnabled;
     private final int rateLimitQps;
+    /** 令牌桶容量；≤0 时按 QPS */
+    private final int rateLimitBurst;
+    /** Redis 故障时是否放行；null 表示按全局 ingress.rate-limit-fail-open */
+    private final Boolean rateLimitFailOpen;
     /** 空串表示不限制 */
     private final String ipAllowlist;
     /** ≤0 表示不限制执行时间 */
@@ -25,10 +29,18 @@ public final class EffectiveSecurity {
 
     public EffectiveSecurity(IngressAuthMode authMode, boolean antiReplay, boolean rateLimitEnabled,
                              int rateLimitQps, String ipAllowlist, int timeoutMs, CallerPolicy callerPolicy) {
+        this(authMode, antiReplay, rateLimitEnabled, rateLimitQps, 0, null, ipAllowlist, timeoutMs, callerPolicy);
+    }
+
+    public EffectiveSecurity(IngressAuthMode authMode, boolean antiReplay, boolean rateLimitEnabled,
+                             int rateLimitQps, int rateLimitBurst, Boolean rateLimitFailOpen,
+                             String ipAllowlist, int timeoutMs, CallerPolicy callerPolicy) {
         this.authMode = authMode == null ? IngressAuthMode.NONE : authMode;
         this.antiReplay = antiReplay;
         this.rateLimitEnabled = rateLimitEnabled;
         this.rateLimitQps = Math.max(0, rateLimitQps);
+        this.rateLimitBurst = rateLimitBurst > 0 ? rateLimitBurst : this.rateLimitQps;
+        this.rateLimitFailOpen = rateLimitFailOpen;
         this.ipAllowlist = ipAllowlist == null ? "" : ipAllowlist;
         this.timeoutMs = timeoutMs;
         this.callerPolicy = callerPolicy;
@@ -48,6 +60,14 @@ public final class EffectiveSecurity {
 
     public int getRateLimitQps() {
         return rateLimitQps;
+    }
+
+    public int getRateLimitBurst() {
+        return rateLimitBurst;
+    }
+
+    public Boolean getRateLimitFailOpen() {
+        return rateLimitFailOpen;
     }
 
     public String getIpAllowlist() {

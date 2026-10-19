@@ -35,7 +35,7 @@ public class IngressSecurityGuard {
     @Resource
     private IngressSecurityResolver ingressSecurityResolver;
     @Resource
-    private FixedWindowRateLimiter fixedWindowRateLimiter;
+    private TokenBucketRateLimiter tokenBucketRateLimiter;
     @Resource
     private OpenAuthService openAuthService;
     @Resource
@@ -101,10 +101,11 @@ public class IngressSecurityGuard {
             String dim = openCtx != null && StrUtil.isNotBlank(openCtx.getAppKey())
                     ? openCtx.getAppKey()
                     : "anon";
-            String key = "flow:ingress:rl:" + api.getId() + ":" + dim + ":"
-                    + FixedWindowRateLimiter.currentWindowSec();
-            boolean failOpen = yuFlowRuntimeSettings.isIngressRateLimitFailOpen();
-            if (!fixedWindowRateLimiter.tryAcquire(key, sec.getRateLimitQps(), failOpen)) {
+            String key = "flow:ingress:tb:" + api.getId() + ":" + dim;
+            boolean failOpen = sec.getRateLimitFailOpen() != null
+                    ? sec.getRateLimitFailOpen()
+                    : yuFlowRuntimeSettings.isIngressRateLimitFailOpen();
+            if (!tokenBucketRateLimiter.tryAcquire(key, sec.getRateLimitQps(), sec.getRateLimitBurst(), failOpen)) {
                 throw IngressException.rateLimited();
             }
         }

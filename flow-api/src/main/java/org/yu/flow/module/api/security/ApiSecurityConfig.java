@@ -19,7 +19,14 @@ public class ApiSecurityConfig {
 
     private Boolean rateLimitEnabled;
 
+    /** 令牌桶每秒补充的令牌数 */
     private Integer rateLimitQps;
+
+    /** 令牌桶容量（允许的瞬时突发）；null=继承，继承到最后仍为空则等于 QPS */
+    private Integer rateLimitBurst;
+
+    /** Redis 故障时：true=放行，false=拒绝；null=继承全局 ingress.rate-limit-fail-open */
+    private Boolean rateLimitFailOpen;
 
     /**
      * null=继承全局；空串=明确不限制；非空=本接口白名单（CSV / JSON 数组均可）。
