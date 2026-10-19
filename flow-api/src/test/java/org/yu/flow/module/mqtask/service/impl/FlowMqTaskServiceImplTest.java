@@ -17,6 +17,8 @@ import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.mqtask.consumer.MqConsumerManager;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
 import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
+import org.yu.flow.module.release.service.PublishGateService;
+import org.yu.flow.module.release.support.ReleaseEnvironment;
 
 import java.util.Optional;
 
@@ -42,6 +44,8 @@ class FlowMqTaskServiceImplTest {
     @Mock private FlowAssetVersionService versionService;
     @Mock private FlowReferenceIndex referenceIndex;
     @Mock private AuditLogService auditLogService;
+    @Mock private PublishGateService publishGateService;
+    @Mock private ReleaseEnvironment releaseEnvironment;
 
     @InjectMocks
     private FlowMqTaskServiceImpl service;

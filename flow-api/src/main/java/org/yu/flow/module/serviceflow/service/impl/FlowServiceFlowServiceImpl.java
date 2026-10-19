@@ -18,7 +18,7 @@ import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
-import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
+import org.yu.flow.module.assetversion.service.PublishableAssetService;
 import org.yu.flow.module.directory.domain.FlowDirectoryDO;
 import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
@@ -42,7 +42,8 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
+public class FlowServiceFlowServiceImpl extends PublishableAssetService<FlowServiceFlowDO>
+        implements FlowServiceFlowService {
 
     private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
@@ -59,25 +60,7 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     private FlowDirectoryRepository flowDirectoryRepository;
 
     @Resource
-    private DemoModeGuard demoModeGuard;
-
-    @Resource
     private ServiceFlowReferenceChecker serviceFlowReferenceChecker;
-
-    @Resource
-    private FlowAssetVersionService flowAssetVersionService;
-
-    @Resource
-    private FlowReferenceIndex flowReferenceIndex;
-
-    @Resource
-    private AuditLogService auditLogService;
-
-    @Resource
-    private org.yu.flow.module.release.service.PublishGateService publishGateService;
-
-    @Resource
-    private org.yu.flow.module.release.support.ReleaseEnvironment releaseEnvironment;
 
     @Override
     @Transactional
@@ -236,45 +219,6 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowServiceFlowDO publish(String id, String envCode) {
-        demoModeGuard.checkModifyOrDelete(id, "内部服务");
-        publishGateService.assertCanPublish("SERVICE", id, envCode);
-        FlowServiceFlowDO entity = require(id);
-        if (StrUtil.isBlank(entity.getDslContent())) {
-            throw new RuntimeException("服务 DSL 为空，无法发布");
-        }
-        assertPublishableServiceDsl(entity.getDslContent());
-        String snapshot = buildSnapshot(entity);
-        entity.setPublishedSnapshot(snapshot);
-        entity.setPublishStatus(1);
-        LocalDateTime now = LocalDateTime.now();
-        entity.setPublishTime(now);
-        entity.setUpdateTime(now);
-        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
-        flowAssetVersionService.append(AssetBizType.SERVICE, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        String env = releaseEnvironment.resolve(envCode);
-        auditLogService.record("SERVICE_PUBLISH", "SERVICE", id,
-                "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName())
-                        + "\",\"env\":\"" + env + "\"}");
-        return saved;
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowServiceFlowDO unpublish(String id) {
-        demoModeGuard.checkModifyOrDelete(id, "内部服务");
-        FlowServiceFlowDO entity = require(id);
-        entity.setPublishStatus(0);
-        entity.setPublishedSnapshot(null);
-        entity.setUpdateTime(LocalDateTime.now());
-        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        return saved;
-    }
-
-    @Override
     @Transactional(readOnly = true)
     public List<String> listReferenceLabels(String id) {
         require(id);
@@ -283,58 +227,78 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public FlowServiceFlowDO rollbackToPublished(String id) {
-        demoModeGuard.checkModifyOrDelete(id, "内部服务");
-        FlowServiceFlowDO entity = require(id);
-        if (StrUtil.isBlank(entity.getPublishedSnapshot())) {
-            throw new RuntimeException("该服务没有发布快照，无法回滚");
-        }
-        applySnapshotToDraft(entity, entity.getPublishedSnapshot());
-        if (entity.getPublishTime() != null) {
-            entity.setUpdateTime(entity.getPublishTime());
-        } else {
-            entity.setUpdateTime(LocalDateTime.now());
-        }
-        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        return saved;
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
     public FlowServiceFlowDO republish(String id) {
         return publish(id);
     }
 
+    // ─── 发布生命周期（见 PublishableAssetService）─────────────────────────
+
     @Override
-    @Transactional(readOnly = true)
-    public List<FlowAssetVersionDTO> listVersions(String id) {
-        FlowServiceFlowDO entity = require(id);
-        return flowAssetVersionService.list(AssetBizType.SERVICE, id, entity.getPublishedSnapshot());
+    protected String assetType() {
+        return "SERVICE";
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowServiceFlowDO restoreVersion(String id, String versionId) {
-        demoModeGuard.checkModifyOrDelete(id, "内部服务");
-        FlowServiceFlowDO entity = require(id);
-        FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.SERVICE, id);
-        LocalDateTime now = LocalDateTime.now();
-        applySnapshotToDraft(entity, version.getSnapshot());
-        entity.setPublishedSnapshot(version.getSnapshot());
-        entity.setPublishStatus(1);
-        entity.setPublishTime(now);
-        entity.setUpdateTime(now);
-        FlowServiceFlowDO saved = flowServiceFlowRepository.save(entity);
-        flowAssetVersionService.append(
-                AssetBizType.SERVICE, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
-                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        return saved;
+    protected String versionBizType() {
+        return AssetBizType.SERVICE;
     }
 
+    @Override
+    protected String demoTarget() {
+        return "内部服务";
+    }
+
+    @Override
+    protected String noSnapshotMessage() {
+        return "该服务没有发布快照，无法回滚";
+    }
+
+    @Override
+    protected FlowServiceFlowDO persist(FlowServiceFlowDO entity) {
+        return flowServiceFlowRepository.save(entity);
+    }
+
+    @Override
+    protected void checkPublishable(FlowServiceFlowDO entity) {
+        if (StrUtil.isBlank(entity.getDslContent())) {
+            throw new RuntimeException("服务 DSL 为空，无法发布");
+        }
+        assertPublishableServiceDsl(entity.getDslContent());
+    }
+
+    @Override
+    protected String publishedSnapshot(FlowServiceFlowDO entity) {
+        return entity.getPublishedSnapshot();
+    }
+
+    @Override
+    protected LocalDateTime publishTime(FlowServiceFlowDO entity) {
+        return entity.getPublishTime();
+    }
+
+    @Override
+    protected void setPublishState(FlowServiceFlowDO entity, Integer status, String snapshot) {
+        entity.setPublishStatus(status);
+        entity.setPublishedSnapshot(snapshot);
+    }
+
+    @Override
+    protected void setPublishTime(FlowServiceFlowDO entity, LocalDateTime time) {
+        entity.setPublishTime(time);
+    }
+
+    @Override
+    protected void setUpdateTime(FlowServiceFlowDO entity, LocalDateTime time) {
+        entity.setUpdateTime(time);
+    }
+
+    @Override
+    protected String publishAuditDetail(FlowServiceFlowDO saved, String env) {
+        return "{\"name\":\"" + StrUtil.nullToEmpty(saved.getName()) + "\",\"env\":\"" + env + "\"}";
+    }
     /** 完整快照：DSL + 契约 + 启停/日志/基础信息 */
-    private String buildSnapshot(FlowServiceFlowDO entity) {
+    @Override
+    protected String buildSnapshot(FlowServiceFlowDO entity) {
         try {
             ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
             snap.put("name", entity.getName());
@@ -355,7 +319,8 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
     }
 
     /** 兼容旧快照：缺字段时不覆盖现有值 */
-    private void applySnapshotToDraft(FlowServiceFlowDO entity, String snapshotJson) {
+    @Override
+    protected void applySnapshotToDraft(FlowServiceFlowDO entity, String snapshotJson) {
         try {
             JsonNode snap = SNAPSHOT_MAPPER.readTree(snapshotJson);
             applyText(snap, "name", entity::setName);
@@ -389,7 +354,8 @@ public class FlowServiceFlowServiceImpl implements FlowServiceFlowService {
         return node != null && !node.isNull() ? node.asText() : null;
     }
 
-    private FlowServiceFlowDO require(String id) {
+    @Override
+    protected FlowServiceFlowDO require(String id) {
         return flowServiceFlowRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("服务不存在: " + id));
     }

@@ -25,6 +25,7 @@ import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
 import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
+import org.yu.flow.module.assetversion.service.PublishableAssetService;
 import org.yu.flow.module.assetref.FlowReferenceIndex;
 import org.yu.flow.module.open.cache.OpenPlatformCache;
 import org.yu.flow.module.open.domain.FlowOpenApiGrantDO;
@@ -52,7 +53,7 @@ import java.util.stream.Collectors;
  * @author yu-flow
  */
 @Service
-public class FlowApiCrudServiceImpl implements FlowApiCrudService {
+public class FlowApiCrudServiceImpl extends PublishableAssetService<FlowApiDO> implements FlowApiCrudService {
 
     /** 分页每页上限 */
     private static final int MAX_PAGE_SIZE = 200;
@@ -79,16 +80,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private FlowApiCacheManager flowApiCacheManager;
 
     @Resource
-    private DemoModeGuard demoModeGuard;
-
-    @Resource
     private ApiResponseCacheService apiResponseCacheService;
-
-    @Resource
-    private FlowAssetVersionService flowAssetVersionService;
-
-    @Resource
-    private FlowReferenceIndex flowReferenceIndex;
 
     @Resource
     private FlowOpenApiGrantRepository flowOpenApiGrantRepository;
@@ -97,16 +89,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     private FlowApiExcelTemplateRepository flowApiExcelTemplateRepository;
 
     @Resource
-    private org.yu.flow.module.release.service.PublishGateService publishGateService;
-
-    @Resource
-    private org.yu.flow.module.release.support.ReleaseEnvironment releaseEnvironment;
-
-    @Resource
     private OpenPlatformCache openPlatformCache;
-
-    @Resource
-    private AuditLogService auditLogService;
 
     @Resource
     private org.yu.flow.config.YuFlowProperties yuFlowProperties;
@@ -981,93 +964,6 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         return publish(id, "DEV");
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowApiDO publish(String id, String envCode) {
-        hostReservedApiWriteGuard.assertAllowed(id);
-        demoModeGuard.checkModifyOrDelete(id, "API 接口");
-        publishGateService.assertCanPublish("API", id, envCode);
-        FlowApiDO api = flowApiRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
-
-        if (existsByUrlAndMethod(api.getUrl(), api.getMethod(), id)) {
-            throw new RuntimeException("发布失败：路径 " + api.getMethod() + " " + api.getUrl()
-                    + " 与其他已发布接口冲突");
-        }
-        normalizeAndAssertInterceptMode(api);
-        assertUrlNotReserved(api.getUrl());
-        assertSecurityConfigAllowed(api.getSecurityConfig());
-
-        // 生成快照 JSON
-        String snapshot = buildSnapshot(api);
-        api.setPublishedSnapshot(snapshot);
-        api.setPublishTime(LocalDateTime.now());
-        api.setPublishStatus(1);
-        flowApiRepository.save(api);
-        flowAssetVersionService.append(
-                AssetBizType.API, id, snapshot, AssetBizType.SOURCE_PUBLISH, null, JwtTokenUtil.currentUsername());
-
-        // 刷新缓存，线上生效；响应缓存 key 不含版本，不清掉会继续返回旧版本结果
-        evictResponseCacheAfterCommit(id);
-        flowApiCacheManager.publishRefreshEvent(id);
-        notifyRefIndex();
-        String env = releaseEnvironment.resolve(envCode);
-        auditLogService.record("API_PUBLISH", "API", id,
-                "{\"method\":\"" + StrUtil.nullToEmpty(api.getMethod())
-                        + "\",\"url\":\"" + StrUtil.nullToEmpty(api.getUrl())
-                        + "\",\"name\":\"" + StrUtil.nullToEmpty(api.getName())
-                        + "\",\"env\":\"" + env + "\"}");
-        return api;
-    }
-
-    /**
-     * 下线 API：清除快照，线上停止服务
-     */
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowApiDO unpublish(String id) {
-        hostReservedApiWriteGuard.assertAllowed(id);
-        demoModeGuard.checkModifyOrDelete(id, "API 接口");
-        FlowApiDO api = flowApiRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
-
-        api.setPublishStatus(0);
-        api.setPublishedSnapshot(null);
-        flowApiRepository.save(api);
-
-        evictResponseCacheAfterCommit(id);
-        flowApiCacheManager.publishRefreshEvent(id);
-        // 授权保留但网关 404；刷新开放缓存以便文档/授权视图尽快感知
-        try {
-            openPlatformCache.publishRefresh();
-        } catch (Exception ignored) {
-        }
-        notifyRefIndex();
-        return api;
-    }
-
-    /**
-     * 回滚草稿：将发布快照中的内容复制回草稿字段
-     */
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowApiDO rollbackToPublished(String id) {
-        hostReservedApiWriteGuard.assertAllowed(id);
-        demoModeGuard.checkModifyOrDelete(id, "API 接口");
-        FlowApiDO api = flowApiRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
-
-        if (api.getPublishedSnapshot() == null) {
-            throw new RuntimeException("该 API 没有发布快照，无法回滚");
-        }
-
-        applySnapshotToDraft(api, api.getPublishedSnapshot());
-        api.setUpdateTime(api.getPublishTime()); // 将 updateTime 对齐到发布时间，消除变更标记
-        flowApiRepository.save(api);
-        notifyRefIndex();
-        return api;
-    }
-
     /**
      * 重新发布：将最新草稿重新冻结为快照
      */
@@ -1077,39 +973,119 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         return publish(id);
     }
 
+    // ─── 发布生命周期（见 PublishableAssetService）─────────────────────────
+
     @Override
-    @Transactional(readOnly = true)
-    public List<FlowAssetVersionDTO> listVersions(String id) {
-        FlowApiDO api = flowApiRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
-        return flowAssetVersionService.list(AssetBizType.API, id, api.getPublishedSnapshot());
+    protected String assetType() {
+        return "API";
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowApiDO restoreVersion(String id, String versionId) {
+    protected String versionBizType() {
+        return AssetBizType.API;
+    }
+
+    @Override
+    protected String demoTarget() {
+        return "API 接口";
+    }
+
+    /** 接口的「有未发布变更」比较的是草稿与快照内容，发布 / 下线不动 updateTime */
+    @Override
+    protected boolean tracksUpdateTime() {
+        return false;
+    }
+
+    @Override
+    protected String noSnapshotMessage() {
+        return "该 API 没有发布快照，无法回滚";
+    }
+
+    @Override
+    protected void checkWritable(String id) {
         hostReservedApiWriteGuard.assertAllowed(id);
-        demoModeGuard.checkModifyOrDelete(id, "API 接口");
-        FlowApiDO api = flowApiRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
-        FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.API, id);
-        LocalDateTime now = LocalDateTime.now();
-        // 线上快照 + 草稿同步为该历史版本，避免编辑器仍显示回退前内容
-        applySnapshotToDraft(api, version.getSnapshot());
-        api.setPublishedSnapshot(version.getSnapshot());
-        api.setPublishStatus(1);
-        api.setPublishTime(now);
-        api.setUpdateTime(now);
-        flowApiRepository.save(api);
-        flowAssetVersionService.append(
-                AssetBizType.API, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
-                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
-        evictResponseCacheAfterCommit(id);
-        flowApiCacheManager.publishRefreshEvent(id);
-        notifyRefIndex();
-        return api;
+        super.checkWritable(id);
     }
 
+    @Override
+    protected FlowApiDO require(String id) {
+        return flowApiRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("API 不存在，id: " + id));
+    }
+
+    @Override
+    protected FlowApiDO persist(FlowApiDO api) {
+        return flowApiRepository.save(api);
+    }
+
+    @Override
+    protected void checkPublishable(FlowApiDO api) {
+        if (existsByUrlAndMethod(api.getUrl(), api.getMethod(), api.getId())) {
+            throw new RuntimeException("发布失败：路径 " + api.getMethod() + " " + api.getUrl()
+                    + " 与其他已发布接口冲突");
+        }
+        normalizeAndAssertInterceptMode(api);
+        assertUrlNotReserved(api.getUrl());
+        assertSecurityConfigAllowed(api.getSecurityConfig());
+    }
+
+    @Override
+    protected String publishedSnapshot(FlowApiDO api) {
+        return api.getPublishedSnapshot();
+    }
+
+    @Override
+    protected LocalDateTime publishTime(FlowApiDO api) {
+        return api.getPublishTime();
+    }
+
+    @Override
+    protected void setPublishState(FlowApiDO api, Integer status, String snapshot) {
+        api.setPublishStatus(status);
+        api.setPublishedSnapshot(snapshot);
+    }
+
+    @Override
+    protected void setPublishTime(FlowApiDO api, LocalDateTime time) {
+        api.setPublishTime(time);
+    }
+
+    @Override
+    protected void setUpdateTime(FlowApiDO api, LocalDateTime time) {
+        api.setUpdateTime(time);
+    }
+
+    @Override
+    protected String publishAuditDetail(FlowApiDO api, String env) {
+        return "{\"method\":\"" + StrUtil.nullToEmpty(api.getMethod())
+                + "\",\"url\":\"" + StrUtil.nullToEmpty(api.getUrl())
+                + "\",\"name\":\"" + StrUtil.nullToEmpty(api.getName())
+                + "\",\"env\":\"" + env + "\"}";
+    }
+
+    /** 刷新路由，线上生效；响应缓存 key 不含版本，不清掉会继续返回旧版本结果 */
+    @Override
+    protected void afterPublished(FlowApiDO saved) {
+        evictResponseCacheAfterCommit(saved.getId());
+        flowApiCacheManager.publishRefreshEvent(saved.getId());
+    }
+
+    /** 授权保留但网关 404；刷新开放缓存以便文档 / 授权视图尽快感知 */
+    @Override
+    protected void afterUnpublished(FlowApiDO saved) {
+        evictResponseCacheAfterCommit(saved.getId());
+        flowApiCacheManager.publishRefreshEvent(saved.getId());
+        try {
+            openPlatformCache.publishRefresh();
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    protected void afterRestored(FlowApiDO saved) {
+        evictResponseCacheAfterCommit(saved.getId());
+        flowApiCacheManager.publishRefreshEvent(saved.getId());
+    }
     /** 提交前清缓存，切换间隙的请求会把旧版本结果重新写回缓存 */
     private void evictResponseCacheAfterCommit(String apiId) {
         AfterCommitExecutor.run("evict api response cache " + apiId, () -> apiResponseCacheService.evictAll(apiId));
@@ -1119,7 +1095,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
      * 将快照字段写回草稿列。
      * <p>仅覆盖快照中出现的字段，兼容旧版历史（缺字段时不把现有配置清空）。</p>
      */
-    private void applySnapshotToDraft(FlowApiDO api, String snapshotJson) {
+    @Override
+    protected void applySnapshotToDraft(FlowApiDO api, String snapshotJson) {
         try {
             com.fasterxml.jackson.databind.JsonNode snap = SNAPSHOT_MAPPER.readTree(snapshotJson);
             applyText(snap, "name", api::setName);
@@ -1162,7 +1139,8 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
     /**
      * 构建完整发布快照（实现内容 + 契约 + 基础/缓存/响应包装等配置）
      */
-    private String buildSnapshot(FlowApiDO api) {
+    @Override
+    protected String buildSnapshot(FlowApiDO api) {
         try {
             ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
             snap.put("name", api.getName());

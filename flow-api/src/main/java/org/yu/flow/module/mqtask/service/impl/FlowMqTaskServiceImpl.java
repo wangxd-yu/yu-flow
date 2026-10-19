@@ -21,7 +21,7 @@ import org.yu.flow.module.assetref.FlowReferenceIndex;
 import org.yu.flow.module.assetversion.AssetBizType;
 import org.yu.flow.module.assetversion.domain.FlowAssetVersionDO;
 import org.yu.flow.module.assetversion.dto.FlowAssetVersionDTO;
-import org.yu.flow.module.assetversion.service.FlowAssetVersionService;
+import org.yu.flow.module.assetversion.service.PublishableAssetService;
 import org.yu.flow.module.log.audit.AuditDetail;
 import org.yu.flow.module.log.audit.service.AuditLogService;
 import org.yu.flow.module.mqtask.consumer.MqConsumerManager;
@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-public class FlowMqTaskServiceImpl implements FlowMqTaskService {
+public class FlowMqTaskServiceImpl extends PublishableAssetService<FlowMqTaskDO> implements FlowMqTaskService {
 
     private static final ObjectMapper SNAPSHOT_MAPPER = org.yu.flow.util.FlowObjectMapperUtil.flowObjectMapper();
 
@@ -75,17 +75,6 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
     @Resource
     private FlowDirectoryRepository flowDirectoryRepository;
 
-    @Resource
-    private DemoModeGuard demoModeGuard;
-
-    @Resource
-    private FlowAssetVersionService flowAssetVersionService;
-
-    @Resource
-    private FlowReferenceIndex flowReferenceIndex;
-
-    @Resource
-    private AuditLogService auditLogService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // CRUD
@@ -288,98 +277,121 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public FlowMqTaskDO publish(String id) {
-        demoModeGuard.checkModifyOrDelete(id, DEMO_TARGET);
-        FlowMqTaskDO task = requireTask(id);
+        return publish(id, "DEV");
+    }
+
+    // ─── 发布生命周期（见 PublishableAssetService）─────────────────────────
+
+    @Override
+    protected String assetType() {
+        return "MQ_TASK";
+    }
+
+    @Override
+    protected String versionBizType() {
+        return AssetBizType.MQ_TASK;
+    }
+
+    @Override
+    protected String demoTarget() {
+        return DEMO_TARGET;
+    }
+
+    /** 回归只覆盖 API / TASK / SERVICE，MQ 任务发布不过门禁 */
+    @Override
+    protected boolean gated() {
+        return false;
+    }
+
+    @Override
+    protected String noSnapshotMessage() {
+        return "该任务没有发布快照，无法回滚";
+    }
+
+    @Override
+    protected FlowMqTaskDO require(String id) {
+        return requireTask(id);
+    }
+
+    @Override
+    protected FlowMqTaskDO persist(FlowMqTaskDO task) {
+        return flowMqTaskRepository.save(task);
+    }
+
+    @Override
+    protected void checkPublishable(FlowMqTaskDO task) {
         if (StrUtil.isBlank(task.getDslContent())) {
             throw new RuntimeException("任务 DSL 为空，无法发布");
         }
         validateSubscribeConfig(task.getConnectionCode(), task.getTopic());
-        String snapshot = buildSnapshot(task);
-        LocalDateTime now = LocalDateTime.now();
+    }
+
+    /** 回退历史版本只恢复内容，启停 / 日志开关保持当前值，避免回到旧版本时意外重新订阅 */
+    @Override
+    protected void applyVersionToDraft(FlowMqTaskDO task, String snapshot) {
+        Boolean keepEnabled = task.getEnabled();
+        Boolean keepLogEnabled = task.getLogEnabled();
+        applySnapshotToDraft(task, snapshot);
+        task.setEnabled(keepEnabled);
+        task.setLogEnabled(keepLogEnabled);
+    }
+
+    @Override
+    protected String publishedSnapshot(FlowMqTaskDO task) {
+        return task.getPublishedSnapshot();
+    }
+
+    @Override
+    protected LocalDateTime publishTime(FlowMqTaskDO task) {
+        return task.getPublishTime();
+    }
+
+    @Override
+    protected void setPublishState(FlowMqTaskDO task, Integer status, String snapshot) {
+        task.setPublishStatus(status);
         task.setPublishedSnapshot(snapshot);
-        task.setPublishStatus(1);
-        task.setPublishTime(now);
-        task.setUpdateTime(now);
-        FlowMqTaskDO saved = flowMqTaskRepository.save(task);
-        flowAssetVersionService.append(AssetBizType.MQ_TASK, id, snapshot, AssetBizType.SOURCE_PUBLISH, null,
-                JwtTokenUtil.currentUsername());
+    }
+
+    @Override
+    protected void setPublishTime(FlowMqTaskDO task, LocalDateTime time) {
+        task.setPublishTime(time);
+    }
+
+    @Override
+    protected void setUpdateTime(FlowMqTaskDO task, LocalDateTime time) {
+        task.setUpdateTime(time);
+    }
+
+    @Override
+    protected String publishAuditDetail(FlowMqTaskDO saved, String env) {
+        return AuditDetail.of(
+                "name", StrUtil.nullToEmpty(saved.getName()),
+                "connectionCode", StrUtil.nullToEmpty(saved.getConnectionCode()),
+                "topic", StrUtil.nullToEmpty(saved.getTopic()),
+                "env", env);
+    }
+
+    @Override
+    protected void afterPublished(FlowMqTaskDO saved) {
         if (isSubscribable(saved)) {
             mqConsumerManager.resubscribe(saved);
         }
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        auditLogService.record("MQ_TASK_PUBLISH", "MQ_TASK", id, AuditDetail.of(
-                "name", StrUtil.nullToEmpty(saved.getName()),
-                "connectionCode", StrUtil.nullToEmpty(saved.getConnectionCode()),
-                "topic", StrUtil.nullToEmpty(saved.getTopic())));
-        return saved;
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowMqTaskDO unpublish(String id) {
-        demoModeGuard.checkModifyOrDelete(id, DEMO_TARGET);
-        FlowMqTaskDO task = requireTask(id);
-        task.setPublishStatus(0);
-        task.setPublishedSnapshot(null);
-        task.setUpdateTime(LocalDateTime.now());
-        FlowMqTaskDO saved = flowMqTaskRepository.save(task);
-        mqConsumerManager.cancel(id);
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        return saved;
+    protected void afterUnpublished(FlowMqTaskDO saved) {
+        mqConsumerManager.cancel(saved.getId());
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowMqTaskDO rollbackToPublished(String id) {
-        demoModeGuard.checkModifyOrDelete(id, DEMO_TARGET);
-        FlowMqTaskDO task = requireTask(id);
-        if (StrUtil.isBlank(task.getPublishedSnapshot())) {
-            throw new RuntimeException("该任务没有发布快照，无法回滚");
-        }
-        applySnapshotToDraft(task, task.getPublishedSnapshot());
-        if (task.getPublishTime() != null) {
-            task.setUpdateTime(task.getPublishTime());
-        } else {
-            task.setUpdateTime(LocalDateTime.now());
-        }
-        FlowMqTaskDO saved = flowMqTaskRepository.save(task);
+    protected void afterRolledBack(FlowMqTaskDO saved) {
         refreshSubscription(saved);
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        return saved;
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public List<FlowAssetVersionDTO> listVersions(String id) {
-        FlowMqTaskDO task = requireTask(id);
-        return flowAssetVersionService.list(AssetBizType.MQ_TASK, id, task.getPublishedSnapshot());
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public FlowMqTaskDO restoreVersion(String id, String versionId) {
-        demoModeGuard.checkModifyOrDelete(id, DEMO_TARGET);
-        FlowMqTaskDO task = requireTask(id);
-        FlowAssetVersionDO version = flowAssetVersionService.requireOwned(versionId, AssetBizType.MQ_TASK, id);
-        // 只恢复内容；启停与日志开关保持当前值，避免回到旧版本时意外重新订阅
-        Boolean keepEnabled = task.getEnabled();
-        Boolean keepLogEnabled = task.getLogEnabled();
-        LocalDateTime now = LocalDateTime.now();
-        applySnapshotToDraft(task, version.getSnapshot());
-        task.setEnabled(keepEnabled);
-        task.setLogEnabled(keepLogEnabled);
-        task.setPublishedSnapshot(version.getSnapshot());
-        task.setPublishStatus(1);
-        task.setPublishTime(now);
-        task.setUpdateTime(now);
-        FlowMqTaskDO saved = flowMqTaskRepository.save(task);
-        flowAssetVersionService.append(AssetBizType.MQ_TASK, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
-                "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
+    protected void afterRestored(FlowMqTaskDO saved) {
         refreshSubscription(saved);
-        flowReferenceIndex.scheduleRebuildBroadcastAfterCommit();
-        return saved;
     }
-
     // ─────────────────────────────────────────────────────────────────────────
     // 工具方法
     // ─────────────────────────────────────────────────────────────────────────
@@ -401,7 +413,8 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
     }
 
     /** 完整快照：DSL + 订阅配置/启停/日志/基础信息 */
-    private String buildSnapshot(FlowMqTaskDO task) {
+    @Override
+    protected String buildSnapshot(FlowMqTaskDO task) {
         try {
             ObjectNode snap = SNAPSHOT_MAPPER.createObjectNode();
             snap.put("name", task.getName());
@@ -440,7 +453,8 @@ public class FlowMqTaskServiceImpl implements FlowMqTaskService {
     }
 
     /** 兼容旧快照：缺字段时不覆盖现有值。回滚草稿同时恢复 enabled/logEnabled。 */
-    private void applySnapshotToDraft(FlowMqTaskDO task, String snapshotJson) {
+    @Override
+    protected void applySnapshotToDraft(FlowMqTaskDO task, String snapshotJson) {
         try {
             JsonNode snap = SNAPSHOT_MAPPER.readTree(snapshotJson);
             applyText(snap, "name", task::setName);
