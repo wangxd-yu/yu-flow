@@ -4,7 +4,6 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.yu.flow.util.JwtTokenUtil;
@@ -19,7 +18,6 @@ import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.util.FlowObjectMapperUtil;
 import org.yu.flow.module.api.repository.FlowApiRepository;
 import org.yu.flow.module.mqtask.domain.FlowMqTaskDO;
-import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
 import org.yu.flow.module.responsetemplate.domain.ResponseTemplateDO;
 import org.yu.flow.module.transfer.dto.BundleExcelTemplate;
 import org.yu.flow.module.assetref.FlowDslReferenceScanner;
@@ -30,7 +28,6 @@ import org.yu.flow.module.directory.repository.FlowDirectoryRepository;
 import org.yu.flow.module.directory.service.FlowDirectoryService;
 import org.yu.flow.module.envvar.cache.EnvVariableCacheManager;
 import org.yu.flow.module.envvar.repository.SysEnvVariableRepository;
-import org.yu.flow.module.host.HostCatalogReserved;
 import org.yu.flow.module.mq.repository.MqConnectionRepository;
 import org.yu.flow.module.oss.repository.OssConnectionRepository;
 import org.yu.flow.module.rbac.service.RbacService;
@@ -40,9 +37,7 @@ import org.yu.flow.module.release.repository.FlowRegressionCaseRepository;
 import org.yu.flow.module.release.repository.FlowRegressionSuiteRepository;
 import org.yu.flow.module.responsetemplate.repository.ResponseTemplateRepository;
 import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
-import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.domain.FlowTaskDO;
-import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.module.transfer.dto.AssetBundle;
 import org.yu.flow.module.transfer.dto.AssetExportRequestDTO;
 import org.yu.flow.module.transfer.dto.BundleRegressionSuite;
@@ -52,8 +47,12 @@ import org.yu.flow.module.transfer.dto.TransferRequirementDTO;
 import org.yu.flow.module.transfer.service.AssetTransferService;
 import org.yu.flow.module.transfer.support.BundleEntityCopier;
 import org.yu.flow.module.transfer.support.ConfigAssetTransfer;
+import org.yu.flow.module.api.support.ApiAssetTransfer;
+import org.yu.flow.module.mqtask.support.MqTaskAssetTransfer;
+import org.yu.flow.module.serviceflow.support.ServiceAssetTransfer;
+import org.yu.flow.module.task.support.TaskAssetTransfer;
+import org.yu.flow.module.transfer.support.FlowAssetTransfer;
 import org.yu.flow.module.transfer.support.RequirementAttributes;
-import org.yu.flow.module.transfer.support.BundleRequirementScanner;
 
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
@@ -101,10 +100,16 @@ public class AssetTransferServiceImpl implements AssetTransferService {
     private FlowApiRepository flowApiRepository;
 
     @Resource
-    private FlowServiceFlowRepository flowServiceFlowRepository;
+    private ApiAssetTransfer apiTransfer;
 
     @Resource
-    private FlowTaskRepository flowTaskRepository;
+    private ServiceAssetTransfer serviceTransfer;
+
+    @Resource
+    private TaskAssetTransfer taskTransfer;
+
+    @Resource
+    private MqTaskAssetTransfer mqTaskTransfer;
 
     @Resource
     private FlowDirectoryRepository flowDirectoryRepository;
@@ -132,9 +137,6 @@ public class AssetTransferServiceImpl implements AssetTransferService {
 
     @Resource
     private SysEnvVariableRepository sysEnvVariableRepository;
-
-    @Resource
-    private FlowMqTaskRepository flowMqTaskRepository;
 
     @Resource
     private FlowApiExcelTemplateRepository flowApiExcelTemplateRepository;
@@ -181,6 +183,11 @@ public class AssetTransferServiceImpl implements AssetTransferService {
         Map<String, FlowServiceFlowDO> services = new LinkedHashMap<>();
         Map<String, FlowTaskDO> tasks = new LinkedHashMap<>();
         Map<String, FlowMqTaskDO> mqTasks = new LinkedHashMap<>();
+        Map<String, Slot<?>> slots = Map.of(
+                TYPE_API, new Slot<>(apiTransfer, apis),
+                TYPE_SERVICE, new Slot<>(serviceTransfer, services),
+                TYPE_TASK, new Slot<>(taskTransfer, tasks),
+                TYPE_MQ_TASK, new Slot<>(mqTaskTransfer, mqTasks));
         List<String> warnings = new ArrayList<>();
         List<String> autoAdded = new ArrayList<>();
 
@@ -198,57 +205,8 @@ public class AssetTransferServiceImpl implements AssetTransferService {
 
         while (!pending.isEmpty()) {
             String[] cur = pending.poll();
-            String type = cur[0];
-            String id = cur[1];
-            String dsl = null;
-            switch (type) {
-                case TYPE_API -> {
-                    FlowApiDO row = flowApiRepository.findById(id).orElse(null);
-                    if (row == null) {
-                        warnings.add("接口不存在或已删除，已跳过: " + id);
-                        continue;
-                    }
-                    if (HostCatalogReserved.isReservedId(id)) {
-                        warnings.add("系统保留接口不参与迁移，已跳过: " + StrUtil.nullToEmpty(row.getName()));
-                        continue;
-                    }
-                    FlowApiDO copy = materializeApi(row, publishedFirst);
-                    apis.put(id, copy);
-                    dsl = copy.getDslContent();
-                }
-                case TYPE_SERVICE -> {
-                    FlowServiceFlowDO row = flowServiceFlowRepository.findById(id).orElse(null);
-                    if (row == null) {
-                        warnings.add("内部服务不存在或已删除，已跳过: " + id);
-                        continue;
-                    }
-                    FlowServiceFlowDO copy = materializeService(row, publishedFirst);
-                    services.put(id, copy);
-                    dsl = copy.getDslContent();
-                }
-                case TYPE_TASK -> {
-                    FlowTaskDO row = flowTaskRepository.findById(id).orElse(null);
-                    if (row == null) {
-                        warnings.add("定时任务不存在或已删除，已跳过: " + id);
-                        continue;
-                    }
-                    FlowTaskDO copy = materializeTask(row, publishedFirst);
-                    tasks.put(id, copy);
-                    dsl = copy.getDslContent();
-                }
-                case TYPE_MQ_TASK -> {
-                    FlowMqTaskDO row = flowMqTaskRepository.findById(id).orElse(null);
-                    if (row == null) {
-                        warnings.add("MQ 任务不存在或已删除，已跳过: " + id);
-                        continue;
-                    }
-                    FlowMqTaskDO copy = materializeMqTask(row, publishedFirst);
-                    mqTasks.put(id, copy);
-                    dsl = copy.getDslContent();
-                }
-                default -> {
-                }
-            }
+            Slot<?> slot = slots.get(cur[0]);
+            String dsl = slot == null ? null : exportInto(slot, cur[1], publishedFirst, warnings);
             if (!withDependencies || StrUtil.isBlank(dsl)) {
                 continue;
             }
@@ -317,61 +275,22 @@ public class AssetTransferServiceImpl implements AssetTransferService {
         }
     }
 
-    /** 已发布优先：把线上快照回填成草稿内容，导出的就是测试环境验证过的那一版 */
-    private FlowApiDO materializeApi(FlowApiDO row, boolean publishedFirst) {
-        FlowApiDO copy = BundleEntityCopier.detachedCopy(row, FlowApiDO.class);
-        if (publishedFirst && isPublished(row.getPublishStatus(), row.getPublishedSnapshot())) {
-            BundleEntityCopier.applySnapshot(copy, row.getPublishedSnapshot());
-        }
-        copy.setPublishedSnapshot(null);
-        copy.setPublishStatus(0);
-        copy.setPublishTime(null);
-        copy.setDeleted(null);
-        copy.setCreateTime(null);
-        copy.setUpdateTime(null);
-        return copy;
+    /** 一类编排资产及其已导出的行 */
+    private record Slot<T>(FlowAssetTransfer<T> transfer, Map<String, T> rows) {
     }
 
-    private FlowServiceFlowDO materializeService(FlowServiceFlowDO row, boolean publishedFirst) {
-        FlowServiceFlowDO copy = BundleEntityCopier.detachedCopy(row, FlowServiceFlowDO.class);
-        if (publishedFirst && isPublished(row.getPublishStatus(), row.getPublishedSnapshot())) {
-            BundleEntityCopier.applySnapshot(copy, row.getPublishedSnapshot());
+    /** @return 导出行的 DSL，用于展开依赖；未导出返回 null */
+    private static <T> String exportInto(Slot<T> slot, String id, boolean publishedFirst, List<String> warnings) {
+        T copy = slot.transfer().exportCopy(id, publishedFirst, warnings);
+        if (copy == null) {
+            return null;
         }
-        copy.setPublishedSnapshot(null);
-        copy.setPublishStatus(0);
-        copy.setPublishTime(null);
-        copy.setDeleted(null);
-        copy.setCreateTime(null);
-        copy.setUpdateTime(null);
-        return copy;
+        slot.rows().put(id, copy);
+        return slot.transfer().dslContent(copy);
     }
 
-    private FlowTaskDO materializeTask(FlowTaskDO row, boolean publishedFirst) {
-        FlowTaskDO copy = BundleEntityCopier.detachedCopy(row, FlowTaskDO.class);
-        if (publishedFirst && isPublished(row.getPublishStatus(), row.getPublishedSnapshot())) {
-            BundleEntityCopier.applySnapshot(copy, row.getPublishedSnapshot());
-        }
-        copy.setPublishedSnapshot(null);
-        copy.setPublishStatus(0);
-        copy.setPublishTime(null);
-        copy.setDeleted(null);
-        copy.setCreateTime(null);
-        copy.setUpdateTime(null);
-        return copy;
-    }
-
-    private FlowMqTaskDO materializeMqTask(FlowMqTaskDO row, boolean publishedFirst) {
-        FlowMqTaskDO copy = BundleEntityCopier.detachedCopy(row, FlowMqTaskDO.class);
-        if (publishedFirst && isPublished(row.getPublishStatus(), row.getPublishedSnapshot())) {
-            BundleEntityCopier.applySnapshot(copy, row.getPublishedSnapshot());
-        }
-        copy.setPublishedSnapshot(null);
-        copy.setPublishStatus(0);
-        copy.setPublishTime(null);
-        copy.setDeleted(null);
-        copy.setCreateTime(null);
-        copy.setUpdateTime(null);
-        return copy;
+    private List<FlowAssetTransfer<?>> flowAssetTransfers() {
+        return List.of(apiTransfer, serviceTransfer, taskTransfer, mqTaskTransfer);
     }
 
     private List<ResponseTemplateDO> collectTemplates(List<String> ids, List<String> warnings) {
@@ -410,10 +329,6 @@ public class AssetTransferServiceImpl implements AssetTransferService {
             });
         }
         return result;
-    }
-
-    private static boolean isPublished(Integer publishStatus, String snapshot) {
-        return publishStatus != null && publishStatus == 1 && StrUtil.isNotBlank(snapshot);
     }
 
     /** 目录连同各级父目录一起导出，否则导入后资产会掉到根目录、丢掉目录级防护配置 */
@@ -482,23 +397,10 @@ public class AssetTransferServiceImpl implements AssetTransferService {
                                                              java.util.Collection<FlowTaskDO> tasks,
                                                              java.util.Collection<FlowMqTaskDO> mqTasks) {
         Map<String, TransferRequirementDTO> acc = new LinkedHashMap<>();
-        for (FlowApiDO api : apis) {
-            String name = StrUtil.nullToEmpty(api.getName());
-            BundleRequirementScanner.add(acc, TransferRequirementDTO.KIND_DATASOURCE, api.getDatasource(), name);
-            BundleRequirementScanner.add(acc, TransferRequirementDTO.KIND_TEMPLATE, api.getTemplateId(), name);
-            BundleRequirementScanner.scanDsl(api.getDslContent(), name, acc);
-        }
-        for (FlowServiceFlowDO service : services) {
-            BundleRequirementScanner.scanDsl(service.getDslContent(), StrUtil.nullToEmpty(service.getName()), acc);
-        }
-        for (FlowTaskDO task : tasks) {
-            BundleRequirementScanner.scanDsl(task.getDslContent(), StrUtil.nullToEmpty(task.getName()), acc);
-        }
-        for (FlowMqTaskDO task : mqTasks) {
-            String name = StrUtil.nullToEmpty(task.getName());
-            BundleRequirementScanner.add(acc, TransferRequirementDTO.KIND_MQ, task.getConnectionCode(), name);
-            BundleRequirementScanner.scanDsl(task.getDslContent(), name, acc);
-        }
+        apiTransfer.collectRequirements(apis, acc);
+        serviceTransfer.collectRequirements(services, acc);
+        taskTransfer.collectRequirements(tasks, acc);
+        mqTaskTransfer.collectRequirements(mqTasks, acc);
         configAssetTransfer.collectRequirements(bundle, acc);
         requirementAttributes.fill(acc.values());
         for (TransferRequirementDTO req : acc.values()) {
@@ -601,21 +503,13 @@ public class AssetTransferServiceImpl implements AssetTransferService {
         for (ResponseTemplateDO template : nullSafe(bundle.getResponseTemplates())) {
             handleTemplate(template, report, overwriteExisting, dryRun, now);
         }
-        for (FlowApiDO api : nullSafe(bundle.getApis())) {
-            handleApi(api, report, overwriteExisting, dryRun, now);
-        }
+        importAll(apiTransfer, bundle, report, overwriteExisting, dryRun, now);
         for (BundleExcelTemplate excel : nullSafe(bundle.getExcelTemplates())) {
             handleExcelTemplate(excel, bundle, report, overwriteExisting, dryRun, now);
         }
-        for (FlowServiceFlowDO service : nullSafe(bundle.getServices())) {
-            handleService(service, report, overwriteExisting, dryRun, now);
-        }
-        for (FlowTaskDO task : nullSafe(bundle.getTasks())) {
-            handleTask(task, report, overwriteExisting, dryRun, now);
-        }
-        for (FlowMqTaskDO mqTask : nullSafe(bundle.getMqTasks())) {
-            handleMqTask(mqTask, report, overwriteExisting, dryRun, now);
-        }
+        importAll(serviceTransfer, bundle, report, overwriteExisting, dryRun, now);
+        importAll(taskTransfer, bundle, report, overwriteExisting, dryRun, now);
+        importAll(mqTaskTransfer, bundle, report, overwriteExisting, dryRun, now);
         configAssetTransfer.analyze(bundle, report, overwriteExisting, dryRun, now, this::resolveDirectoryId);
         for (BundleRegressionSuite suite : nullSafe(bundle.getRegressionSuites())) {
             handleRegression(suite, report, overwriteExisting, dryRun, now);
@@ -635,259 +529,11 @@ public class AssetTransferServiceImpl implements AssetTransferService {
         return report;
     }
 
-    private void handleApi(FlowApiDO incoming, TransferReportDTO report, boolean overwriteExisting,
-                           boolean dryRun, LocalDateTime now) {
-        String id = incoming.getId();
-        String name = incoming.getName();
-        if (StrUtil.isBlank(id)) {
-            report.getItems().add(TransferItemDTO.of(TYPE_API, null, name,
-                    TransferItemDTO.ACTION_CONFLICT, "缺少 ID，包体不完整"));
-            return;
+    private <T> void importAll(FlowAssetTransfer<T> transfer, AssetBundle bundle, TransferReportDTO report,
+                               boolean overwriteExisting, boolean dryRun, LocalDateTime now) {
+        for (T item : nullSafe(transfer.items(bundle))) {
+            transfer.importItem(item, report, overwriteExisting, dryRun, now, this::resolveDirectoryId);
         }
-        if (HostCatalogReserved.isReservedId(id)) {
-            report.getItems().add(TransferItemDTO.of(TYPE_API, id, name,
-                    TransferItemDTO.ACTION_SKIP, "系统保留接口不参与迁移"));
-            return;
-        }
-        if (StrUtil.isBlank(incoming.getUrl()) || StrUtil.isBlank(incoming.getMethod())) {
-            report.getItems().add(TransferItemDTO.of(TYPE_API, id, name,
-                    TransferItemDTO.ACTION_CONFLICT, "缺少 path 或 method"));
-            return;
-        }
-        // 同 path+method 被目标环境「其它接口」占用时无法自动决断，必须人工处理
-        if (flowApiRepository.existsDraftByUrlAndMethod(incoming.getUrl(), incoming.getMethod(), id)) {
-            report.getItems().add(TransferItemDTO.of(TYPE_API, id, name, TransferItemDTO.ACTION_CONFLICT,
-                    "目标环境已有其它接口占用 " + incoming.getMethod().toUpperCase() + " " + incoming.getUrl()));
-            return;
-        }
-        FlowApiDO existing = flowApiRepository.findById(id).orElse(null);
-        boolean softDeleted = existing == null && flowApiRepository.countAnyById(id) > 0;
-        boolean occupied = existing != null || softDeleted;
-        if (occupied && !overwriteExisting) {
-            report.getItems().add(TransferItemDTO.of(TYPE_API, id, name, TransferItemDTO.ACTION_SKIP,
-                    softDeleted ? "目标环境存在同 ID 的已删除接口，未开启覆盖" : "目标环境已存在，未开启覆盖"));
-            return;
-        }
-        report.getItems().add(TransferItemDTO.of(TYPE_API, id, name,
-                occupied ? TransferItemDTO.ACTION_UPDATE : TransferItemDTO.ACTION_CREATE,
-                softDeleted ? "恢复目标环境已删除的同 ID 接口并覆盖草稿"
-                        : (existing != null ? "仅覆盖草稿，线上快照不变，需重新发布才生效" : null)));
-        if (dryRun) {
-            return;
-        }
-        if (softDeleted) {
-            flowApiRepository.restoreDeletedById(id);
-            existing = flowApiRepository.findById(id).orElse(null);
-        }
-        FlowApiDO target = existing != null ? existing : newApi(id, now);
-        target.setName(incoming.getName());
-        target.setUrl(incoming.getUrl());
-        target.setMethod(incoming.getMethod());
-        target.setDirectoryId(resolveDirectoryId(incoming.getDirectoryId()));
-        target.setResponseType(incoming.getResponseType());
-        target.setVersion(incoming.getVersion());
-        target.setServiceType(incoming.getServiceType());
-        target.setInterceptMode(incoming.getInterceptMode());
-        target.setHostBinding(incoming.getHostBinding());
-        target.setDslContent(incoming.getDslContent());
-        target.setSqlContent(incoming.getSqlContent());
-        target.setJsonContent(incoming.getJsonContent());
-        target.setTextContent(incoming.getTextContent());
-        target.setDatasource(incoming.getDatasource());
-        target.setContract(incoming.getContract());
-        target.setCacheConfig(incoming.getCacheConfig());
-        target.setSecurityConfig(incoming.getSecurityConfig());
-        target.setViewExportConfig(incoming.getViewExportConfig());
-        target.setTemplateId(incoming.getTemplateId());
-        target.setCustomSuccessWrapper(incoming.getCustomSuccessWrapper());
-        target.setCustomPageWrapper(incoming.getCustomPageWrapper());
-        target.setCustomFailWrapper(incoming.getCustomFailWrapper());
-        target.setLevel(incoming.getLevel());
-        target.setLogEnabled(incoming.getLogEnabled() != null ? incoming.getLogEnabled() : Boolean.FALSE);
-        target.setLogMode(incoming.getLogMode());
-        target.setLogRetentionDays(incoming.getLogRetentionDays());
-        target.setInfo(incoming.getInfo());
-        target.setTags(incoming.getTags());
-        target.setUpdateTime(now);
-        flowApiRepository.save(target);
-    }
-
-    private FlowApiDO newApi(String id, LocalDateTime now) {
-        FlowApiDO api = new FlowApiDO();
-        api.setId(id);
-        api.setPublishStatus(0);
-        api.setDeleted(0);
-        api.setCreateTime(now);
-        return api;
-    }
-
-    private void handleService(FlowServiceFlowDO incoming, TransferReportDTO report, boolean overwriteExisting,
-                               boolean dryRun, LocalDateTime now) {
-        String id = incoming.getId();
-        if (StrUtil.isBlank(id)) {
-            report.getItems().add(TransferItemDTO.of(TYPE_SERVICE, null, incoming.getName(),
-                    TransferItemDTO.ACTION_CONFLICT, "缺少 ID，包体不完整"));
-            return;
-        }
-        FlowServiceFlowDO existing = flowServiceFlowRepository.findById(id).orElse(null);
-        boolean softDeleted = existing == null && flowServiceFlowRepository.countAnyById(id) > 0;
-        boolean occupied = existing != null || softDeleted;
-        if (occupied && !overwriteExisting) {
-            report.getItems().add(TransferItemDTO.of(TYPE_SERVICE, id, incoming.getName(),
-                    TransferItemDTO.ACTION_SKIP,
-                    softDeleted ? "目标环境存在同 ID 的已删除服务，未开启覆盖" : "目标环境已存在，未开启覆盖"));
-            return;
-        }
-        report.getItems().add(TransferItemDTO.of(TYPE_SERVICE, id, incoming.getName(),
-                occupied ? TransferItemDTO.ACTION_UPDATE : TransferItemDTO.ACTION_CREATE,
-                softDeleted ? "恢复目标环境已删除的同 ID 服务并覆盖草稿"
-                        : (existing != null ? "仅覆盖草稿，线上快照不变，需重新发布才生效" : null)));
-        if (dryRun) {
-            return;
-        }
-        if (softDeleted) {
-            flowServiceFlowRepository.restoreDeletedById(id);
-            existing = flowServiceFlowRepository.findById(id).orElse(null);
-        }
-        FlowServiceFlowDO target = existing;
-        if (target == null) {
-            target = new FlowServiceFlowDO();
-            target.setId(id);
-            target.setPublishStatus(0);
-            target.setDeleted(0);
-            target.setCreateTime(now);
-            // 启停是目标环境的运维状态，仅新建时取包内值
-            target.setEnabled(incoming.getEnabled() != null ? incoming.getEnabled() : Boolean.TRUE);
-        }
-        target.setName(incoming.getName());
-        target.setDirectoryId(resolveDirectoryId(incoming.getDirectoryId()));
-        target.setDslContent(incoming.getDslContent());
-        target.setContract(incoming.getContract());
-        target.setLogEnabled(incoming.getLogEnabled() != null ? incoming.getLogEnabled() : Boolean.FALSE);
-        target.setLogMode(incoming.getLogMode());
-        target.setInfo(incoming.getInfo());
-        target.setTags(incoming.getTags());
-        target.setUpdateTime(now);
-        flowServiceFlowRepository.save(target);
-    }
-
-    private void handleTask(FlowTaskDO incoming, TransferReportDTO report, boolean overwriteExisting,
-                            boolean dryRun, LocalDateTime now) {
-        String id = incoming.getId();
-        if (StrUtil.isBlank(id)) {
-            report.getItems().add(TransferItemDTO.of(TYPE_TASK, null, incoming.getName(),
-                    TransferItemDTO.ACTION_CONFLICT, "缺少 ID，包体不完整"));
-            return;
-        }
-        if (StrUtil.isBlank(incoming.getCron()) || !CronExpression.isValidExpression(incoming.getCron().trim())) {
-            report.getItems().add(TransferItemDTO.of(TYPE_TASK, id, incoming.getName(),
-                    TransferItemDTO.ACTION_CONFLICT, "Cron 表达式不合法: " + StrUtil.nullToEmpty(incoming.getCron())));
-            return;
-        }
-        FlowTaskDO existing = flowTaskRepository.findById(id).orElse(null);
-        boolean softDeleted = existing == null && flowTaskRepository.countAnyById(id) > 0;
-        boolean occupied = existing != null || softDeleted;
-        if (occupied && !overwriteExisting) {
-            report.getItems().add(TransferItemDTO.of(TYPE_TASK, id, incoming.getName(),
-                    TransferItemDTO.ACTION_SKIP,
-                    softDeleted ? "目标环境存在同 ID 的已删除任务，未开启覆盖" : "目标环境已存在，未开启覆盖"));
-            return;
-        }
-        report.getItems().add(TransferItemDTO.of(TYPE_TASK, id, incoming.getName(),
-                occupied ? TransferItemDTO.ACTION_UPDATE : TransferItemDTO.ACTION_CREATE,
-                softDeleted ? "恢复目标环境已删除的同 ID 任务并覆盖草稿"
-                        : (existing != null ? "仅覆盖草稿，线上调度按已发布快照运行，需重新发布才生效" : null)));
-        if (dryRun) {
-            return;
-        }
-        if (softDeleted) {
-            flowTaskRepository.restoreDeletedById(id);
-            existing = flowTaskRepository.findById(id).orElse(null);
-        }
-        FlowTaskDO target = existing;
-        if (target == null) {
-            target = new FlowTaskDO();
-            target.setId(id);
-            target.setPublishStatus(0);
-            target.setDeleted(0);
-            target.setCreateTime(now);
-            // 新建即为未发布草稿，不会被调度器注册
-            target.setEnabled(incoming.getEnabled() != null ? incoming.getEnabled() : Boolean.TRUE);
-        }
-        target.setName(incoming.getName());
-        target.setDirectoryId(resolveDirectoryId(incoming.getDirectoryId()));
-        target.setCron(incoming.getCron().trim());
-        target.setDslContent(incoming.getDslContent());
-        target.setLogEnabled(incoming.getLogEnabled() != null ? incoming.getLogEnabled() : Boolean.FALSE);
-        target.setLogMode(incoming.getLogMode());
-        target.setLogRetentionDays(incoming.getLogRetentionDays());
-        target.setInfo(incoming.getInfo());
-        target.setTags(incoming.getTags());
-        target.setUpdateTime(now);
-        flowTaskRepository.save(target);
-    }
-
-    private void handleMqTask(FlowMqTaskDO incoming, TransferReportDTO report, boolean overwriteExisting,
-                              boolean dryRun, LocalDateTime now) {
-        String id = incoming.getId();
-        if (StrUtil.isBlank(id)) {
-            report.getItems().add(TransferItemDTO.of(TYPE_MQ_TASK, null, incoming.getName(),
-                    TransferItemDTO.ACTION_CONFLICT, "缺少 ID，包体不完整"));
-            return;
-        }
-        if (StrUtil.isBlank(incoming.getConnectionCode()) || StrUtil.isBlank(incoming.getTopic())) {
-            report.getItems().add(TransferItemDTO.of(TYPE_MQ_TASK, id, incoming.getName(),
-                    TransferItemDTO.ACTION_CONFLICT, "缺少连接编码或 topic"));
-            return;
-        }
-        FlowMqTaskDO existing = flowMqTaskRepository.findById(id).orElse(null);
-        boolean softDeleted = existing == null && flowMqTaskRepository.countAnyById(id) > 0;
-        boolean occupied = existing != null || softDeleted;
-        if (occupied && !overwriteExisting) {
-            report.getItems().add(TransferItemDTO.of(TYPE_MQ_TASK, id, incoming.getName(),
-                    TransferItemDTO.ACTION_SKIP,
-                    softDeleted ? "目标环境存在同 ID 的已删除 MQ 任务，未开启覆盖" : "目标环境已存在，未开启覆盖"));
-            return;
-        }
-        report.getItems().add(TransferItemDTO.of(TYPE_MQ_TASK, id, incoming.getName(),
-                occupied ? TransferItemDTO.ACTION_UPDATE : TransferItemDTO.ACTION_CREATE,
-                softDeleted ? "恢复目标环境已删除的同 ID MQ 任务并覆盖草稿"
-                        : (existing != null ? "仅覆盖草稿，线上订阅按已发布快照运行，需重新发布才生效" : null)));
-        if (dryRun) {
-            return;
-        }
-        if (softDeleted) {
-            flowMqTaskRepository.restoreDeletedById(id);
-            existing = flowMqTaskRepository.findById(id).orElse(null);
-        }
-        FlowMqTaskDO target = existing;
-        if (target == null) {
-            target = new FlowMqTaskDO();
-            target.setId(id);
-            target.setPublishStatus(0);
-            target.setDeleted(0);
-            target.setCreateTime(now);
-            // 启停是目标环境的运维状态，仅新建时取包内值
-            target.setEnabled(incoming.getEnabled() != null ? incoming.getEnabled() : Boolean.TRUE);
-        }
-        target.setName(incoming.getName());
-        target.setDirectoryId(resolveDirectoryId(incoming.getDirectoryId()));
-        target.setConnectionCode(incoming.getConnectionCode());
-        target.setTopic(incoming.getTopic());
-        target.setConsumerGroup(incoming.getConsumerGroup());
-        target.setConcurrency(incoming.getConcurrency());
-        target.setRetryMax(incoming.getRetryMax());
-        target.setRetryBackoffMs(incoming.getRetryBackoffMs());
-        target.setDeadLetterTopic(incoming.getDeadLetterTopic());
-        target.setDslContent(incoming.getDslContent());
-        target.setLogEnabled(incoming.getLogEnabled() != null ? incoming.getLogEnabled() : Boolean.FALSE);
-        target.setLogMode(incoming.getLogMode());
-        target.setLogPayloadMode(incoming.getLogPayloadMode());
-        target.setLogRetentionDays(incoming.getLogRetentionDays());
-        target.setInfo(incoming.getInfo());
-        target.setTags(incoming.getTags());
-        target.setUpdateTime(now);
-        flowMqTaskRepository.save(target);
     }
 
     /** 响应模板没有草稿/发布之分，导入即生效；目标环境的「默认模板」标记保持不变 */
@@ -1054,14 +700,11 @@ public class AssetTransferServiceImpl implements AssetTransferService {
         }
     }
 
+    /** 回归套件只挂在接口、服务、定时任务上 */
     private boolean assetExists(String assetType, String assetId) {
         String type = StrUtil.nullToEmpty(assetType).toUpperCase();
-        return switch (type) {
-            case TYPE_API -> flowApiRepository.existsById(assetId);
-            case TYPE_SERVICE -> flowServiceFlowRepository.existsById(assetId);
-            case TYPE_TASK -> flowTaskRepository.existsById(assetId);
-            default -> false;
-        };
+        return Set.of(TYPE_API, TYPE_SERVICE, TYPE_TASK).contains(type) && flowAssetTransfers().stream()
+                .filter(t -> t.type().equals(type)).anyMatch(t -> t.existsById(assetId));
     }
 
     /** 目录不存在时置空，让资产落到根目录，而不是指向一个不存在的目录 */
@@ -1136,17 +779,10 @@ public class AssetTransferServiceImpl implements AssetTransferService {
         if (StrUtil.isBlank(username)) {
             throw new FlowException("RBAC_UNAUTHORIZED", "未登录或凭证无效");
         }
-        if (!nullSafe(bundle.getApis()).isEmpty()) {
-            requirePerm(username, "flow:api:write");
-        }
-        if (!nullSafe(bundle.getServices()).isEmpty()) {
-            requirePerm(username, "flow:service:write");
-        }
-        if (!nullSafe(bundle.getTasks()).isEmpty()) {
-            requirePerm(username, "flow:task:write");
-        }
-        if (!nullSafe(bundle.getMqTasks()).isEmpty()) {
-            requirePerm(username, "flow:mq:write");
+        for (FlowAssetTransfer<?> transfer : flowAssetTransfers()) {
+            if (!nullSafe(transfer.items(bundle)).isEmpty()) {
+                requirePerm(username, transfer.writePerm());
+            }
         }
         if (!nullSafe(bundle.getResponseTemplates()).isEmpty()) {
             requirePerm(username, "sys:template:write");

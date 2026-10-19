@@ -9,6 +9,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.yu.flow.module.api.support.ApiAssetTransfer;
+import org.yu.flow.module.mqtask.support.MqTaskAssetTransfer;
+import org.yu.flow.module.serviceflow.support.ServiceAssetTransfer;
+import org.yu.flow.module.task.support.TaskAssetTransfer;
 import org.yu.flow.config.DemoModeGuard;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.module.api.domain.FlowApiDO;
@@ -94,6 +99,10 @@ class AssetTransferFlowAssetsTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(service, "apiTransfer", new ApiAssetTransfer(flowApiRepository));
+        ReflectionTestUtils.setField(service, "serviceTransfer", new ServiceAssetTransfer(flowServiceFlowRepository));
+        ReflectionTestUtils.setField(service, "taskTransfer", new TaskAssetTransfer(flowTaskRepository));
+        ReflectionTestUtils.setField(service, "mqTaskTransfer", new MqTaskAssetTransfer(flowMqTaskRepository));
         when(dynamicDataSourceService.getAllDataSources()).thenReturn(Map.of());
         when(flowApiRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(flowServiceFlowRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
