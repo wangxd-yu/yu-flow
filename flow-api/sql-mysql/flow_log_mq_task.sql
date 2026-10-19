@@ -13,10 +13,12 @@ CREATE TABLE IF NOT EXISTS `flow_log_mq_task` (
   `message_body` longtext COMMENT '原始消息体（JSON 解析前的字符串，支持超限截断）',
   `message_headers` text COMMENT '消息头 JSON 字典',
   `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logMode=ALL 时记录）',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '执行开始时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_mq_task_create_time` (`create_time`),
   KEY `idx_flow_log_mq_task_status` (`status`),
   KEY `idx_flow_log_mq_task_task_id` (`task_id`),
-  KEY `idx_flow_log_mq_task_message_id` (`message_id`)
+  KEY `idx_flow_log_mq_task_message_id` (`message_id`),
+  KEY `idx_flow_log_mq_task_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务执行日志';

@@ -27,6 +27,8 @@ public class FlowExecutionLogListDTO {
     private Long costTimeMs;
     /** 是否含有 Trace 快照（前端据此决定是否显示"查看快照"按钮） */
     private Boolean hasTrace;
+    /** 请求 ID（响应头 X-Request-Id） */
+    private String requestId;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
@@ -37,7 +39,7 @@ public class FlowExecutionLogListDTO {
     /** JPA Criteria {@code cb.construct} 专用构造器（勿传入 LOB 字段） */
     public FlowExecutionLogListDTO(String id, String apiId, String apiName, String url,
                                    String serviceType, String method, String status,
-                                   Long costTimeMs, Boolean hasTrace, LocalDateTime createTime) {
+                                   Long costTimeMs, Boolean hasTrace, String requestId, LocalDateTime createTime) {
         this.id = id;
         this.apiId = apiId;
         this.apiName = apiName;
@@ -47,6 +49,7 @@ public class FlowExecutionLogListDTO {
         this.status = status;
         this.costTimeMs = costTimeMs;
         this.hasTrace = hasTrace;
+        this.requestId = requestId;
         this.createTime = createTime;
     }
 
@@ -64,6 +67,7 @@ public class FlowExecutionLogListDTO {
                 entity.getStatus(),
                 entity.getCostTimeMs(),
                 entity.getTraceData() != null && !entity.getTraceData().isEmpty(),
+                entity.getRequestId(),
                 entity.getCreateTime()
         );
     }

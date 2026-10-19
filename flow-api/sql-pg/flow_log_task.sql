@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS flow_log_task (
   cost_time_ms bigint,
   error_msg text,
   trace_data text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -21,7 +22,9 @@ COMMENT ON COLUMN flow_log_task.status IS '执行状态：SUCCESS / FAILED / RUN
 COMMENT ON COLUMN flow_log_task.cost_time_ms IS '耗时（毫秒）';
 COMMENT ON COLUMN flow_log_task.error_msg IS '失败信息';
 COMMENT ON COLUMN flow_log_task.trace_data IS 'FlowTrace JSON 快照（logEnabled=true 时记录）';
+COMMENT ON COLUMN flow_log_task.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_task.create_time IS '执行开始时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_task_create_time ON flow_log_task (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_task_status ON flow_log_task (status);
 CREATE INDEX IF NOT EXISTS idx_flow_log_task_task_id ON flow_log_task (task_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_task_request_id ON flow_log_task (request_id);

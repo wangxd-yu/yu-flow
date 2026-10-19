@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 import org.hibernate.annotations.GenericGenerator;
+import org.yu.flow.log.trace.RequestIds;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -58,12 +59,20 @@ public class FlowTaskLogDO {
     @Column(columnDefinition = "LONGTEXT")
     private String traceData;
 
+    /** 请求 ID（响应头 X-Request-Id），按它和应用日志对线 */
+    @Builder.Default
+    @Column(name = "request_id", length = 64)
+    private String requestId = RequestIds.current();
+
     /** 执行开始时间 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
 
     @PrePersist
     public void prePersist() {
+        if (requestId == null) {
+            requestId = RequestIds.current();
+        }
         if (createTime == null) {
             createTime = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         }

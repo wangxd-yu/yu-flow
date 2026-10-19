@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS flow_log_mq_task (
   message_body text,
   message_headers text,
   trace_data text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -29,8 +30,10 @@ COMMENT ON COLUMN flow_log_mq_task.error_msg IS '失败信息';
 COMMENT ON COLUMN flow_log_mq_task.message_body IS '原始消息体（JSON 解析前的字符串，支持超限截断）';
 COMMENT ON COLUMN flow_log_mq_task.message_headers IS '消息头 JSON 字典';
 COMMENT ON COLUMN flow_log_mq_task.trace_data IS 'FlowTrace JSON 快照（logMode=ALL 时记录）';
+COMMENT ON COLUMN flow_log_mq_task.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_mq_task.create_time IS '执行开始时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_create_time ON flow_log_mq_task (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_status ON flow_log_mq_task (status);
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_task_id ON flow_log_mq_task (task_id);
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_message_id ON flow_log_mq_task (message_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_request_id ON flow_log_mq_task (request_id);

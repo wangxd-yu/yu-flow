@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS flow_log_third (
   is_success smallint,
   error_message varchar(1000),
   curl text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -35,7 +36,9 @@ COMMENT ON COLUMN flow_log_third.elapsed_time IS '请求耗时(ms)';
 COMMENT ON COLUMN flow_log_third.is_success IS '是否成功（0失败/1成功）';
 COMMENT ON COLUMN flow_log_third.error_message IS '错误信息';
 COMMENT ON COLUMN flow_log_third.curl IS 'Curl命令';
+COMMENT ON COLUMN flow_log_third.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_third.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_third_api_type ON flow_log_third (api_type);
 CREATE INDEX IF NOT EXISTS idx_flow_log_third_create_time ON flow_log_third (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_third_source ON flow_log_third (source);
+CREATE INDEX IF NOT EXISTS idx_flow_log_third_request_id ON flow_log_third (request_id);

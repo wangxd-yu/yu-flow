@@ -19,6 +19,8 @@ public class FlowTaskLogQueryDTO {
     private String status;
     /** 触发类型：CRON / MANUAL */
     private String triggerType;
+    /** 请求 ID 精确匹配（响应头 X-Request-Id） */
+    private String requestId;
     /** 查询开始时间（ISO 8601） */
     private String startTime;
     /** 查询结束时间（ISO 8601） */

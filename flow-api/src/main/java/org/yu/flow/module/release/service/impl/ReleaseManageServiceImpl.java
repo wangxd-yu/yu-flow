@@ -30,6 +30,7 @@ import org.yu.flow.module.serviceflow.domain.FlowServiceFlowDO;
 import org.yu.flow.module.serviceflow.repository.FlowServiceFlowRepository;
 import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
+import org.yu.flow.log.trace.MdcContext;
 import org.yu.flow.util.SecretMasker;
 
 import jakarta.annotation.Resource;
@@ -425,7 +426,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
             return t;
         });
         try {
-            return es.submit(() -> {
+            return es.submit(MdcContext.wrap(() -> {
                 Object result = flowEngine.execute(dsl, args, true, "REGRESSION", sourceRef, sourceName);
                 if (result instanceof FlowTrace) {
                     return (FlowTrace) result;
@@ -434,7 +435,7 @@ public class ReleaseManageServiceImpl implements ReleaseManageService {
                 t.setStatus("success");
                 t.setGlobalOutputs(result);
                 return t;
-            }).get(timeoutMs, TimeUnit.MILLISECONDS);
+            })).get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.TimeoutException te) {
             throw new ValidationException("用例执行超时（" + timeoutMs + "ms）");
         } finally {

@@ -36,6 +36,8 @@ interface ThirdLogListDTO {
   responseStatus?: number;
   elapsedTime?: number;
   isSuccess?: number;
+  /** 请求 ID（响应头 X-Request-Id），同一请求触发的接口日志与三方日志相同 */
+  requestId?: string;
   createTime?: string;
 }
 
@@ -243,6 +245,18 @@ const ThirdLogPage: React.FC = () => {
       width: 100,
       hideInSearch: true,
       render: (_, record) => <LogDuration ms={record.elapsedTime} />,
+    },
+    {
+      title: '请求 ID',
+      dataIndex: 'requestId',
+      width: 150,
+      ellipsis: true,
+      initialValue: new URLSearchParams(window.location.search).get('requestId') || undefined,
+      fieldProps: {
+        placeholder: '报错提示里的请求 ID',
+      },
+      render: (_, record) =>
+        record.requestId ? <Text copyable={{ text: record.requestId }}>{record.requestId}</Text> : '-',
     },
     {
       title: '时间',

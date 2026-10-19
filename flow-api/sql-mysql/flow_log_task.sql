@@ -9,9 +9,11 @@ CREATE TABLE IF NOT EXISTS `flow_log_task` (
   `cost_time_ms` bigint COMMENT '耗时（毫秒）',
   `error_msg` text COMMENT '失败信息',
   `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logEnabled=true 时记录）',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '执行开始时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_task_create_time` (`create_time`),
   KEY `idx_flow_log_task_status` (`status`),
-  KEY `idx_flow_log_task_task_id` (`task_id`)
+  KEY `idx_flow_log_task_task_id` (`task_id`),
+  KEY `idx_flow_log_task_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='定时任务执行日志';

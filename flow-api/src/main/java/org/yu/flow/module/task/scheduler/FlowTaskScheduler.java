@@ -23,6 +23,7 @@ import org.yu.flow.module.task.domain.FlowTaskDO;
 import org.yu.flow.module.task.repository.FlowTaskRepository;
 import org.yu.flow.log.task.domain.FlowTaskLogDO;
 import org.yu.flow.log.task.service.FlowTaskLogService;
+import org.yu.flow.log.trace.RequestIds;
 import org.yu.flow.engine.log.LogMode;
 import org.yu.flow.module.metrics.AssetMetricsRecorder;
 import org.yu.flow.module.metrics.MetricsAssetType;
@@ -299,7 +300,7 @@ public class FlowTaskScheduler {
     }
 
     private boolean executeTaskWithTriggerType(FlowTaskDO latestTask, String triggerType) {
-        try (SecretScope secrets = SecretScope.open()) {
+        try (RequestIds.Scope ignored = RequestIds.open(); SecretScope secrets = SecretScope.open()) {
             return executeInScope(latestTask, triggerType, secrets);
         }
     }

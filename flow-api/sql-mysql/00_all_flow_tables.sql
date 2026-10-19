@@ -1,5 +1,5 @@
 -- Yu Flow MySQL 全量建表（由 sql-mysql/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-09-28T01:46:19.243Z
+-- 生成时间: 2026-10-19T09:03:45.396Z
 -- 用法: 先执行本文件，再执行 00_system_init.sql
 
 -- >>> flow_alert_channel.sql
@@ -243,10 +243,12 @@ CREATE TABLE IF NOT EXISTS `flow_log_execution` (
   `cost_time_ms` bigint COMMENT '耗时(毫秒)',
   `trace_data` longtext COMMENT '完整追踪快照(如有)',
   `service_type` varchar(32) COMMENT '接口类型: FLOW/DB/JSON/STRING',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_execution_api_id` (`api_id`),
-  KEY `idx_flow_log_execution_create_time` (`create_time`)
+  KEY `idx_flow_log_execution_create_time` (`create_time`),
+  KEY `idx_flow_log_execution_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='API执行日志表';
 
 -- >>> flow_log_login.sql
@@ -283,12 +285,14 @@ CREATE TABLE IF NOT EXISTS `flow_log_mq_task` (
   `message_body` longtext COMMENT '原始消息体（JSON 解析前的字符串，支持超限截断）',
   `message_headers` text COMMENT '消息头 JSON 字典',
   `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logMode=ALL 时记录）',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '执行开始时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_mq_task_create_time` (`create_time`),
   KEY `idx_flow_log_mq_task_status` (`status`),
   KEY `idx_flow_log_mq_task_task_id` (`task_id`),
-  KEY `idx_flow_log_mq_task_message_id` (`message_id`)
+  KEY `idx_flow_log_mq_task_message_id` (`message_id`),
+  KEY `idx_flow_log_mq_task_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ 任务执行日志';
 
 -- >>> flow_log_open_call.sql
@@ -370,11 +374,13 @@ CREATE TABLE IF NOT EXISTS `flow_log_service` (
   `cost_time_ms` bigint COMMENT '耗时（毫秒）',
   `error_msg` text COMMENT '失败信息',
   `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logEnabled=true 时记录）',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '执行开始时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_service_create_time` (`create_time`),
   KEY `idx_flow_log_service_service_id` (`service_id`),
-  KEY `idx_flow_log_service_status` (`status`)
+  KEY `idx_flow_log_service_status` (`status`),
+  KEY `idx_flow_log_service_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='内部服务编排执行日志';
 
 -- >>> flow_log_task.sql
@@ -389,11 +395,13 @@ CREATE TABLE IF NOT EXISTS `flow_log_task` (
   `cost_time_ms` bigint COMMENT '耗时（毫秒）',
   `error_msg` text COMMENT '失败信息',
   `trace_data` longtext COMMENT 'FlowTrace JSON 快照（logEnabled=true 时记录）',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '执行开始时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_task_create_time` (`create_time`),
   KEY `idx_flow_log_task_status` (`status`),
-  KEY `idx_flow_log_task_task_id` (`task_id`)
+  KEY `idx_flow_log_task_task_id` (`task_id`),
+  KEY `idx_flow_log_task_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='定时任务执行日志';
 
 -- >>> flow_log_third.sql
@@ -415,11 +423,13 @@ CREATE TABLE IF NOT EXISTS `flow_log_third` (
   `is_success` tinyint COMMENT '是否成功（0失败/1成功）',
   `error_message` varchar(1000) COMMENT '错误信息',
   `curl` text COMMENT 'Curl命令',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_third_api_type` (`api_type`),
   KEY `idx_flow_log_third_create_time` (`create_time`),
-  KEY `idx_flow_log_third_source` (`source`)
+  KEY `idx_flow_log_third_source` (`source`),
+  KEY `idx_flow_log_third_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='第三方接口调用日志';
 
 -- >>> flow_metrics_meta.sql

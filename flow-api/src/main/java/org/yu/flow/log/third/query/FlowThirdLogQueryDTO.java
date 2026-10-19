@@ -20,6 +20,8 @@ public class FlowThirdLogQueryDTO {
     private String requestMethod;
     /** URL 模糊搜索 */
     private String requestUrl;
+    /** 请求 ID 精确匹配（响应头 X-Request-Id） */
+    private String requestId;
     private String startTime;
     private String endTime;
 }

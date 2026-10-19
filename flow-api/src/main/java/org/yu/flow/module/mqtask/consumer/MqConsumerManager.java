@@ -34,6 +34,7 @@ import org.yu.flow.module.mqtask.repository.FlowMqTaskRepository;
 import org.yu.flow.module.mqtask.service.FlowMqTaskLogService;
 import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.util.FlowObjectMapperUtil;
+import org.yu.flow.log.trace.RequestIds;
 import org.yu.flow.util.SecretScope;
 
 import jakarta.annotation.PreDestroy;
@@ -299,7 +300,7 @@ public class MqConsumerManager {
      * 消费回调：吞掉全部异常，不向 Provider 抛出（毒消息一律 ack + FAILED 日志）。
      */
     private void onMessage(String taskId, MqMessage message) {
-        try {
+        try (RequestIds.Scope ignored = RequestIds.open()) {
             FlowMqTaskDO latestTask = flowMqTaskRepository.findById(taskId).orElse(null);
             if (latestTask == null) {
                 log.warn("[MqConsumerManager] 任务不存在或已删除，取消订阅: taskId={}", taskId);

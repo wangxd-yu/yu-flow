@@ -1,5 +1,5 @@
 -- Yu Flow PostgreSQL / 瀚高 全量建表（由 sql-pg/flow_*.sql 汇总生成，勿手工穿插重复表）
--- 生成时间: 2026-09-28T01:46:19.255Z
+-- 生成时间: 2026-10-19T09:03:45.417Z
 -- 用法: 空库执行本文件 → 再执行 00_system_init.sql
 -- Boolean 映射列必须用 boolean，勿写成 smallint
 --
@@ -369,6 +369,7 @@ CREATE TABLE IF NOT EXISTS flow_log_execution (
   cost_time_ms bigint,
   trace_data text,
   service_type varchar(32),
+  request_id varchar(64),
   create_time timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 );
@@ -384,9 +385,11 @@ COMMENT ON COLUMN flow_log_execution.status IS '执行状态: SUCCESS/ERROR';
 COMMENT ON COLUMN flow_log_execution.cost_time_ms IS '耗时(毫秒)';
 COMMENT ON COLUMN flow_log_execution.trace_data IS '完整追踪快照(如有)';
 COMMENT ON COLUMN flow_log_execution.service_type IS '接口类型: FLOW/DB/JSON/STRING';
+COMMENT ON COLUMN flow_log_execution.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_execution.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_execution_api_id ON flow_log_execution (api_id);
 CREATE INDEX IF NOT EXISTS idx_flow_log_execution_create_time ON flow_log_execution (create_time);
+CREATE INDEX IF NOT EXISTS idx_flow_log_execution_request_id ON flow_log_execution (request_id);
 
 -- >>> flow_log_login.sql
 -- Table: flow_log_login
@@ -432,6 +435,7 @@ CREATE TABLE IF NOT EXISTS flow_log_mq_task (
   message_body text,
   message_headers text,
   trace_data text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -448,11 +452,13 @@ COMMENT ON COLUMN flow_log_mq_task.error_msg IS '失败信息';
 COMMENT ON COLUMN flow_log_mq_task.message_body IS '原始消息体（JSON 解析前的字符串，支持超限截断）';
 COMMENT ON COLUMN flow_log_mq_task.message_headers IS '消息头 JSON 字典';
 COMMENT ON COLUMN flow_log_mq_task.trace_data IS 'FlowTrace JSON 快照（logMode=ALL 时记录）';
+COMMENT ON COLUMN flow_log_mq_task.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_mq_task.create_time IS '执行开始时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_create_time ON flow_log_mq_task (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_status ON flow_log_mq_task (status);
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_task_id ON flow_log_mq_task (task_id);
 CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_message_id ON flow_log_mq_task (message_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_mq_task_request_id ON flow_log_mq_task (request_id);
 
 -- >>> flow_log_open_call.sql
 -- Table: flow_log_open_call
@@ -573,6 +579,7 @@ CREATE TABLE IF NOT EXISTS flow_log_service (
   cost_time_ms bigint,
   error_msg text,
   trace_data text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -585,10 +592,12 @@ COMMENT ON COLUMN flow_log_service.status IS '执行状态：SUCCESS / FAILED / 
 COMMENT ON COLUMN flow_log_service.cost_time_ms IS '耗时（毫秒）';
 COMMENT ON COLUMN flow_log_service.error_msg IS '失败信息';
 COMMENT ON COLUMN flow_log_service.trace_data IS 'FlowTrace JSON 快照（logEnabled=true 时记录）';
+COMMENT ON COLUMN flow_log_service.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_service.create_time IS '执行开始时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_service_create_time ON flow_log_service (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_service_service_id ON flow_log_service (service_id);
 CREATE INDEX IF NOT EXISTS idx_flow_log_service_status ON flow_log_service (status);
+CREATE INDEX IF NOT EXISTS idx_flow_log_service_request_id ON flow_log_service (request_id);
 
 -- >>> flow_log_task.sql
 -- Table: flow_log_task
@@ -602,6 +611,7 @@ CREATE TABLE IF NOT EXISTS flow_log_task (
   cost_time_ms bigint,
   error_msg text,
   trace_data text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -614,10 +624,12 @@ COMMENT ON COLUMN flow_log_task.status IS '执行状态：SUCCESS / FAILED / RUN
 COMMENT ON COLUMN flow_log_task.cost_time_ms IS '耗时（毫秒）';
 COMMENT ON COLUMN flow_log_task.error_msg IS '失败信息';
 COMMENT ON COLUMN flow_log_task.trace_data IS 'FlowTrace JSON 快照（logEnabled=true 时记录）';
+COMMENT ON COLUMN flow_log_task.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_task.create_time IS '执行开始时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_task_create_time ON flow_log_task (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_task_status ON flow_log_task (status);
 CREATE INDEX IF NOT EXISTS idx_flow_log_task_task_id ON flow_log_task (task_id);
+CREATE INDEX IF NOT EXISTS idx_flow_log_task_request_id ON flow_log_task (request_id);
 
 -- >>> flow_log_third.sql
 -- Table: flow_log_third
@@ -638,6 +650,7 @@ CREATE TABLE IF NOT EXISTS flow_log_third (
   is_success smallint,
   error_message varchar(1000),
   curl text,
+  request_id varchar(64),
   create_time timestamp,
   PRIMARY KEY (id)
 );
@@ -657,10 +670,12 @@ COMMENT ON COLUMN flow_log_third.elapsed_time IS '请求耗时(ms)';
 COMMENT ON COLUMN flow_log_third.is_success IS '是否成功（0失败/1成功）';
 COMMENT ON COLUMN flow_log_third.error_message IS '错误信息';
 COMMENT ON COLUMN flow_log_third.curl IS 'Curl命令';
+COMMENT ON COLUMN flow_log_third.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_third.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_third_api_type ON flow_log_third (api_type);
 CREATE INDEX IF NOT EXISTS idx_flow_log_third_create_time ON flow_log_third (create_time);
 CREATE INDEX IF NOT EXISTS idx_flow_log_third_source ON flow_log_third (source);
+CREATE INDEX IF NOT EXISTS idx_flow_log_third_request_id ON flow_log_third (request_id);
 
 -- >>> flow_metrics_meta.sql
 -- Table: flow_metrics_meta

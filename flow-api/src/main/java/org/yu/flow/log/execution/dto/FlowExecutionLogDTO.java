@@ -21,6 +21,9 @@ public class FlowExecutionLogDTO {
     private Long costTimeMs;
     private String traceData;
 
+    /** 请求 ID（响应头 X-Request-Id） */
+    private String requestId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
 
@@ -41,6 +44,7 @@ public class FlowExecutionLogDTO {
         dto.setErrorMsg(entity.getErrorMsg());
         dto.setCostTimeMs(entity.getCostTimeMs());
         dto.setTraceData(entity.getTraceData());
+        dto.setRequestId(entity.getRequestId());
         dto.setCreateTime(entity.getCreateTime());
         return dto;
     }

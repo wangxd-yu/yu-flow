@@ -38,6 +38,11 @@ spring:
       password: ${SPRING_DATA_REDIS_PASSWORD:}
       database: 0
 
+logging:
+  pattern:
+    # 每行日志带请求 ID（RequestIdFilter 写入 MDC，与响应头 X-Request-Id 一致）；没有请求的线程不输出空括号
+    correlation: "%replace([%X{requestId}] ){'^\\[\\] $', ''}"
+
 # 可观测：只开放 health / info / prometheus；health 匿名但不带明细，其余须 YU_FLOW_METRICS_TOKEN（见 ActuatorAccessFilter）
 management:
   endpoints:

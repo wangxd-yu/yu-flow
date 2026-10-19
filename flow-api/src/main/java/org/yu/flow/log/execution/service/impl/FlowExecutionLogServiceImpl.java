@@ -72,6 +72,7 @@ public class FlowExecutionLogServiceImpl
                 root.get("status"),
                 root.get("costTimeMs"),
                 hasTraceExpression(cb, root),
+                root.get("requestId"),
                 root.get("createTime"));
     }
 
@@ -95,6 +96,10 @@ public class FlowExecutionLogServiceImpl
         }
         if (StrUtil.isNotBlank(query.getUrl())) {
             predicates.add(cb.like(root.get("url"), "%" + query.getUrl() + "%"));
+        }
+
+        if (StrUtil.isNotBlank(query.getRequestId())) {
+            predicates.add(cb.equal(root.get("requestId"), query.getRequestId().trim()));
         }
 
         addCreateTimeRange(predicates, root, cb, query.getStartTime(), query.getEndTime(), "[ExecutionLog]");

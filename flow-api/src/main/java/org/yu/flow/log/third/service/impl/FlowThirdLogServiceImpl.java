@@ -72,6 +72,7 @@ public class FlowThirdLogServiceImpl
                 root.get("responseStatus"),
                 root.get("elapsedTime"),
                 root.get("isSuccess"),
+                root.get("requestId"),
                 root.get("createTime"));
     }
 
@@ -101,6 +102,10 @@ public class FlowThirdLogServiceImpl
         }
         if (StrUtil.isNotBlank(query.getRequestUrl())) {
             predicates.add(cb.like(root.get("requestUrl"), "%" + query.getRequestUrl() + "%"));
+        }
+
+        if (StrUtil.isNotBlank(query.getRequestId())) {
+            predicates.add(cb.equal(root.get("requestId"), query.getRequestId().trim()));
         }
 
         addCreateTimeRange(predicates, root, cb, query.getStartTime(), query.getEndTime(), "[ThirdLog]");

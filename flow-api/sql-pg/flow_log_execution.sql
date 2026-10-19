@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS flow_log_execution (
   cost_time_ms bigint,
   trace_data text,
   service_type varchar(32),
+  request_id varchar(64),
   create_time timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 );
@@ -28,6 +29,8 @@ COMMENT ON COLUMN flow_log_execution.status IS '执行状态: SUCCESS/ERROR';
 COMMENT ON COLUMN flow_log_execution.cost_time_ms IS '耗时(毫秒)';
 COMMENT ON COLUMN flow_log_execution.trace_data IS '完整追踪快照(如有)';
 COMMENT ON COLUMN flow_log_execution.service_type IS '接口类型: FLOW/DB/JSON/STRING';
+COMMENT ON COLUMN flow_log_execution.request_id IS '请求ID（响应头 X-Request-Id）';
 COMMENT ON COLUMN flow_log_execution.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_flow_log_execution_api_id ON flow_log_execution (api_id);
 CREATE INDEX IF NOT EXISTS idx_flow_log_execution_create_time ON flow_log_execution (create_time);
+CREATE INDEX IF NOT EXISTS idx_flow_log_execution_request_id ON flow_log_execution (request_id);

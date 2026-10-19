@@ -33,6 +33,8 @@ interface ExecutionLogListDTO {
   status: 'SUCCESS' | 'ERROR';
   costTimeMs: number;
   hasTrace: boolean;
+  /** 请求 ID（响应头 X-Request-Id） */
+  requestId?: string;
   createTime: string;
 }
 
@@ -92,6 +94,7 @@ const ExecutionLog: React.FC = () => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const initialApiId = urlParams.get('apiId') || undefined;
+  const initialRequestId = urlParams.get('requestId') || undefined;
 
   const handleViewTrace = async (record: ExecutionLogListDTO) => {
     if (!record.hasTrace) {
@@ -214,6 +217,18 @@ const ExecutionLog: React.FC = () => {
       width: 100,
       search: false,
       render: (_, record) => <LogDuration ms={record.costTimeMs} />,
+    },
+    {
+      title: '请求 ID',
+      dataIndex: 'requestId',
+      width: 150,
+      ellipsis: true,
+      initialValue: initialRequestId,
+      fieldProps: {
+        placeholder: '报错提示里的请求 ID',
+      },
+      render: (_, record) =>
+        record.requestId ? <Text copyable={{ text: record.requestId }}>{record.requestId}</Text> : '-',
     },
     {
       title: '执行时间',

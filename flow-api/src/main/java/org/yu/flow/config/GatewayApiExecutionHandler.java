@@ -13,6 +13,7 @@ import org.yu.flow.config.response.ResponseWrapperContext;
 import org.yu.flow.dto.R;
 import org.yu.flow.exception.SchemaValidationException;
 import org.yu.flow.exception.ValidationException;
+import org.yu.flow.log.trace.MdcContext;
 import org.yu.flow.module.api.cache.ApiCacheConfig;
 import org.yu.flow.module.api.cache.ApiResponseCacheService;
 import org.yu.flow.module.api.domain.FlowApiDO;
@@ -335,8 +336,8 @@ class GatewayApiExecutionHandler {
         if (timeoutMs <= 0) {
             return flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response);
         }
-        Future<Object> future = API_TIMEOUT_EXECUTOR.submit(
-                () -> flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response));
+        Future<Object> future = API_TIMEOUT_EXECUTOR.submit(MdcContext.wrap(
+                () -> flowApiService.executeApi(flowApiDO, inputParamsMap, pageable, response)));
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {

@@ -19,6 +19,8 @@ public class FlowExecutionLogQueryDTO {
     private String method;
     /** 请求路径模糊搜索（如 /flow/xxx） */
     private String url;
+    /** 请求 ID 精确匹配（响应头 X-Request-Id） */
+    private String requestId;
     /** 查询开始时间（ISO 8601，如 2026-05-24T00:00:00） */
     private String startTime;
     /** 查询结束时间（ISO 8601，如 2026-05-24T23:59:59） */

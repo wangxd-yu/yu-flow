@@ -125,6 +125,10 @@ public class FlowMqTaskLogServiceImpl
             predicates.add(cb.equal(root.get("triggerType"), query.getTriggerType()));
         }
 
+        if (StrUtil.isNotBlank(query.getRequestId())) {
+            predicates.add(cb.equal(root.get("requestId"), query.getRequestId().trim()));
+        }
+
         addCreateTimeRange(predicates, root, cb, query.getStartTime(), query.getEndTime(), "[MqTaskLog]");
 
         return predicates;

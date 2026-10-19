@@ -63,5 +63,7 @@ export function getErrorText(error: unknown, fallback = '操作失败，请重�
  */
 export function showActionError(error: unknown, fallback = '操作失败，请重试'): void {
   if (isUiHandled(error) || isDemoRestricted(error)) return;
-  message.error(getErrorText(error, fallback));
+  const text = getErrorText(error, fallback);
+  const requestId = (error as any)?.requestId;
+  message.error(requestId ? `${text}（请求 ID：${requestId}）` : text);
 }

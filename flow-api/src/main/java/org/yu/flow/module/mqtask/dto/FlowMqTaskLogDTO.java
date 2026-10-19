@@ -25,6 +25,9 @@ public class FlowMqTaskLogDTO {
     private String messageHeaders;
     private String traceData;
 
+    /** 请求 ID（响应头 X-Request-Id） */
+    private String requestId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
 
@@ -43,6 +46,7 @@ public class FlowMqTaskLogDTO {
         dto.setMessageBody(entity.getMessageBody());
         dto.setMessageHeaders(entity.getMessageHeaders());
         dto.setTraceData(entity.getTraceData());
+        dto.setRequestId(entity.getRequestId());
         dto.setCreateTime(entity.getCreateTime());
         return dto;
     }

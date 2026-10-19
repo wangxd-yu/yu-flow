@@ -8,6 +8,18 @@ function handleUnauthorized() {
   history.push('/login');
 }
 
+/** 后端每个响应都带 X-Request-Id，报错时附在提示后面，方便按 ID 查日志 */
+function requestIdOf(headers: any): string | undefined {
+  if (!headers) return undefined;
+  const id = typeof headers.get === 'function' ? headers.get('x-request-id') : headers['x-request-id'];
+  return id ? String(id) : undefined;
+}
+
+function withRequestId(msg: string, headers: any): string {
+  const id = requestIdOf(headers);
+  return id ? `${msg}（请求 ID：${id}）` : msg;
+}
+
 export const requestConfig: RequestConfig = {
   timeout: 10000,
 
@@ -116,10 +128,12 @@ export const requestConfig: RequestConfig = {
                 maskClosable: true,
               });
             } else {
-              message.error(errorMsg);
+              message.error(withRequestId(errorMsg, response.headers));
             }
             // 已向用户提示；标记后页面 catch 不再重复弹
-            throw markUiHandled(new Error(errorMsg));
+            const handled: any = markUiHandled(new Error(errorMsg));
+            handled.requestId = requestIdOf(response.headers);
+            throw handled;
           }
 
           if (process.env.NODE_ENV === 'development') {
@@ -152,8 +166,9 @@ export const requestConfig: RequestConfig = {
               maskClosable: true,
             });
           } else {
-            message.error(errorMsg);
+            message.error(withRequestId(errorMsg, error.response.headers));
           }
+          error.requestId = requestIdOf(error.response.headers);
         } else {
           message.error(error.message || '网络或服务器异常');
         }

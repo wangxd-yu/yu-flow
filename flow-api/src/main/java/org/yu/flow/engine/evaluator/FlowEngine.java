@@ -13,6 +13,7 @@ import org.yu.flow.engine.model.*;
 import org.yu.flow.exception.FlowException;
 import org.yu.flow.engine.model.step.*;
 import org.yu.flow.engine.service.SqlExecutorService;
+import org.yu.flow.log.trace.MdcContext;
 import org.yu.flow.module.api.service.FlowApiCrudService;
 import org.yu.flow.module.serviceflow.service.FlowServiceFlowExecutionService;
 import org.yu.flow.util.SecretScope;
@@ -171,13 +172,13 @@ public class FlowEngine {
 
     private void registerExecutors() {
         executors.put("api", new ApiServiceCallStepExecutor());
-        executors.put("parallel", new ParallelStepExecutor(this, executorService));
+        executors.put("parallel", new ParallelStepExecutor(this, MdcContext.wrap(executorService)));
         executors.put("if", new IfStepExecutor());
         executors.put("switch", new SwitchStepExecutor());
         executors.put("evaluate", new EvaluateStepExecutor());
         executors.put("request", new RequestStepExecutor());
         executors.put("httpRequest", new HttpRequestStepExecutor());
-        executors.put("for", new ForStepExecutor(this, executorService, forMaxInFlight));
+        executors.put("for", new ForStepExecutor(this, MdcContext.wrap(executorService), forMaxInFlight));
         executors.put("forEach", new ForEachStepExecutor(this));
         executors.put("collect", new CollectStepExecutor(this));
         executors.put("template", new TemplateStepExecutor());
@@ -642,7 +643,7 @@ public class FlowEngine {
                             throw new CompletionException(e);
                         }
                         return branchContext;
-                    }, executorService));
+                    }, MdcContext.wrap(executorService)));
                 }
 
                 // 等待所有分支完成并合并结果

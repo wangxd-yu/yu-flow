@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.yu.flow.log.trace.MdcContext;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -38,6 +39,8 @@ public class AsyncConfig {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
+        // 日志都是 @Async 落库，带上提交线程的请求 ID
+        executor.setTaskDecorator(runnable -> MdcContext.wrap(runnable));
         executor.initialize();
         log.info("[AsyncConfig] flowAsyncExecutor: core={}, max={}, queue={}", core, max, queue);
         return executor;

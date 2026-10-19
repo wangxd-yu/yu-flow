@@ -21,6 +21,8 @@ public class FlowThirdLogListDTO {
     private Integer responseStatus;
     private Long elapsedTime;
     private Integer isSuccess;
+    /** 请求 ID（响应头 X-Request-Id） */
+    private String requestId;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private LocalDateTime createTime;
@@ -32,7 +34,7 @@ public class FlowThirdLogListDTO {
     public FlowThirdLogListDTO(String id, String apiType, String source, String sourceRef,
                                String sourceName, String requestUrl, String requestMethod,
                                Integer responseStatus, Long elapsedTime, Integer isSuccess,
-                               LocalDateTime createTime) {
+                               String requestId, LocalDateTime createTime) {
         this.id = id;
         this.apiType = apiType;
         this.source = source;
@@ -43,6 +45,7 @@ public class FlowThirdLogListDTO {
         this.responseStatus = responseStatus;
         this.elapsedTime = elapsedTime;
         this.isSuccess = isSuccess;
+        this.requestId = requestId;
         this.createTime = createTime;
     }
 
@@ -63,6 +66,7 @@ public class FlowThirdLogListDTO {
                 entity.getResponseStatus(),
                 entity.getElapsedTime(),
                 entity.getIsSuccess(),
+                entity.getRequestId(),
                 entity.getCreateTime()
         );
     }

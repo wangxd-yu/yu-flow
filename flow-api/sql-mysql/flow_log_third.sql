@@ -16,9 +16,11 @@ CREATE TABLE IF NOT EXISTS `flow_log_third` (
   `is_success` tinyint COMMENT '是否成功（0失败/1成功）',
   `error_message` varchar(1000) COMMENT '错误信息',
   `curl` text COMMENT 'Curl命令',
+  `request_id` varchar(64) COMMENT '请求ID（响应头 X-Request-Id）',
   `create_time` datetime COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_flow_log_third_api_type` (`api_type`),
   KEY `idx_flow_log_third_create_time` (`create_time`),
-  KEY `idx_flow_log_third_source` (`source`)
+  KEY `idx_flow_log_third_source` (`source`),
+  KEY `idx_flow_log_third_request_id` (`request_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='第三方接口调用日志';
