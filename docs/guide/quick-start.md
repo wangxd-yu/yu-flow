@@ -40,13 +40,13 @@ outline: deep
 ```xml [Maven (pom.xml)]
 <dependency>
     <groupId>org.yu</groupId>
-    <artifactId>yu-flow-api-java25-springboot4</artifactId>
-    <version>2.0-SNAPSHOT</version>
+    <artifactId>yu-flow-api</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
 ```groovy [Gradle (build.gradle)]
-implementation 'org.yu:yu-flow-api-java25-springboot4:2.0-SNAPSHOT'
+implementation 'org.yu:yu-flow-api:2.0.0-SNAPSHOT'
 ```
 
 :::

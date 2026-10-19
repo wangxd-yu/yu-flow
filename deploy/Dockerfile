@@ -16,7 +16,7 @@ RUN --mount=type=cache,id=yu-flow-pnpm,target=/pnpm-store \
 
 FROM maven:3.9.15-eclipse-temurin-25 AS api
 WORKDIR /src/flow-api
-ARG REVISION=2.0-SNAPSHOT
+ARG REVISION=2.0.0-SNAPSHOT
 # 额外的 Maven profile，逗号分隔：with-python（Python 脚本节点）、with-ip2region（登录日志 IP 归属地）
 ARG MAVEN_PROFILES=
 COPY flow-api/pom.xml ./

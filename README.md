@@ -142,12 +142,12 @@ mvn clean package -DskipTests -Djacoco.skip=true -P ui,with-python,with-ip2regio
 ```xml
 <dependency>
     <groupId>org.yu</groupId>
-    <artifactId>yu-flow-api-java25-springboot4</artifactId>
-    <version>2.0-SNAPSHOT</version>
+    <artifactId>yu-flow-api</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
 </dependency>
 ```
 
-宿主使用 JDK 25、Spring Boot 4.1。版本号由 `revision` 属性决定，发布时与 tag 对齐。建表脚本在 `flow-api/sql-mysql`（或 `sql-pg`）：先 `00_all_flow_tables.sql`，再 `00_system_init.sql`。口令和密钥用环境变量注入，不要写进仓库。
+宿主使用 JDK 25、Spring Boot 4.1。版本号由 `revision` 属性决定，发布时与 tag 对齐。坐标在 2.0.0 起固定为 `org.yu:yu-flow-api`（之前叫 `yu-flow-api-java25-springboot4`）。Spring Boot 3 / Java 17 的 `support/java17-springboot3` 分支已停止维护，不再合入任何修复。建表脚本在 `flow-api/sql-mysql`（或 `sql-pg`）：先 `00_all_flow_tables.sql`，再 `00_system_init.sql`。口令和密钥用环境变量注入，不要写进仓库。
 
 ---
 
