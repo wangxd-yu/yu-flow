@@ -285,7 +285,7 @@ class GatewayOpenEntryHandler {
             }
         } finally {
             long cost = System.currentTimeMillis() - start;
-            // 仅记 PLATFORM，避免与 FlowApiServiceImpl 的 API 计量双重计数
+            // 仅记 PLATFORM，避免与 ApiExecutionRecorder 的 API 计量双重计数
             if (assetMetricsRecorder != null
                     && authCtx != null && StrUtil.isNotBlank(authCtx.getPlatformId())) {
                 assetMetricsRecorder.record(MetricsAssetType.PLATFORM, authCtx.getPlatformId(), outcome, cost);

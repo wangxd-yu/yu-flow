@@ -5,9 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -66,10 +64,10 @@ class FlowApiRuntimeCharacterizationTest {
     @Mock private SchemaValidatorService schemaValidatorService;
     @Mock private YuFlowRuntimeSettings yuFlowRuntimeSettings;
     @Mock private AssetMetricsRecorder assetMetricsRecorder;
-    @Spy private ContractParamTypeConverter contractParamTypeConverter = new ContractParamTypeConverter();
+    private final ContractParamTypeConverter contractParamTypeConverter = new ContractParamTypeConverter();
 
-    @InjectMocks
     private FlowApiServiceImpl service;
+    private ApiSqlExecutor sqlExecutor;
 
     private JdbcTemplate jdbc;
     private TransactionTemplate tx;
@@ -95,7 +93,23 @@ class FlowApiRuntimeCharacterizationTest {
                     return result;
                 }));
         when(yuFlowRuntimeSettings.getEngineDefaultLogMode()).thenReturn("ALL");
-        service.initStrategies();
+
+        sqlExecutor = new ApiSqlExecutor(dynamicDataSourceService, dataSourceWallGuard, demoModeGuard);
+        ApiDispatcher dispatcher = new ApiDispatcher(
+                List.of(new FlowApiTypeExecutor(), new DbApiTypeExecutor(sqlExecutor), new StaticApiTypeExecutor()),
+                contractParamTypeConverter, schemaValidatorService);
+        service = new FlowApiServiceImpl(
+                new ApiExecutionRecorder(flowExecutionLogService, assetMetricsRecorder, null, yuFlowRuntimeSettings),
+                dispatcher,
+                new DbApiDebugRunner(dynamicDataSourceService, contractParamTypeConverter, schemaValidatorService, dispatcher));
+    }
+
+    @Test
+    void serviceTypeRegisteredTwiceFailsFast() {
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> new ApiDispatcher(
+                List.of(new StaticApiTypeExecutor(), new StaticApiTypeExecutor()),
+                contractParamTypeConverter, schemaValidatorService));
+        assertTrue(e.getMessage().contains("重复注册"), e.getMessage());
     }
 
     @AfterEach
@@ -293,12 +307,12 @@ class FlowApiRuntimeCharacterizationTest {
 
     @Test
     void batchInsertSplitsWhenDynamicSqlChangesShape() {
-        int count = service.executeBatchInsert("ds1", "INSERT INTO t_order VALUES (${id}, ${no}, ${amount})",
+        int count = sqlExecutor.executeBatchInsert("ds1", "INSERT INTO t_order VALUES (${id}, ${no}, ${amount})",
                 List.of(Map.of("id", 201, "no", "B1", "amount", 1), Map.of("id", 202, "no", "B2", "amount", 2)));
 
         assertEquals(2, count);
         assertEquals(27, jdbc.queryForObject("SELECT COUNT(*) FROM t_order", Integer.class));
-        assertEquals(0, service.executeBatchInsert("ds1", "INSERT INTO t_order VALUES (${id})", List.of()));
+        assertEquals(0, sqlExecutor.executeBatchInsert("ds1", "INSERT INTO t_order VALUES (${id})", List.of()));
     }
 
     // ─── DB 调试运行 ──────────────────────────────────────────────────────

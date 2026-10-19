@@ -5,7 +5,7 @@ import org.springframework.data.domain.Pageable;
 
 /**
  * SQL 执行服务接口
- * 用于 DatabaseNodeExecutor 与底层 FlowApiServiceImpl 对接
+ * 用于 DatabaseNodeExecutor 与接口运行时的 SQL 执行器（ApiSqlExecutor）对接
  */
 public interface SqlExecutorService {
 
