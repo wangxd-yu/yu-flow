@@ -389,13 +389,14 @@
                     <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:+EnableDynamicAgentLoading</argLine>
                 </configuration>
             </plugin>
-            <!-- *IT 集成测试（Testcontainers，需要 Docker）：mvn verify -DskipTests=false 时执行 -->
+            <!-- *IT 集成测试（Testcontainers，需要 Docker）：mvn verify -DskipTests=false 时执行。
+                 不带 @{argLine}：JaCoCo agent 以 append=false 写同一个 jacoco.exec，会把单测的覆盖率数据冲掉 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <skipTests>${skipTests}</skipTests>
-                    <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:+EnableDynamicAgentLoading</argLine>
+                    <argLine>--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow -XX:+EnableDynamicAgentLoading</argLine>
                 </configuration>
                 <executions>
                     <execution>
