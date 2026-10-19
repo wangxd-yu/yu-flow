@@ -3,6 +3,8 @@ package org.yu.flow.config;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
+import org.springframework.util.ReflectionUtils;
 import org.yu.flow.util.AfterCommitExecutor;
 import org.yu.flow.module.api.domain.FlowApiDO;
 import org.yu.flow.module.api.repository.FlowApiRepository;
@@ -10,11 +12,13 @@ import org.yu.flow.module.api.support.PublishedApiSnapshot;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
+import org.yu.flow.module.host.HostCatalogReserved;
 import org.yu.flow.module.sysmacro.cache.SysMacroCacheManager;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -38,11 +42,12 @@ import java.util.concurrent.locks.ReentrantLock;
  *   管理员发布/修改/删除 API → ServiceImpl.save/update/delete
  *       │
  *       ▼
- *   publishRefreshEvent()  →  Redis Pub/Sub 广播
+ *   publishRefreshEvent(apiId)  →  事务提交后
  *       │
- *       ├── 节点 A (当前) → refreshCache()
- *       ├── 节点 B         → refreshCache()
- *       └── 节点 C         → refreshCache()
+ *       ├── 节点 A (当前) → refreshApis(apiId)，立即生效
+ *       └── Redis 广播 → 节点 B / C → refreshApis(apiId)
+ *
+ *   批量导入、回滚等改动面不确定的场景 publishRefreshEvent() → 各节点全量重载
  * </pre>
  *
  * <h3>缓存分区策略</h3>
@@ -58,8 +63,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *   <li>exactCache 和 patternCache 均使用 {@code volatile} 引用，通过"先构建新容器，再整体替换引用"
  *       的 Copy-on-Write 策略保证刷新时的原子性。</li>
  *   <li>读端无锁、无同步，极致低延迟。</li>
- *   <li>唯一的写操作 {@link #refreshCache()} 本身不会被并发调用（由 Redis 消息顺序驱动），
- *       但即使并发写也仅是多做一次 DB 查询，不会产生数据不一致。</li>
+ *   <li>全量与按接口刷新共用一把写锁，在锁内读库并替换，避免旧数据覆盖新数据。</li>
  * </ul>
  *
  * <h3>异常隔离</h3>
@@ -78,6 +82,22 @@ public class FlowApiCacheManager {
     /** Redis Pub/Sub 频道名称，用于集群间广播缓存刷新事件 */
     public static final String REFRESH_TOPIC = "flow:api:cache:refresh:topic";
 
+    /**
+     * 本进程标识：发布节点在提交后已经本地生效，收到自己发出的广播时跳过。
+     * 广播格式 {@code REFRESH;node=…}（全量）或 {@code API;node=…;ids=a,b}（按接口）；
+     * 旧版本节点不解析消息体，一律全量重载，滚动升级期间仍然一致。
+     */
+    static final String NODE_ID = UUID.randomUUID().toString().replace("-", "");
+
+    /** 单次按接口刷新的上限，超过直接全量 */
+    static final int MAX_INCREMENTAL_IDS = 200;
+
+    private static final String TX_COLLECT_KEY = "flow api route refresh";
+
+    /** 与全量加载的库内顺序（主键序）一致，保证模式路由的匹配优先级不因增量刷新而改变 */
+    private static final Comparator<FlowApiDO> BY_ID =
+            Comparator.comparing(FlowApiDO::getId, Comparator.nullsLast(Comparator.naturalOrder()));
+
     // ============================= 本地缓存 =============================
 
     /**
@@ -93,8 +113,14 @@ public class FlowApiCacheManager {
      */
     private volatile List<FlowApiDO> patternCache = new ArrayList<>(16);
 
-    /** 防重入/防并发全量刷新锁，防止缓存穿透风暴 */
+    /** 全量与增量刷新共用的写锁 */
     private final ReentrantLock refreshLock = new ReentrantLock();
+
+    /**
+     * 有全量重载待执行。持锁方（全量或增量）退出前会检查并补做，短时间内的多次全量请求只合并成一次，
+     * 也不会因为恰好有增量刷新在进行而被丢掉。
+     */
+    private final AtomicBoolean fullReloadPending = new AtomicBoolean();
 
     // ============================= 依赖注入 =============================
 
@@ -119,109 +145,150 @@ public class FlowApiCacheManager {
     @PostConstruct
     public void initCache() {
         log.info("[FlowApiCacheManager] 应用启动，开始全量加载动态 API 路由缓存...");
-        doRefreshCache();
+        requestFullReload();
     }
 
     // ============================= 核心方法 =============================
 
     /**
-     * 刷新缓存：清空并重新加载内存缓存。
+     * 全量重载：从库里重新加载全部已发布接口。
      *
-     * <p><b>调用场景</b>：由 Redis Pub/Sub 监听器回调触发，当管理员对动态 API
-     * 进行发布/修改/删除操作后，通过 {@link #publishRefreshEvent()} 广播消息，
-     * 集群中所有节点均会执行此方法。</p>
-     *
-     * <p><b>线程安全策略：Copy-on-Write（先构建 → 再替换）</b></p>
-     * <ol>
-     *   <li>从 DB 加载 publishStatus=1 的所有 API 记录。</li>
-     *   <li>按路径特征分拆为精确路由和模式路由，分别构建新的容器。</li>
-     *   <li>构建完成后，通过 volatile 引用赋值整体替换旧缓存。</li>
-     * </ol>
-     *
-     * <p>此策略保证：在刷新过程中，正在执行的请求仍然可以读取旧缓存的完整数据，
-     * 不会出现"部分加载"的中间状态，实现了无锁读取下的安全刷新。</p>
+     * <p>用于启动、批量导入 / 回滚、旧版本节点的广播，以及增量刷新失败时兜底。
+     * 先构建新容器再整体替换引用，刷新过程中正在执行的请求仍读旧缓存的完整数据。</p>
      */
     public void refreshCache() {
-        log.info("[FlowApiCacheManager] 收到缓存刷新通知，开始重新加载...");
-        doRefreshCache();
+        log.info("[FlowApiCacheManager] 收到全量刷新请求，开始重新加载...");
+        requestFullReload();
     }
 
     /**
-     * 执行实际的缓存加载逻辑（供 initCache 和 refreshCache 共用）。
-     *
-     * <p>将所有已发布的 API 按照 URL 特征分类：
-     * <ul>
-     *   <li>包含 {@code {}} 或 {@code *} 的路径 → 模式路由，放入 patternCache</li>
-     *   <li>其余路径 → 精确路由，放入 exactCache</li>
-     * </ul>
-     * </p>
+     * 按接口刷新：只重新读取这几条记录，在现有缓存副本上替换后整体换入。
+     * 已删除、已下线的接口从路由表移除；已发布的按发布快照重新登记。
      */
-    private void doRefreshCache() {
-        // 使用 tryLock，如果已经有线程（事件）正在刷新缓存，其他并发事件直接摒弃
-        // 这样即使短时间内接收到十几个 REFRESH 事件，也只发生一次真正的合并刷新
-        if (!refreshLock.tryLock()) {
-            log.info("[FlowApiCacheManager] 检测到缓存正在被刷新，忽略本次并发刷新请求。");
+    public void refreshApis(Collection<String> apiIds) {
+        Set<String> ids = cleanIds(apiIds);
+        if (ids.isEmpty()) {
             return;
         }
-
+        refreshLock.lock();
         try {
-            // 加载所有已发布（publishStatus=1）的 API
+            List<FlowApiDO> rows = flowApiRepository.findAllById(ids);
+            Map<String, FlowApiDO> newExactCache = new HashMap<>(this.exactCache);
+            newExactCache.values().removeIf(api -> ids.contains(api.getId()));
+            List<FlowApiDO> newPatternCache = new ArrayList<>(this.patternCache);
+            newPatternCache.removeIf(api -> ids.contains(api.getId()));
+
+            int routed = 0;
+            for (FlowApiDO api : rows) {
+                if (Integer.valueOf(1).equals(api.getPublishStatus()) && addRoute(api, newExactCache, newPatternCache)) {
+                    routed++;
+                }
+            }
+            newPatternCache.sort(BY_ID);
+
+            this.exactCache = newExactCache;
+            this.patternCache = newPatternCache;
+            log.info("[FlowApiCacheManager] 按接口刷新完成：请求 {} 条，在线 {} 条。精确路由={}, 模式路由={}",
+                    ids.size(), routed, newExactCache.size(), newPatternCache.size());
+        } catch (Exception e) {
+            log.error("[FlowApiCacheManager] 按接口刷新失败，改为全量重载。ids={}", ids, e);
+            fullReloadPending.set(true);
+        } finally {
+            refreshLock.unlock();
+        }
+        drainFullReload();
+    }
+
+    private void requestFullReload() {
+        fullReloadPending.set(true);
+        drainFullReload();
+    }
+
+    /**
+     * 拿不到锁说明有刷新在进行，持锁方退出前会看到待执行标记并补做；
+     * 解锁后再检查一次，避免标记恰好在持锁方最后一次检查之后才置上。
+     */
+    private void drainFullReload() {
+        while (fullReloadPending.get() && refreshLock.tryLock()) {
+            try {
+                while (fullReloadPending.getAndSet(false)) {
+                    loadAll();
+                }
+            } finally {
+                refreshLock.unlock();
+            }
+        }
+    }
+
+    /** 调用方须持有 {@link #refreshLock} */
+    private void loadAll() {
+        try {
             List<FlowApiDO> publishedApis = flowApiRepository.findByPublishStatus(1);
 
             Map<String, FlowApiDO> newExactCache = new HashMap<>(publishedApis.size() * 2);
             List<FlowApiDO> newPatternCache = new ArrayList<>(16);
-
-            int exactCount = 0;
-            int patternCount = 0;
-
             for (FlowApiDO api : publishedApis) {
-                if (org.yu.flow.module.host.HostCatalogReserved.isReservedId(api.getId())) {
-                    continue;
-                }
-                // 路由键取发布快照，避免草稿改 URL 污染线上匹配
-                String originalUrl = PublishedApiSnapshot.resolveUrl(api);
-                String method = PublishedApiSnapshot.resolveMethod(api);
-
-                if (originalUrl == null || method == null) {
-                    log.warn("[FlowApiCacheManager] 跳过无效 API 记录：id={}, url={}, method={}",
-                            api.getId(), originalUrl, method);
-                    continue;
-                }
-
-                // 容错处理：确保 url 以 / 开头
-                String url = originalUrl.trim();
-                if (!url.startsWith("/")) {
-                    url = "/" + url;
-                }
-                // 内存路由对象使用发布 URL/Method，与网关匹配一致
-                api.setUrl(url);
-                api.setMethod(method.toUpperCase());
-
-                // 构建缓存 Key：METHOD-/path（与 FlowApiInterceptor 中的格式一致）
-                String cacheKey = method.toUpperCase() + "-" + url;
-
-                if (isPatternPath(url)) {
-                    // 含有 Ant 通配符的动态路径 → 模式路由
-                    newPatternCache.add(api);
-                    patternCount++;
-                } else {
-                    // 纯静态路径 → 精确路由
-                    newExactCache.put(cacheKey, api);
-                    exactCount++;
-                }
+                addRoute(api, newExactCache, newPatternCache);
             }
+            newPatternCache.sort(BY_ID);
 
-            // ★ 整体替换旧缓存（volatile 写保证可见性，无需加锁）
             this.exactCache = newExactCache;
             this.patternCache = newPatternCache;
 
-            log.info("[FlowApiCacheManager] 缓存加载完成。精确路由={}, 模式路由={}, 总计={}",
-                    exactCount, patternCount, publishedApis.size());
+            log.info("[FlowApiCacheManager] 全量加载完成。精确路由={}, 模式路由={}, 已发布总计={}",
+                    newExactCache.size(), newPatternCache.size(), publishedApis.size());
         } catch (Exception e) {
             log.error("[FlowApiCacheManager] 全量加载缓存异常，保留旧缓存继续服务。", e);
-        } finally {
-            refreshLock.unlock();
         }
+    }
+
+    /**
+     * 按发布快照登记一条路由。缓存里放的是副本：发布节点在请求线程上刷新时，
+     * 查出来的可能就是本次请求持久化上下文里的实体，直接改它的 url / method 有可能被后续 flush 写回草稿。
+     *
+     * @return 是否登记成功
+     */
+    private boolean addRoute(FlowApiDO source, Map<String, FlowApiDO> exact, List<FlowApiDO> pattern) {
+        if (HostCatalogReserved.isReservedId(source.getId())) {
+            return false;
+        }
+        // 路由键取发布快照，避免草稿改 URL 污染线上匹配
+        String originalUrl = PublishedApiSnapshot.resolveUrl(source);
+        String method = PublishedApiSnapshot.resolveMethod(source);
+        if (originalUrl == null || method == null) {
+            log.warn("[FlowApiCacheManager] 跳过无效 API 记录：id={}, url={}, method={}",
+                    source.getId(), originalUrl, method);
+            return false;
+        }
+        String url = originalUrl.trim();
+        if (!url.startsWith("/")) {
+            url = "/" + url;
+        }
+        // 实体的 setter 是链式的（返回 this），按字段拷贝而不是按属性
+        FlowApiDO api = new FlowApiDO();
+        ReflectionUtils.shallowCopyFieldState((FlowApiDO) Hibernate.unproxy(source), api);
+        api.setUrl(url);
+        api.setMethod(method.toUpperCase());
+
+        if (isPatternPath(url)) {
+            pattern.add(api);
+        } else {
+            // 构建缓存 Key：METHOD-/path（与 FlowApiInterceptor 中的格式一致）
+            exact.put(api.getMethod() + "-" + url, api);
+        }
+        return true;
+    }
+
+    private static Set<String> cleanIds(Collection<String> apiIds) {
+        Set<String> ids = new LinkedHashSet<>();
+        if (apiIds != null) {
+            for (String id : apiIds) {
+                if (id != null && !id.isBlank()) {
+                    ids.add(id.trim());
+                }
+            }
+        }
+        return ids;
     }
 
     /**
@@ -313,41 +380,100 @@ public class FlowApiCacheManager {
         return null;
     }
 
-    // ============================= Redis Pub/Sub 发布 =============================
+    // ============================= 刷新广播 =============================
 
     /**
-     * 发布缓存刷新事件到 Redis Pub/Sub 频道。
+     * 全量刷新（批量导入、回滚等改动面不确定的场景）。
      *
-     * <p><b>调用时机</b>：在 {@code FlowApiServiceImpl} 的 create / update / delete / publish
-     * 方法成功执行后调用。</p>
-     *
-     * <p>所有订阅了 {@link #REFRESH_TOPIC} 频道的集群节点（包括当前节点）均会收到消息，
-     * 触发 {@link #refreshCache()} 刷新本地缓存。</p>
-     *
-     * <p>如果当前处于 Spring 事务中，会自动延迟到事务提交后再发布消息，
-     * 避免其他节点读取到未提交的数据导致缓存不一致。</p>
-     *
-     * <p>发送失败时仅打日志，不影响业务主流程（降级策略：等待下次刷新或重启自动加载）。</p>
-     *
-     * <p>刷新是全量重载，同一事务内多次调用（如整批导入发布）只在提交后广播一次。</p>
+     * <p>在事务内时推迟到提交后；同一事务内的多次调用（含按接口的调用）合并为一次。
+     * 本节点在提交后立即生效，再通过 Redis 广播给其它节点。</p>
      */
     public void publishRefreshEvent() {
-        AfterCommitExecutor.runOnce("flow api route refresh", this::doPublishRefreshEvent);
+        AfterCommitExecutor.<Set<String>>collect(TX_COLLECT_KEY, null, this::dispatch);
+    }
+
+    /** 只刷新这一个接口的路由 */
+    public void publishRefreshEvent(String apiId) {
+        publishRefreshEvent(Collections.singletonList(apiId));
+    }
+
+    /** 只刷新这些接口的路由 */
+    public void publishRefreshEvent(Collection<String> apiIds) {
+        Set<String> ids = cleanIds(apiIds);
+        if (ids.isEmpty()) {
+            return;
+        }
+        AfterCommitExecutor.collect(TX_COLLECT_KEY, ids, this::dispatch);
+    }
+
+    /** 提交后执行：本节点先生效，再广播。任一请求为全量（null）或 ID 太多时整体按全量处理 */
+    private void dispatch(List<Set<String>> requests) {
+        boolean full = false;
+        Set<String> ids = new LinkedHashSet<>();
+        for (Set<String> request : requests) {
+            if (request == null) {
+                full = true;
+            } else {
+                ids.addAll(request);
+            }
+        }
+        if (!full && ids.size() > MAX_INCREMENTAL_IDS) {
+            full = true;
+        }
+        if (!full && ids.isEmpty()) {
+            return;
+        }
+
+        if (full) {
+            requestFullReload();
+        } else {
+            refreshApis(ids);
+        }
+
+        String body = full
+                ? "REFRESH;node=" + NODE_ID
+                : "API;node=" + NODE_ID + ";ids=" + String.join(",", ids);
+        try {
+            stringRedisTemplate.convertAndSend(REFRESH_TOPIC, body);
+            log.info("[FlowApiCacheManager] 已广播路由刷新：{}", full ? "全量" : ids.size() + " 个接口");
+        } catch (Exception e) {
+            // 本节点已生效；其它节点要等下一次广播或重启
+            log.error("[FlowApiCacheManager] 广播路由刷新失败，其它节点暂未更新。", e);
+        }
     }
 
     /**
-     * 执行真正的 Redis 消息发布逻辑。
-     *
-     * <p>发送失败时降级为本地刷新，保证至少当前节点的缓存是最新的。</p>
+     * 处理集群广播。自己发出的消息跳过（发布时已本地生效）；
+     * 旧版本节点只发 {@code REFRESH}，按全量处理。
      */
-    private void doPublishRefreshEvent() {
-        try {
-            stringRedisTemplate.convertAndSend(REFRESH_TOPIC, "REFRESH");
-            log.info("[FlowApiCacheManager] 已发布缓存刷新事件到 Redis 频道: {}", REFRESH_TOPIC);
-        } catch (Exception e) {
-            log.error("[FlowApiCacheManager] 发布缓存刷新事件失败，尝试本地降级刷新。", e);
-            // 降级：至少保证当前节点的缓存是最新的
-            doRefreshCache();
+    public void onRefreshMessage(String body) {
+        String type = null;
+        String node = null;
+        String ids = null;
+        if (body != null) {
+            String[] parts = body.trim().split(";");
+            type = parts[0];
+            for (int i = 1; i < parts.length; i++) {
+                int eq = parts[i].indexOf('=');
+                if (eq <= 0) {
+                    continue;
+                }
+                String key = parts[i].substring(0, eq);
+                String value = parts[i].substring(eq + 1);
+                if ("node".equals(key)) {
+                    node = value;
+                } else if ("ids".equals(key)) {
+                    ids = value;
+                }
+            }
+        }
+        if (NODE_ID.equals(node)) {
+            return;
+        }
+        if ("API".equals(type) && ids != null) {
+            refreshApis(Arrays.asList(ids.split(",")));
+        } else {
+            refreshCache();
         }
     }
 
@@ -369,6 +495,45 @@ public class FlowApiCacheManager {
      */
     public int getPatternCacheSize() {
         return patternCache.size();
+    }
+
+    /** 该接口是否在本节点路由表里 */
+    public boolean isRouted(String apiId) {
+        if (apiId == null) {
+            return false;
+        }
+        for (FlowApiDO api : exactCache.values()) {
+            if (apiId.equals(api.getId())) {
+                return true;
+            }
+        }
+        for (FlowApiDO api : patternCache) {
+            if (apiId.equals(api.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 本节点上这条路由（按登记时的 method + url 原样比较，不做模式匹配）归哪个接口；没有返回 null。
+     */
+    public FlowApiDO routeOwner(String method, String url) {
+        if (method == null || url == null) {
+            return null;
+        }
+        String m = method.toUpperCase();
+        String u = url.trim().startsWith("/") ? url.trim() : "/" + url.trim();
+        FlowApiDO exact = exactCache.get(m + "-" + u);
+        if (exact != null) {
+            return exact;
+        }
+        for (FlowApiDO api : patternCache) {
+            if (m.equals(api.getMethod()) && u.equals(api.getUrl())) {
+                return api;
+            }
+        }
+        return null;
     }
 
     // ============================= 内部类 =============================

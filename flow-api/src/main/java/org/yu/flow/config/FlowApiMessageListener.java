@@ -12,9 +12,9 @@ import jakarta.annotation.Resource;
 /**
  * 动态 API 路由缓存 Redis Pub/Sub 消息监听器
  *
- * <p>当任意集群节点通过 {@link FlowApiCacheManager#publishRefreshEvent()} 发布刷新消息后，
+ * <p>当任意集群节点通过 {@link FlowApiCacheManager#publishRefreshEvent} 发布刷新消息后，
  * 本监听器会被 {@link org.springframework.data.redis.listener.RedisMessageListenerContainer} 回调，
- * 触发当前节点的本地路由缓存全量重载。</p>
+ * 按消息内容刷新指定接口或全量重载（见 {@link FlowApiCacheManager#onRefreshMessage}）。</p>
  *
  * <h3>消息频道</h3>
  * <p>{@code flow:api:cache:refresh:topic}（定义在 {@link FlowApiCacheManager#REFRESH_TOPIC}）</p>
@@ -52,7 +52,7 @@ public class FlowApiMessageListener implements MessageListener {
         log.info("[FlowApiMessageListener] 收到缓存刷新消息。channel={}, body={}", channel, body);
 
         try {
-            flowApiCacheManager.refreshCache();
+            flowApiCacheManager.onRefreshMessage(body);
             // 保留身份目录 API 的发布快照可能已变化。
             hostIdentityCatalogService.invalidateRuntimeCache();
             log.info("[FlowApiMessageListener] 本地路由缓存重载完成。精确路由={}, 模式路由={}",

@@ -248,7 +248,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // 如果该批次中有任何已发布的 API，只发出【一次】缓存刷新事件
         // 彻底解决原来的 "100次批量插入 = 100次DB保存 + 100次全网刷新风暴"
         if (needRefreshCache) {
-            flowApiCacheManager.publishRefreshEvent();
+            flowApiCacheManager.publishRefreshEvent(savedList.stream().map(FlowApiDO::getId).toList());
         }
         notifyRefIndex();
         return savedList;
@@ -322,7 +322,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         // 已发布状态下编辑草稿不刷新缓存（快照隔离）
         // 例外：cacheConfig 为运行时配置，变更需即时刷新 L1
         if (flowApiDO.getPublishStatus() == null || flowApiDO.getPublishStatus() != 1 || cacheConfigChanged) {
-            flowApiCacheManager.publishRefreshEvent();
+            flowApiCacheManager.publishRefreshEvent(flowApiDO.getId());
         }
         // 停用缓存，或缓存配置有变更时，清空该接口已有响应缓存
         if (cacheConfigChanged && (cacheWasEnabled || cacheNowEnabled)) {
@@ -446,7 +446,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         purgeOpenGrantsForApi(id);
         flowApiRepository.deleteById(id);
         apiResponseCacheService.evictAll(id);
-        flowApiCacheManager.publishRefreshEvent();
+        flowApiCacheManager.publishRefreshEvent(id);
         notifyRefIndex();
     }
 
@@ -461,7 +461,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             purgeOpenGrantsForApis(ids);
             flowApiRepository.logicDeleteByIds(ids);
             ids.forEach(apiResponseCacheService::evictAll);
-            flowApiCacheManager.publishRefreshEvent();
+            flowApiCacheManager.publishRefreshEvent(ids);
             notifyRefIndex();
         }
     }
@@ -478,7 +478,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             targetDirectoryId = null;
         }
         flowApiRepository.updateDirectoryIdByIds(targetDirectoryId, ids);
-        flowApiCacheManager.publishRefreshEvent();
+        flowApiCacheManager.publishRefreshEvent(ids);
     }
 
     @Override
@@ -635,7 +635,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
             result.getItems().add(item);
         }
         if (needDraftCacheRefresh) {
-            flowApiCacheManager.publishRefreshEvent();
+            flowApiCacheManager.publishRefreshEvent(ids);
         }
         if (result.getUpdated() > 0) {
             notifyRefIndex();
@@ -726,7 +726,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         api.setLogEnabled(enabled);
         FlowApiDO saved = flowApiRepository.save(api);
         if (saved.getPublishStatus() != null && saved.getPublishStatus() == 1) {
-            flowApiCacheManager.publishRefreshEvent();
+            flowApiCacheManager.publishRefreshEvent(id);
         }
         return saved;
     }
@@ -764,7 +764,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         api.setUpdateTime(LocalDateTime.now());
         FlowApiDO saved = flowApiRepository.save(api);
         if (saved.getPublishStatus() != null && saved.getPublishStatus() == 1) {
-            flowApiCacheManager.publishRefreshEvent();
+            flowApiCacheManager.publishRefreshEvent(id);
         }
         // 配置变更后清掉旧响应缓存，避免 key 规则不一致残留
         if (!Objects.equals(StrUtil.nullToEmpty(oldConfig), StrUtil.nullToEmpty(cacheConfig))) {
@@ -1009,7 +1009,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
 
         // 刷新缓存，线上生效；响应缓存 key 不含版本，不清掉会继续返回旧版本结果
         evictResponseCacheAfterCommit(id);
-        flowApiCacheManager.publishRefreshEvent();
+        flowApiCacheManager.publishRefreshEvent(id);
         notifyRefIndex();
         String env = releaseEnvironment.resolve(envCode);
         auditLogService.record("API_PUBLISH", "API", id,
@@ -1036,7 +1036,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
         flowApiRepository.save(api);
 
         evictResponseCacheAfterCommit(id);
-        flowApiCacheManager.publishRefreshEvent();
+        flowApiCacheManager.publishRefreshEvent(id);
         // 授权保留但网关 404；刷新开放缓存以便文档/授权视图尽快感知
         try {
             openPlatformCache.publishRefresh();
@@ -1105,7 +1105,7 @@ public class FlowApiCrudServiceImpl implements FlowApiCrudService {
                 AssetBizType.API, id, version.getSnapshot(), AssetBizType.SOURCE_ROLLBACK,
                 "回退至 v" + version.getVersionNo(), JwtTokenUtil.currentUsername());
         evictResponseCacheAfterCommit(id);
-        flowApiCacheManager.publishRefreshEvent();
+        flowApiCacheManager.publishRefreshEvent(id);
         notifyRefIndex();
         return api;
     }

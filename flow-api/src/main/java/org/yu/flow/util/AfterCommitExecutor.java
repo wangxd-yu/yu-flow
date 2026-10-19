@@ -4,6 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Consumer;
+
 /**
  * 运行时副作用（调度注册、MQ 订阅、本地缓存失效等）的提交后执行器。
  *
@@ -52,6 +57,27 @@ public final class AfterCommitExecutor {
         TransactionSynchronizationManager.registerSynchronization(new OnceAction(key, action));
     }
 
+    /**
+     * 同一事务内按 key 合并：每次调用的 item 收集起来，提交后把整批交给 action 执行一次。
+     * 不在事务内（或正处于提交回调中）时立即以单个 item 执行。item 可以为 null。
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> void collect(String key, T item, Consumer<List<T>> action) {
+        if (RUNNING_AFTER_COMMIT.get() || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.accept(Collections.singletonList(item));
+            return;
+        }
+        for (TransactionSynchronization s : TransactionSynchronizationManager.getSynchronizations()) {
+            if (s instanceof CollectAction<?> c && c.key.equals(key)) {
+                ((CollectAction<T>) c).items.add(item);
+                return;
+            }
+        }
+        CollectAction<T> created = new CollectAction<>(key, action);
+        created.items.add(item);
+        TransactionSynchronizationManager.registerSynchronization(created);
+    }
+
     private static void runGuarded(String label, Runnable action) {
         RUNNING_AFTER_COMMIT.set(Boolean.TRUE);
         try {
@@ -84,6 +110,22 @@ public final class AfterCommitExecutor {
         OnceAction(String key, Runnable action) {
             super(key, action);
             this.key = key;
+        }
+    }
+
+    private static final class CollectAction<T> implements TransactionSynchronization {
+        final String key;
+        final List<T> items = new ArrayList<>();
+        final Consumer<List<T>> action;
+
+        CollectAction(String key, Consumer<List<T>> action) {
+            this.key = key;
+            this.action = action;
+        }
+
+        @Override
+        public void afterCommit() {
+            runGuarded(key, () -> action.accept(items));
         }
     }
 }
