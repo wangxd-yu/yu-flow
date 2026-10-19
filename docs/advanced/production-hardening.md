@@ -16,6 +16,18 @@ Yu Flow 以「可嵌入、可演示」为出发点，部分能力在本地开发
 | 数据库口令 | `SPRING_DATASOURCE_PASSWORD` | 环境变量注入，禁止弱口令 |
 | 登录 SM2 密钥 | `YU_FLOW_SM2_PRIVATE_KEY` / `YU_FLOW_SM2_PUBLIC_KEY` | 多节点必须固定同一对 hex；单节点可留空（进程内临时生成） |
 
+### 生产实例启动检查
+
+设了 `YU_FLOW_CURRENT_ENV=PROD` 的实例，在 Web 端口开始监听之前检查下面这些档位。命中阻断项就拒绝启动，错误信息里会列出要改的环境变量。
+
+| 档位 | 处理 |
+|------|------|
+| `YU_FLOW_FAIL_ON_INSECURE_DEFAULTS=false`、`YU_FLOW_ALLOW_YML_ADMIN_FALLBACK=true`、`YU_FLOW_ALLOW_INGRESS_AUTH_NONE=true`、`YU_FLOW_ALLOW_IGNORE_SSL=true`（默认就是 true）、`YU_FLOW_HOST_DEMO_ENABLED=true`、`YU_FLOW_PRIVACY_DEV_SESSION=true` | 拒绝启动 |
+| 开放平台接受明文 Secret、nonce 校验在 Redis 故障时放行、允许绕过统一入口（系统配置覆盖 yml 时按系统配置算） | 拒绝启动；运行期也不能通过「系统配置」或发布包改成这些值 |
+| 限流在 Redis 故障时放行、脚本白名单含 groovy / python、MQ 报文全文落库、没配发布包签名密钥、没开资产编辑锁 | 启动日志 WARN |
+
+`application-prod.yml` 里有三项默认是放松档位，设成 PROD 时要同时改掉，见该文件头部注释。确需临时放行设 `YU_FLOW_ALLOW_INSECURE_PROD=true`，阻断项改为 ERROR 日志，照常启动。
+
 ## 二、默认已收紧（确认未被放开）
 
 | 检查项 | 配置 | 默认 | 说明 |

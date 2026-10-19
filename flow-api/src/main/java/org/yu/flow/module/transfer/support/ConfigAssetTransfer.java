@@ -3,6 +3,7 @@ package org.yu.flow.module.transfer.support;
 import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
+import org.yu.flow.config.ProdSecurityGuard;
 import org.yu.flow.module.alert.domain.AlertChannelDO;
 import org.yu.flow.module.alert.domain.AlertRuleDO;
 import org.yu.flow.module.alert.repository.AlertChannelRepository;
@@ -81,6 +82,8 @@ public class ConfigAssetTransfer {
     private SysConfigCacheManager sysConfigCacheManager;
     @Resource
     private OpenPlatformCache openPlatformCache;
+    @Resource
+    private ProdSecurityGuard prodSecurityGuard;
 
     // ─────────────────────────────────────────────────────────────────────────
     // 导出
@@ -342,6 +345,12 @@ public class ConfigAssetTransfer {
                 existing == null ? null : existing.getConfigGroup());
         if (rejected != null) {
             report.getItems().add(TransferItemDTO.of(SYS_CONFIG, key, key, TransferItemDTO.ACTION_SKIP, rejected));
+            return;
+        }
+        String insecure = prodSecurityGuard.sysConfigRejectReason(key, in.getConfigValue(),
+                in.getStatus() == null ? 1 : in.getStatus());
+        if (insecure != null) {
+            report.getItems().add(TransferItemDTO.of(SYS_CONFIG, key, key, TransferItemDTO.ACTION_CONFLICT, insecure));
             return;
         }
         if (!decide(SYS_CONFIG, key, key, existing != null, overwrite, report, "导入即生效")) {

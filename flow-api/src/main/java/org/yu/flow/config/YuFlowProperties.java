@@ -718,6 +718,13 @@ public class YuFlowProperties {
         private boolean allowIgnoreSsl = true;
 
         /**
+         * 本实例环境为 PROD 时，发现不安全档位仍允许启动（只打 ERROR 日志）。
+         * <p>默认 false：PROD 下这些档位会让启动失败，系统配置与发布包也不能把它们改回不安全值。
+         * 见 {@link ProdSecurityGuard}。</p>
+         */
+        private boolean allowInsecureProd = false;
+
+        /**
          * 管理端 {@code /flow-api/**}（已通过管理端 JWT 后）是否再要求
          * {@link org.yu.flow.module.open.auth.HostAuthenticationProbe} 通过。
          * <p>默认 {@code false}；仅需加强防护时开启。开启后嵌入宿主应覆盖 Probe
@@ -821,6 +828,14 @@ public class YuFlowProperties {
 
         public void setAllowIgnoreSsl(boolean allowIgnoreSsl) {
             this.allowIgnoreSsl = allowIgnoreSsl;
+        }
+
+        public boolean isAllowInsecureProd() {
+            return allowInsecureProd;
+        }
+
+        public void setAllowInsecureProd(boolean allowInsecureProd) {
+            this.allowInsecureProd = allowInsecureProd;
         }
 
         public boolean isManagementRequireHostAuth() {

@@ -1,5 +1,6 @@
 package org.yu.flow.module.sysconfig.service.impl;
 import org.yu.flow.config.DemoModeGuard;
+import org.yu.flow.config.ProdSecurityGuard;
 
 import cn.hutool.core.util.StrUtil;
 import org.yu.flow.auto.dto.PageBean;
@@ -49,6 +50,9 @@ public class SysConfigServiceImpl implements SysConfigService {
 
     @Resource
     private AuditLogService auditLogService;
+
+    @Resource
+    private ProdSecurityGuard prodSecurityGuard;
 
     @Override
     public PageBean<SysConfigDTO> findPage(SysConfigQueryDTO queryDTO) {
@@ -117,6 +121,7 @@ public class SysConfigServiceImpl implements SysConfigService {
                 .updateTime(LocalDateTime.now())
                 .build();
 
+        prodSecurityGuard.assertSysConfigAllowed(entity.getConfigKey(), entity.getConfigValue(), entity.getStatus());
         SysConfigDO saved = sysConfigRepository.save(entity);
         sysConfigCacheManager.publishRefreshEvent();
         return saved;
@@ -155,6 +160,7 @@ public class SysConfigServiceImpl implements SysConfigService {
                 existing.setSortOrder(dto.getSortOrder());
             }
             existing.setUpdateTime(LocalDateTime.now());
+            prodSecurityGuard.assertSysConfigAllowed(existing.getConfigKey(), existing.getConfigValue(), existing.getStatus());
             SysConfigDO saved = sysConfigRepository.save(existing);
             sysConfigCacheManager.putLocal(saved);
             sysConfigCacheManager.publishRefreshEvent();
@@ -187,6 +193,7 @@ public class SysConfigServiceImpl implements SysConfigService {
         existing.setRemark(dto.getRemark());
         existing.setUpdateTime(LocalDateTime.now());
 
+        prodSecurityGuard.assertSysConfigAllowed(existing.getConfigKey(), existing.getConfigValue(), existing.getStatus());
         SysConfigDO saved = sysConfigRepository.save(existing);
         sysConfigCacheManager.putLocal(saved);
         sysConfigCacheManager.publishRefreshEvent();

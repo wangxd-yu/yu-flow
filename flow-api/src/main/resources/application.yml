@@ -122,6 +122,8 @@ yu:
       allow-ingress-auth-none: ${YU_FLOW_ALLOW_INGRESS_AUTH_NONE:false}
       # HttpRequest 节点 ignoreSsl 总开关；生产建议 false（一刀切禁用跳过证书校验）
       allow-ignore-ssl: ${YU_FLOW_ALLOW_IGNORE_SSL:true}
+      # 本实例环境为 PROD 时，免鉴权 / 跳过证书校验 / 开放平台放宽等档位会让启动失败；确需临时放行设 true
+      allow-insecure-prod: ${YU_FLOW_ALLOW_INSECURE_PROD:false}
       # 管理端 /flow-api/** 在 JWT 通过后再校验 HostAuthenticationProbe（双层鉴权，默认关）
       # 仅加强防护时开启；开启后嵌入宿主请覆盖 Probe 读宿主 Session
       management-require-host-auth: ${YU_FLOW_MANAGEMENT_REQUIRE_HOST_AUTH:false}
